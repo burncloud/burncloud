@@ -5,7 +5,8 @@
 mod resolver;
 
 pub use resolver::{
-    FakeModelResolver, ModelResolutionError, ModelResolutionRequest, ModelResolver, ResolvedModel,
+    FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelResolutionError,
+    ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
 };
 
 use burncloud_database_model::ModelDatabase;
@@ -82,27 +83,21 @@ impl ModelService {
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let base_dir = get_data_dir().await?;
         let model_dir = std::path::Path::new(&base_dir).join(model_id);
-
         if !model_dir.exists() {
             return Ok(());
         }
-
         if let Some(fname) = filename {
             if fname.trim().is_empty() {
                 return Ok(());
             }
-
-            // 去掉 .gguf 后缀
             let prefix = if fname.to_lowercase().ends_with(".gguf") {
                 &fname[..fname.len() - 5]
             } else {
                 fname
             };
-
             if prefix.is_empty() {
                 return Ok(());
             }
-
             let mut entries = tokio::fs::read_dir(&model_dir).await?;
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
@@ -122,17 +117,14 @@ impl ModelService {
     pub async fn update(&self, model: &burncloud_database_model::ModelInfo) -> Result<()> {
         self.db.add_model(model).await
     }
-
     /// 根据ID查询模型
     pub async fn get(&self, model_id: &str) -> Result<Option<burncloud_database_model::ModelInfo>> {
         self.db.get_model(model_id).await
     }
-
     /// 查询所有模型
     pub async fn list(&self) -> Result<Vec<burncloud_database_model::ModelInfo>> {
         self.db.list_models().await
     }
-
     /// 根据管道类型搜索
     pub async fn search_by_pipeline(
         &self,
@@ -140,7 +132,6 @@ impl ModelService {
     ) -> Result<Vec<burncloud_database_model::ModelInfo>> {
         self.db.search_by_pipeline(pipeline_tag).await
     }
-
     /// 获取热门模型
     pub async fn get_popular(
         &self,
@@ -148,7 +139,6 @@ impl ModelService {
     ) -> Result<Vec<burncloud_database_model::ModelInfo>> {
         self.db.get_popular_models(limit).await
     }
-
     /// 关闭服务
     pub async fn close(self) -> Result<()> {
         self.db.close().await
@@ -159,10 +149,8 @@ impl ModelService {
     ) -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {
         let host = get_huggingface_host().await?;
         let api_url = format!("{}api/models", host);
-
         let response = reqwest::get(&api_url).await?;
         let models: Vec<HfApiModel> = response.json().await?;
-
         Ok(models)
     }
 }
@@ -170,22 +158,15 @@ impl ModelService {
 /// 获取 HuggingFace Host（带缓存）
 pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::error::Error>> {
     let db = SettingDatabase::new().await?;
-
-    // 先查询缓存
     if let Some(host) = SettingService::get(&db, "huggingface").await? {
         return Ok(host);
     }
-
-    // 没有缓存，根据地区设置
     let location = burncloud_service_ip::get_location().await?;
     let host = match location.as_str() {
         "CN" => "https://hf-mirror.com/",
         _ => "https://huggingface.co/",
     };
-
-    // 保存到数据库
     SettingService::set(&db, "huggingface", host).await?;
-
     Ok(host.to_string())
 }
 
@@ -212,7 +193,6 @@ fn fetch_files_recursive<'a>(
         let url = format!("{}api/models/{}/tree/{}", host, model_id, path);
         let response = reqwest::get(&url).await?;
         let items: Vec<HfFileItem> = response.json().await?;
-
         for item in items {
             if item.file_type == "file" {
                 result.push(vec![
@@ -226,7 +206,6 @@ fn fetch_files_recursive<'a>(
                 fetch_files_recursive(host, model_id, &sub_path, result).await?;
             }
         }
-
         Ok(())
     })
 }
@@ -243,11 +222,9 @@ pub fn filter_gguf_files(files: &[Vec<String>]) -> Vec<Vec<String>> {
 /// 获取数据存储目录
 pub async fn get_data_dir() -> std::result::Result<String, Box<dyn std::error::Error>> {
     let db = SettingDatabase::new().await?;
-
     if let Some(dir) = SettingService::get(&db, "dir_data").await? {
         return Ok(dir);
     }
-
     let dir = "./data";
     SettingService::set(&db, "dir_data", dir).await?;
     Ok(dir.to_string())

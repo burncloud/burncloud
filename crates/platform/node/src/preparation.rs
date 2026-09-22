@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use crate::ProcessSpec;
+
 /// Machine-level artifact prepared for a local runtime.
 ///
 /// This contract deliberately carries no BurnCloud model/provider/router
@@ -59,6 +61,34 @@ pub trait RuntimePreparer: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadinessTarget {
     pub endpoint: String,
+}
+
+/// Complete machine-level launch receipt produced by a runtime adapter.
+///
+/// The application orchestrator must consume this plan instead of inventing
+/// runtime arguments, ports, readiness URLs, or local serving endpoints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessPlan {
+    pub process: ProcessSpec,
+    pub readiness: ReadinessTarget,
+    pub local_endpoint: String,
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum RuntimeAdapterError {
+    #[error("runtime launch planning failed: {0}")]
+    PlanFailed(String),
+}
+
+/// Runtime-specific adapter boundary. Real implementations may understand
+/// llama.cpp/vLLM command lines; application orchestration must not.
+#[async_trait]
+pub trait RuntimeAdapter: Send + Sync {
+    async fn plan(
+        &self,
+        runtime: &PreparedRuntime,
+        artifact: &PreparedArtifact,
+    ) -> Result<ProcessPlan, RuntimeAdapterError>;
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

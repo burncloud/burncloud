@@ -129,9 +129,12 @@ impl DiskCollector {
                 )));
             }
 
-            let block_size = statvfs.f_frsize;
-            let total_blocks = statvfs.f_blocks;
-            let free_blocks = statvfs.f_bavail;
+            // libc exposes these fields as different unsigned widths across
+            // Unix targets (u64 on Linux, u32 for block counts on macOS ARM).
+            // Normalize before doing byte arithmetic and building DiskInfo.
+            let block_size = u64::from(statvfs.f_frsize);
+            let total_blocks = u64::from(statvfs.f_blocks);
+            let free_blocks = u64::from(statvfs.f_bavail);
 
             let total = total_blocks * block_size;
             let available = free_blocks * block_size;

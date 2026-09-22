@@ -68,7 +68,6 @@ mod windows_tray {
     use dioxus::desktop::{DesktopContext, WindowCloseBehaviour};
     use dioxus::prelude::*;
 
-    const ICON_DATA: &[u8] = include_bytes!("../assets/favicon.ico");
     const SHOW_MENU_ID: &str = "burncloud-show-window";
     const QUIT_MENU_ID: &str = "burncloud-quit";
 
@@ -79,7 +78,8 @@ mod windows_tray {
         let quit = MenuItem::with_id(QUIT_MENU_ID, "退出程序", true, None);
         menu.append_items(&[&show, &separator, &quit])?;
 
-        let icon = dioxus::desktop::icon_from_memory::<Icon>(ICON_DATA)?;
+        // The Windows resource compiler embeds favicon.ico as resource 1.
+        let icon = Icon::from_resource(1, None)?;
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)

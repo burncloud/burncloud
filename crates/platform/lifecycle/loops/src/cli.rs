@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 
-use crate::gates::{parse_gate_name, parse_gate_suite, run_gate_suite, run_single_gate, GateCategory};
+use crate::gates::{
+    parse_gate_name, parse_gate_suite, run_gate_suite, run_single_gate, GateCategory,
+};
 use crate::log::LoopLogger;
 use crate::loops::css_optimize::{run as run_css_optimize, CssOptimizeOptions};
 use crate::loops::jobs_aesthetic::{run as run_jobs_aesthetic, JobsAestheticOptions};
@@ -113,9 +115,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
             let root = repo_root();
             let gate = parse_gate_name(&name)?;
             let log_path = if verbose {
-                Some(
-                    jobs_aesthetic_run_dir(&root).join(format!("gate-{name}.log")),
-                )
+                Some(jobs_aesthetic_run_dir(&root).join(format!("gate-{name}.log")))
             } else {
                 None
             };

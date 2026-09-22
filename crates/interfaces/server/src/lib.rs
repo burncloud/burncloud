@@ -2,6 +2,8 @@ pub mod api;
 pub mod logging;
 pub mod node_attachment;
 pub mod node_orchestrator;
+pub mod node_request;
+pub mod node_test;
 pub use api::auth::{auth_middleware, Claims};
 
 use axum::http::HeaderName;
@@ -9,8 +11,8 @@ use axum::{middleware, routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
-use burncloud_node_runtime::NodeRuntime;
-use burncloud_router::create_router_app;
+use burncloud_node_runtime::{NodeContext, NodeRuntime};
+use burncloud_router::create_router_app_with_route_miss;
 use burncloud_router::price_sync::SyncResult;
 use burncloud_service_monitor::SystemMonitorService;
 use burncloud_service_user::{JwtSecret, UserService};
@@ -62,6 +64,8 @@ impl fmt::Debug for InternalSecret {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
+    pub node_context: NodeContext,
+    pub node_request_state: node_request::NodeRequestState,
     pub monitor: Arc<SystemMonitorService>,
     pub user_service: Arc<UserService>,
     pub jwt_secret: JwtSecret,
@@ -80,16 +84,44 @@ pub async fn create_app(
     jwt_secret: JwtSecret,
     internal_secret: InternalSecret,
 ) -> anyhow::Result<Router> {
+    create_app_with_node_request_state(
+        db,
+        enable_liveview,
+        jwt_secret,
+        internal_secret,
+        node_request::NodeRequestState::default(),
+    )
+    .await
+}
+
+#[tracing::instrument(skip(db, node_request_state))]
+pub async fn create_app_with_node_request_state(
+    db: Arc<Database>,
+    enable_liveview: bool,
+    jwt_secret: JwtSecret,
+    internal_secret: InternalSecret,
+    node_request_state: node_request::NodeRequestState,
+) -> anyhow::Result<Router> {
     let monitor = Arc::new(SystemMonitorService::new());
     // Start auto collection in background
     let _ = monitor.start_auto_update().await;
 
+    // Keep the Node runtime and its request-visible status alive with the server.
+    let node_context = NodeRuntime::new().start();
+    let route_miss_state = node_request_state.clone();
+
     // 3. Data Plane Router (Fallback) — must be created first to get force_sync_tx
-    let (router_app, internal_app, force_sync_tx) =
-        create_router_app(db.clone(), jwt_secret.clone()).await?;
+    let (router_app, internal_app, force_sync_tx) = create_router_app_with_route_miss(
+        db.clone(),
+        jwt_secret.clone(),
+        Arc::new(move |model| route_miss_state.route_miss_response(model)),
+    )
+    .await?;
 
     let state = AppState {
         db: db.clone(),
+        node_context,
+        node_request_state,
         monitor,
         user_service: Arc::new(UserService::new(jwt_secret.clone())),
         jwt_secret,
@@ -123,7 +155,7 @@ pub async fn create_app(
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
-    let app = app
+    let mut app = app
         .fallback_service(router_app)
         .layer(SetRequestIdLayer::new(
             x_request_id.clone(),
@@ -139,11 +171,25 @@ pub async fn create_app(
             api::auth::security_boundary_middleware,
         ));
 
+    // #567 human black-box harness. It is deliberately merged after the
+    // production security stack because it is not a product API and must be
+    // reachable by simple local curl commands. The explicit env gate is the
+    // boundary: without it these routes do not exist at all.
+    if node_test::enabled_from_env() {
+        tracing::warn!(
+            "BURNCLOUD_NODE_TEST_API is enabled; mounting test-only Node routes on the existing server"
+        );
+        app = app.merge(node_test::router());
+    }
+
     Ok(app)
 }
 
 #[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
+    let node_test_api_enabled = node_test::enabled_from_env();
+    node_test::validate_bind_host(host, node_test_api_enabled)?;
+
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| anyhow::anyhow!("JWT_SECRET is missing or empty"))?;
     let jwt_secret = JwtSecret::new(jwt_secret)?;
@@ -155,12 +201,6 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
     let db = Arc::new(db);
-
-    // Attach the local Node runtime to the existing BurnCloud process before
-    // the unified HTTP gateway is built. The Node runtime must never bind its
-    // own API port or create a second Router/Server.
-    let node_context = NodeRuntime::new().start();
-    debug_assert!(node_context.started());
 
     let app = create_app(db, enable_liveview, jwt_secret, internal_secret).await?;
 

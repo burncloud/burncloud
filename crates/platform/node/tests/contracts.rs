@@ -37,7 +37,10 @@ impl ProcessManager for FakeProcess {
 
 #[tokio::test]
 async fn hardware_contract_can_be_implemented_without_business_types() {
-    let profile = FakeHardware.inspect().await.expect("fake hardware probe must succeed");
+    let profile = FakeHardware
+        .inspect()
+        .await
+        .expect("fake hardware probe must succeed");
     assert_eq!(profile.cpu_threads, 16);
     assert_eq!(profile.accelerators.len(), 1);
 }
@@ -54,5 +57,8 @@ async fn process_contract_only_manages_local_process_lifecycle() {
         .expect("fake process start must succeed");
 
     assert_eq!(handle.pid, 42);
-    manager.stop(handle).await.expect("fake process stop must succeed");
+    manager
+        .stop(handle)
+        .await
+        .expect("fake process stop must succeed");
 }

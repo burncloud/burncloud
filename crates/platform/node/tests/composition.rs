@@ -33,31 +33,47 @@ async fn composition_root_wires_every_machine_socket() {
 
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest { source: "qwen/fake.gguf".into(), expected_digest: None })
+        .prepare(ArtifactRequest {
+            source: "qwen/fake.gguf".into(),
+            expected_digest: None,
+        })
         .await
         .unwrap();
     assert!(artifact.verified);
 
     let runtime = node
         .runtimes()
-        .prepare(RuntimeRequest { runtime: "llama.cpp".into(), version: None })
+        .prepare(RuntimeRequest {
+            runtime: "llama.cpp".into(),
+            version: None,
+        })
         .await
         .unwrap();
 
     let handle = node
         .processes()
-        .start(ProcessSpec { program: runtime.executable, args: vec![artifact.local_path] })
+        .start(ProcessSpec {
+            program: runtime.executable,
+            args: vec![artifact.local_path],
+        })
         .await
         .unwrap();
     assert_eq!(handle.pid, 4242);
 
-    let target = ReadinessTarget { endpoint: "http://127.0.0.1:39122/health".into() };
+    let target = ReadinessTarget {
+        endpoint: "http://127.0.0.1:39122/health".into(),
+    };
     node.readiness().wait_ready(target.clone()).await.unwrap();
     assert!(node.health().is_healthy(target).await.unwrap());
     node.processes().stop(handle).await.unwrap();
 
-    assert_eq!(node.reconciler_mut().next_action().unwrap(), ReconcileAction::Resolve);
-    node.reconciler_mut().observe(ReconcileEvidence::Resolved).unwrap();
+    assert_eq!(
+        node.reconciler_mut().next_action().unwrap(),
+        ReconcileAction::Resolve
+    );
+    node.reconciler_mut()
+        .observe(ReconcileEvidence::Resolved)
+        .unwrap();
     assert_eq!(node.reconciler().state(), NodeState::PreparingArtifact);
 }
 

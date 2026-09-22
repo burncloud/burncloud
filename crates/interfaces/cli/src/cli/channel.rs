@@ -49,7 +49,13 @@ pub fn get_default_models(channel_type: ChannelType) -> Vec<&'static str> {
         ChannelType::DeepSeek => vec!["deepseek-chat", "deepseek-coder"],
         ChannelType::NewApi => vec![],
         ChannelType::VolcEngine => vec![],
-        ChannelType::Xunfei => vec!["spark-lite", "spark-v2.0", "spark-v3.0", "spark-v3.5", "spark-v4.0"],
+        ChannelType::Xunfei => vec![
+            "spark-lite",
+            "spark-v2.0",
+            "spark-v3.0",
+            "spark-v3.5",
+            "spark-v4.0",
+        ],
         ChannelType::DoubaoVideo => vec![
             "doubao-seedance-2-0-260128",
             "doubao-seedance-2-0-fast-260128",

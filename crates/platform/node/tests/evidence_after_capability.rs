@@ -16,7 +16,10 @@ async fn evidence_follows_successful_capability_calls() {
     r.observe(ReconcileEvidence::Resolved).unwrap();
 
     let artifact = FakeArtifactPreparer
-        .prepare(ArtifactRequest { source: "qwen-4b.gguf".into(), expected_digest: None })
+        .prepare(ArtifactRequest {
+            source: "qwen-4b.gguf".into(),
+            expected_digest: None,
+        })
         .await
         .unwrap();
     assert!(artifact.verified);
@@ -24,7 +27,10 @@ async fn evidence_follows_successful_capability_calls() {
 
     assert_eq!(r.next_action().unwrap(), ReconcileAction::PrepareRuntime);
     let runtime = FakeRuntimePreparer
-        .prepare(RuntimeRequest { runtime: "llama.cpp".into(), version: None })
+        .prepare(RuntimeRequest {
+            runtime: "llama.cpp".into(),
+            version: None,
+        })
         .await
         .unwrap();
     assert!(!runtime.executable.is_empty());
@@ -37,7 +43,9 @@ async fn evidence_follows_successful_capability_calls() {
     assert_eq!(r.state(), NodeState::WaitingReady);
 
     FakeReadinessProbe
-        .wait_ready(ReadinessTarget { endpoint: "fake://ready".into() })
+        .wait_ready(ReadinessTarget {
+            endpoint: "fake://ready".into(),
+        })
         .await
         .unwrap();
     r.observe(ReconcileEvidence::ReadinessVerified).unwrap();

@@ -2,6 +2,11 @@
 
 mod test_utils;
 
+// #564 BDD boundary lock: keep the Node framework acceptance scenarios inside
+// the invariant CI target that already gates server pull requests.
+#[path = "node_framework_e2e.rs"]
+mod node_framework_e2e;
+
 use burncloud_database::Database;
 use burncloud_database_router::RouterToken;
 use burncloud_server::InternalSecret;

@@ -42,11 +42,7 @@ fn find_api_tests_exe(root: &Path) -> Option<PathBuf> {
                 .is_some_and(|n| n.starts_with("api_tests-") && n.ends_with(".exe"))
         })
         .collect();
-    candidates.sort_by_key(|p| {
-        std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .ok()
-    });
+    candidates.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
     candidates.pop()
 }
 
@@ -89,7 +85,10 @@ fn run_api_test_binary(
     })
 }
 
-pub fn run_aesthetic_metrics(root: &Path, focus_page: Option<&str>) -> anyhow::Result<(bool, Vec<String>)> {
+pub fn run_aesthetic_metrics(
+    root: &Path,
+    focus_page: Option<&str>,
+) -> anyhow::Result<(bool, Vec<String>)> {
     let artifacts = aesthetic_artifacts_dir(root);
     std::fs::create_dir_all(&artifacts)?;
     let artifacts_s = artifacts.clone();
@@ -153,7 +152,11 @@ pub fn run_css_visual(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
 }
 
 fn write_timings_file(path: &Path, timings: &Value) -> anyhow::Result<()> {
-    if timings.get("pages").and_then(|p| p.as_array()).is_some_and(|a| !a.is_empty()) {
+    if timings
+        .get("pages")
+        .and_then(|p| p.as_array())
+        .is_some_and(|a| !a.is_empty())
+    {
         std::fs::write(path, serde_json::to_string_pretty(timings)?)?;
     }
     Ok(())

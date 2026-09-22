@@ -34,7 +34,10 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
 
     let result =
         RouterDatabase::deduct_quota(&db, "test-quota-user", "sk-test-quota-token", 50).await?;
-    assert!(result, "Settlement within the spend cap should report available");
+    assert!(
+        result,
+        "Settlement within the spend cap should report available"
+    );
 
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("sk-test-quota-token")
@@ -44,7 +47,10 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
 
     let result =
         RouterDatabase::deduct_quota(&db, "test-quota-user", "sk-test-quota-token", 50).await?;
-    assert!(result, "Settlement reaching the cap should still report available");
+    assert!(
+        result,
+        "Settlement reaching the cap should still report available"
+    );
 
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("sk-test-quota-token")
@@ -66,7 +72,10 @@ async fn test_quota_deduction() -> anyhow::Result<()> {
     assert_eq!(used, 101, "actual spend must never be silently dropped");
 
     let result = RouterDatabase::check_quota(&db, "sk-test-quota-token", 1).await?;
-    assert!(!result, "An exhausted credential must fail the next pre-check");
+    assert!(
+        !result,
+        "An exhausted credential must fail the next pre-check"
+    );
 
     Ok(())
 }
@@ -94,7 +103,10 @@ async fn test_unlimited_quota() -> anyhow::Result<()> {
         1_000_000,
     )
     .await?;
-    assert!(result, "Unlimited token should always report quota available");
+    assert!(
+        result,
+        "Unlimited token should always report quota available"
+    );
 
     let used: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("sk-test-unlimited-token")

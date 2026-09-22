@@ -13,7 +13,7 @@ pub mod i18n;
 pub mod platform;
 pub mod shared;
 
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", target_os = "windows"))]
 #[path = "desktop_chrome.rs"]
 mod desktop_chrome;
 
@@ -93,30 +93,21 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
 pub fn launch_gui_with_tray() {
     use dioxus::desktop::{Config, LogicalPosition, LogicalSize, WindowBuilder};
 
-    let icon = dioxus::desktop::icon_from_memory::<dioxus::desktop::tao::window::Icon>(
-        include_bytes!("../assets/favicon.ico"),
-    )
-    .expect("failed to decode the embedded BurnCloud window icon");
     let window = WindowBuilder::new()
         .with_title("BurnCloud")
-        .with_window_icon(Some(icon.clone()))
         .with_inner_size(LogicalSize::new(1440.0, 900.0))
         .with_position(LogicalPosition::new(100.0, 80.0))
         .with_visible(true)
         .with_maximized(true)
-        .with_resizable(true)
-        .with_decorations(false);
+        .with_resizable(true);
     #[cfg(target_os = "windows")]
-    let window = {
-        use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
+    let window = window.with_decorations(false);
 
-        window.with_taskbar_icon(Some(icon))
-    };
-    let config = Config::new()
-        .with_window(window)
-        .with_on_window(|window, _| window.set_decorations(false));
+    let config = Config::new().with_window(window);
     #[cfg(target_os = "windows")]
-    let config = config.with_tray_icon_show_window_on_click(false);
+    let config = config
+        .with_on_window(|window, _| window.set_decorations(false))
+        .with_tray_icon_show_window_on_click(false);
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
         .launch(AppWithDesktop);

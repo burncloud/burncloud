@@ -3,7 +3,7 @@ use crate::local_attachment::{
 };
 use async_trait::async_trait;
 use burncloud_common::types::{Channel, ChannelType};
-use burncloud_database::Database;
+use burncloud_database::{adapt_sql, sqlx, Database};
 use burncloud_database_channel::ChannelProviderModel;
 use std::sync::Arc;
 
@@ -67,6 +67,58 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
             .await
             .map_err(|error| LocalRouteAttachmentError::AttachFailed(error.to_string()))?;
         Ok(LocalRouteAttachmentId(channel_id))
+    }
+
+    async fn quarantine(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        let conn = self
+            .db
+            .get_connection()
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+        let pool = conn.pool();
+        let is_postgres = self.db.kind() == "postgres";
+
+        // Fail-closed must be atomic from Traffic's point of view:
+        // either both the routing ability and channel status change, or neither
+        // does. This prevents a half-quarantined channel from remaining
+        // discoverable through channel_abilities.
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+
+        let delete_abilities = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
+        sqlx::query(&delete_abilities)
+            .bind(attachment_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+
+        let disable_channel = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET status = 3 WHERE id = ?",
+        );
+        let result = sqlx::query(&disable_channel)
+            .bind(attachment_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+
+        if result.rows_affected() != 1 {
+            return Err(LocalRouteAttachmentError::DetachFailed(format!(
+                "local route attachment {} no longer exists",
+                attachment_id.0
+            )));
+        }
+
+        tx.commit()
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))
     }
 
     async fn detach(

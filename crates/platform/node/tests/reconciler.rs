@@ -21,7 +21,10 @@ fn reconciler_drives_golden_path_one_evidence_backed_step_at_a_time() {
     r.observe(ReconcileEvidence::ReadinessVerified).unwrap();
     assert_eq!(r.state(), NodeState::Ready);
 
-    assert_eq!(r.next_action().unwrap(), ReconcileAction::AttachToExistingRouter);
+    assert_eq!(
+        r.next_action().unwrap(),
+        ReconcileAction::AttachToExistingRouter
+    );
     r.observe(ReconcileEvidence::RouterAttached).unwrap();
 
     assert_eq!(r.state(), NodeState::Routable);

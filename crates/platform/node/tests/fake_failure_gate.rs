@@ -12,7 +12,9 @@ impl ArtifactPreparer for FailingArtifactPreparer {
         &self,
         _request: ArtifactRequest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
-        Err(ArtifactPrepareError::PrepareFailed("expected fake failure".into()))
+        Err(ArtifactPrepareError::PrepareFailed(
+            "expected fake failure".into(),
+        ))
     }
 }
 
@@ -24,7 +26,10 @@ async fn failed_artifact_preparation_does_not_emit_success_evidence() {
     let before = r.state();
 
     let result = FailingArtifactPreparer
-        .prepare(ArtifactRequest { source: "missing".into(), expected_digest: None })
+        .prepare(ArtifactRequest {
+            source: "missing".into(),
+            expected_digest: None,
+        })
         .await;
 
     assert!(result.is_err());

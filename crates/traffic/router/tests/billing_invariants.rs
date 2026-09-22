@@ -1,10 +1,13 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::disallowed_types
-)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
 
 mod common;
+
+// #564 BDD boundary lock: execute local-route contract and fail-closed
+// integration scenarios in the router invariant CI target.
+#[path = "local_attachment_contract.rs"]
+mod local_attachment_contract;
+#[path = "node_existing_router_integration.rs"]
+mod node_existing_router_integration;
 
 use burncloud_database::sqlx;
 use burncloud_database_router::{RouterDatabase, RouterLog, RouterTokenModel};
@@ -102,14 +105,21 @@ async fn spend_settlement_is_scoped_to_the_presented_router_token() -> anyhow::R
         .bind("bc_live_scope_b")
         .fetch_one(&pool)
         .await?;
-    assert_eq!((a, b), (40, 0), "one key must never consume another key's quota");
+    assert_eq!(
+        (a, b),
+        (40, 0),
+        "one key must never consume another key's quota"
+    );
 
     assert!(!RouterDatabase::deduct_quota(&db, "same-user", "bc_live_scope_a", 70).await?);
     let a: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
         .bind("bc_live_scope_a")
         .fetch_one(&pool)
         .await?;
-    assert_eq!(a, 110, "actual over-cap spend must still be durably settled");
+    assert_eq!(
+        a, 110,
+        "actual over-cap spend must still be durably settled"
+    );
 
     Ok(())
 }
@@ -159,7 +169,10 @@ async fn rotated_old_key_settles_against_the_current_key() -> anyhow::Result<()>
         .bind(&rotation.new_token)
         .fetch_one(&pool)
         .await?;
-    assert_eq!(used, 30, "transition keys must not create an unmetered billing path");
+    assert_eq!(
+        used, 30,
+        "transition keys must not create an unmetered billing path"
+    );
 
     Ok(())
 }

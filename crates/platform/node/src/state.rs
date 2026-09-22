@@ -7,6 +7,9 @@ pub enum NodeState {
     #[default]
     Absent,
     Resolving,
+    /// Supply proved that this machine has no acceptable local variant.
+    /// This is a settled non-serving outcome, not a runtime failure.
+    LocalUnsupported,
     PreparingArtifact,
     ArtifactReady,
     PreparingRuntime,
@@ -29,6 +32,7 @@ impl NodeState {
         matches!(
             (self, next),
             (Absent, Resolving)
+                | (Resolving, LocalUnsupported)
                 | (Resolving, PreparingArtifact)
                 | (Resolving, Failed)
                 | (PreparingArtifact, ArtifactReady)
@@ -42,11 +46,13 @@ impl NodeState {
                 | (WaitingReady, Failed)
                 | (Ready, Routable)
                 | (Ready, Unhealthy)
+                | (Ready, Failed)
                 | (Routable, Unhealthy)
                 | (Unhealthy, Starting)
                 | (Unhealthy, Failed)
                 | (Failed, Resolving)
                 | (Failed, Absent)
+                | (LocalUnsupported, Absent)
                 | (Routable, Absent)
         )
     }
@@ -68,7 +74,11 @@ pub struct InvalidNodeTransition {
 
 impl std::fmt::Display for InvalidNodeTransition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid node state transition: {:?} -> {:?}", self.from, self.to)
+        write!(
+            f,
+            "invalid node state transition: {:?} -> {:?}",
+            self.from, self.to
+        )
     }
 }
 
@@ -81,7 +91,9 @@ pub struct NodeStateMachine {
 
 impl NodeStateMachine {
     pub const fn new() -> Self {
-        Self { state: NodeState::Absent }
+        Self {
+            state: NodeState::Absent,
+        }
     }
 
     pub const fn state(&self) -> NodeState {
@@ -90,7 +102,10 @@ impl NodeStateMachine {
 
     pub fn transition(&mut self, next: NodeState) -> Result<(), InvalidNodeTransition> {
         if !self.state.can_transition_to(next) {
-            return Err(InvalidNodeTransition { from: self.state, to: next });
+            return Err(InvalidNodeTransition {
+                from: self.state,
+                to: next,
+            });
         }
         self.state = next;
         Ok(())

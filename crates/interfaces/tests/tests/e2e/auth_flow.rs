@@ -35,9 +35,9 @@ async fn test_reset_password_page_loads() {
         .open("/reset-password?token=test_token")
         .expect("Failed to open reset password page");
     // Wait for either the form or an error message
-    let result = browser.wait_for_text("重置", 10_000).or_else(|_| {
-        browser.wait_for_text("密码", 10_000)
-    });
+    let result = browser
+        .wait_for_text("重置", 10_000)
+        .or_else(|_| browser.wait_for_text("密码", 10_000));
     assert!(result.is_ok(), "Reset password page did not load");
     let _ = browser.screenshot("reset-password");
 }
@@ -55,7 +55,9 @@ async fn test_register_success_flow() {
     let mut browser = AgentBrowser::new(&base_url);
 
     // Navigate to register page
-    browser.open("/register").expect("Failed to open register page");
+    browser
+        .open("/register")
+        .expect("Failed to open register page");
     browser
         .wait_for_text("创建账户", 10_000)
         .expect("Register page did not load");
@@ -75,7 +77,10 @@ async fn test_register_success_flow() {
         .fill("input:nth-of-type(2)", "Test Company")
         .expect("Failed to fill company");
     browser
-        .fill("input:nth-of-type(3)", &format!("{}@test.burncloud.dev", username))
+        .fill(
+            "input:nth-of-type(3)",
+            &format!("{}@test.burncloud.dev", username),
+        )
         .expect("Failed to fill email");
     browser
         .fill("input:nth-of-type(4)", "test123456")
@@ -85,8 +90,7 @@ async fn test_register_success_flow() {
         .expect("Failed to fill confirm password");
 
     // Check the terms checkbox using Dioxus-compatible click
-    dioxus_click_checkbox(&mut browser, "input[type='checkbox']")
-        .expect("Failed to check terms");
+    dioxus_click_checkbox(&mut browser, "input[type='checkbox']").expect("Failed to check terms");
 
     // Submit registration using Dioxus-compatible click
     dioxus_click(&mut browser, "button.landing-btn-dark")
@@ -94,9 +98,9 @@ async fn test_register_success_flow() {
         .expect("Failed to click register");
 
     // Wait for dashboard (auto-login after registration)
-    let result = browser.wait_for_text("仪表盘", 15_000).or_else(|_| {
-        browser.wait_for_text("企业控制台", 10_000)
-    });
+    let result = browser
+        .wait_for_text("仪表盘", 15_000)
+        .or_else(|_| browser.wait_for_text("企业控制台", 10_000));
 
     assert!(result.is_ok(), "Registration did not redirect to dashboard");
     let _ = browser.screenshot("register-success");
@@ -114,7 +118,9 @@ async fn test_register_duplicate_username() {
     let mut browser = AgentBrowser::new(&base_url);
 
     // Navigate to register page
-    browser.open("/register").expect("Failed to open register page");
+    browser
+        .open("/register")
+        .expect("Failed to open register page");
     browser
         .wait_for_text("创建账户", 10_000)
         .expect("Register page did not load");
@@ -128,7 +134,10 @@ async fn test_register_duplicate_username() {
         .fill("input:nth-of-type(2)", "Test Company")
         .expect("Failed to fill company");
     browser
-        .fill("input:nth-of-type(3)", &format!("{}@test2.burncloud.dev", existing_username))
+        .fill(
+            "input:nth-of-type(3)",
+            &format!("{}@test2.burncloud.dev", existing_username),
+        )
         .expect("Failed to fill email");
     browser
         .fill("input:nth-of-type(4)", "test123456")
@@ -138,8 +147,7 @@ async fn test_register_duplicate_username() {
         .expect("Failed to fill confirm password");
 
     // Check the terms checkbox using Dioxus-compatible click
-    dioxus_click_checkbox(&mut browser, "input[type='checkbox']")
-        .expect("Failed to check terms");
+    dioxus_click_checkbox(&mut browser, "input[type='checkbox']").expect("Failed to check terms");
 
     // Submit registration using Dioxus-compatible click
     dioxus_click(&mut browser, "button.landing-btn-dark")
@@ -147,9 +155,9 @@ async fn test_register_duplicate_username() {
         .expect("Failed to click register");
 
     // Wait for error message or stay on register page
-    let result = browser.wait_for_text("已存在", 5_000).or_else(|_| {
-        browser.wait_for_text("错误", 5_000)
-    });
+    let result = browser
+        .wait_for_text("已存在", 5_000)
+        .or_else(|_| browser.wait_for_text("错误", 5_000));
 
     // Either we see an error message, or we're still on the register page
     let snap = browser.snapshot().expect("Failed to snapshot");
@@ -183,9 +191,9 @@ async fn test_login_logout_flow() {
     let _ = browser.click_by_name("link:登出", 3_000);
 
     // Wait for redirect to login or home page
-    let result = browser.wait_for_text("登录", 10_000).or_else(|_| {
-        browser.wait_for_text("Sign In", 5_000)
-    });
+    let result = browser
+        .wait_for_text("登录", 10_000)
+        .or_else(|_| browser.wait_for_text("Sign In", 5_000));
 
     // Screenshot for evidence
     let _ = browser.screenshot("logout-flow");
@@ -219,11 +227,10 @@ async fn test_login_invalid_credentials_error() {
         .expect("Failed to click login");
 
     // Wait for error indication
-    let result = browser.wait_for_text("错误", 5_000).or_else(|_| {
-        browser.wait_for_text("error", 3_000)
-    }).or_else(|_| {
-        browser.wait_for_text("失败", 3_000)
-    });
+    let result = browser
+        .wait_for_text("错误", 5_000)
+        .or_else(|_| browser.wait_for_text("error", 3_000))
+        .or_else(|_| browser.wait_for_text("失败", 3_000));
 
     // Either we see an error message, or we're still on the login page
     let snap = browser.snapshot().expect("Failed to snapshot");
@@ -363,7 +370,9 @@ async fn test_register_form_validation_password_mismatch() {
     let base_url = common::spawn_app().await;
 
     let mut browser = AgentBrowser::new(&base_url);
-    browser.open("/register").expect("Failed to open register page");
+    browser
+        .open("/register")
+        .expect("Failed to open register page");
     browser
         .wait_for_text("创建账户", 10_000)
         .expect("Register page did not load");
@@ -382,7 +391,10 @@ async fn test_register_form_validation_password_mismatch() {
         .fill("input:nth-of-type(2)", "Test Company")
         .expect("Failed to fill company");
     browser
-        .fill("input:nth-of-type(3)", &format!("{}@test.burncloud.dev", username))
+        .fill(
+            "input:nth-of-type(3)",
+            &format!("{}@test.burncloud.dev", username),
+        )
         .expect("Failed to fill email");
     // Password with mismatch (test validation)
     browser
@@ -456,7 +468,13 @@ async fn test_forgot_password_form_submission() {
     let _ = browser.screenshot("forgot-password-submit");
 
     // Accept either success or being on a new page
-    assert!(result.is_ok() || browser.snapshot().map(|s| s.text.len() > 0).unwrap_or(false));
+    assert!(
+        result.is_ok()
+            || browser
+                .snapshot()
+                .map(|s| s.text.len() > 0)
+                .unwrap_or(false)
+    );
 }
 
 #[tokio::test]
@@ -480,7 +498,9 @@ async fn test_forgot_password_navigation_from_login() {
 
     // If click fails, directly open forgot password page
     if click_result.is_err() {
-        browser.open("/forgot-password").expect("Failed to open forgot password page directly");
+        browser
+            .open("/forgot-password")
+            .expect("Failed to open forgot password page directly");
     }
 
     browser
