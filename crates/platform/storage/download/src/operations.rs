@@ -27,7 +27,7 @@ impl DownloadManager {
 
         let options = DownloadOptions {
             dir: Some(dir.clone()),
-            out: filename,
+            out: filename.clone(),
             split: None,
             max_connection_per_server: None,
             continue_download: Some(true),
@@ -35,10 +35,16 @@ impl DownloadManager {
             auto_file_renaming: Some(false), // 关闭文件自动重命名
         };
 
-        let gid = client.add_uri(vec![url.to_string()], Some(options)).await?;
-        self.db
-            .add(&gid, vec![url.to_string()], Some(&dir), filename.as_deref())
+        let uris = vec![url.to_string()];
+        let existing_task = client
+            .find_existing_task(&uris, &Some(options.clone()))
             .await?;
+        let gid = client.add_uri(uris.clone(), Some(options)).await?;
+        if existing_task.is_none() {
+            self.db
+                .add(&gid, uris, Some(&dir), filename.as_deref())
+                .await?;
+        }
 
         // 启动进度监控
         self.start_progress_monitor(&gid).await;

@@ -105,7 +105,7 @@ impl Aria2RpcClient {
         uris: Vec<String>,
         options: Option<DownloadOptions>,
     ) -> Aria2Result<String> {
-        // 检查是否存在相同URI和存储路径的任务
+        // 检查是否存在相同 URI 和存储路径的活跃任务
         if let Some(existing_gid) = self.find_existing_task(&uris, &options).await? {
             return Ok(existing_gid);
         }
@@ -118,35 +118,20 @@ impl Aria2RpcClient {
         }
     }
 
-    /// 查找具有相同URI和存储路径的现有任务
+    /// 查找具有相同 URI 和存储路径的活跃任务
     // 输入：待比较的 URI 列表和可选下载配置。
-    // 功能：遍历活跃、等待和已停止任务以查找重复下载。
+    // 功能：遍历活跃任务以查找重复下载。
     // 错误：任务详情比较失败时返回 RpcError。
-    async fn find_existing_task(
+    pub async fn find_existing_task(
         &self,
         uris: &[String],
         options: &Option<DownloadOptions>,
     ) -> Aria2Result<Option<String>> {
-        // 获取所有任务（活跃、等待、已停止）
-        let mut all_tasks = Vec::new();
-
-        // 获取活跃任务
-        if let Ok(active) = self.tell_active().await {
-            all_tasks.extend(active);
-        }
-
-        // 获取等待任务
-        if let Ok(waiting) = self.tell_waiting(0, 1000).await {
-            all_tasks.extend(waiting);
-        }
-
-        // 获取已停止任务
-        if let Ok(stopped) = self.tell_stopped(0, 1000).await {
-            all_tasks.extend(stopped);
-        }
+        // 仅获取活跃任务，等待和已停止任务不参与重复检查。
+        let active_tasks = self.tell_active().await.unwrap_or_default();
 
         // 检查每个任务
-        for task in all_tasks {
+        for task in active_tasks {
             if let Ok(status) = self.tell_status(&task.gid).await {
                 if self.is_same_task(&status, uris, options).await? {
                     return Ok(Some(task.gid));
