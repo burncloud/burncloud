@@ -1,5 +1,8 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
-use crate::domains::buyer::{overview::BuyerOverview, playground::BuyerPlayground};
+use crate::domains::buyer::{
+    api_keys::BuyerApiKeys, marketplace::BuyerMarketplace, overview::BuyerOverview,
+    playground::BuyerPlayground,
+};
 use crate::shared::types::Role;
 use dioxus::prelude::*;
 
@@ -141,7 +144,7 @@ pub fn Playground() -> Element {
 }
 #[component]
 pub fn Marketplace() -> Element {
-    rsx! { PlaceholderPage { title: "Marketplace".to_string() } }
+    rsx! { BuyerMarketplace {} }
 }
 #[component]
 pub fn Billing() -> Element {
@@ -153,7 +156,7 @@ pub fn Logs() -> Element {
 }
 #[component]
 pub fn ApiKeys() -> Element {
-    rsx! { PlaceholderPage { title: "API Keys".to_string() } }
+    rsx! { BuyerApiKeys {} }
 }
 #[component]
 pub fn Usage() -> Element {
