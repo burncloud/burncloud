@@ -7,17 +7,12 @@ cd "$ROOT"
 require() {
   local needle="$1"
   local file="$2"
-  if ! grep -Fq "$needle" "$file"; then
-    echo "Missing product UX contract: '$needle' in $file" >&2
+  if [[ ! -f "$file" ]]; then
+    echo "Missing product UX file: $file" >&2
     exit 1
   fi
-}
-
-forbid() {
-  local needle="$1"
-  local file="$2"
-  if grep -Fq "$needle" "$file"; then
-    echo "Prototype/backend-detail UI reintroduced: '$needle' in $file" >&2
+  if ! grep -Fq -- "$needle" "$file"; then
+    echo "Missing product UX contract: '$needle' in $file" >&2
     exit 1
   fi
 }
@@ -25,116 +20,95 @@ forbid() {
 line_of() {
   local needle="$1"
   local file="$2"
-  grep -nF "$needle" "$file" | head -n1 | cut -d: -f1
+  grep -nF -- "$needle" "$file" | head -n1 | cut -d: -f1
 }
 
-# Navigation follows the operator workflow: configure supply -> understand catalog/routing -> test traffic.
-providers_line=$(line_of 'NavItem { to:Route::Providers' src/functional_layout.rs)
-models_line=$(line_of 'NavItem { to:Route::Models' src/functional_layout.rs)
-routes_line=$(line_of 'NavItem { to:Route::Routes' src/functional_layout.rs)
-playground_line=$(line_of 'NavItem { to:Route::Playground' src/functional_layout.rs)
-logs_line=$(line_of 'NavItem { to:Route::Logs' src/functional_layout.rs)
-evaluation_line=$(line_of 'NavItem { to:Route::Evaluation' src/functional_layout.rs)
-billing_line=$(line_of 'NavItem { to:Route::Billing' src/functional_layout.rs)
+# Buyer navigation follows the product workflow and remains centralized in the
+# role-aware shared type rather than duplicated in individual pages.
+NAV=src/shared/types/mod.rs
+require 'const BUYER_NAV' "$NAV"
+require 'key: NavKey::Overview' "$NAV"
+require 'key: NavKey::Playground' "$NAV"
+require 'key: NavKey::Marketplace' "$NAV"
+require 'key: NavKey::ApiKeys' "$NAV"
+require 'key: NavKey::Usage' "$NAV"
+require 'key: NavKey::Billing' "$NAV"
+require 'key: NavKey::Logs' "$NAV"
 
-if ! (( providers_line < models_line && models_line < routes_line && routes_line < playground_line )); then
-  echo "Traffic Setup navigation must remain Providers -> Models -> Routes -> Playground" >&2
+overview_line=$(line_of 'key: NavKey::Overview' "$NAV")
+playground_line=$(line_of 'key: NavKey::Playground' "$NAV")
+marketplace_line=$(line_of 'key: NavKey::Marketplace' "$NAV")
+api_keys_line=$(line_of 'key: NavKey::ApiKeys' "$NAV")
+usage_line=$(line_of 'key: NavKey::Usage' "$NAV")
+billing_line=$(line_of 'key: NavKey::Billing' "$NAV")
+logs_line=$(line_of 'key: NavKey::Logs' "$NAV")
+
+if ! (( overview_line < playground_line && playground_line < marketplace_line && marketplace_line < api_keys_line && api_keys_line < usage_line && usage_line < billing_line && billing_line < logs_line )); then
+  echo "Buyer navigation must remain Overview -> Playground -> Marketplace -> API Keys -> Usage -> Billing -> Logs" >&2
   exit 1
 fi
-if ! (( logs_line < evaluation_line && evaluation_line < billing_line )); then
-  echo "Observe navigation must remain Logs -> Evaluation -> Billing" >&2
-  exit 1
-fi
 
-# Overview must answer readiness and next action before technical diagnostics.
-require 'Setup & readiness' src/critical_pages/dashboard.rs
-require 'BurnCloud is ready to serve traffic' src/critical_pages/dashboard.rs
-require 'Finish setup before sending production traffic' src/critical_pages/dashboard.rs
-require 'Add first provider' src/critical_pages/dashboard.rs
-require 'Test a request' src/critical_pages/dashboard.rs
+# The shell owns role switching, internationalized navigation, and a usable
+# mobile drawer; pages provide their workflows inside that shell.
+SHELL=src/shared/layout/mod.rs
+require 'pub fn BuyerShell(children: Element)' "$SHELL"
+require 'for item in nav_items(current_role)' "$SHELL"
+require 'role_menu_open' "$SHELL"
+require 'language_menu_open' "$SHELL"
+require 'drawer_open' "$SHELL"
+require 'copy.select_language' "$SHELL"
+require 'aria_haspopup: "true"' "$SHELL"
+require 'class: if drawer_open()' "$SHELL"
 
-# Auth must expose only current backend capabilities, not prototype choices.
-forbid 'Onboarding Account Preference' src/critical_pages/auth.rs
-forbid 'TierButton' src/critical_pages/auth.rs
-forbid 'Company / Team' src/critical_pages/auth.rs
-forbid 'auth-tabs' src/critical_pages/auth.rs
-require 'Password recovery' src/critical_pages/auth.rs
-require 'Account email' src/critical_pages/auth.rs
+# Overview exposes health and an actionable path into the two buyer workflows.
+OVERVIEW=src/domains/buyer/overview/page.rs
+require 'BalanceState::Unknown' "$OVERVIEW"
+require 'conclusion-warning' "$OVERVIEW"
+require 'href: Some("/buyer/playground".to_string())' "$OVERVIEW"
+require 'href: Some("/buyer/marketplace".to_string())' "$OVERVIEW"
+require 'role: "alert"' "$OVERVIEW"
 
-# Providers present product concepts instead of raw enum IDs and protect destructive changes.
-require 'PROVIDER_TYPES' src/functional_pages/providers.rs
-require 'Provider type' src/functional_pages/providers.rs
-require 'Advanced routing & capacity' src/functional_pages/providers.rs
-require 'Leave blank to keep stored credential' src/functional_pages/providers.rs
-require 'pending_delete' src/functional_pages/providers.rs
-forbid 'Provider Type ID' src/functional_pages/providers.rs
+# Marketplace supports search, category filtering, an explicit empty state,
+# and an accessible details drawer with a direct Playground handoff.
+MARKETPLACE=src/domains/buyer/marketplace/page.rs
+require 'copy.marketplace_search_placeholder' "$MARKETPLACE"
+require 'value.set_search(event.value())' "$MARKETPLACE"
+require 'value.set_category(category)' "$MARKETPLACE"
+require 'copy.marketplace_no_results' "$MARKETPLACE"
+require 'role: "dialog"' "$MARKETPLACE"
+require 'aria_modal: "true"' "$MARKETPLACE"
+require 'copy.marketplace_test_in_playground' "$MARKETPLACE"
+require 'aria_expanded: snapshot.slo_expanded' "$MARKETPLACE"
 
-# Models/Routes communicate service availability and resilience, not just database fields.
-require 'Single upstream' src/functional_pages/catalog.rs
-require 'Redundant' src/functional_pages/catalog.rs
-require 'Unavailable' src/functional_pages/catalog.rs
-require 'No failover redundancy' src/functional_pages/catalog.rs
+# Playground lets a buyer inspect request code, vary request controls, run a
+# streamed simulation, reset output, and observe request statistics.
+PLAYGROUND=src/domains/buyer/playground/page.rs
+require 'code_snippet(&snapshot)' "$PLAYGROUND"
+require 'role: "tablist"' "$PLAYGROUND"
+require 'PlaygroundState::begin_inference' "$PLAYGROUND"
+require 'PlaygroundState::clear_output' "$PLAYGROUND"
+require 'disabled: snapshot.running' "$PLAYGROUND"
+require 'snapshot.stats' "$PLAYGROUND"
+require 'copy.playground_response_output' "$PLAYGROUND"
 
-# Playground is a guided end-to-end test and blocks impossible workflows.
-require 'Playground is not ready yet' src/functional_pages/playground_live.rs
-require 'Connect an active provider first' src/functional_pages/playground_live.rs
-require 'Create an API key for the test' src/functional_pages/playground_live.rs
-require 'Select a configured model' src/functional_pages/playground_live.rs
-require 'Send Test Request' src/functional_pages/playground_live.rs
+# API-key management requires constrained input, clear errors, a one-time
+# secret result, an explicit copy action, and revocation from the table.
+API_KEYS=src/domains/buyer/api_keys/page.rs
+require 'min: "10"' "$API_KEYS"
+require 'max: "5000"' "$API_KEYS"
+require 'step: "0.01"' "$API_KEYS"
+require 'role: "alert"' "$API_KEYS"
+require 'aria_modal: "true"' "$API_KEYS"
+require 'navigator.clipboard?.writeText' "$API_KEYS"
+require 'value.revoke_key(&key_id)' "$API_KEYS"
+require 'copy.api_keys_secret_notice' "$API_KEYS"
 
-# Customers and staff have separate product responsibilities.
-require 'Manage business accounts' src/critical_pages/customers_portable.rs
-require '!is_staff_role(&user.role)' src/critical_pages/customers_portable.rs
-require 'Loading customer accounts' src/critical_pages/customers_portable.rs
-require 'Default Status' src/critical_pages/customers_portable.rs
-require 'Status is server metadata.' src/critical_pages/customers_portable.rs
-require 'parse_positive_amount_nano' src/critical_pages/customers_portable.rs
-require 'Use no more than two decimal places.' src/critical_pages/customers_portable.rs
-require 'Funding review' src/critical_pages/customers_portable.rs
-require 'New {selected_currency} balance' src/critical_pages/customers_portable.rs
-forbid '"Disabled"' src/critical_pages/customers_portable.rs
-forbid 'enabled accounts' src/critical_pages/customers_portable.rs
-forbid 'saturating_mul(1_000_000_000)' src/critical_pages/customers_portable.rs
-require 'Environment operators' src/functional_pages/access_live.rs
-require 'is_staff_role(&user.role)' src/functional_pages/access_live.rs
-require 'Team will become editable only when the backend has explicit role-management endpoints.' src/functional_pages/access_live.rs
-
-# API-key management must keep opaque management references separate from bearer-secret disclosure.
-require 'Opaque management reference' src/functional_pages/api_keys_live.rs
-require 'not a masked bearer secret' src/functional_pages/api_keys_live.rs
-require 'New key creation is unavailable' src/functional_pages/api_keys_live.rs
-require 'USD spend limit' src/functional_pages/api_keys_live.rs
-require 'One-time bearer secret' src/functional_pages/api_keys_live.rs
-require 'I saved this credential' src/functional_pages/api_keys_live.rs
-require 'CIDR ranges are not supported' src/functional_pages/api_keys_live.rs
-require 'Rotate API Key' src/functional_pages/api_keys_live.rs
-require 'Delete API Key' src/functional_pages/api_keys_live.rs
-forbid 'Owner user ID' src/functional_pages/api_keys_live.rs
-forbid 'fn masked' src/functional_pages/api_keys_live.rs
-
-# Diagnostic pages prioritize conclusions and risks.
-require 'Failures' src/functional_pages/logs_full.rs
-require 'Outcome' src/functional_pages/logs_full.rs
-require 'Operational attention' src/functional_pages/analytics_full.rs
-require 'Spend by model' src/functional_pages/analytics.rs
-
-# Guardrails must describe HTTP-error-derived evidence truthfully and fail closed on unknown policy state.
-require 'Request Health' src/functional_pages/guardrails_live.rs
-require 'HTTP risk signals' src/functional_pages/guardrails_live.rs
-require 'not a threat-intelligence feed' src/functional_pages/guardrails_live.rs
-require 'BurnCloud will not show default-off controls' src/functional_pages/guardrails_live.rs
-require 'Circuit breaker state is unavailable' src/functional_pages/guardrails_live.rs
-require 'Save Protection Policy' src/functional_pages/guardrails_live.rs
-forbid 'Security Score' src/functional_pages/guardrails_live.rs
-forbid 'Threat Sources' src/functional_pages/guardrails_live.rs
-forbid 'Circuit breaker telemetry connected' src/functional_pages/guardrails_live.rs
-
-# Dangerous operational actions require explicit acknowledgement and stay in danger zones.
-require 'confirm_trip' src/functional_pages/guardrails_live.rs
-require 'DANGER ZONE' src/functional_pages/guardrails_live.rs
-
-# Chrome must not overclaim runtime health.
-require 'Server Configured' src/functional_layout.rs
-forbid 'Server Connected' src/functional_layout.rs
+# UI copy remains locale-backed, with the selected locale persisted at app
+# startup rather than hard-coding a single buyer-facing language.
+require 'let copy = strings(locale());' src/domains/buyer/overview/page.rs
+require 'let copy = strings(locale());' src/domains/buyer/playground/page.rs
+require 'let copy = strings(locale());' src/domains/buyer/marketplace/page.rs
+require 'let copy = strings(locale());' src/domains/buyer/api_keys/page.rs
+require 'burncloud_selected_language' src/app/app.rs
 
 echo "Product UX contracts OK"

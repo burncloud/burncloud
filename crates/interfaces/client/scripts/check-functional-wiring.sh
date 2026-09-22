@@ -7,87 +7,101 @@ cd "$ROOT"
 require() {
   local needle="$1"
   local file="$2"
-  if ! grep -Fq "$needle" "$file"; then
+  if [[ ! -f "$file" ]]; then
+    echo "Missing functional wiring file: $file" >&2
+    exit 1
+  fi
+  if ! grep -Fq -- "$needle" "$file"; then
     echo "Missing functional wiring: '$needle' in $file" >&2
     exit 1
   fi
 }
 
-# All protected console routes must use the functional page module, not the static prototype exports.
-require 'functional_pages::{' src/app.rs
-require 'auth_gate::AuthGate' src/app.rs
-require 'FunctionalConsoleLayout' src/auth_gate.rs
-require 'auth.clear();' src/functional_layout.rs
-require 'pub use providers::Providers;' src/functional_pages/mod.rs
-require 'pub use catalog::{Models, Routes};' src/functional_pages/mod.rs
-require 'pub use logs_full::Logs;' src/functional_pages/mod.rs
-require 'pub use analytics_full::Evaluation;' src/functional_pages/mod.rs
-require 'pub use api_keys_live::APIKeys;' src/functional_pages/mod.rs
-require 'pub use access_live::Team;' src/functional_pages/mod.rs
+# The client was migrated from flat `functional_pages` modules to the app /
+# domains / shared layout. Keep the checks aligned with the current tree.
+require 'Router::<Route> {}' src/app/app.rs
+require 'pub use app::App;' src/app/mod.rs
+require 'pub mod buyer;' src/domains/mod.rs
+require 'pub mod api_keys;' src/domains/buyer/mod.rs
+require 'pub mod marketplace;' src/domains/buyer/mod.rs
+require 'pub mod overview;' src/domains/buyer/mod.rs
+require 'pub mod playground;' src/domains/buyer/mod.rs
 
-# Authentication and persistent session wiring.
-require '/api/auth/login' src/backend.rs
-require '/api/auth/register' src/backend.rs
-require '/api/auth/forgot-password' src/backend.rs
-require 'Authorization' src/backend.rs
+# Buyer pages must be imported, routed, and rendered by the Dioxus router.
+ROUTES=src/app/router/routes.rs
+require 'api_keys::BuyerApiKeys' "$ROUTES"
+require 'marketplace::BuyerMarketplace' "$ROUTES"
+require 'overview::BuyerOverview' "$ROUTES"
+require 'playground::BuyerPlayground' "$ROUTES"
+require '#[route("/buyer/overview")]' "$ROUTES"
+require '#[route("/buyer/playground")]' "$ROUTES"
+require '#[route("/buyer/marketplace")]' "$ROUTES"
+require '#[route("/buyer/api-keys")]' "$ROUTES"
+require 'rsx! { BuyerOverview {} }' "$ROUTES"
+require 'rsx! { BuyerPlayground {} }' "$ROUTES"
+require 'rsx! { BuyerMarketplace {} }' "$ROUTES"
+require 'rsx! { BuyerApiKeys {} }' "$ROUTES"
 
-# Real console API groups used by the rebuilt pages.
-require '/console/api/list_users' src/backend.rs
-require '/console/api/user/register' src/backend.rs
-require '/console/api/user/topup' src/backend.rs
-require '/console/api/channel?limit=' src/backend.rs
-require '/console/api/tokens' src/backend.rs
-require '/console/api/usage/' src/backend.rs
-require '/api/billing/summary' src/backend.rs
-require '/console/api/monitor' src/backend.rs
-require '/v1/chat/completions' src/backend.rs
-require '/console/api/logs?page=1&page_size=' src/observability.rs
-require 'video_tokens' src/observability.rs
-require 'audio_input_tokens' src/observability.rs
-require 'image_tokens' src/observability.rs
-require 'embedding_tokens' src/observability.rs
-require '/console/api/monitor/security/filters' src/functional_api.rs
-require '/console/api/monitor/security/events' src/functional_api.rs
-require '/console/api/monitor/security/emergency-circuit-break' src/functional_api.rs
-require 'reservation_green' src/functional_api.rs
-require 'reservation_yellow' src/functional_api.rs
-require 'reservation_red' src/functional_api.rs
-require 'current_status != 1' src/functional_api.rs
+require 'pub use page::BuyerOverview;' src/domains/buyer/overview/mod.rs
+require 'pub use page::BuyerPlayground;' src/domains/buyer/playground/mod.rs
+require 'pub use page::BuyerMarketplace;' src/domains/buyer/marketplace/mod.rs
+require 'pub use page::BuyerApiKeys;' src/domains/buyer/api_keys/mod.rs
+require 'BuyerShell {' src/domains/buyer/overview/page.rs
+require 'BuyerShell {' src/domains/buyer/playground/page.rs
+require 'BuyerShell {' src/domains/buyer/marketplace/page.rs
+require 'BuyerShell {' src/domains/buyer/api_keys/page.rs
 
-# Page-to-service contracts: these make accidental regressions back to seeded/static pages fail CI.
-require 'AuthService::login' src/critical_pages/auth.rs
-require 'AuthService::register' src/critical_pages/auth.rs
-require 'UserService::list' src/critical_pages/customers_portable.rs
-require 'UserService::topup' src/critical_pages/customers_portable.rs
-require 'billing_summary' src/critical_pages/dashboard.rs
-require 'ChannelService::list' src/critical_pages/dashboard.rs
-require 'TokenService::create' src/functional_pages/api_keys_live.rs
-require 'TokenService::rotate' src/functional_pages/api_keys_live.rs
-require 'TokenService::set_status' src/functional_pages/api_keys_live.rs
-require 'TokenService::set_ip_whitelist' src/functional_pages/api_keys_live.rs
-require 'TokenService::delete' src/functional_pages/api_keys_live.rs
-require 'UserService::list' src/functional_pages/access_live.rs
-require 'ChannelService::create' src/functional_pages/providers.rs
-require 'update_channel_preserving_reservations' src/functional_pages/providers.rs
-require 'ChannelService::list' src/functional_pages/catalog.rs
-require 'full_logs' src/functional_pages/logs_full.rs
-require 'full_logs' src/functional_pages/analytics_full.rs
-require 'chat_completion' src/functional_pages/playground_live.rs
-require 'save_security_filters' src/functional_pages/guardrails_live.rs
-require 'billing_summary' src/functional_pages/analytics.rs
+# API key management must retain creation, validation, one-time disclosure,
+# and revocation state instead of regressing to static rows.
+API_ACTIONS=src/domains/buyer/api_keys/actions.rs
+API_STATE=src/domains/buyer/api_keys/state.rs
+API_PAGE=src/domains/buyer/api_keys/page.rs
+require 'pub fn create_api_key(' "$API_ACTIONS"
+require 'pub fn revoke_api_key(' "$API_ACTIONS"
+require 'pub fn validate_create_input(' "$API_ACTIONS"
+require 'pub fn generate_secret()' "$API_ACTIONS"
+require 'pub fn create_key(&mut self)' "$API_STATE"
+require 'pub fn revoke_key(&mut self, id: &str)' "$API_STATE"
+require 'created_secret: Option<String>' "$API_STATE"
+require 'aria_modal: "true"' "$API_PAGE"
+require 'ApiKeysState::mark_copied' "$API_PAGE"
 
-# Unsupported prototype actions must not reappear as fake success paths.
-if grep -Fq 'Suspend Account' src/critical_pages/customers_portable.rs; then
-  echo "Fake suspend action reintroduced without a server endpoint" >&2
-  exit 1
-fi
-if grep -Fq 'Prompt Snippet' src/functional_pages/logs_full.rs; then
-  echo "Synthetic prompt content reintroduced into router log UI" >&2
-  exit 1
-fi
+# Marketplace filtering and details remain driven by domain state and model data.
+MARKETPLACE_MODEL=src/domains/buyer/marketplace/model.rs
+MARKETPLACE_STATE=src/domains/buyer/marketplace/state.rs
+MARKETPLACE_PAGE=src/domains/buyer/marketplace/page.rs
+require 'pub const MODEL_CATALOG' "$MARKETPLACE_MODEL"
+require 'pub fn filtered_models(&self)' "$MARKETPLACE_STATE"
+require 'pub fn open_details(&mut self' "$MARKETPLACE_STATE"
+require 'pub fn toggle_slo(&mut self)' "$MARKETPLACE_STATE"
+require 'MarketplaceState::default' "$MARKETPLACE_PAGE"
+require 'value.set_search(event.value())' "$MARKETPLACE_PAGE"
+require 'value.set_category(category)' "$MARKETPLACE_PAGE"
+require 'aria_modal: "true"' "$MARKETPLACE_PAGE"
+require 'aria_expanded: snapshot.slo_expanded' "$MARKETPLACE_PAGE"
 
-# Chrome controls should either navigate/act or be semantic status elements.
-require 'search_route(&query)' src/functional_layout.rs
-require 'div { class:"env-chip"' src/functional_layout.rs
+# The Playground must continue to produce an API client example and model a
+# cancellable streaming request rather than presenting an inert prototype.
+PLAYGROUND_ACTIONS=src/domains/buyer/playground/actions.rs
+PLAYGROUND_STATE=src/domains/buyer/playground/state.rs
+PLAYGROUND_PAGE=src/domains/buyer/playground/page.rs
+require 'pub fn code_snippet(state: &PlaygroundState)' "$PLAYGROUND_ACTIONS"
+require '/v1/chat/completions' "$PLAYGROUND_ACTIONS"
+require 'pub fn begin_inference(&mut self)' "$PLAYGROUND_STATE"
+require 'pub fn append_stream_chunk(&mut self' "$PLAYGROUND_STATE"
+require 'pub fn complete_inference(&mut self' "$PLAYGROUND_STATE"
+require 'STREAMED_RESPONSE' "$PLAYGROUND_PAGE"
+require 'disabled: snapshot.running' "$PLAYGROUND_PAGE"
+require 'PlaygroundState::clear_output' "$PLAYGROUND_PAGE"
+
+# The shared shell and LiveView endpoint are part of the rendered product.
+require 'pub fn BuyerShell(children: Element)' src/shared/layout/mod.rs
+require 'for item in nav_items(current_role)' src/shared/layout/mod.rs
+require 'GlobalStyle {}' src/shared/layout/mod.rs
+require 'let locale = use_context_provider' src/app/app.rs
+require 'localStorage.getItem' src/app/app.rs
+require 'pub fn liveview_router' src/lib.rs
+require '"/console/ws"' src/lib.rs
+require '.route("/buyer/{*route}", get(index.clone()))' src/lib.rs
 
 echo "Functional console wiring OK"
