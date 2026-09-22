@@ -197,5 +197,5 @@ serde_json.workspace = true
 dirs.workspace = true
 chrono.workspace = true
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 burncloud-client = { workspace = true, default-features = false, features = ["desktop"] }
