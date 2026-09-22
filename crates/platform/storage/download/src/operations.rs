@@ -37,7 +37,7 @@ impl DownloadManager {
 
         let gid = client.add_uri(vec![url.to_string()], Some(options)).await?;
         self.db
-            .add(&gid, vec![url.to_string()], Some(&dir), filename)
+            .add(&gid, vec![url.to_string()], Some(&dir), Some(&filename))
             .await?;
 
         // 启动进度监控
