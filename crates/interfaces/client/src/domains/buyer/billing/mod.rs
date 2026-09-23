@@ -5,3 +5,5 @@ pub mod page;
 pub mod state;
 #[cfg(test)]
 mod tests;
+
+pub use page::BuyerBilling;
