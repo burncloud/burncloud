@@ -1,6 +1,6 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
 use crate::domains::buyer::{
-    api_keys::BuyerApiKeys, billing::BuyerBilling, marketplace::BuyerMarketplace,
+    api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
     overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
 };
 use crate::shared::types::Role;
@@ -152,7 +152,7 @@ pub fn Billing() -> Element {
 }
 #[component]
 pub fn Logs() -> Element {
-    rsx! { PlaceholderPage { title: "Logs".to_string() } }
+    rsx! { BuyerLogs {} }
 }
 #[component]
 pub fn ApiKeys() -> Element {
