@@ -2,15 +2,22 @@ use async_trait::async_trait;
 
 use crate::ProcessSpec;
 
-/// Machine-level artifact prepared for a local runtime.
-///
-/// This contract deliberately carries no BurnCloud model/provider/router
-/// semantics. A higher-level owner decides which artifact is required.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArtifactRequest {
-    pub source: String,
-    pub expected_digest: Option<String>,
-}
+#[path = "artifactRequest.rs"]
+mod artifact_request;
+#[path = "artifactSource.rs"]
+mod artifact_source;
+#[path = "digest.rs"]
+mod digest;
+#[path = "digestAlgorithm.rs"]
+mod digest_algorithm;
+#[path = "digestError.rs"]
+mod digest_error;
+
+pub use artifact_request::ArtifactRequest;
+pub use artifact_source::ArtifactSource;
+pub use digest::Digest;
+pub use digest_algorithm::DigestAlgorithm;
+pub use digest_error::DigestError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedArtifact {

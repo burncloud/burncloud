@@ -1,8 +1,8 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
-    FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe,
-    NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget,
-    ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
+    FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
+    HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
+    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
 use burncloud_service_models::{
     FakeModelResolver, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
@@ -70,8 +70,13 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     let artifact = node
         .artifacts()
         .prepare(ArtifactRequest {
-            source: resolved.artifact_source,
-            expected_digest: resolved.artifact_digest,
+            source: ArtifactSource::parse(resolved.artifact_source).unwrap(),
+            expected_digest: resolved
+                .artifact_digest
+                .as_deref()
+                .map(burncloud_node_runtime::Digest::parse)
+                .transpose()
+                .unwrap(),
         })
         .await
         .unwrap();
@@ -141,8 +146,13 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
     let artifact = node
         .artifacts()
         .prepare(ArtifactRequest {
-            source: resolved.artifact_source,
-            expected_digest: resolved.artifact_digest,
+            source: ArtifactSource::parse(resolved.artifact_source).unwrap(),
+            expected_digest: resolved
+                .artifact_digest
+                .as_deref()
+                .map(burncloud_node_runtime::Digest::parse)
+                .transpose()
+                .unwrap(),
         })
         .await
         .unwrap();
