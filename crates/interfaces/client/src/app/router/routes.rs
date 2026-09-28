@@ -3,6 +3,7 @@ use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
     overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
 };
+use crate::domains::supplier::overview::SupplierOverview as SupplierOverviewPage;
 use crate::shared::types::Role;
 use dioxus::prelude::*;
 
@@ -192,11 +193,11 @@ pub fn PublicLogs() -> Element {
 }
 #[component]
 pub fn Supplier() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Supplier Overview".to_string(), role: Role::Supplier } }
+    rsx! { SupplierOverviewPage {} }
 }
 #[component]
 pub fn SupplierOverview() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Supplier Overview".to_string(), role: Role::Supplier } }
+    rsx! { SupplierOverviewPage {} }
 }
 #[component]
 pub fn SupplierResources() -> Element {
