@@ -1,8 +1,8 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, DemandReconciler, HardwareProbe, HealthProbe,
-    NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager,
-    ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence, RuntimeAdapter,
-    RuntimePreparer, RuntimeRequest,
+    ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler, Digest, HardwareProbe,
+    HealthProbe, NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle,
+    ProcessManager, ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence,
+    RuntimeAdapter, RuntimePreparer, RuntimeRequest,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_service_models::{
@@ -343,8 +343,29 @@ where
                         .machine
                         .artifacts()
                         .prepare(ArtifactRequest {
-                            source: resolved.artifact_source,
-                            expected_digest: resolved.artifact_digest,
+                            source: match ArtifactSource::parse(&resolved.artifact_source) {
+                                Ok(source) => source,
+                                Err(error) => {
+                                    self.mark_failed(&demand.model)?;
+                                    return Err(anyhow::anyhow!(
+                                        "invalid artifact source '{}': {error}",
+                                        resolved.artifact_source
+                                    ));
+                                }
+                            },
+                            expected_digest: match resolved.artifact_digest {
+                                Some(value) => match Digest::parse(&value) {
+                                    Ok(digest) => Some(digest),
+                                    Err(error) => {
+                                        self.mark_failed(&demand.model)?;
+                                        return Err(anyhow::anyhow!(
+                                            "invalid artifact digest '{}': {error}",
+                                            value
+                                        ));
+                                    }
+                                },
+                                None => None,
+                            },
                         })
                         .await
                     {
@@ -775,7 +796,9 @@ mod tests {
             .resolved = Some(ResolvedModel {
             model: model.into(),
             artifact_source: "qwen/fake.gguf".into(),
-            artifact_digest: Some("sha256:fake".into()),
+            artifact_digest: Some(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
+            ),
             runtime: "llama.cpp".into(),
             runtime_version: Some("fake-v0".into()),
         });
@@ -811,7 +834,10 @@ mod tests {
             workload.resolved = Some(ResolvedModel {
                 model: model.into(),
                 artifact_source: "qwen/fake.gguf".into(),
-                artifact_digest: Some("sha256:fake".into()),
+                artifact_digest: Some(
+                    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                        .into(),
+                ),
                 runtime: "llama.cpp".into(),
                 runtime_version: Some("fake-v0".into()),
             });
@@ -861,7 +887,10 @@ mod tests {
             workload.resolved = Some(ResolvedModel {
                 model: model.into(),
                 artifact_source: "qwen/fake.gguf".into(),
-                artifact_digest: Some("sha256:fake".into()),
+                artifact_digest: Some(
+                    "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                        .into(),
+                ),
                 runtime: "llama.cpp".into(),
                 runtime_version: Some("fake-v0".into()),
             });

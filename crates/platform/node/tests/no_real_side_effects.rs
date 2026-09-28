@@ -1,13 +1,13 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, FakeArtifactPreparer, FakeRuntimePreparer, RuntimePreparer,
-    RuntimeRequest,
+    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeRuntimePreparer,
+    RuntimePreparer, RuntimeRequest,
 };
 
 #[tokio::test]
 async fn preparation_fakes_return_virtual_paths_only() {
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest {
-            source: "qwen-4b.gguf".into(),
+            source: ArtifactSource::Oci("qwen-4b.gguf".into()),
             expected_digest: None,
         })
         .await

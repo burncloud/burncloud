@@ -66,7 +66,9 @@ impl ModelResolver for FakeModelResolver {
     ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
         Ok(ModelResolutionOutcome::Local(ResolvedModel {
             artifact_source: format!("{}/fake.gguf", request.model),
-            artifact_digest: Some("sha256:fake".into()),
+            artifact_digest: Some(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
+            ),
             runtime: "llama.cpp".into(),
             runtime_version: Some("fake-v0".into()),
             model: request.model,

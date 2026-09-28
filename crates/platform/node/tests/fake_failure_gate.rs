@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, DemandReconciler, PreparedArtifact,
-    ReconcileEvidence,
+    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler,
+    PreparedArtifact, ReconcileEvidence,
 };
 
 struct FailingArtifactPreparer;
@@ -27,7 +27,7 @@ async fn failed_artifact_preparation_does_not_emit_success_evidence() {
 
     let result = FailingArtifactPreparer
         .prepare(ArtifactRequest {
-            source: "missing".into(),
+            source: ArtifactSource::Oci("missing".into()),
             expected_digest: None,
         })
         .await;
