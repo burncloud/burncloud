@@ -335,7 +335,7 @@ pub fn BuyerShell(children: Element) -> Element {
                         div { class: "profile", span { class: "avatar", {match current_role { Role::Buyer => "BY", Role::Supplier => "SP", Role::Admin => "AD" }} } span { class: "profile-copy", strong { "burncloud.com" } small { {role_label(current_role, copy)} } } }
                     }
                 }
-                main { class: "page-viewport", div { class: "content-width", if current_role == Role::Buyer { {children} } else { div { class: "placeholder-panel", span { class: "placeholder-icon", Icon { name: IconName::Layers, size: 22 } } h1 { {format!("{} Overview", role_label(current_role, copy))} } p { {copy.placeholder} } } } } }
+                main { class: "page-viewport", div { class: "content-width", if current_role == Role::Buyer || current_role == Role::Supplier { {children} } else { div { class: "placeholder-panel", span { class: "placeholder-icon", Icon { name: IconName::Layers, size: 22 } } h1 { {format!("{} Overview", role_label(current_role, copy))} } p { {copy.placeholder} } } } } }
             }
         }
     }

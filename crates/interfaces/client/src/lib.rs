@@ -119,5 +119,8 @@ fn AppWithDesktop() -> Element {
     #[cfg(target_os = "windows")]
     desktop_chrome::use_windows_tray(dioxus::desktop::use_window());
 
-    rsx! { app::App {} }
+    rsx! {
+        desktop_chrome::DesktopTitleBar {}
+        app::App {}
+    }
 }
