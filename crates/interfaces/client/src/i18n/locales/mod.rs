@@ -1,6 +1,6 @@
 use super::locale::Locale;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct LocaleStrings {
     pub overview: &'static str,
     pub subtitle: &'static str,
@@ -93,6 +93,17 @@ pub struct LocaleStrings {
     pub supplier_status: &'static str,
     pub supplier_online: &'static str,
     pub supplier_degraded_status: &'static str,
+    pub supplier_resources_title: &'static str,
+    pub supplier_resources_subtitle: &'static str,
+    pub supplier_resources_conclusion: &'static str,
+    pub supplier_core_temperature: &'static str,
+    pub supplier_uptime: &'static str,
+    pub supplier_graceful_drain: &'static str,
+    pub supplier_graceful_drain_subtitle: &'static str,
+    pub supplier_zero_downtime: &'static str,
+    pub supplier_zero_downtime_description: &'static str,
+    pub supplier_cancel: &'static str,
+    pub supplier_confirm: &'static str,
     pub buyer_flow: &'static str,
     pub supplier_flow: &'static str,
     pub admin_flow: &'static str,
