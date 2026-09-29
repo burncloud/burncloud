@@ -130,13 +130,12 @@ impl From<&Path> for ArtifactSource {
     }
 }
 
-impl From<&Url> for ArtifactSource {
-    /// 将 URL 转换为来源，并在协议不受支持时显式触发错误而不静默降级。
-    fn from(value: &Url) -> Self {
-        match Self::parse(value.as_str()) {
-            Ok(source) => source,
-            Err(error) => panic!("invalid artifact source URL: {error}"),
-        }
+impl TryFrom<&Url> for ArtifactSource {
+    type Error = artifactSourceErr;
+
+    /// 将 URL 转换为来源，并使用 `artifactSourceErr` 返回协议校验错误。
+    fn try_from(value: &Url) -> Result<Self, Self::Error> {
+        Self::parse_url(value.as_str())
     }
 }
 
@@ -189,6 +188,16 @@ mod tests {
     fn rejects_unsupported_schemes() {
         let error = ArtifactSource::parse("oci://registry.example/model:latest").unwrap_err();
         assert!(matches!(error, artifactSourceErr::UnsupportedScheme(_)));
+    }
+
+    #[test]
+    fn try_from_url_returns_artifact_source_error() {
+        let url = Url::parse("ftp://example.com/model.gguf").unwrap();
+        let error = ArtifactSource::try_from(&url).unwrap_err();
+        assert_eq!(
+            error,
+            artifactSourceErr::UnsupportedScheme("ftp".to_owned())
+        );
     }
 
     #[test]
