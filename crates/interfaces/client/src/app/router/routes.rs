@@ -3,6 +3,7 @@ use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
     overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
 };
+use crate::domains::supplier::earnings::page::SupplierEarnings as SupplierEarningsPage;
 use crate::domains::supplier::overview::SupplierOverview as SupplierOverviewPage;
 use crate::domains::supplier::resources::page::SupplierResources as SupplierResourcesPage;
 use crate::shared::types::Role;
@@ -210,7 +211,7 @@ pub fn SupplierDeployments() -> Element {
 }
 #[component]
 pub fn SupplierEarnings() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Revenue & Payouts".to_string(), role: Role::Supplier } }
+    rsx! { SupplierEarningsPage {} }
 }
 #[component]
 pub fn SupplierSettlements() -> Element {
