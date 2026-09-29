@@ -12,10 +12,8 @@ impl ArtifactPreparer for TestArtifact {
         &self,
         _request: ArtifactRequest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
-        Ok(PreparedArtifact {
-            local_path: "/tmp/model.gguf".into(),
-            verified: true,
-        })
+        PreparedArtifact::new(std::env::temp_dir().join("model.gguf"), true)
+            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))
     }
 }
 
@@ -69,7 +67,7 @@ async fn preparation_ports_accept_independent_implementations() {
     };
     TestReadiness.wait_ready(target.clone()).await.unwrap();
 
-    assert!(artifact.verified);
+    assert!(artifact.is_verified());
     assert_eq!(runtime.executable, "/tmp/llama-server");
     assert!(TestHealth.is_healthy(target).await.unwrap());
 }

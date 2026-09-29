@@ -22,7 +22,7 @@ async fn evidence_follows_successful_capability_calls() {
         ))
         .await
         .unwrap();
-    assert!(artifact.verified);
+    assert!(artifact.is_verified());
     r.observe(ReconcileEvidence::ArtifactPrepared).unwrap();
 
     assert_eq!(r.next_action().unwrap(), ReconcileAction::PrepareRuntime);

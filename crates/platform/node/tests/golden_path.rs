@@ -108,7 +108,7 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
         .processes()
         .start(ProcessSpec {
             program: runtime.executable,
-            args: vec![artifact.local_path],
+            args: vec![artifact.local_path().to_string_lossy().into_owned()],
         })
         .await
         .unwrap();
@@ -175,7 +175,7 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
         .processes()
         .start(ProcessSpec {
             program: runtime.executable,
-            args: vec![artifact.local_path],
+            args: vec![artifact.local_path().to_string_lossy().into_owned()],
         })
         .await
         .unwrap();

@@ -14,6 +14,8 @@ mod digest;
 mod digest_algorithm;
 #[path = "digestError.rs"]
 mod digest_error;
+#[path = "preparedArtifact.rs"]
+mod prepared_artifact;
 
 pub use artifact_request::ArtifactRequest;
 pub use artifact_source::ArtifactSource;
@@ -21,12 +23,7 @@ pub use artifact_source_err::artifactSourceErr;
 pub use digest::Digest;
 pub use digest_algorithm::DigestAlgorithm;
 pub use digest_error::DigestError;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreparedArtifact {
-    pub local_path: String,
-    pub verified: bool,
-}
+pub use prepared_artifact::PreparedArtifact;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ArtifactPrepareError {

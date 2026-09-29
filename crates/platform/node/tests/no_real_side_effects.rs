@@ -20,6 +20,10 @@ async fn preparation_fakes_return_virtual_paths_only() {
         .await
         .unwrap();
 
-    assert!(artifact.local_path.starts_with("/fake/"));
+    assert!(artifact.local_path().is_absolute());
+    assert!(artifact
+        .local_path()
+        .to_string_lossy()
+        .contains("burncloud"));
     assert!(runtime.executable.starts_with("/fake/"));
 }

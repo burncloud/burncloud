@@ -19,8 +19,12 @@ async fn fake_artifact_preparer_returns_verified_local_artifact() {
         .await
         .unwrap();
 
-    assert!(artifact.verified);
-    assert!(artifact.local_path.starts_with("/fake/artifacts/"));
+    assert!(artifact.is_verified());
+    assert!(artifact.local_path().is_absolute());
+    assert!(artifact
+        .local_path()
+        .to_string_lossy()
+        .contains("burncloud"));
 }
 
 #[tokio::test]

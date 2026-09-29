@@ -39,7 +39,7 @@ async fn composition_root_wires_every_machine_socket() {
         ))
         .await
         .unwrap();
-    assert!(artifact.verified);
+    assert!(artifact.is_verified());
 
     let runtime = node
         .runtimes()
@@ -54,7 +54,7 @@ async fn composition_root_wires_every_machine_socket() {
         .processes()
         .start(ProcessSpec {
             program: runtime.executable,
-            args: vec![artifact.local_path],
+            args: vec![artifact.local_path().to_string_lossy().into_owned()],
         })
         .await
         .unwrap();
