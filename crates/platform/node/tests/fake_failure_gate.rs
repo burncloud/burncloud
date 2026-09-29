@@ -27,7 +27,7 @@ async fn failed_artifact_preparation_does_not_emit_success_evidence() {
 
     let result = FailingArtifactPreparer
         .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("missing".into()),
+            source: ArtifactSource::parse("missing").unwrap(),
             expected_digest: None,
         })
         .await;

@@ -17,7 +17,7 @@ async fn evidence_follows_successful_capability_calls() {
 
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("qwen-4b.gguf".into()),
+            source: ArtifactSource::parse("qwen-4b.gguf").unwrap(),
             expected_digest: None,
         })
         .await

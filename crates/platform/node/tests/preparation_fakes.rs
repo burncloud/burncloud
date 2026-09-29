@@ -8,7 +8,7 @@ use burncloud_node_runtime::{
 async fn fake_artifact_preparer_returns_verified_local_artifact() {
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("models/qwen-4b.gguf".into()),
+            source: ArtifactSource::parse("models/qwen-4b.gguf").unwrap(),
             expected_digest: Some(
                 Digest::parse(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000",

@@ -7,7 +7,7 @@ use burncloud_node_runtime::{
 async fn preparation_fakes_return_virtual_paths_only() {
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("qwen-4b.gguf".into()),
+            source: ArtifactSource::parse("qwen-4b.gguf").unwrap(),
             expected_digest: None,
         })
         .await

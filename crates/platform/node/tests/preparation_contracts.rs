@@ -52,7 +52,7 @@ impl HealthProbe for TestHealth {
 async fn preparation_ports_accept_independent_implementations() {
     let artifact = TestArtifact
         .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("ignored".into()),
+            source: ArtifactSource::parse("ignored").unwrap(),
             expected_digest: None,
         })
         .await

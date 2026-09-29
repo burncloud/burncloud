@@ -34,7 +34,7 @@ async fn composition_root_wires_every_machine_socket() {
     let artifact = node
         .artifacts()
         .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("qwen/fake.gguf".into()),
+            source: ArtifactSource::parse("qwen/fake.gguf").unwrap(),
             expected_digest: None,
         })
         .await

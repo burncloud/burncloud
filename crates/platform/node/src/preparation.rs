@@ -6,6 +6,8 @@ use crate::ProcessSpec;
 mod artifact_request;
 #[path = "artifactSource.rs"]
 mod artifact_source;
+#[path = "artifactSourceErr.rs"]
+mod artifact_source_err;
 #[path = "digest.rs"]
 mod digest;
 #[path = "digestAlgorithm.rs"]
@@ -15,6 +17,7 @@ mod digest_error;
 
 pub use artifact_request::ArtifactRequest;
 pub use artifact_source::ArtifactSource;
+pub use artifact_source_err::artifactSourceErr;
 pub use digest::Digest;
 pub use digest_algorithm::DigestAlgorithm;
 pub use digest_error::DigestError;

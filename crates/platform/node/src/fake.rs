@@ -58,7 +58,6 @@ impl ArtifactPreparer for FakeArtifactPreparer {
         let source = match request.source {
             ArtifactSource::File(path) => path.to_string_lossy().into_owned(),
             ArtifactSource::Http(url) => url.to_string(),
-            ArtifactSource::Oci(reference) => reference,
         };
         Ok(PreparedArtifact {
             local_path: format!("/fake/artifacts/{}", source.replace(['/', ':'], "_")),
