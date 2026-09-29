@@ -26,9 +26,10 @@ pub use fake::{
 pub use lifecycle::NodeRuntime;
 pub use preparation::{
     artifactSourceErr, ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource,
-    Digest, DigestAlgorithm, DigestError, HealthError, HealthProbe, PreparedArtifact,
-    PreparedRuntime, ProcessPlan, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
-    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    ArtifactVerificationStatus, Digest, DigestAlgorithm, DigestError, HealthError, HealthProbe,
+    PreparedArtifact, PreparedRuntime, ProcessPlan, ReadinessError, ReadinessProbe,
+    ReadinessTarget, RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer,
+    RuntimeRequest,
 };
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};

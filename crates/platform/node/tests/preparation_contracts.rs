@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource, HealthError,
-    HealthProbe, PreparedArtifact, PreparedRuntime, ReadinessError, ReadinessProbe,
-    ReadinessTarget, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource,
+    ArtifactVerificationStatus, HealthError, HealthProbe, PreparedArtifact, PreparedRuntime,
+    ReadinessError, ReadinessProbe, ReadinessTarget, RuntimePrepareError, RuntimePreparer,
+    RuntimeRequest,
 };
 
 struct TestArtifact;
@@ -12,8 +13,11 @@ impl ArtifactPreparer for TestArtifact {
         &self,
         _request: ArtifactRequest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
-        PreparedArtifact::new(std::env::temp_dir().join("model.gguf"), true)
-            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))
+        PreparedArtifact::new(
+            std::env::temp_dir().join("model.gguf"),
+            ArtifactVerificationStatus::Verified,
+        )
+        .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))
     }
 }
 

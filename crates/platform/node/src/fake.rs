@@ -2,10 +2,10 @@ use async_trait::async_trait;
 
 use crate::{
     AcceleratorKind, AcceleratorProfile, ArtifactPrepareError, ArtifactPreparer, ArtifactRequest,
-    ArtifactSource, HardwareProbe, HardwareProbeError, HardwareProfile, HealthError, HealthProbe,
-    PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle, ProcessManager, ProcessPlan,
-    ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
-    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    ArtifactSource, ArtifactVerificationStatus, HardwareProbe, HardwareProbeError, HardwareProfile,
+    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
+    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
+    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 
 /// Deterministic fake used to assemble and test the Node skeleton before real
@@ -66,7 +66,7 @@ impl ArtifactPreparer for FakeArtifactPreparer {
             .join("fake")
             .join("artifacts")
             .join(source.replace(['/', '\\', ':'], "_"));
-        PreparedArtifact::new(local_path, true)
+        PreparedArtifact::new(local_path, ArtifactVerificationStatus::Verified)
             .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))
     }
 }
