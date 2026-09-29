@@ -51,10 +51,10 @@ impl HealthProbe for TestHealth {
 #[tokio::test]
 async fn preparation_ports_accept_independent_implementations() {
     let artifact = TestArtifact
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::parse("ignored").unwrap(),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("ignored").unwrap(),
+            None,
+        ))
         .await
         .unwrap();
     let runtime = TestRuntime

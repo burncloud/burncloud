@@ -55,7 +55,7 @@ impl ArtifactPreparer for FakeArtifactPreparer {
         &self,
         request: ArtifactRequest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
-        let source = match request.source {
+        let source = match request.source() {
             ArtifactSource::File(path) => path.to_string_lossy().into_owned(),
             ArtifactSource::Http(url) => url.to_string(),
         };

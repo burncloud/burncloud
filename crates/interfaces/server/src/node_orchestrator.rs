@@ -342,8 +342,8 @@ where
                     let artifact = match self
                         .machine
                         .artifacts()
-                        .prepare(ArtifactRequest {
-                            source: match ArtifactSource::parse(&resolved.artifact_source) {
+                        .prepare(ArtifactRequest::new(
+                            match ArtifactSource::parse(&resolved.artifact_source) {
                                 Ok(source) => source,
                                 Err(error) => {
                                     self.mark_failed(&demand.model)?;
@@ -353,7 +353,7 @@ where
                                     ));
                                 }
                             },
-                            expected_digest: match resolved.artifact_digest {
+                            match resolved.artifact_digest {
                                 Some(value) => match Digest::parse(&value) {
                                     Ok(digest) => Some(digest),
                                     Err(error) => {
@@ -366,7 +366,7 @@ where
                                 },
                                 None => None,
                             },
-                        })
+                        ))
                         .await
                     {
                         Ok(artifact) => artifact,

@@ -33,10 +33,10 @@ async fn composition_root_wires_every_machine_socket() {
 
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::parse("qwen/fake.gguf").unwrap(),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("qwen/fake.gguf").unwrap(),
+            None,
+        ))
         .await
         .unwrap();
     assert!(artifact.verified);
