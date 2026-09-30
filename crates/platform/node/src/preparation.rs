@@ -2,9 +2,9 @@ use async_trait::async_trait;
 
 use crate::ProcessSpec;
 
-#[path = "ArtifactPrepareError.rs"]
+#[path = "artifactPrepareError.rs"]
 mod artifact_prepare_error;
-#[path = "ArtifactPreparer.rs"]
+#[path = "artifactPreparer.rs"]
 mod artifact_preparer;
 #[path = "artifactRequest.rs"]
 mod artifact_request;

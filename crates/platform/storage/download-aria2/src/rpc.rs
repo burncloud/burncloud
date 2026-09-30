@@ -35,9 +35,9 @@ impl Aria2RpcClient {
         }
     }
 
-    // 输入：RPC 方法名及其可序列化参数。
-    // 功能：构造并发送 JSON-RPC 请求，再将结果反序列化为目标类型。
-    // 错误：序列化、请求、响应解析或服务端错误时返回 RpcError。
+    /// 调用 aria2 JSON-RPC 方法并将响应结果反序列化为目标类型。
+    ///
+    /// 参数由 JSON-RPC 参数列表规则展开；HTTP、RPC 或响应格式错误会返回对应错误。
     async fn call_method<T, R>(&self, method: &str, params: T) -> Aria2Result<R>
     where
         T: Serialize,
@@ -55,11 +55,11 @@ impl Aria2RpcClient {
         let param_value =
             serde_json::to_value(&params).map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
-        // 如果参数是数组，则展开每个元素作为单独的参数
-        if let Value::Array(array) = param_value {
-            rpc_params.extend(array);
-        } else if !param_value.is_null() {
-            rpc_params.push(param_value);
+        // 数组参数展开为多个 RPC 参数，null 表示没有额外参数。
+        match param_value {
+            Value::Array(array) => rpc_params.extend(array),
+            Value::Null => {}
+            other => rpc_params.push(other),
         }
 
         // 生成请求编号并构建 JSON-RPC 请求体
@@ -80,19 +80,30 @@ impl Aria2RpcClient {
             .await
             .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
+        // HTTP 非成功状态可能携带代理或服务端错误正文，先保留状态码和正文。
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(Aria2Error::HttpError { status, body });
+        }
+
+        // 解析成功 HTTP 响应中的 JSON-RPC 消息。
         #[allow(clippy::disallowed_types)] // Value used for aria2 JSON-RPC response parsing
         let rpc_response: Value = response
             .json()
             .await
             .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
-        // 优先处理服务端返回的 RPC 错误
-        if let Some(error) = rpc_response.get("error") {
+        // 忽略空的 error 字段，仅将实际返回的错误对象作为 RPC 错误。
+        if let Some(error) = rpc_response.get("error").filter(|error| !error.is_null()) {
             return Err(Aria2Error::RpcError(format!("服务器错误: {}", error)));
         }
 
-        // 提取并反序列化 RPC 调用结果
-        let result = rpc_response["result"].clone();
+        // 确保服务端响应包含 result 字段，再反序列化调用结果。
+        let result = rpc_response
+            .get("result")
+            .ok_or_else(|| Aria2Error::RpcError("响应缺少 result 字段".into()))?
+            .clone();
         serde_json::from_value(result).map_err(|e| Aria2Error::RpcError(e.to_string()))
     }
 
@@ -268,5 +279,87 @@ impl Aria2RpcClient {
     pub async fn shutdown(&self) -> Aria2Result<String> {
         // 转发关闭请求到通用 RPC 调用器
         self.call_method("aria2.shutdown", ()).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    use super::Aria2RpcClient;
+    use crate::error::Aria2Error;
+
+    // 启动一次性本地 HTTP 服务，用于验证 RPC 响应处理逻辑。
+    async fn start_rpc_server(
+        status: &str,
+        body: &str,
+    ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let port = listener.local_addr()?.port();
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+
+        tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut request = [0; 1024];
+                let _ = stream.read(&mut request).await;
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        });
+
+        Ok(port)
+    }
+
+    /// 验证非成功 HTTP 状态会保留状态码和响应正文。
+    #[tokio::test]
+    async fn non_success_http_status_returns_http_error(
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let port = start_rpc_server("502 Bad Gateway", "upstream unavailable").await?;
+        let client = Aria2RpcClient::new(port, None);
+
+        let result = client.call_method::<_, String>("test", ()).await;
+        assert!(matches!(
+            result,
+            Err(Aria2Error::HttpError { status, body })
+                if status.as_u16() == 502 && body == "upstream unavailable"
+        ));
+
+        Ok(())
+    }
+
+    /// 验证 null error 字段不会覆盖有效的 result。
+    #[tokio::test]
+    async fn null_error_field_allows_result() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    {
+        let port = start_rpc_server(
+            "200 OK",
+            r#"{"jsonrpc":"2.0","id":"1","error":null,"result":"ok"}"#,
+        )
+        .await?;
+        let client = Aria2RpcClient::new(port, None);
+
+        let result: String = client.call_method("test", ()).await?;
+        assert_eq!(result, "ok");
+
+        Ok(())
+    }
+
+    /// 验证缺少 result 字段时返回明确的 RPC 错误。
+    #[tokio::test]
+    async fn missing_result_field_returns_rpc_error(
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let port = start_rpc_server("200 OK", r#"{"jsonrpc":"2.0","id":"1"}"#).await?;
+        let client = Aria2RpcClient::new(port, None);
+
+        let result = client.call_method::<_, String>("test", ()).await;
+        assert!(matches!(
+            result,
+            Err(Aria2Error::RpcError(message)) if message == "响应缺少 result 字段"
+        ));
+
+        Ok(())
     }
 }

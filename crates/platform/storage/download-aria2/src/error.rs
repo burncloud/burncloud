@@ -7,6 +7,11 @@ pub enum Aria2Error {
     DownloadError(String),
     PortError(String),
     RpcError(String),
+    /// HTTP 请求返回非成功状态时，保留状态码及响应正文。
+    HttpError {
+        status: reqwest::StatusCode,
+        body: String,
+    },
     DaemonError(String),
     ProcessError(String),
     ConfigError(String),
@@ -22,6 +27,9 @@ impl std::fmt::Display for Aria2Error {
             Aria2Error::DownloadError(msg) => write!(f, "下载错误: {}", msg),
             Aria2Error::PortError(msg) => write!(f, "端口错误: {}", msg),
             Aria2Error::RpcError(msg) => write!(f, "RPC错误: {}", msg),
+            Aria2Error::HttpError { status, body } => {
+                write!(f, "HTTP错误（状态码 {}）: {}", status, body)
+            }
             Aria2Error::DaemonError(msg) => write!(f, "守护进程错误: {}", msg),
             Aria2Error::ProcessError(msg) => write!(f, "进程错误: {}", msg),
             Aria2Error::ConfigError(msg) => write!(f, "配置错误: {}", msg),
