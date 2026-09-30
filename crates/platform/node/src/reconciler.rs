@@ -34,22 +34,26 @@ pub struct DemandReconciler {
 }
 
 impl Default for DemandReconciler {
+    /// 创建处于初始状态的需求协调器。
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl DemandReconciler {
+    /// 创建使用默认节点状态机的协调器。
     pub const fn new() -> Self {
         Self {
             machine: NodeStateMachine::new(),
         }
     }
 
+    /// 返回协调器当前的节点状态。
     pub const fn state(&self) -> NodeState {
         self.machine.state()
     }
 
+    /// 根据当前状态推进状态机，并返回应执行的下一项动作。
     pub fn next_action(&mut self) -> Result<ReconcileAction, InvalidNodeTransition> {
         use NodeState::*;
         match self.machine.state() {
@@ -73,11 +77,12 @@ impl DemandReconciler {
         }
     }
 
-    /// Evidence is proof, not elapsed time. A spawned process is not READY.
+    /// 根据阶段完成证据推进状态机；经过时间或进程已启动本身不代表就绪。
     pub fn observe(&mut self, evidence: ReconcileEvidence) -> Result<(), InvalidNodeTransition> {
         use NodeState::*;
         use ReconcileEvidence::*;
 
+        // 只接受与当前阶段匹配的证据，其他组合均保持原状态并报告错误。
         let next = match (self.machine.state(), evidence) {
             (Resolving, Resolved) => PreparingArtifact,
             (Resolving, ReconcileEvidence::LocalUnsupported) => NodeState::LocalUnsupported,
@@ -98,6 +103,7 @@ impl DemandReconciler {
         self.machine.transition(next)
     }
 
+    /// 按失败或不健康状态对应的恢复路径重新尝试。
     pub fn retry(&mut self) -> Result<(), InvalidNodeTransition> {
         match self.machine.state() {
             NodeState::Failed => self.machine.transition(NodeState::Resolving),

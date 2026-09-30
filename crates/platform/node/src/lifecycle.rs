@@ -7,12 +7,15 @@ use crate::NodeContext;
 pub struct NodeRuntime;
 
 impl NodeRuntime {
+    /// 创建节点运行时生命周期入口。
     pub fn new() -> Self {
         Self
     }
 
+    /// 初始化节点上下文并记录运行时已挂接。
     pub fn start(&self) -> NodeContext {
         let mut context = NodeContext::default();
+        // 此生命周期入口只更新本地状态，不创建监听端口或 HTTP 服务。
         context.mark_started();
         tracing::info!("BurnCloud Node runtime attached");
         context

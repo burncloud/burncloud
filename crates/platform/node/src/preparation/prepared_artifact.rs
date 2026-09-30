@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use super::artifact_verification_status::ArtifactVerificationStatus;
 
-/// 一个本地可用的构件及其完整性校验状态。
+/// 一个本地可用的工件及其完整性校验状态。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedArtifact {
     local_path: PathBuf,
@@ -20,6 +20,7 @@ impl PreparedArtifact {
         // 相对路径会相对进程的工作目录进行解析，从而在该值离开此构造函数前，
         // 每个存储的路径都是绝对路径。
         let path = local_path.as_ref();
+        // 统一保存绝对路径，避免后续工作目录变化导致回执指向不同位置。
         let absolute_path = match path.is_absolute() {
             true => path.to_path_buf(),
             false => std::env::current_dir()?.join(path),

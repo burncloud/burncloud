@@ -1,4 +1,4 @@
-/// 摘要校验失败的具体原因。
+/// 摘要算法或摘要值校验失败的具体原因。
 #[derive(Debug, PartialEq, Eq)]
 pub enum DigestError {
     MissingAlgorithm,

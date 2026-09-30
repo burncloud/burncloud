@@ -46,6 +46,7 @@ impl Digest {
 
     /// 从 `algorithm:digest` 格式解析摘要。
     pub fn parse(value: &str) -> Result<Self, DigestError> {
+        // 先分离算法和摘要值，再分别执行算法解析与摘要内容校验。
         let (algorithm, digest) = value.split_once(':').ok_or(DigestError::MissingAlgorithm)?;
         Self::new(DigestAlgorithm::from_str(algorithm)?, digest)
     }
@@ -64,6 +65,7 @@ impl FromStr for Digest {
 impl std::fmt::Display for Digest {
     /// 使用规范化的 `algorithm:digest` 格式格式化摘要。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // 始终输出规范化算法名和小写摘要，保持序列化结果稳定。
         write!(f, "{}:{}", self.algorithm.name(), self.value)
     }
 }

@@ -1,6 +1,6 @@
 use super::{ArtifactSource, Digest};
 
-/// 描述工件来源以及可选完整性校验要求的下载请求。
+/// 描述工件来源以及可选完整性校验要求的工件请求。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArtifactRequest {
     source: ArtifactSource,

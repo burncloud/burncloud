@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use super::DigestError;
 
-/// 支持的摘要校验算法。
+/// 当前工件摘要校验接口支持的算法。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DigestAlgorithm {
     /// MD5，输出 16 字节摘要。
@@ -20,6 +20,7 @@ pub enum DigestAlgorithm {
 impl DigestAlgorithm {
     /// 返回算法的规范化名称。
     pub const fn name(self) -> &'static str {
+        // 返回固定字符串，避免调用方依赖枚举变体的调试格式。
         match self {
             Self::Md5 => "md5",
             Self::Sha1 => "sha1",
@@ -31,6 +32,7 @@ impl DigestAlgorithm {
 
     /// 返回算法输出摘要的字节数。
     pub const fn digest_bytes(self) -> usize {
+        // 结果表示算法原始摘要的字节数，不是十六进制文本长度。
         match self {
             Self::Md5 => 16,
             Self::Sha1 => 20,
@@ -42,6 +44,7 @@ impl DigestAlgorithm {
 
     /// 返回摘要编码为十六进制字符串后的字符数。
     pub const fn expected_hex_length(self) -> usize {
+        // 每个字节对应两个十六进制字符，因此长度是摘要字节数的两倍。
         match self {
             Self::Md5 => 32,
             Self::Sha1 => 40,
@@ -76,6 +79,7 @@ impl FromStr for DigestAlgorithm {
 impl std::fmt::Display for DigestAlgorithm {
     /// 使用算法的规范化名称进行格式化。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // 使用规范化名称，保证显示结果与解析后的算法名称一致。
         f.write_str(self.name())
     }
 }
