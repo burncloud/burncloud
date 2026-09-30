@@ -6,10 +6,10 @@ use burncloud_node_runtime::{
 #[tokio::test]
 async fn preparation_fakes_return_virtual_paths_only() {
     let artifact = FakeArtifactPreparer
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("qwen-4b.gguf".into()),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("qwen-4b.gguf").unwrap(),
+            None,
+        ))
         .await
         .unwrap();
     let runtime = FakeRuntimePreparer
@@ -20,6 +20,10 @@ async fn preparation_fakes_return_virtual_paths_only() {
         .await
         .unwrap();
 
-    assert!(artifact.local_path.starts_with("/fake/"));
+    assert!(artifact.local_path().is_absolute());
+    assert!(artifact
+        .local_path()
+        .to_string_lossy()
+        .contains("burncloud"));
     assert!(runtime.executable.starts_with("/fake/"));
 }

@@ -16,13 +16,13 @@ async fn evidence_follows_successful_capability_calls() {
     r.observe(ReconcileEvidence::Resolved).unwrap();
 
     let artifact = FakeArtifactPreparer
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("qwen-4b.gguf".into()),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("qwen-4b.gguf").unwrap(),
+            None,
+        ))
         .await
         .unwrap();
-    assert!(artifact.verified);
+    assert!(artifact.is_verified());
     r.observe(ReconcileEvidence::ArtifactPrepared).unwrap();
 
     assert_eq!(r.next_action().unwrap(), ReconcileAction::PrepareRuntime);

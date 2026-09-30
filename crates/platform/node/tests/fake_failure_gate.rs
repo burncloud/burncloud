@@ -26,10 +26,10 @@ async fn failed_artifact_preparation_does_not_emit_success_evidence() {
     let before = r.state();
 
     let result = FailingArtifactPreparer
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("missing".into()),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("missing").unwrap(),
+            None,
+        ))
         .await;
 
     assert!(result.is_err());

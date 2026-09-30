@@ -342,8 +342,8 @@ where
                     let artifact = match self
                         .machine
                         .artifacts()
-                        .prepare(ArtifactRequest {
-                            source: match ArtifactSource::parse(&resolved.artifact_source) {
+                        .prepare(ArtifactRequest::new(
+                            match ArtifactSource::parse(&resolved.artifact_source) {
                                 Ok(source) => source,
                                 Err(error) => {
                                     self.mark_failed(&demand.model)?;
@@ -353,7 +353,7 @@ where
                                     ));
                                 }
                             },
-                            expected_digest: match resolved.artifact_digest {
+                            match resolved.artifact_digest {
                                 Some(value) => match Digest::parse(&value) {
                                     Ok(digest) => Some(digest),
                                     Err(error) => {
@@ -366,7 +366,7 @@ where
                                 },
                                 None => None,
                             },
-                        })
+                        ))
                         .await
                     {
                         Ok(artifact) => artifact,
@@ -375,7 +375,7 @@ where
                             return Err(error.into());
                         }
                     };
-                    if !artifact.verified {
+                    if !artifact.is_verified() {
                         self.mark_failed(&demand.model)?;
                         anyhow::bail!("artifact preparer returned unverified artifact");
                     }
@@ -849,10 +849,13 @@ mod tests {
             .workloads
             .get_mut(model)
             .expect("workload")
-            .artifact = Some(PreparedArtifact {
-            local_path: "/fake/artifacts/qwen_fake.gguf".into(),
-            verified: true,
-        });
+            .artifact = Some(
+            PreparedArtifact::new(
+                std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
+                true,
+            )
+            .unwrap(),
+        );
         orchestrator
             .observe(model, ReconcileEvidence::ArtifactPrepared)
             .unwrap();
@@ -902,10 +905,13 @@ mod tests {
             .workloads
             .get_mut(model)
             .expect("workload")
-            .artifact = Some(PreparedArtifact {
-            local_path: "/fake/artifacts/qwen_fake.gguf".into(),
-            verified: true,
-        });
+            .artifact = Some(
+            PreparedArtifact::new(
+                std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
+                true,
+            )
+            .unwrap(),
+        );
         orchestrator
             .observe(model, ReconcileEvidence::ArtifactPrepared)
             .unwrap();

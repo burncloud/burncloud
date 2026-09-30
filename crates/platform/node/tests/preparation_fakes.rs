@@ -7,20 +7,24 @@ use burncloud_node_runtime::{
 #[tokio::test]
 async fn fake_artifact_preparer_returns_verified_local_artifact() {
     let artifact = FakeArtifactPreparer
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("models/qwen-4b.gguf".into()),
-            expected_digest: Some(
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("models/qwen-4b.gguf").unwrap(),
+            Some(
                 Digest::parse(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000",
                 )
                 .unwrap(),
             ),
-        })
+        ))
         .await
         .unwrap();
 
-    assert!(artifact.verified);
-    assert!(artifact.local_path.starts_with("/fake/artifacts/"));
+    assert!(artifact.is_verified());
+    assert!(artifact.local_path().is_absolute());
+    assert!(artifact
+        .local_path()
+        .to_string_lossy()
+        .contains("burncloud"));
 }
 
 #[tokio::test]

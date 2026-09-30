@@ -33,13 +33,13 @@ async fn composition_root_wires_every_machine_socket() {
 
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::Oci("qwen/fake.gguf".into()),
-            expected_digest: None,
-        })
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse("qwen/fake.gguf").unwrap(),
+            None,
+        ))
         .await
         .unwrap();
-    assert!(artifact.verified);
+    assert!(artifact.is_verified());
 
     let runtime = node
         .runtimes()
@@ -54,7 +54,7 @@ async fn composition_root_wires_every_machine_socket() {
         .processes()
         .start(ProcessSpec {
             program: runtime.executable,
-            args: vec![artifact.local_path],
+            args: vec![artifact.local_path().to_string_lossy().into_owned()],
         })
         .await
         .unwrap();

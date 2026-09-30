@@ -2,42 +2,37 @@ use async_trait::async_trait;
 
 use crate::ProcessSpec;
 
+#[path = "ArtifactPrepareError.rs"]
+mod artifact_prepare_error;
+#[path = "ArtifactPreparer.rs"]
+mod artifact_preparer;
 #[path = "artifactRequest.rs"]
 mod artifact_request;
 #[path = "artifactSource.rs"]
 mod artifact_source;
+#[path = "artifactSourceErr.rs"]
+mod artifact_source_err;
+#[path = "artifactVerificationStatus.rs"]
+mod artifact_verification_status;
 #[path = "digest.rs"]
 mod digest;
 #[path = "digestAlgorithm.rs"]
 mod digest_algorithm;
 #[path = "digestError.rs"]
 mod digest_error;
+#[path = "preparedArtifact.rs"]
+mod prepared_artifact;
 
+pub use artifact_prepare_error::ArtifactPrepareError;
+pub use artifact_preparer::ArtifactPreparer;
 pub use artifact_request::ArtifactRequest;
 pub use artifact_source::ArtifactSource;
+pub use artifact_source_err::artifactSourceErr;
+pub use artifact_verification_status::ArtifactVerificationStatus;
 pub use digest::Digest;
 pub use digest_algorithm::DigestAlgorithm;
 pub use digest_error::DigestError;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreparedArtifact {
-    pub local_path: String,
-    pub verified: bool,
-}
-
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum ArtifactPrepareError {
-    #[error("artifact preparation failed: {0}")]
-    PrepareFailed(String),
-}
-
-#[async_trait]
-pub trait ArtifactPreparer: Send + Sync {
-    async fn prepare(
-        &self,
-        request: ArtifactRequest,
-    ) -> Result<PreparedArtifact, ArtifactPrepareError>;
-}
+pub use prepared_artifact::PreparedArtifact;
 
 /// Machine-level runtime requirement selected by a higher-level owner.
 #[derive(Debug, Clone, PartialEq, Eq)]

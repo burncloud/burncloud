@@ -69,15 +69,15 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     );
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::parse(resolved.artifact_source).unwrap(),
-            expected_digest: resolved
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse(resolved.artifact_source).unwrap(),
+            resolved
                 .artifact_digest
                 .as_deref()
                 .map(burncloud_node_runtime::Digest::parse)
                 .transpose()
                 .unwrap(),
-        })
+        ))
         .await
         .unwrap();
     node.reconciler_mut()
@@ -108,7 +108,7 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
         .processes()
         .start(ProcessSpec {
             program: runtime.executable,
-            args: vec![artifact.local_path],
+            args: vec![artifact.local_path().to_string_lossy().into_owned()],
         })
         .await
         .unwrap();
@@ -145,15 +145,15 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
         .unwrap();
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest {
-            source: ArtifactSource::parse(resolved.artifact_source).unwrap(),
-            expected_digest: resolved
+        .prepare(ArtifactRequest::new(
+            ArtifactSource::parse(resolved.artifact_source).unwrap(),
+            resolved
                 .artifact_digest
                 .as_deref()
                 .map(burncloud_node_runtime::Digest::parse)
                 .transpose()
                 .unwrap(),
-        })
+        ))
         .await
         .unwrap();
     node.reconciler_mut()
@@ -175,7 +175,7 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
         .processes()
         .start(ProcessSpec {
             program: runtime.executable,
-            args: vec![artifact.local_path],
+            args: vec![artifact.local_path().to_string_lossy().into_owned()],
         })
         .await
         .unwrap();
