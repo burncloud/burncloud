@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[allow(clippy::disallowed_types)]
 // Value used for aria2 JSON-RPC protocol construction/parsing
 use serde_json::Value;
+use tokio::sync::Mutex;
 
 use crate::error::{Aria2Error, Aria2Result};
 use crate::types::{DownloadOptions, DownloadStatus, FileInfo, GlobalStat};
@@ -14,11 +15,41 @@ use crate::types::{DownloadOptions, DownloadStatus, FileInfo, GlobalStat};
 // RPC 客户端
 // ============================================================================
 
+/// 表示添加 URI 后任务是新创建的还是已存在的。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddUriOutcome {
+    /// aria2 创建了新任务，并返回新任务的 GID。
+    Created(String),
+    /// aria2 中已存在匹配任务，并返回现有任务的 GID。
+    Existing(String),
+}
+
+impl AddUriOutcome {
+    /// 返回新创建或已存在任务的 GID。
+    // 输入：当前添加 URI 的结果。
+    // 功能：统一读取两种结果中的任务 GID。
+    // 错误：无。
+    pub fn gid(&self) -> &str {
+        match self {
+            Self::Created(gid) | Self::Existing(gid) => gid,
+        }
+    }
+
+    /// 判断本次调用是否创建了新任务。
+    // 输入：当前添加 URI 的结果。
+    // 功能：区分新建任务和复用已有任务。
+    // 错误：无。
+    pub fn is_created(&self) -> bool {
+        matches!(self, Self::Created(_))
+    }
+}
+
 pub struct Aria2RpcClient {
     client: Client,
     base_url: String,
     secret: Option<String>,
     request_id: Arc<AtomicU64>,
+    add_uri_lock: Arc<Mutex<()>>,
 }
 
 impl Aria2RpcClient {
@@ -26,12 +57,26 @@ impl Aria2RpcClient {
     // 功能：创建用于访问指定 aria2 JSON-RPC 服务的客户端。
     // 错误：无，客户端构造不执行网络请求。
     pub fn new(port: u16, secret: Option<String>) -> Self {
+        // 为直接创建的客户端初始化独立的添加任务锁
+        Self::with_add_uri_lock(port, secret, Arc::new(Mutex::new(())))
+    }
+
+    /// 创建使用共享添加任务锁的 RPC 客户端。
+    // 输入：RPC 端口、可选认证密钥和同一 aria2 实例共享的添加任务锁。
+    // 功能：让不同 RPC 客户端实例复用同一把“查询并添加”互斥锁。
+    // 错误：无，客户端构造不执行网络请求。
+    pub(crate) fn with_add_uri_lock(
+        port: u16,
+        secret: Option<String>,
+        add_uri_lock: Arc<Mutex<()>>,
+    ) -> Self {
         // 初始化 HTTP 客户端、服务地址与请求编号
         Self {
             client: Client::new(),
             base_url: format!("http://localhost:{}/jsonrpc", port),
             secret,
             request_id: Arc::new(AtomicU64::new(1)),
+            add_uri_lock,
         }
     }
 
@@ -115,25 +160,37 @@ impl Aria2RpcClient {
         &self,
         uris: Vec<String>,
         options: Option<DownloadOptions>,
-    ) -> Aria2Result<String> {
-        // 检查是否存在相同 URI 和存储路径的活跃任务
-        if let Some(existing_gid) = self.find_existing_task(&uris, &options).await? {
-            return Ok(existing_gid);
+    ) -> Aria2Result<AddUriOutcome> {
+        // 空 URI 没有可提交的下载目标，直接返回参数错误。
+        if uris.is_empty() {
+            return Err(Aria2Error::RpcError(
+                "aria2.addUri 的 URI 列表不能为空".to_string(),
+            ));
         }
 
-        // 根据是否提供下载配置选择 RPC 参数形式
-        if let Some(opts) = options {
-            self.call_method("aria2.addUri", (uris, opts)).await
-        } else {
-            self.call_method("aria2.addUri", uris).await
+        // 锁住查询到添加的完整过程，避免并发调用同时通过重复任务检查。
+        let _add_uri_guard = self.add_uri_lock.lock().await;
+
+        // 检查是否存在相同 URI 和存储路径的活跃任务
+        if let Some(existing_gid) = self.find_existing_task(&uris, &options).await? {
+            return Ok(AddUriOutcome::Existing(existing_gid));
         }
+
+        // 根据是否提供下载配置选择 RPC 参数形式，并统一提取新任务 GID。
+        let gid = if let Some(opts) = options {
+            self.call_method("aria2.addUri", (uris, opts)).await?
+        } else {
+            self.call_method("aria2.addUri", uris).await?
+        };
+
+        Ok(AddUriOutcome::Created(gid))
     }
 
     /// 查找具有相同 URI 和存储路径的活跃任务
     // 输入：待比较的 URI 列表和可选下载配置。
     // 功能：遍历活跃任务以查找重复下载。
     // 错误：任务详情比较失败时返回 RpcError。
-    pub async fn find_existing_task(
+    async fn find_existing_task(
         &self,
         uris: &[String],
         options: &Option<DownloadOptions>,
@@ -361,5 +418,31 @@ mod tests {
         ));
 
         Ok(())
+    }
+
+    /// 验证添加 URI 结果能够区分新建任务和已有任务。
+    #[test]
+    fn add_uri_outcome_exposes_gid_and_creation_state() {
+        let created = super::AddUriOutcome::Created("created-gid".to_string());
+        let existing = super::AddUriOutcome::Existing("existing-gid".to_string());
+
+        assert_eq!(created.gid(), "created-gid");
+        assert!(created.is_created());
+        assert_eq!(existing.gid(), "existing-gid");
+        assert!(!existing.is_created());
+    }
+
+    /// 验证空 URI 列表会在发起 RPC 请求前返回错误。
+    #[tokio::test]
+    async fn empty_uri_list_returns_rpc_error() {
+        let client = Aria2RpcClient::new(0, None);
+
+        let result = client.add_uri(Vec::new(), None).await;
+
+        assert!(matches!(
+            result,
+            Err(Aria2Error::RpcError(message))
+                if message == "aria2.addUri 的 URI 列表不能为空"
+        ));
     }
 }

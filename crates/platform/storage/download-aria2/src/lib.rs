@@ -18,7 +18,7 @@ pub use manager::{quick_start, Aria2Manager};
 pub use process::{
     check_port_available, find_available_port, kill_existing_aria2, start_aria2_rpc,
 };
-pub use rpc::Aria2RpcClient;
+pub use rpc::{AddUriOutcome, Aria2RpcClient};
 pub use types::{
     Aria2Config, Aria2Instance, DownloadOptions, DownloadStatus, FileInfo, GlobalStat, UriInfo,
 };
