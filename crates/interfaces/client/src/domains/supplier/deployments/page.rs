@@ -1,6 +1,6 @@
-use super::model::{DeploymentStatus, SupplierDeployment, SupplierDeploymentsModel};
+use super::model::{DeploymentStatus, SupplierDeploymentsModel};
 use crate::{
-    i18n::{strings, Locale, LocaleStrings},
+    i18n::{strings, Locale},
     shared::{
         layout::BuyerShell,
         ui::{Icon, IconName},
@@ -8,28 +8,11 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-fn status_cell(deployment: &SupplierDeployment, copy: &LocaleStrings) -> Element {
-    let (label, class) = match deployment.status {
-        DeploymentStatus::Healthy => (copy.healthy_short, "supplier-deployment-status-healthy"),
-        DeploymentStatus::Degraded => (
-            copy.supplier_degraded_status,
-            "supplier-deployment-status-degraded",
-        ),
-    };
-
-    rsx! {
-        span { class: "supplier-deployment-status {class}",
-            span { class: "supplier-deployment-status-dot" }
-            span { {label} }
-        }
-    }
-}
-
 #[component]
 pub fn SupplierDeployments() -> Element {
     let locale = use_context::<Signal<Locale>>();
     let copy = strings(locale());
-    let model = SupplierDeploymentsModel::mock();
+    let model = SupplierDeploymentsModel::reference();
 
     rsx! {
         BuyerShell {
@@ -39,45 +22,49 @@ pub fn SupplierDeployments() -> Element {
                         h1 { {copy.supplier_deployments_title} }
                         p { {copy.supplier_deployments_subtitle} }
                     }
-                }
-                div { class: "conclusion conclusion-healthy supplier-deployments-conclusion", role: "status",
-                    Icon { name: IconName::CheckCircle, size: 16 }
-                    span { class: "conclusion-text", {copy.supplier_deployments_conclusion} }
+                    div { class: "conclusion conclusion-healthy supplier-deployments-conclusion", role: "status",
+                        Icon { name: IconName::CheckCircle, size: 16 }
+                        span { class: "conclusion-text", {copy.supplier_deployments_conclusion} }
+                    }
                 }
                 section { class: "panel supplier-deployments-panel",
-                    header { class: "section-header supplier-deployments-header",
+                    header { class: "supplier-deployments-card-header",
                         div {
                             h2 { {copy.supplier_deployments_title} }
-                            p { {copy.supplier_deployments_table_subtitle} }
+                            p { {copy.supplier_deployments_subtitle} }
                         }
-                        span {
-                            class: "supplier-deployments-protection",
-                            title: copy.supplier_deployments_protection,
-                            aria_label: copy.supplier_deployments_protection,
+                        div { class: "supplier-deployments-autopilot",
                             Icon { name: IconName::Shield, size: 16 }
+                            span { {copy.supplier_deployments_autopilot_status} }
                         }
                     }
-                    div { class: "table-scroll",
-                        table { class: "supplier-deployment-table",
-                            thead { class: "supplier-deployment-table-head",
+                    div { class: "table-scroll supplier-deployments-table-scroll",
+                        table { class: "supplier-deployments-table",
+                            thead {
                                 tr {
-                                    th { {copy.supplier_deployments_model} }
-                                    th { {copy.supplier_deployments_node} }
-                                    th { {copy.supplier_deployments_runtime} }
+                                    th { {copy.model} }
+                                    th { {copy.supplier_node} }
+                                    th { {copy.supplier_deployments_parallelism} }
                                     th { {copy.supplier_deployments_throughput} }
-                                    th { {copy.supplier_deployments_score} }
-                                    th { {copy.supplier_status} }
+                                    th { {copy.supplier_deployments_contribution} }
+                                    th { class: "supplier-deployments-status-heading", {copy.supplier_deployments_autopilot_status} }
                                 }
                             }
                             tbody {
-                                for deployment in model.deployments.iter() {
+                                for deployment in model.deployments {
                                     tr {
-                                        td { class: "supplier-deployment-model", {deployment.model} }
-                                        td { class: "supplier-deployment-node", {deployment.node} }
-                                        td { class: "supplier-deployment-runtime", {deployment.runtime} }
-                                        td { class: "supplier-deployment-throughput", {deployment.throughput} }
-                                        td { class: "supplier-deployment-score", {deployment.score} }
-                                        td { class: "supplier-deployment-status-cell", {status_cell(deployment, copy)} }
+                                        td { class: "supplier-deployments-model", {deployment.model} }
+                                        td { class: "supplier-deployments-node", {deployment.node} }
+                                        td { class: "supplier-deployments-parallelism", {deployment.parallelism} }
+                                        td { class: "supplier-deployments-throughput", {deployment.throughput} }
+                                        td { class: "supplier-deployments-contribution", {deployment.contribution} }
+                                        td { class: "supplier-deployments-status-cell",
+                                            if deployment.status == DeploymentStatus::Healthy {
+                                                span { class: "badge-success", {copy.supplier_deployments_healthy} }
+                                            } else {
+                                                span { class: "badge-warning", {copy.supplier_degraded_status} }
+                                            }
+                                        }
                                     }
                                 }
                             }
