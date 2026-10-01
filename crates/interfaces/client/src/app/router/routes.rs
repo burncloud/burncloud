@@ -4,8 +4,10 @@ use crate::domains::buyer::{
     overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
 };
 use crate::domains::supplier::deployments::page::SupplierDeployments as SupplierDeploymentsPage;
+use crate::domains::supplier::earnings::page::SupplierEarnings as SupplierEarningsPage;
 use crate::domains::supplier::overview::SupplierOverview as SupplierOverviewPage;
 use crate::domains::supplier::resources::page::SupplierResources as SupplierResourcesPage;
+use crate::domains::supplier::settlements::page::SupplierSettlements as SupplierSettlementsPage;
 use crate::shared::types::Role;
 use dioxus::prelude::*;
 
@@ -211,11 +213,11 @@ pub fn SupplierDeployments() -> Element {
 }
 #[component]
 pub fn SupplierEarnings() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Revenue & Payouts".to_string(), role: Role::Supplier } }
+    rsx! { SupplierEarningsPage {} }
 }
 #[component]
 pub fn SupplierSettlements() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Settlement Batches".to_string(), role: Role::Supplier } }
+    rsx! { SupplierSettlementsPage {} }
 }
 #[component]
 pub fn SupplierReliability() -> Element {
