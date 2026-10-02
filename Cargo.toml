@@ -12,6 +12,7 @@ members = [
     "crates/traffic/router",
     "crates/traffic/router-aws",
     "crates/traffic/service-router-log",
+    "crates/commerce/contracts",
     "crates/commerce/database-billing",
     "crates/commerce/service-billing",
     "crates/trust/inference",
@@ -122,6 +123,7 @@ tracing-log = "0.2"
 # Internal crates
 burncloud-auto-update = { path = "crates/platform/lifecycle/update" }
 burncloud-client = { path = "crates/interfaces/client", default-features = false }
+burncloud-commerce-contracts = { path = "crates/commerce/contracts" }
 burncloud-common = { path = "crates/interfaces/common" }
 burncloud-database = { path = "crates/platform/storage/database" }
 burncloud-database-billing = { path = "crates/commerce/database-billing" }
