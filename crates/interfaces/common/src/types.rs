@@ -12,8 +12,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
-// Re-export nanodollar conversion utilities from price_u64 module
-pub use crate::price_u64::{
+// Re-export nanodollar conversion utilities owned by Commerce, keeping the legacy
+// alias names used by existing consumers of this module.
+pub use burncloud_commerce_contracts::price_u64::{
     dollars_to_nano as dollars_to_nanodollars, nano_to_dollars as nanodollars_to_dollars,
     NANO_PER_DOLLAR as NANODOLLAR_SCALE,
 };
