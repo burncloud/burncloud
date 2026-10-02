@@ -60,7 +60,8 @@ impl DownloadManager {
                     allow_overwrite: Some(true),     // 开启覆盖式下载
                     auto_file_renaming: Some(false), // 关闭文件自动重命名
                 };
-                if let Ok(new_gid) = client.add_uri(uris, Some(options)).await {
+                if let Ok(outcome) = client.add_uri(uris, Some(options)).await {
+                    let new_gid = outcome.gid().to_string();
                     // 更新数据库中的gid为新的gid
                     let _ = self.db.update_gid(&download.gid, &new_gid).await;
                     // 启动进度监控

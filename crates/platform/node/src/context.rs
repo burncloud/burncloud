@@ -8,10 +8,12 @@ pub struct NodeContext {
 }
 
 impl NodeContext {
+    /// 返回节点运行时是否已完成启动挂接。
     pub fn started(&self) -> bool {
         self.started
     }
 
+    /// 将上下文标记为已启动，供节点生命周期入口调用。
     pub(crate) fn mark_started(&mut self) {
         self.started = true;
     }

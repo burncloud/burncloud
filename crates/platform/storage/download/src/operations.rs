@@ -36,11 +36,9 @@ impl DownloadManager {
         };
 
         let uris = vec![url.to_string()];
-        let existing_task = client
-            .find_existing_task(&uris, &Some(options.clone()))
-            .await?;
-        let gid = client.add_uri(uris.clone(), Some(options)).await?;
-        if existing_task.is_none() {
+        let outcome = client.add_uri(uris.clone(), Some(options)).await?;
+        let gid = outcome.gid().to_string();
+        if outcome.is_created() {
             self.db
                 .add(&gid, uris, Some(&dir), filename.as_deref())
                 .await?;

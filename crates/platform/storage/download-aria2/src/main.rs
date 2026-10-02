@@ -84,7 +84,8 @@ async fn test_download(client: &Aria2RpcClient) -> Aria2Result<()> {
         .add_uri(vec![test_url.to_string()], Some(options))
         .await
     {
-        Ok(gid) => {
+        Ok(outcome) => {
+            let gid = outcome.gid().to_string();
             println!("  - 添加下载任务成功，GID: {}", gid);
 
             // 等待一会儿

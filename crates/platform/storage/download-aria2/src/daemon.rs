@@ -6,6 +6,7 @@ use crate::error::{Aria2Error, Aria2Result};
 use crate::process::start_aria2_rpc;
 use crate::rpc::Aria2RpcClient;
 use crate::types::{Aria2Config, Aria2Instance};
+use tokio::sync::Mutex as AsyncMutex;
 
 // ============================================================================
 // 简单守护进程
@@ -15,6 +16,7 @@ pub struct Aria2Daemon {
     instance: Arc<Mutex<Option<Aria2Instance>>>,
     config: Aria2Config,
     is_running: Arc<AtomicBool>,
+    add_uri_lock: Arc<AsyncMutex<()>>,
 }
 
 impl Aria2Daemon {
@@ -27,6 +29,7 @@ impl Aria2Daemon {
             instance: Arc::new(Mutex::new(None)),
             config,
             is_running: Arc::new(AtomicBool::new(false)),
+            add_uri_lock: Arc::new(AsyncMutex::new(())),
         }
     }
 
@@ -108,8 +111,13 @@ impl Aria2Daemon {
     pub fn get_rpc_client(&self) -> Option<Aria2RpcClient> {
         // 读取当前实例并映射为 RPC 客户端
         let lock = self.instance.lock().unwrap_or_else(|e| e.into_inner());
-        lock.as_ref()
-            .map(|instance| Aria2RpcClient::new(instance.port, self.config.secret.clone()))
+        lock.as_ref().map(|instance| {
+            Aria2RpcClient::with_add_uri_lock(
+                instance.port,
+                self.config.secret.clone(),
+                Arc::clone(&self.add_uri_lock),
+            )
+        })
     }
 
     // 输入：守护进程管理对象。

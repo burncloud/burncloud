@@ -1,9 +1,8 @@
 use std::fmt;
 
 /// `ArtifactSource` 解析失败时返回的错误类型。
-#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum artifactSourceErr {
+pub enum ArtifactSourceError {
     /// 输入为空或只包含空白字符。
     Empty,
     /// URL 文本无法被解析。
@@ -16,7 +15,8 @@ pub enum artifactSourceErr {
     InvalidFilePath(String),
 }
 
-impl fmt::Display for artifactSourceErr {
+impl fmt::Display for ArtifactSourceError {
+    /// 将来源解析错误转换为可读文本。
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => formatter.write_str("artifact source cannot be empty"),
@@ -35,4 +35,4 @@ impl fmt::Display for artifactSourceErr {
     }
 }
 
-impl std::error::Error for artifactSourceErr {}
+impl std::error::Error for ArtifactSourceError {}

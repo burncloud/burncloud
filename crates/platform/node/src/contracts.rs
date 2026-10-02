@@ -39,6 +39,7 @@ pub enum HardwareProbeError {
 /// receive the stable machine-level `HardwareProfile` contract.
 #[async_trait]
 pub trait HardwareProbe: Send + Sync {
+    /// 检测本机硬件并返回稳定的机器级描述。
     async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError>;
 }
 
@@ -68,6 +69,8 @@ pub enum ProcessError {
 /// Port owned by the Node runtime for local process lifecycle only.
 #[async_trait]
 pub trait ProcessManager: Send + Sync {
+    /// 按给定规格启动本地进程，并返回进程句柄。
     async fn start(&self, spec: ProcessSpec) -> Result<ProcessHandle, ProcessError>;
+    /// 停止由本接口持有的本地进程。
     async fn stop(&self, handle: ProcessHandle) -> Result<(), ProcessError>;
 }
