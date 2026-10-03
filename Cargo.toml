@@ -171,6 +171,7 @@ name = "burncloud"
 path = "crates/interfaces/cli/src/main.rs"
 
 [dependencies]
+burncloud-commerce-contracts.workspace = true
 burncloud-common.workspace = true
 burncloud-server.workspace = true
 burncloud-client = { workspace = true, default-features = false, features = ["liveview"] }

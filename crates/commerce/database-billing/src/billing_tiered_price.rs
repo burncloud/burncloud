@@ -1,4 +1,4 @@
-use burncloud_common::types::{TieredPrice, TieredPriceInput};
+use burncloud_commerce_contracts::pricing::{TieredPrice, TieredPriceInput};
 use burncloud_database::{adapt_sql, Database, Result};
 
 pub struct BillingTieredPriceModel;

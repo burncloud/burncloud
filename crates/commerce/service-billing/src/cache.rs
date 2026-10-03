@@ -1,4 +1,4 @@
-use burncloud_common::types::Price;
+use burncloud_commerce_contracts::pricing::Price;
 use burncloud_database::Database;
 use burncloud_database_billing::BillingPriceModel;
 use std::collections::HashMap;
@@ -125,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_case_insensitive_lookup() {
-        use burncloud_common::types::Price;
+        use burncloud_commerce_contracts::pricing::Price;
         let cache = PriceCache::empty();
 
         let price = Price {
