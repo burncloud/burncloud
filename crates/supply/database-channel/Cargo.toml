@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 burncloud-database.workspace = true
 burncloud-supply-contracts.workspace = true
-burncloud-common.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true

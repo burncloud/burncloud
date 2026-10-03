@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 burncloud-commerce-contracts.workspace = true
 burncloud-supply-contracts.workspace = true
-burncloud-common.workspace = true
 burncloud-database.workspace = true
 burncloud-database-billing.workspace = true
 burncloud-database-router.workspace = true

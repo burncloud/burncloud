@@ -14,6 +14,10 @@
 use burncloud_supply_contracts::{Ability, Channel, ChannelAbility, ChannelProvider, ChannelType};
 
 /// Every listed discriminant, in ascending order.
+///
+/// 55 of the 56 variants carry an explicit value; `Dummy` is the only one without a value, so it is
+/// covered separately in the fallback test. The numbering skips 28, 29, 30 and 32 and ends at 58,
+/// which is why neither the variant count nor the maximum value is a round number.
 const LISTED: &[(i32, ChannelType)] = &[
     (0, ChannelType::Unknown),
     (1, ChannelType::OpenAI),

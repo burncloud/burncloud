@@ -9,7 +9,6 @@ edition = "2021"
 burncloud-database-channel.workspace = true
 burncloud-database.workspace = true
 burncloud-supply-contracts.workspace = true
-burncloud-common.workspace = true
 
 [lints]
 workspace = true
