@@ -1,15 +1,12 @@
+//! Interfaces URL constants.
+//!
+//! S1-F removed `API_PREFIX`, `WS_PATH`, `get_base_url` and `get_api_url`: a rename-based probe
+//! (see #615) showed they had no consumer anywhere in the workspace. The two that remain are
+//! consumed, so they stay with the Interfaces layer that owns the URL layout -- they are not
+//! Kernel material and not a domain fact.
+
+/// Default HTTP port, used by the CLI when no port is given.
 pub const DEFAULT_PORT: u16 = 3000;
-pub const API_PREFIX: &str = "/console/api";
+
+/// Internal (non-public) console prefix, used by the router's health path and price-sync calls.
 pub const INTERNAL_PREFIX: &str = "/console/internal";
-pub const WS_PATH: &str = "/ws";
-
-// Helper to get base URL
-pub fn get_base_url(port: u16) -> String {
-    format!("http://127.0.0.1:{}", port)
-}
-
-// Helper to get API URL
-pub fn get_api_url(port: u16, path: &str) -> String {
-    let path = path.trim_start_matches('/');
-    format!("{}{}/{}", get_base_url(port), API_PREFIX, path)
-}
