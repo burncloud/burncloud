@@ -9,6 +9,16 @@ on:
       - "crates/platform/storage/database/src/**"
       - "crates/traffic/database-router/**"
       - "crates/traffic/service-router-log/**"
+      # Domain contracts and the Interfaces compatibility layer: these hold the type definitions
+      # every other crate consumes, so a change here needs the contract tests to run.
+      - "crates/commerce/contracts/**"
+      - "crates/supply/contracts/**"
+      - "crates/traffic/contracts/**"
+      - "crates/interfaces/common/**"
+      # Persistence adapters for Commerce and Supply, including their real-SQLite tests.
+      - "crates/commerce/database-billing/**"
+      - "crates/supply/database-channel/**"
+      - "crates/identity/database-user/**"
       - ".github/workflows/security-billing-invariants.yml"
   push:
     branches: [main]
@@ -19,23 +29,28 @@ on:
       - "crates/platform/storage/database/src/**"
       - "crates/traffic/database-router/**"
       - "crates/traffic/service-router-log/**"
+      - "crates/commerce/contracts/**"
+      - "crates/supply/contracts/**"
+      - "crates/traffic/contracts/**"
+      - "crates/interfaces/common/**"
+      - "crates/commerce/database-billing/**"
+      - "crates/supply/database-channel/**"
+      - "crates/identity/database-user/**"
       - ".github/workflows/security-billing-invariants.yml"
 
 permissions:
   contents: read
 
+# Each invariant class reports on its own. Run steps stop at the first non-zero exit, so putting them
+# in one job meant an early failure (the known-failing Node P0 compile) silently skipped the Billing
+# and Security suites entirely -- those had no CI coverage at all for a long stretch. The jobs below
+# are deliberately independent: only `formatting` gates the rest, and nothing depends on
+# `node-invariants`, so a Node failure can no longer hide a Billing or Security verdict.
 jobs:
-  invariants:
-    name: Security + Billing invariant suite
+  formatting:
+    name: Formatting
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
-      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
-      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
-      SKIP_INITIAL_PRICE_SYNC: "1"
-      RUST_BACKTRACE: "1"
-
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,10 +62,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Formatting
+      - name: rustfmt on changed files
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -74,6 +86,31 @@ jobs:
           printf '  %s\n' "${rust_files[@]}"
           rustfmt --edition 2021 --check --config skip_children=true "${rust_files[@]}"
 
+  node-invariants:
+    name: Node invariants
+    needs: formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
+      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      SKIP_INITIAL_PRICE_SYNC: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
       - name: Check affected packages
         run: cargo check -p burncloud-router -p burncloud-server
 
@@ -86,8 +123,98 @@ jobs:
       - name: Node black-box API tests
         run: cargo test -p burncloud-server --lib node_test
 
+  billing-invariants:
+    name: Billing invariants
+    needs: formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
+      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      SKIP_INITIAL_PRICE_SYNC: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
       - name: Billing invariants
         run: cargo test -p burncloud-router --test billing_invariants --test quota_tests
 
+      - name: Commerce accounting tests
+        run: cargo test -p burncloud-service-billing -p burncloud-database-billing
+
+  security-invariants:
+    name: Security invariants
+    needs: formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
+      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      SKIP_INITIAL_PRICE_SYNC: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
       - name: Security invariants
         run: cargo test -p burncloud-server --test security_invariants
+
+  migration-contracts:
+    name: Migration contracts
+    needs: formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      # The contract packages are the only definition of the domain types, and these tests pin the
+      # encoding promises the migration had to preserve: enum discriminants, JSON field names,
+      # serde defaults, and each contract's independence from infrastructure crates.
+      - name: Contract golden tests and purity guards
+        run: cargo test -p burncloud-commerce-contracts -p burncloud-supply-contracts -p burncloud-traffic-contracts
+
+      # Guards that the migration cannot silently unwind: no domain type may be declared in the
+      # Interfaces layer again, and its re-export surface must stay intact.
+      - name: Interfaces surface guards
+        run: cargo test -p burncloud-common
+
+      # Persistence adapters exercised against real SQLite files through the production schema
+      # initialisers, so a column or mapping regression fails here rather than in production.
+      - name: Persistence adapters against real SQLite
+        run: cargo test -p burncloud-database-channel -p burncloud-database-user
