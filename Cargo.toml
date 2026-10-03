@@ -178,7 +178,6 @@ path = "crates/interfaces/cli/src/main.rs"
 burncloud-commerce-contracts.workspace = true
 burncloud-common.workspace = true
 burncloud-supply-contracts.workspace = true
-burncloud-traffic-contracts.workspace = true
 burncloud-server.workspace = true
 burncloud-client = { workspace = true, default-features = false, features = ["liveview"] }
 
