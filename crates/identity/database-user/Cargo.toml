@@ -7,15 +7,15 @@ edition = "2021"
 
 [dependencies]
 burncloud-database.workspace = true
-burncloud-common.workspace = true
 sqlx.workspace = true
-tokio.workspace = true
 serde.workspace = true
 tracing.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
 
 [dev-dependencies]
 serde_json.workspace = true
+# Only the integration test needs an async runtime; `src/` has no tokio use.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

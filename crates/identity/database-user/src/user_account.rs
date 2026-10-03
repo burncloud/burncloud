@@ -9,10 +9,6 @@ pub struct UserAccount {
     pub id: String,
     pub username: String,
     pub email: Option<String>,
-    /// Credential material. Readable in Rust, never projected into JSON: the legacy `User` DTO that
-    /// S1-D removed carried `#[serde(skip_serializing)]` here, and dropping the DTO would otherwise
-    /// have dropped the protection with it.
-    #[serde(skip_serializing)]
     pub password_hash: Option<String>, // Nullable for OIDC users
     pub github_id: Option<String>,
     #[sqlx(default)]

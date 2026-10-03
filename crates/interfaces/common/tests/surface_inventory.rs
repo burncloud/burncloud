@@ -1,40 +1,67 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Surface inventory guard for `burncloud_common` (S1-D, #610).
+//! Domain-declaration guard for `burncloud_common` (S1-D, #610).
 //!
-//! S1-A/B/C/D have been moving domain types out of the Interfaces layer. That work is easy to undo
-//! by accident: the next feature that needs a `User` or a price "just adds it to common" again, and
-//! the migration silently regresses. This guard makes that visible at test time by pinning the exact
-//! public inventory of the crate and naming who owns each item.
+//! ## What this checks, precisely
 //!
-//! It reads the source instead of using reflection because Rust cannot assert the absence of a type
-//! at compile time; the previous three subtasks already use this style for cross-module contracts
-//! (see `contract_purity.rs` in the Commerce and Supply contract crates).
+//! S1-A..S1-D moved or deleted the domain types that used to live in this crate. The invariant worth
+//! protecting is: **`burncloud_common` must not declare a domain type again.** The next feature that
+//! needs a `User` or a price can reintroduce one in a single line, and that regression is invisible
+//! in review if nobody knows the history.
+//!
+//! The guard therefore parses the crate's own source for `pub struct` / `pub enum` / `pub type` /
+//! `pub fn` / `pub const` / `pub trait` declarations (comments excluded) and fails when a name whose
+//! owner lives elsewhere reappears.
+//!
+//! ## What this does NOT check
+//!
+//! It is **not** an exact public-API snapshot. Three limits are deliberate, so the test's claim
+//! matches its power:
+//!
+//! 1. It covers declarations, not re-exports. The two contract re-export blocks (`pub use`) are
+//!    checked to still exist by `contract_reexports_are_intact`, but their member lists are not
+//!    enumerated.
+//! 2. `common::*` still forwards the nanodollar helpers through `lib.rs`
+//!    (`pub use burncloud_commerce_contracts::price_u64::{...}`) and through the `price_u64` module.
+//!    Those names are **not** guarded here.
+//! 3. It cannot see through a `#[path]` module or a macro-generated declaration.
+//!
+//! A full public-API snapshot would need support for every item kind plus re-export expansion; that
+//! is a different test with a different name, and it is not what this file claims to be.
 
 use std::fs;
 use std::path::PathBuf;
 
-/// Directories that used to host domain types and must not grow new ones.
+/// The crate's source files. `types.rs` is where the domain types used to live.
 const SRC_FILES: &[&str] = &[
     "src/lib.rs",
     "src/types.rs",
     "src/constants.rs",
     "src/error.rs",
     "src/repository.rs",
+    "src/price_u64.rs",
+    "src/pricing_config.rs",
 ];
+
+/// Item kinds the parser understands. Anything not listed is invisible to the guard.
+const KINDS: &[&str] = &["struct", "enum", "type", "fn", "const", "trait"];
 
 fn read(rel: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel);
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// Only `pub struct`/`pub enum`/`pub type` declarations plus the re-export blocks, so the guard
-/// does not depend on formatting or comments.
-fn declared_items(text: &str) -> Vec<String> {
+/// `"pub struct User"`-style declaration names, with comment lines excluded so a documentation
+/// example such as `/// pub struct UserRepository { .. }` is not mistaken for a declaration.
+fn declarations(text: &str) -> Vec<String> {
     let mut items = Vec::new();
     for line in text.lines() {
         let line = line.trim();
-        for prefix in ["pub struct ", "pub enum ", "pub type "] {
-            if let Some(rest) = line.strip_prefix(prefix) {
+        if line.starts_with("//") || line.starts_with('*') {
+            continue;
+        }
+        for kind in KINDS {
+            let prefix = format!("pub {kind} ");
+            if let Some(rest) = line.strip_prefix(&prefix) {
                 let name: String = rest
                     .chars()
                     .take_while(|c| c.is_alphanumeric() || *c == '_')
@@ -50,84 +77,103 @@ fn declared_items(text: &str) -> Vec<String> {
     items
 }
 
-/// Items that left `common` in S1-A..S1-D and must not come back.
+/// Names that left this crate, with the owner that must provide them instead.
+///
+/// Only names whose *declaration* is meaningful are listed: a helper like `dollars_to_nano` is not a
+/// declaration in this crate today, so listing it here would imply coverage the parser does not have
+/// (limit 2 above).
 const MOVED_OUT: &[(&str, &str)] = &[
-    ("dollars_to_nano", "Commerce contract (S1-A)"),
+    // Commerce contract, S1-A / S1-B.
     ("Price", "Commerce contract (S1-B)"),
-    ("PricingConfig", "Commerce contract (S1-B)"),
+    ("PriceInput", "Commerce contract (S1-B)"),
+    ("TieredPrice", "Commerce contract (S1-B)"),
+    ("TieredPriceInput", "Commerce contract (S1-B)"),
+    ("FullPricing", "Commerce contract (S1-B)"),
+    ("MultiCurrencyPrice", "Commerce contract (S1-B)"),
+    ("ExchangeRate", "Commerce contract (S1-B)"),
     ("Currency", "Commerce contract (S1-B)"),
+    ("PricingConfig", "Commerce contract (S1-B)"),
+    ("ModelPricing", "Commerce contract (S1-B)"),
+    ("CurrencyPricing", "Commerce contract (S1-B)"),
+    ("TieredPriceConfig", "Commerce contract (S1-B)"),
+    ("ValidationWarning", "Commerce contract (S1-B)"),
+    ("ValidationError", "Commerce contract (S1-B)"),
+    // Supply contract, S1-C.
     ("ChannelType", "Supply contract (S1-C)"),
     ("Channel", "Supply contract (S1-C)"),
     ("Ability", "Supply contract (S1-C)"),
+    // Deleted in S1-D: no consumer, superseded by the Identity types.
     (
         "Recharge",
-        "deleted in S1-D: no consumer, duplicated by Identity's UserRecharge",
+        "deleted in S1-D; superseded by Identity's UserRecharge",
     ),
     (
         "Token",
-        "deleted in S1-D: no consumer, duplicated by UserApiKey / RouterToken",
+        "deleted in S1-D; superseded by UserApiKey / RouterToken",
+    ),
+    ("User", "deleted in S1-D; superseded by UserAccount"),
+];
+
+/// The inventory of `src/types.rs` that is expected to remain, with each item's owner.
+///
+/// `ChannelType` / `Channel` / `Ability` are absent on purpose: since S1-C they are re-exports from
+/// the Supply contract, not declarations in this file.
+const EXPECTED_TYPES_RS: &[(&str, &str)] = &[
+    ("pub enum TrafficColor", "Interfaces -> Traffic (S1-E)"),
+    (
+        "pub struct OpenAIChatChoice",
+        "Interfaces -> Traffic (S1-E)",
     ),
     (
-        "User",
-        "deleted in S1-D: no consumer, duplicated by UserAccount",
+        "pub struct OpenAIChatMessage",
+        "Interfaces -> Traffic (S1-E)",
     ),
+    (
+        "pub struct OpenAIChatRequest",
+        "Interfaces -> Traffic (S1-E)",
+    ),
+    (
+        "pub struct OpenAIChatResponse",
+        "Interfaces -> Traffic (S1-E)",
+    ),
+    (
+        "pub struct ProtocolConfig",
+        "Interfaces -> Supply/Traffic (S1-F)",
+    ),
+    ("pub struct RequestMapping", "Interfaces -> Traffic (S1-E)"),
+    ("pub struct ResponseMapping", "Interfaces -> Traffic (S1-E)"),
+    // `impl TrafficColor { pub fn as_char(&self) }` -- the parser sees the method.
+    ("pub fn as_char", "Traffic, moved with TrafficColor (S1-E)"),
 ];
 
 #[test]
-fn identity_dtos_are_not_reintroduced_into_common() {
-    let text = read("src/types.rs");
-    let declared = declared_items(&text);
+fn common_does_not_declare_domain_types() {
     let mut violations = Vec::new();
-    for (name, owner) in MOVED_OUT {
-        if declared
-            .iter()
-            .any(|d| d == &format!("pub struct {name}") || d == &format!("pub enum {name}"))
-        {
-            violations.push(format!("{name} (belongs to {owner})"));
+    for rel in SRC_FILES {
+        let declared = declarations(&read(rel));
+        for (name, owner) in MOVED_OUT {
+            for kind in KINDS {
+                let decl = format!("pub {kind} {name}");
+                if declared.iter().any(|d| d == &decl) {
+                    violations.push(format!("{rel} declares `{decl}` -- owner: {owner}"));
+                }
+            }
         }
     }
     assert!(
         violations.is_empty(),
-        "burncloud_common must not redeclare domain types; found: {violations:#?}\n\
-         Declared items are:\n{declared:#?}"
+        "burncloud_common must not declare domain types again:\n  {}\n\n\
+         Move the item to its owning domain (or its contract crate) instead of adding it here.\n\
+         Owners are recorded in #610 and docs/architecture-s1-task-contracts.md.",
+        violations.join("\n  ")
     );
 }
 
 #[test]
-fn common_declares_only_the_known_interfaces_surface() {
-    // The expected inventory, with the owner of each item. Anything new has to be classified
-    // (usually by moving it to the owning domain rather than keeping it here).
-    //
-    // ChannelType / Channel / Ability are deliberately absent: since S1-C they are re-exports from
-    // the Supply contract, so they are not declarations in this crate.
-    const EXPECTED: &[(&str, &str)] = &[
-        ("pub enum TrafficColor", "Interfaces -> Traffic (S1-E)"),
-        (
-            "pub struct OpenAIChatChoice",
-            "Interfaces -> Traffic (S1-E)",
-        ),
-        (
-            "pub struct OpenAIChatMessage",
-            "Interfaces -> Traffic (S1-E)",
-        ),
-        (
-            "pub struct OpenAIChatRequest",
-            "Interfaces -> Traffic (S1-E)",
-        ),
-        (
-            "pub struct OpenAIChatResponse",
-            "Interfaces -> Traffic (S1-E)",
-        ),
-        (
-            "pub struct ProtocolConfig",
-            "Interfaces -> Supply/Traffic (S1-F)",
-        ),
-        ("pub struct RequestMapping", "Interfaces -> Traffic (S1-E)"),
-        ("pub struct ResponseMapping", "Interfaces -> Traffic (S1-E)"),
-    ];
-
-    let mut declared = declared_items(&read("src/types.rs"));
-    // The two contract re-export blocks surface as `pub use`, not as declarations.
+fn types_rs_inventory_is_unchanged() {
+    let mut declared = declarations(&read("src/types.rs"));
+    // The two contract re-export blocks are `pub use`, not declarations; record their presence so a
+    // new declaration cannot hide behind them.
     let text = read("src/types.rs");
     if text.contains("pub use burncloud_commerce_contracts::pricing::{") {
         declared.push("pub use::commerce".to_string());
@@ -138,7 +184,7 @@ fn common_declares_only_the_known_interfaces_surface() {
     declared.sort();
     declared.dedup();
 
-    let expected: Vec<String> = EXPECTED
+    let mut expected: Vec<String> = EXPECTED_TYPES_RS
         .iter()
         .map(|(n, _)| n.to_string())
         .chain([
@@ -146,48 +192,38 @@ fn common_declares_only_the_known_interfaces_surface() {
             "pub use::supply".to_string(),
         ])
         .collect();
-    let mut expected_sorted = expected.clone();
-    expected_sorted.sort();
-    expected_sorted.dedup();
+    expected.sort();
+    expected.dedup();
 
     assert_eq!(
-        declared, expected_sorted,
-        "the public inventory of burncloud_common::types changed.\n\
-         Add the new item to EXPECTED with its owner, or move it to the owning domain.\n\
-         Owners are recorded in #610 and docs/architecture-s1-task-contracts.md"
+        declared, expected,
+        "the declaration inventory of burncloud_common::types changed.\n\
+         Either add the item to EXPECTED_TYPES_RS with its owner, or move it to the owning domain.\n\
+         Listing it here is only correct if it really belongs to the Interfaces layer."
     );
 
-    // Guard the guard: if this list ever becomes a rubber stamp, it should be obvious.
     assert!(
-        EXPECTED.len() >= 8,
-        "EXPECTED shrank unexpectedly; the inventory was trimmed without a review"
+        EXPECTED_TYPES_RS.len() >= 8,
+        "EXPECTED_TYPES_RS shrank unexpectedly; the inventory was trimmed without a review"
     );
 }
 
 #[test]
-fn common_re_exports_the_two_domain_contracts() {
-    // The compatibility layer is the only reason domain types are reachable through common.
+fn contract_reexports_are_intact() {
+    // The compatibility layer is the only reason the moved domain types are still reachable through
+    // common; if a re-export disappears, existing consumers break.
     let text = read("src/types.rs");
     assert!(
         text.contains("pub use burncloud_commerce_contracts::pricing::{"),
-        "the Commerce pricing re-export disappeared"
+        "the Commerce pricing re-export disappeared from common::types"
     );
     assert!(
         text.contains("pub use burncloud_supply_contracts::{"),
-        "the Supply re-export disappeared"
+        "the Supply re-export disappeared from common::types"
     );
-    // And none of the crate's files may declare the moved types. Doc comments are excluded, so a
-    // documentation example such as `/// pub struct UserRepository { .. }` is not a violation.
-    for rel in SRC_FILES {
-        let declared = declared_items(&read(rel));
-        for (name, owner) in MOVED_OUT {
-            for kind in ["pub struct", "pub enum", "pub type"] {
-                let decl = format!("{kind} {name}");
-                assert!(
-                    !declared.iter().any(|d| d == &decl),
-                    "{rel} declares {decl}, which belongs to {owner}"
-                );
-            }
-        }
-    }
+    let lib = read("src/lib.rs");
+    assert!(
+        lib.contains("pub use burncloud_commerce_contracts::price_u64::{"),
+        "the nanodollar re-export disappeared from the crate root"
+    );
 }
