@@ -26,7 +26,10 @@ jobs:
           components: clippy
 
       - name: Check workspace Clippy policy
-        run: cargo clippy --workspace --all-targets
+        # The UI client's default `desktop` feature pulls GTK native libraries.
+        # Linux architecture CI checks every target with defaults disabled; the
+        # desktop feature remains the responsibility of platform-specific UI CI.
+        run: cargo clippy --workspace --all-targets --no-default-features
 
   router-deps:
     runs-on: ubuntu-latest
