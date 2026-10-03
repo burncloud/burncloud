@@ -12,6 +12,7 @@ keywords = ["burncloud", "common", "utilities"]
 categories = ["development-tools"]
 
 [dependencies]
+burncloud-commerce-contracts.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
