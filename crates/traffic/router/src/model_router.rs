@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use burncloud_common::types::Channel;
-use burncloud_database::placeholder::{ph, phs};
+use burncloud_database::placeholder::ph;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
+use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_contracts::Channel;
 
 use crate::affinity::{self, AffinityCache};
 use crate::channel_state::ChannelStateTracker;
@@ -149,44 +150,10 @@ impl ModelRouter {
 
         // 3. Fetch Channel Details for all candidates
         let channel_ids: Vec<i32> = candidates.iter().map(|(id, _)| *id).collect();
-        let placeholders = phs(is_postgres, channel_ids.len());
 
-        // Identifier-quoting differs by dialect (`type as "type_"`, "group" vs `group`)
-        // so the SELECT list is dialect-specific. Placeholders go through phs().
-        let channel_query = if is_postgres {
-            format!(
-                r#"
-                SELECT
-                    id, type as "type_", key, status, name, weight, created_time, test_time,
-                    response_time, base_url, models, "group", used_quota, model_mapping,
-                    priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version, pricing_region,
-                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
-                FROM channel_providers WHERE id IN ({})
-                "#,
-                placeholders
-            )
-        } else {
-            format!(
-                r#"
-                SELECT
-                    id, type as type_, key, status, name, weight, created_time, test_time,
-                    response_time, base_url, models, `group`, used_quota, model_mapping,
-                    priority, auto_ban, other_info, tag, setting, param_override,
-                    header_override, remark, api_version, pricing_region,
-                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
-                FROM channel_providers WHERE id IN ({})
-                "#,
-                placeholders
-            )
-        };
-
-        let mut query = sqlx::query_as::<_, Channel>(&channel_query);
-        for &id in &channel_ids {
-            query = query.bind(id);
-        }
-
-        let channels: Vec<Channel> = query.fetch_all(pool).await?;
+        // Channel details come from the Supply persistence layer; the routing layer must not
+        // issue its own SELECT against `channel_providers` (see #607).
+        let channels = ChannelProviderModel::list_by_ids(self.db.as_ref(), &channel_ids).await?;
 
         // 4. Map channels to weights
         let weight_map: std::collections::HashMap<i32, i32> = candidates.into_iter().collect();

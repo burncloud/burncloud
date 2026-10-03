@@ -4,6 +4,7 @@ members = [
     "crates/identity/database-user",
     "crates/identity/service-token",
     "crates/identity/service-user",
+    "crates/supply/contracts",
     "crates/supply/database-channel",
     "crates/supply/database-model",
     "crates/supply/service-channel",
@@ -150,6 +151,7 @@ burncloud-service-token = { path = "crates/identity/service-token" }
 burncloud-service-router-log = { path = "crates/traffic/service-router-log" }
 burncloud-service-billing = { path = "crates/commerce/service-billing" }
 burncloud-service-channel = { path = "crates/supply/service-channel" }
+burncloud-supply-contracts = { path = "crates/supply/contracts" }
 
 [package]
 name = "burncloud"
@@ -173,6 +175,7 @@ path = "crates/interfaces/cli/src/main.rs"
 [dependencies]
 burncloud-commerce-contracts.workspace = true
 burncloud-common.workspace = true
+burncloud-supply-contracts.workspace = true
 burncloud-server.workspace = true
 burncloud-client = { workspace = true, default-features = false, features = ["liveview"] }
 

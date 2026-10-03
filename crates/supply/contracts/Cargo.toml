@@ -1,0 +1,16 @@
+[package]
+publish.workspace = true
+license.workspace = true
+name = "burncloud-supply-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Supply-owned channel and ability contracts for the BurnCloud platform"
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

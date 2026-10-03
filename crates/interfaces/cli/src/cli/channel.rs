@@ -8,9 +8,9 @@
 //! - delete: Delete a channel
 
 use anyhow::{anyhow, Result};
-use burncloud_common::types::{Channel, ChannelType};
 use burncloud_database::Database;
 use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_contracts::{Channel, ChannelType};
 use clap::ArgMatches;
 use std::io::{self, Write};
 

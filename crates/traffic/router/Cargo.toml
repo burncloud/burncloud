@@ -24,6 +24,7 @@ burncloud-database-router = { workspace = true }
 burncloud-database-billing = { workspace = true }
 burncloud-database-channel = { workspace = true }
 burncloud-commerce-contracts = { workspace = true }
+burncloud-supply-contracts = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-service-billing = { workspace = true }
 burncloud-service-user = { workspace = true }

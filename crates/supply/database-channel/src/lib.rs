@@ -8,6 +8,7 @@ mod channel_ability;
 mod channel_protocol_config;
 mod channel_provider;
 mod common;
+mod rows;
 
 pub use channel_ability::{ChannelAbilityInput, ChannelAbilityModel};
 pub use channel_protocol_config::{
