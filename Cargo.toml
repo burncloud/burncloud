@@ -39,10 +39,59 @@ members = [
 license = "MIT"
 publish = false
 
+# -----------------------------------------------------------------------------
+# Repository-wide compiler and Clippy policy
+# -----------------------------------------------------------------------------
+#
+# Hard errors are reserved for behavior that lets an agent hide failures or
+# create correctness hazards. Existing style/complexity debt remains warnings so
+# tightening the policy never becomes an excuse for unrelated refactors.
+
+[workspace.lints.rust]
+# Do not allow visually-confusable identifiers in code written by humans/agents.
+non_ascii_idents = "deny"
+
+# Unsafe functions must still make each unsafe operation explicit.
+unsafe_op_in_unsafe_fn = "deny"
+
+# Results/Futures annotated as must_use may not be silently discarded.
+unused_must_use = "deny"
+
+# Surface accidental public APIs without breaking historical code immediately.
+unreachable_pub = "warn"
+
 [workspace.lints.clippy]
+# Existing hard gates.
 unwrap_used = "deny"
-expect_used = "warn"
 disallowed_types = "deny"
+
+# Agent escape hatches: unfinished/debug code may not enter production crates.
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+
+# Async/must-use correctness hazards.
+let_underscore_future = "deny"
+let_underscore_must_use = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+
+# Historical production debt exists for expect()/panic paths. Keep them visible
+# without expanding this policy PR into behavioral refactoring.
+expect_used = "warn"
+panic_in_result_fn = "warn"
+
+# Any lint suppression added by an agent should carry an explicit justification.
+allow_attributes_without_reason = "warn"
+
+# Maintainability budgets. Thresholds live in clippy.toml and remain warnings
+# until the current codebase is clean enough to promote them to hard gates.
+too_many_arguments = "warn"
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+large_futures = "warn"
+wildcard_imports = "warn"
+undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
 anyhow = "1.0"
