@@ -7,7 +7,7 @@
 //! This adaptor combines Anthropic protocol conversion with Bearer auth.
 
 use super::{current_unix_timestamp, generate_chat_id};
-use burncloud_common::types::OpenAIChatRequest;
+use burncloud_traffic_contracts::OpenAIChatRequest;
 use serde_json::{json, Value};
 
 /// SSE stream termination marker.
@@ -188,7 +188,7 @@ impl ZaiAdaptor {
 )]
 mod tests {
     use super::*;
-    use burncloud_common::types::{OpenAIChatMessage, OpenAIChatRequest};
+    use burncloud_traffic_contracts::{OpenAIChatMessage, OpenAIChatRequest};
     use std::collections::HashMap;
 
     #[test]

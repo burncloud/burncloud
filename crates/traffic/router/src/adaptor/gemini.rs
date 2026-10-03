@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_types)]
 
 use super::{current_unix_timestamp, generate_chat_id};
-use burncloud_common::types::OpenAIChatRequest;
+use burncloud_traffic_contracts::OpenAIChatRequest;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -238,7 +238,7 @@ impl GeminiAdaptor {
 )]
 mod tests {
     use super::*;
-    use burncloud_common::types::{OpenAIChatMessage, OpenAIChatRequest};
+    use burncloud_traffic_contracts::{OpenAIChatMessage, OpenAIChatRequest};
     use serde_json::json;
 
     #[test]

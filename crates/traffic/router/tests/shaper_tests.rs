@@ -34,11 +34,11 @@ mod common;
 use std::sync::Arc;
 use std::time::Duration;
 
-use burncloud_common::TrafficColor;
 use burncloud_database::sqlx;
 use burncloud_router::rate_budget::{
     BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
 };
+use burncloud_traffic_contracts::TrafficColor;
 
 use common::{insert_router_token, setup_db, start_test_server};
 

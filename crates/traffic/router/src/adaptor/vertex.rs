@@ -5,7 +5,7 @@ use super::factory::ChannelAdaptor;
 use super::gemini::GeminiAdaptor;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use burncloud_common::types::OpenAIChatRequest;
+use burncloud_traffic_contracts::OpenAIChatRequest;
 use chrono::Utc;
 use dashmap::DashMap;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};

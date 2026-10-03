@@ -28,7 +28,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use burncloud_common::types::TrafficColor;
+use burncloud_traffic_contracts::TrafficColor;
 use dashmap::DashMap;
 
 /// Result of a [`BudgetBackend::try_consume`] attempt.

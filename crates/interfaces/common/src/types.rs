@@ -1,14 +1,11 @@
-// Two struct fields legitimately need HashMap<String, Value>:
-//   OpenAIChatRequest::extra      — generic LLM API passthrough fields
-//   RequestMapping::add_fields    — dynamic request field injection
-// All other Value uses in this codebase must go through typed structs.
+// The two struct fields that legitimately needed `HashMap<String, Value>` left with S1-E:
+// `OpenAIChatRequest::extra` moved to the Traffic contract, and the duplicate `RequestMapping`
+// was deleted with its local counterpart in `traffic/router/src/adaptor/mapping.rs` as the owner.
+// All `Value` uses in this codebase must go through typed structs.
 #![allow(clippy::disallowed_types)]
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sqlx::FromRow;
-use std::collections::HashMap;
-use std::fmt;
 
 // Re-export nanodollar conversion utilities owned by Commerce, keeping the legacy
 // alias names used by existing consumers of this module.
@@ -30,79 +27,17 @@ pub use burncloud_commerce_contracts::pricing::{
     PriceInput, TieredPrice, TieredPriceInput,
 };
 
-/// DiffServ-style three-color traffic class for the L2 Shaper.
-///
-/// `Green` / `Yellow` / `Red` map to 3-tier reservation buckets per channel.
-/// Higher-priority colors are preferred; lower-priority colors may borrow
-/// idle capacity upward. See `crates/traffic/router/src/rate_budget.rs` and
-/// `docs/code/GLOSSARY.md` § 2.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TrafficColor {
-    /// Highest priority — matches Enterprise order type / reserved capacity.
-    Green,
-    /// Default priority — matches Value order type.
-    #[default]
-    Yellow,
-    /// Lowest priority — matches Budget / best-effort traffic.
-    Red,
-}
-
-impl TrafficColor {
-    /// Static label for `router_logs.traffic_color` (single-character DB value).
-    pub fn as_char(&self) -> char {
-        match self {
-            TrafficColor::Green => 'G',
-            TrafficColor::Yellow => 'Y',
-            TrafficColor::Red => 'R',
-        }
-    }
-}
-
-impl fmt::Display for TrafficColor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_char())
-    }
-}
-
-// OpenAI Compatible Types
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct OpenAIChatMessage {
-    pub role: String,
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct OpenAIChatRequest {
-    pub model: String,
-    pub messages: Vec<OpenAIChatMessage>,
-    #[serde(default)]
-    pub temperature: Option<f32>,
-    #[serde(default)]
-    pub max_tokens: Option<u32>,
-    #[serde(default)]
-    pub stream: bool,
-
-    // Capture all other fields (Generic Passthrough)
-    #[serde(flatten)]
-    pub extra: HashMap<String, Value>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct OpenAIChatResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub choices: Vec<OpenAIChatChoice>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct OpenAIChatChoice {
-    pub index: u32,
-    pub message: OpenAIChatMessage,
-    pub finish_reason: Option<String>,
-}
+// ---------------------------------------------------------------------------
+// S1-E: the Traffic-owned protocol DTOs and the scheduling colour moved to the
+// Traffic contract crate (`burncloud_traffic_contracts`). They are re-exported here under the
+// same names and module path, so existing `burncloud_common::types::*` consumers keep
+// compiling. `RequestMapping`/`ResponseMapping` were NOT moved: the copies that used to live
+// here had no consumer and duplicated `traffic/router/src/adaptor/mapping.rs`, so they were
+// deleted instead.
+// ---------------------------------------------------------------------------
+pub use burncloud_traffic_contracts::{
+    OpenAIChatChoice, OpenAIChatMessage, OpenAIChatRequest, OpenAIChatResponse, TrafficColor,
+};
 
 // --- Ported from New API ---
 
@@ -163,29 +98,4 @@ impl Default for ProtocolConfig {
             updated_at: None,
         }
     }
-}
-
-/// Request mapping configuration for protocol adaptation
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RequestMapping {
-    /// Field mappings: "target_field" => "source_field"
-    #[serde(default)]
-    pub field_map: HashMap<String, String>,
-    /// Field renames: "old_name" => "new_name"
-    #[serde(default)]
-    pub rename: HashMap<String, String>,
-    /// Fields to add to the request
-    #[serde(default)]
-    pub add_fields: HashMap<String, Value>,
-}
-
-/// Response mapping configuration for protocol adaptation
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ResponseMapping {
-    /// Path to extract content from response (e.g., "choices[0].message.content")
-    pub content_path: Option<String>,
-    /// Path to extract token usage
-    pub usage_path: Option<String>,
-    /// Path to extract error message
-    pub error_path: Option<String>,
 }

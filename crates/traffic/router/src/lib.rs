@@ -141,8 +141,6 @@ use axum::{
     Router,
 };
 use balancer::RoundRobinBalancer;
-use burncloud_common::types::OpenAIChatRequest;
-use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_channel::ChannelProviderModel;
 use burncloud_database_router::{
@@ -153,6 +151,8 @@ use burncloud_service_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
 };
 use burncloud_service_user::UserService;
+use burncloud_traffic_contracts::OpenAIChatRequest;
+use burncloud_traffic_contracts::TrafficColor;
 use channel_state::ChannelStateTracker;
 use circuit_breaker::CircuitBreaker;
 use config::{AuthType, Upstream};

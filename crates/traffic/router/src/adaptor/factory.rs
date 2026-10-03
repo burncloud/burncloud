@@ -2,10 +2,10 @@
 #![allow(clippy::disallowed_types)]
 
 use async_trait::async_trait;
-use burncloud_common::types::OpenAIChatRequest;
 use burncloud_database::Database;
 use burncloud_database_channel::{ChannelProtocolConfig, ChannelProtocolConfigModel};
 use burncloud_supply_contracts::ChannelType;
+use burncloud_traffic_contracts::OpenAIChatRequest;
 use dashmap::DashMap;
 use reqwest::RequestBuilder;
 use serde_json::Value;

@@ -1,32 +1,30 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Domain-declaration guard for `burncloud_common` (S1-D, #610).
+//! Domain-declaration guard for `burncloud_common` (S1-D, extended by S1-E).
 //!
 //! ## What this checks, precisely
 //!
-//! S1-A..S1-D moved or deleted the domain types that used to live in this crate. The invariant worth
+//! S1-A..S1-E moved or deleted the domain types that used to live in this crate. The invariant worth
 //! protecting is: **`burncloud_common` must not declare a domain type again.** The next feature that
-//! needs a `User` or a price can reintroduce one in a single line, and that regression is invisible
-//! in review if nobody knows the history.
+//! needs a `User`, a price or an OpenAI DTO can reintroduce one in a single line, and that
+//! regression is invisible in review if nobody knows the history.
 //!
-//! The guard therefore parses the crate's own source for `pub struct` / `pub enum` / `pub type` /
-//! `pub fn` / `pub const` / `pub trait` declarations (comments excluded) and fails when a name whose
-//! owner lives elsewhere reappears.
+//! The guard parses the crate's own source for `pub struct` / `pub enum` / `pub type` / `pub fn` /
+//! `pub const` / `pub trait` declarations (comments excluded) and fails when a name whose owner
+//! lives elsewhere reappears.
 //!
 //! ## What this does NOT check
 //!
 //! It is **not** an exact public-API snapshot. Three limits are deliberate, so the test's claim
 //! matches its power:
 //!
-//! 1. It covers declarations, not re-exports. The two contract re-export blocks (`pub use`) are
-//!    checked to still exist by `contract_reexports_are_intact`, but their member lists are not
-//!    enumerated.
-//! 2. `common::*` still forwards the nanodollar helpers through `lib.rs`
-//!    (`pub use burncloud_commerce_contracts::price_u64::{...}`) and through the `price_u64` module.
-//!    Those names are **not** guarded here.
+//! 1. It covers declarations, not re-export members. That the re-export blocks still exist is
+//!    checked by `contract_reexports_are_intact`, but their contents are not enumerated.
+//! 2. `common::*` still forwards the nanodollar helpers through `lib.rs`. Those names are **not**
+//!    guarded here.
 //! 3. It cannot see through a `#[path]` module or a macro-generated declaration.
 //!
-//! A full public-API snapshot would need support for every item kind plus re-export expansion; that
-//! is a different test with a different name, and it is not what this file claims to be.
+//! A full public-API snapshot would need re-export expansion; that is a different test with a
+//! different name, and it is not what this file claims to be.
 
 use std::fs;
 use std::path::PathBuf;
@@ -44,6 +42,71 @@ const SRC_FILES: &[&str] = &[
 
 /// Item kinds the parser understands. Anything not listed is invisible to the guard.
 const KINDS: &[&str] = &["struct", "enum", "type", "fn", "const", "trait"];
+
+/// The surviving declaration inventory of `src/types.rs`, with each item's owner.
+///
+/// After S1-E this file holds exactly one declared type. Everything else either became a re-export
+/// from a domain contract or left:
+///
+/// * `TrafficColor` and the four `OpenAIChat*` DTOs moved to the Traffic contract (S1-E);
+/// * `RequestMapping` / `ResponseMapping` were deleted, because the copies here had no consumer and
+///   duplicated `traffic/router/src/adaptor/mapping.rs`, which is the definition in use.
+const EXPECTED_TYPES_RS: &[(&str, &str)] = &[
+    // S1-F owns the comparison against Supply's `ChannelProtocolConfig`; the ownership ruling is
+    // recorded in #613.
+    ("pub struct ProtocolConfig", "Interfaces -> Supply (S1-F)"),
+];
+
+/// Names that left this crate, with the owner that must provide them instead.
+///
+/// Only names whose *declaration* is meaningful are listed: a helper such as `dollars_to_nano` is
+/// not a declaration in this crate today, so listing it here would imply coverage the parser does
+/// not have (limit 2 above).
+const MOVED_OUT: &[(&str, &str)] = &[
+    // Commerce contract, S1-A / S1-B.
+    ("Price", "Commerce contract (S1-B)"),
+    ("PriceInput", "Commerce contract (S1-B)"),
+    ("TieredPrice", "Commerce contract (S1-B)"),
+    ("TieredPriceInput", "Commerce contract (S1-B)"),
+    ("FullPricing", "Commerce contract (S1-B)"),
+    ("MultiCurrencyPrice", "Commerce contract (S1-B)"),
+    ("ExchangeRate", "Commerce contract (S1-B)"),
+    ("Currency", "Commerce contract (S1-B)"),
+    ("PricingConfig", "Commerce contract (S1-B)"),
+    ("ModelPricing", "Commerce contract (S1-B)"),
+    ("CurrencyPricing", "Commerce contract (S1-B)"),
+    ("TieredPriceConfig", "Commerce contract (S1-B)"),
+    ("ValidationWarning", "Commerce contract (S1-B)"),
+    ("ValidationError", "Commerce contract (S1-B)"),
+    // Supply contract, S1-C.
+    ("ChannelType", "Supply contract (S1-C)"),
+    ("Channel", "Supply contract (S1-C)"),
+    ("Ability", "Supply contract (S1-C)"),
+    // Traffic contract, S1-E.
+    ("TrafficColor", "Traffic contract (S1-E)"),
+    ("OpenAIChatMessage", "Traffic contract (S1-E)"),
+    ("OpenAIChatRequest", "Traffic contract (S1-E)"),
+    ("OpenAIChatResponse", "Traffic contract (S1-E)"),
+    ("OpenAIChatChoice", "Traffic contract (S1-E)"),
+    (
+        "RequestMapping",
+        "Traffic; the live definition is traffic/router/src/adaptor/mapping.rs",
+    ),
+    (
+        "ResponseMapping",
+        "Traffic; the live definition is traffic/router/src/adaptor/mapping.rs",
+    ),
+    // Deleted in S1-D: no consumer, superseded by the Identity types.
+    (
+        "Recharge",
+        "deleted in S1-D; superseded by Identity's UserRecharge",
+    ),
+    (
+        "Token",
+        "deleted in S1-D; superseded by UserApiKey / RouterToken",
+    ),
+    ("User", "deleted in S1-D; superseded by UserAccount"),
+];
 
 fn read(rel: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel);
@@ -77,75 +140,6 @@ fn declarations(text: &str) -> Vec<String> {
     items
 }
 
-/// Names that left this crate, with the owner that must provide them instead.
-///
-/// Only names whose *declaration* is meaningful are listed: a helper like `dollars_to_nano` is not a
-/// declaration in this crate today, so listing it here would imply coverage the parser does not have
-/// (limit 2 above).
-const MOVED_OUT: &[(&str, &str)] = &[
-    // Commerce contract, S1-A / S1-B.
-    ("Price", "Commerce contract (S1-B)"),
-    ("PriceInput", "Commerce contract (S1-B)"),
-    ("TieredPrice", "Commerce contract (S1-B)"),
-    ("TieredPriceInput", "Commerce contract (S1-B)"),
-    ("FullPricing", "Commerce contract (S1-B)"),
-    ("MultiCurrencyPrice", "Commerce contract (S1-B)"),
-    ("ExchangeRate", "Commerce contract (S1-B)"),
-    ("Currency", "Commerce contract (S1-B)"),
-    ("PricingConfig", "Commerce contract (S1-B)"),
-    ("ModelPricing", "Commerce contract (S1-B)"),
-    ("CurrencyPricing", "Commerce contract (S1-B)"),
-    ("TieredPriceConfig", "Commerce contract (S1-B)"),
-    ("ValidationWarning", "Commerce contract (S1-B)"),
-    ("ValidationError", "Commerce contract (S1-B)"),
-    // Supply contract, S1-C.
-    ("ChannelType", "Supply contract (S1-C)"),
-    ("Channel", "Supply contract (S1-C)"),
-    ("Ability", "Supply contract (S1-C)"),
-    // Deleted in S1-D: no consumer, superseded by the Identity types.
-    (
-        "Recharge",
-        "deleted in S1-D; superseded by Identity's UserRecharge",
-    ),
-    (
-        "Token",
-        "deleted in S1-D; superseded by UserApiKey / RouterToken",
-    ),
-    ("User", "deleted in S1-D; superseded by UserAccount"),
-];
-
-/// The inventory of `src/types.rs` that is expected to remain, with each item's owner.
-///
-/// `ChannelType` / `Channel` / `Ability` are absent on purpose: since S1-C they are re-exports from
-/// the Supply contract, not declarations in this file.
-const EXPECTED_TYPES_RS: &[(&str, &str)] = &[
-    ("pub enum TrafficColor", "Interfaces -> Traffic (S1-E)"),
-    (
-        "pub struct OpenAIChatChoice",
-        "Interfaces -> Traffic (S1-E)",
-    ),
-    (
-        "pub struct OpenAIChatMessage",
-        "Interfaces -> Traffic (S1-E)",
-    ),
-    (
-        "pub struct OpenAIChatRequest",
-        "Interfaces -> Traffic (S1-E)",
-    ),
-    (
-        "pub struct OpenAIChatResponse",
-        "Interfaces -> Traffic (S1-E)",
-    ),
-    (
-        "pub struct ProtocolConfig",
-        "Interfaces -> Supply/Traffic (S1-F)",
-    ),
-    ("pub struct RequestMapping", "Interfaces -> Traffic (S1-E)"),
-    ("pub struct ResponseMapping", "Interfaces -> Traffic (S1-E)"),
-    // `impl TrafficColor { pub fn as_char(&self) }` -- the parser sees the method.
-    ("pub fn as_char", "Traffic, moved with TrafficColor (S1-E)"),
-];
-
 #[test]
 fn common_does_not_declare_domain_types() {
     let mut violations = Vec::new();
@@ -164,22 +158,28 @@ fn common_does_not_declare_domain_types() {
         violations.is_empty(),
         "burncloud_common must not declare domain types again:\n  {}\n\n\
          Move the item to its owning domain (or its contract crate) instead of adding it here.\n\
-         Owners are recorded in #610 and docs/architecture-s1-task-contracts.md.",
+         Owners are recorded in #610 / #613 and docs/architecture-s1-task-contracts.md.",
         violations.join("\n  ")
     );
 }
 
 #[test]
 fn types_rs_inventory_is_unchanged() {
-    let mut declared = declarations(&read("src/types.rs"));
-    // The two contract re-export blocks are `pub use`, not declarations; record their presence so a
-    // new declaration cannot hide behind them.
     let text = read("src/types.rs");
-    if text.contains("pub use burncloud_commerce_contracts::pricing::{") {
-        declared.push("pub use::commerce".to_string());
-    }
-    if text.contains("pub use burncloud_supply_contracts::{") {
-        declared.push("pub use::supply".to_string());
+    let mut declared = declarations(&text);
+    // The contract re-export blocks are `pub use`, not declarations; record their presence so a new
+    // declaration cannot hide behind them.
+    for (needle, tag) in [
+        (
+            "pub use burncloud_commerce_contracts::pricing::{",
+            "pub use::commerce",
+        ),
+        ("pub use burncloud_supply_contracts::{", "pub use::supply"),
+        ("pub use burncloud_traffic_contracts::{", "pub use::traffic"),
+    ] {
+        if text.contains(needle) {
+            declared.push(tag.to_string());
+        }
     }
     declared.sort();
     declared.dedup();
@@ -190,6 +190,7 @@ fn types_rs_inventory_is_unchanged() {
         .chain([
             "pub use::commerce".to_string(),
             "pub use::supply".to_string(),
+            "pub use::traffic".to_string(),
         ])
         .collect();
     expected.sort();
@@ -203,8 +204,8 @@ fn types_rs_inventory_is_unchanged() {
     );
 
     assert!(
-        EXPECTED_TYPES_RS.len() >= 8,
-        "EXPECTED_TYPES_RS shrank unexpectedly; the inventory was trimmed without a review"
+        !declared.is_empty(),
+        "the inventory came back empty; the parser or the file was changed unexpectedly"
     );
 }
 
@@ -213,14 +214,19 @@ fn contract_reexports_are_intact() {
     // The compatibility layer is the only reason the moved domain types are still reachable through
     // common; if a re-export disappears, existing consumers break.
     let text = read("src/types.rs");
-    assert!(
-        text.contains("pub use burncloud_commerce_contracts::pricing::{"),
-        "the Commerce pricing re-export disappeared from common::types"
-    );
-    assert!(
-        text.contains("pub use burncloud_supply_contracts::{"),
-        "the Supply re-export disappeared from common::types"
-    );
+    for (needle, what) in [
+        (
+            "pub use burncloud_commerce_contracts::pricing::{",
+            "Commerce pricing",
+        ),
+        ("pub use burncloud_supply_contracts::{", "Supply"),
+        ("pub use burncloud_traffic_contracts::{", "Traffic"),
+    ] {
+        assert!(
+            text.contains(needle),
+            "the {what} re-export disappeared from common::types"
+        );
+    }
     let lib = read("src/lib.rs");
     assert!(
         lib.contains("pub use burncloud_commerce_contracts::price_u64::{"),
