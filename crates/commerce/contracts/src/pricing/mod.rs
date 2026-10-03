@@ -10,9 +10,21 @@
 // and the conversions into these domain types) lives in `burncloud-database-billing::rows`,
 // which is the adapter that knows the database.
 //
-// S1 leaves one item here on purpose: [`ModelMetadata`] is model-capability truth owned by
-// Supply (see `docs/architecture-s0-baseline.md`). It stays in this module until S1-C so its
-// JSON shape does not change twice; the pricing document keeps parsing it meanwhile.
+// [`ModelMetadata`] stays in this module by decision, not by omission. S0 assigns
+// "model-capability truth" to Supply (see `docs/architecture-s0-baseline.md`), and S1-C was
+// originally expected to move this type there. Investigating the target before moving it showed
+// that Supply has no capability type to move it into: `burncloud-database-model` calls itself the
+// canonical home of the `model_capabilities` table, but its row type `ModelInfo` describes
+// HuggingFace repository fields (downloads, likes, tags) that the table does not have, and its CRUD
+// methods are stubs. Meanwhile this type is the live one: the pricing document carries it, the CLI
+// reads and writes it, and Traffic's price sync reads the capability columns off it when it writes
+// that table.
+//
+// Moving a live type into a crate whose claim to own it is not backed by a matching type or a real
+// implementation would make the dependency graph look tidier while making the code harder to
+// follow. The honest resolution is recorded in #621: give the capability truth a real Supply type
+// and real persistence, and move this one only then. Until that happens this type is a pricing
+// document DTO, which is what S0 already describes it as ("本类型随价格文档迁移").
 //
 // `serde_json::Value` appears in [`FullPricing::additional_fields`] only: the full-pricing
 // blob is open-ended pricing metadata by design, so the workspace-wide typed-struct rule
