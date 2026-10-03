@@ -20,7 +20,7 @@
 //! - Streaming responses are passed through directly
 //! - Token counting uses Gemini's `usageMetadata` field
 
-use burncloud_common::types::ChannelType;
+use burncloud_supply_contracts::ChannelType;
 use serde_json::Value;
 
 /// Detection result for passthrough mode

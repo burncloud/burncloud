@@ -8,6 +8,7 @@ mod channel_ability;
 mod channel_protocol_config;
 mod channel_provider;
 mod common;
+mod rows;
 
 pub use channel_ability::{ChannelAbilityInput, ChannelAbilityModel};
 pub use channel_protocol_config::{
@@ -15,7 +16,8 @@ pub use channel_protocol_config::{
 };
 pub use channel_provider::ChannelProviderModel;
 
-// Re-export spec-aligned row types from burncloud-common for convenience
-pub use burncloud_common::types::{Ability, Channel, ChannelAbility, ChannelProvider};
+// Re-export the Supply contract directly: this crate must not route consumers through Common
+// (Supply -> Common -> Supply contract would keep the dependency the migration removed).
+pub use burncloud_supply_contracts::{Ability, Channel, ChannelAbility, ChannelProvider};
 
 pub use burncloud_database::DatabaseError;

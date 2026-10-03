@@ -5,7 +5,7 @@ pub mod providers;
 
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
-use burncloud_common::types::ChannelType;
+use burncloud_supply_contracts::ChannelType;
 use serde_json::Value;
 
 pub use providers::{AnthropicParser, DeepSeekParser, GeminiParser, GenericParser, OpenAIParser};

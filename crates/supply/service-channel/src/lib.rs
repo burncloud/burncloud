@@ -6,7 +6,7 @@
 use burncloud_database::Database;
 use burncloud_database_channel::ChannelProviderModel;
 
-pub use burncloud_common::types::Channel;
+pub use burncloud_supply_contracts::Channel;
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 

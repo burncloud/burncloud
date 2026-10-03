@@ -1,6 +1,7 @@
 use crate::common::current_timestamp;
-use burncloud_common::types::Channel;
+use crate::rows::ChannelRow;
 use burncloud_database::{adapt_sql, ph, phs, Database, Result};
+use burncloud_supply_contracts::Channel;
 use sqlx::Row;
 
 pub struct ChannelProviderModel;
@@ -183,10 +184,11 @@ impl ChannelProviderModel {
             )
         };
 
-        let channel = sqlx::query_as(&sql)
+        let channel = sqlx::query_as::<_, ChannelRow>(&sql)
             .bind(id)
             .fetch_optional(conn.pool())
-            .await?;
+            .await?
+            .map(Channel::from);
 
         Ok(channel)
     }
@@ -224,11 +226,71 @@ impl ChannelProviderModel {
             )
         };
 
-        let channels = sqlx::query_as(&sql)
+        let channels = sqlx::query_as::<_, ChannelRow>(&sql)
             .bind(limit)
             .bind(offset)
             .fetch_all(conn.pool())
-            .await?;
+            .await?
+            .into_iter()
+            .map(Channel::from)
+            .collect();
+
+        Ok(channels)
+    }
+
+    /// List channels by their ids.
+    ///
+    /// Used by the routing layer to resolve a candidate id set into channel details. The SQL
+    /// lives here rather than in the caller: the routing layer must not read the channel
+    /// table itself (see #607).
+    pub async fn list_by_ids(db: &Database, ids: &[i32]) -> Result<Vec<Channel>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let placeholders = phs(is_postgres, ids.len());
+
+        // Identifier quoting differs by dialect (`type as "type_"`, "group" vs `group`).
+        let sql = if is_postgres {
+            format!(
+                r#"
+                SELECT
+                    id, type as "type_", key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, "group", used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version, pricing_region,
+                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
+                FROM channel_providers WHERE id IN ({})
+                "#,
+                placeholders
+            )
+        } else {
+            format!(
+                r#"
+                SELECT
+                    id, type as type_, key, status, name, weight, created_time, test_time,
+                    response_time, base_url, models, `group`, used_quota, model_mapping,
+                    priority, auto_ban, other_info, tag, setting, param_override,
+                    header_override, remark, api_version, pricing_region,
+                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
+                FROM channel_providers WHERE id IN ({})
+                "#,
+                placeholders
+            )
+        };
+
+        let mut query = sqlx::query_as::<_, ChannelRow>(&sql);
+        for id in ids {
+            query = query.bind(id);
+        }
+
+        let channels = query
+            .fetch_all(conn.pool())
+            .await?
+            .into_iter()
+            .map(Channel::from)
+            .collect();
 
         Ok(channels)
     }

@@ -1,5 +1,6 @@
-use burncloud_common::types::Ability;
+use crate::rows::AbilityRow;
 use burncloud_database::{ph, phs, Database, Result};
+use burncloud_supply_contracts::Ability;
 use serde::{Deserialize, Serialize};
 
 /// Input for creating a channel ability
@@ -105,10 +106,13 @@ impl ChannelAbilityModel {
             )
         };
 
-        let abilities = sqlx::query_as(&sql)
+        let abilities = sqlx::query_as::<_, AbilityRow>(&sql)
             .bind(channel_id)
             .fetch_all(conn.pool())
-            .await?;
+            .await?
+            .into_iter()
+            .map(Ability::from)
+            .collect();
 
         Ok(abilities)
     }

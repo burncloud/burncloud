@@ -2014,7 +2014,7 @@ async fn proxy_handler(
     response
 }
 
-use burncloud_common::types::ChannelType;
+use burncloud_supply_contracts::ChannelType;
 use circuit_breaker::FailureType;
 use passthrough::{should_passthrough, PassthroughDecision};
 use rate_budget::{BudgetBackend, BudgetGuard, ConsumeOutcome};

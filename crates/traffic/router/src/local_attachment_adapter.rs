@@ -2,9 +2,9 @@ use crate::local_attachment::{
     LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId,
 };
 use async_trait::async_trait;
-use burncloud_common::types::{Channel, ChannelType};
 use burncloud_database::{adapt_sql, sqlx, Database};
 use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_contracts::{Channel, ChannelType};
 use std::sync::Arc;
 
 /// Production adapter that makes a READY local endpoint visible through the
