@@ -3,13 +3,31 @@ name: Architecture Checks
 on:
   pull_request:
     paths:
-      - 'crates/traffic/router/Cargo.toml'
+      - 'Cargo.toml'
+      - 'clippy.toml'
       - 'deny.toml'
+      - '.github/workflows/arch.yml'
+      - 'crates/**/Cargo.toml'
+      - 'crates/**/*.rs'
 
 permissions:
   contents: read
 
 jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Check workspace Clippy policy
+        run: cargo clippy --workspace --all-targets --locked
+
   router-deps:
     runs-on: ubuntu-latest
     steps:
@@ -25,14 +43,14 @@ jobs:
       - name: Check router service dependency whitelist
         run: ./crates/traffic/router/scripts/check-router-deps.sh --ci
 
-  cargo-deny-bans:
+  cargo-deny:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check cargo-deny bans
+      - name: Check dependency bans, advisories, licenses, and sources
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check bans
+          command: check
           arguments: --all-features
