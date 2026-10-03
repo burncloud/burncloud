@@ -11,7 +11,7 @@
 
 mod common;
 
-use burncloud_common::dollars_to_nano;
+use burncloud_commerce_contracts::price_u64::dollars_to_nano;
 use burncloud_database::sqlx;
 use burncloud_database_billing::{BillingPriceModel, PriceInput};
 use common::{setup_db, start_test_server};

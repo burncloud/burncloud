@@ -10,8 +10,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 #[cfg(test)]
-use burncloud_common::rate_to_scaled;
-use burncloud_common::{scaled_to_rate, Currency};
+use burncloud_commerce_contracts::price_u64::rate_to_scaled;
+use burncloud_commerce_contracts::price_u64::scaled_to_rate;
+use burncloud_commerce_contracts::pricing::Currency;
 use burncloud_database::{sqlx, Database};
 use chrono::{DateTime, Utc};
 

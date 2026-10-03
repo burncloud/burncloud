@@ -15,7 +15,7 @@
 //! affinity. Per decision **D10**: MVP defaults all customers to `Value` until
 //! Trader Class lands.
 
-use burncloud_common::types::Channel;
+use burncloud_supply_contracts::Channel;
 
 /// Per-customer scheduling intent. See module-level docs.
 #[derive(Debug, Clone, PartialEq)]

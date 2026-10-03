@@ -140,7 +140,7 @@ impl AffinityCache {
 /// zero health.
 pub fn pick_hrw<F>(
     key: &str,
-    candidates: &[(burncloud_common::types::Channel, i32)],
+    candidates: &[(burncloud_supply_contracts::Channel, i32)],
     health_of: F,
 ) -> Option<i32>
 where

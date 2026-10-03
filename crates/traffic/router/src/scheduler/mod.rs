@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::str::FromStr;
 
-use burncloud_common::types::Channel;
 use burncloud_service_billing::PriceCache;
+use burncloud_supply_contracts::Channel;
 use burncloud_traffic_contracts::TrafficColor;
 use serde::{Deserialize, Serialize};
 
@@ -331,9 +331,15 @@ pub async fn build_context(
                 .await
             {
                 let raw = price.input_price as f64 + price.output_price as f64;
-                let price_usd = match burncloud_common::Currency::from_str(&price.currency) {
-                    Ok(curr) if curr != burncloud_common::Currency::USD => {
-                        match exchange_rate.convert(raw, curr, burncloud_common::Currency::USD) {
+                let price_usd = match burncloud_commerce_contracts::pricing::Currency::from_str(
+                    &price.currency,
+                ) {
+                    Ok(curr) if curr != burncloud_commerce_contracts::pricing::Currency::USD => {
+                        match exchange_rate.convert(
+                            raw,
+                            curr,
+                            burncloud_commerce_contracts::pricing::Currency::USD,
+                        ) {
                             Ok(v) => v,
                             Err(e) => {
                                 tracing::warn!("Currency conversion failed: {e}, using raw amount");
