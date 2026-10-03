@@ -6,10 +6,12 @@
 mod billing_price;
 mod billing_tiered_price;
 mod common;
+mod rows;
 
 pub use billing_price::BillingPriceModel;
 pub use billing_tiered_price::BillingTieredPriceModel;
 pub use common::current_timestamp;
+pub use rows::{ExchangeRateRow, PriceRow, TieredPriceRow};
 
 // Re-export types from burncloud-common for convenience (spec-aligned aliases + originals)
 pub use burncloud_commerce_contracts::pricing::{

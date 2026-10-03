@@ -1,0 +1,17 @@
+{
+  "version": "7.0",
+  "updated_at": "2026-03-29T00:00:00Z",
+  "source": "fixture-v7",
+  "models": {
+    "gemini-flash": {
+      "USD": {
+        "text": { "in": 0.075, "out": 0.3 },
+        "cache": { "read": 0.0075, "write": 0.09375 },
+        "batch": { "in": 0.0375, "out": 0.15 },
+        "image": { "out": 0.002 },
+        "audio": { "out": 0.6 },
+        "music": { "per": 0.05 }
+      }
+    }
+  }
+}

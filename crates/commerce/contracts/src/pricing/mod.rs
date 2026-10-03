@@ -1,9 +1,14 @@
-// Commerce-owned value objects for pricing, billing rows and the pricing.json schema.
+// Commerce-owned value objects for pricing and the pricing.json schema.
 //
 // Moved here by S1-B from `burncloud_common` (`types.rs` price types and the whole
-// `pricing_config` module). Everything is copied verbatim: field names, serde attributes,
-// nanodollar units, `FromRow` derives and the JSON shapes are unchanged, so the legacy
-// `burncloud_common` paths can keep re-exporting these items.
+// `pricing_config` module). Field names, serde attributes, nanodollar units and the JSON
+// shapes are unchanged, so the legacy `burncloud_common` paths can keep re-exporting these
+// items and every stored price document and billing row still decodes.
+//
+// This module is a pure contract: it knows neither a database framework nor logging. The
+// persistence representation of the billing tables (the row structs, their SQL row mapping
+// and the conversions into these domain types) lives in `burncloud-database-billing::rows`,
+// which is the adapter that knows the database.
 //
 // S1 leaves one item here on purpose: [`ModelMetadata`] is model-capability truth owned by
 // Supply (see `docs/architecture-s0-baseline.md`). It stays in this module until S1-C so its
@@ -17,7 +22,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::FromRow;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -96,7 +100,7 @@ pub struct MultiCurrencyPrice {
 /// Exchange rate for currency conversion
 /// Rate is stored as scaled i64 (rate * 10^9) for precision
 /// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExchangeRate {
     pub id: i32,
     pub from_currency: String,
@@ -112,7 +116,7 @@ pub type BillingExchangeRate = ExchangeRate;
 /// (e.g., Qwen models with different prices based on context length)
 /// Prices are stored as i64 nanodollars (9 decimal precision)
 /// Note: Using i64 instead of u64 for PostgreSQL BIGINT compatibility
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TieredPrice {
     pub id: i32,
     /// Model name
@@ -120,10 +124,8 @@ pub struct TieredPrice {
     /// Region for pricing (e.g., "cn", "international", NULL for universal)
     pub region: Option<String>,
     /// Currency for this tier (e.g., "USD", "CNY")
-    #[sqlx(default)]
     pub currency: Option<String>,
     /// Tier type (e.g., "context_length", "usage_volume")
-    #[sqlx(default)]
     pub tier_type: Option<String>,
     /// Starting token count for this tier
     pub tier_start: i64,
@@ -166,7 +168,7 @@ pub struct FullPricing {
 /// All prices are stored in nanodollars (i64, 9 decimal precision)
 /// Note: Using i64 for PostgreSQL BIGINT compatibility (BIGINT is signed)
 /// Values must always be non-negative (>= 0)
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Price {
     pub id: i32,
     /// Model name
@@ -213,10 +215,8 @@ pub struct Price {
     /// Maximum output tokens
     pub max_output_tokens: Option<i64>,
     /// Whether the model supports vision/image input (stored as INTEGER 0/1 in DB)
-    #[sqlx(default)]
     pub supports_vision: Option<i32>,
     /// Whether the model supports function calling (stored as INTEGER 0/1 in DB)
-    #[sqlx(default)]
     pub supports_function_calling: Option<i32>,
     /// Last sync timestamp
     pub synced_at: Option<i64>,
@@ -225,19 +225,14 @@ pub struct Price {
     /// Update timestamp
     pub updated_at: Option<i64>,
     /// TTS voices pricing: JSON {"alloy": 15000000000, "echo": 15000000000} (nanodollars/1M chars)
-    #[sqlx(default)]
     pub voices_pricing: Option<String>,
     /// Video pricing: JSON {"720p": 50000000, "1080p": 100000000} (nanodollars/second)
-    #[sqlx(default)]
     pub video_pricing: Option<String>,
     /// ASR pricing: JSON {"per_minute": 360000000} (nanodollars/minute)
-    #[sqlx(default)]
     pub asr_pricing: Option<String>,
     /// Realtime API pricing: JSON {"audio_input": 32000000000, "audio_output": 64000000000} (nanodollars/1M tokens)
-    #[sqlx(default)]
     pub realtime_pricing: Option<String>,
     /// Model type: chat, realtime, video, image, tts, asr
-    #[sqlx(default)]
     pub model_type: Option<String>,
 }
 
@@ -859,14 +854,10 @@ impl From<NewFormatPricingConfig> for PricingConfig {
             for (currency, block) in currencies {
                 let text = match block.text {
                     Some(t) => t,
-                    None => {
-                        tracing::warn!(
-                            model = %model_name,
-                            currency = %currency,
-                            "v7 pricing block has no text field, skipping pricing entry"
-                        );
-                        continue;
-                    }
+                    // A v7 currency block without a text section carries no text pricing,
+                    // so the entry is skipped. Documented behaviour, covered by the pricing
+                    // fixtures; a contract returns structured results, callers do the logging.
+                    None => continue,
                 };
 
                 pricing.insert(
@@ -979,17 +970,10 @@ impl PricingConfig {
         let value: serde_json::Value = serde_json::from_str(json)?;
         let version = match value["version"].as_str() {
             Some(v) => v.to_string(),
-            None => {
-                tracing::warn!("pricing config missing 'version' field, assuming v1 format");
-                "1.0".to_string()
-            }
+            // Unchanged fallback: a document without a version field is parsed as v1.
+            None => "1.0".to_string(),
         };
         let is_new_format = version_major(&version) >= 7;
-        tracing::debug!(
-            version = %version,
-            format = if is_new_format { "v7+" } else { "v1" },
-            "Detected pricing format"
-        );
         if is_new_format {
             let new_cfg: NewFormatPricingConfig = serde_json::from_value(value)?;
             return Ok(PricingConfig::from(new_cfg));

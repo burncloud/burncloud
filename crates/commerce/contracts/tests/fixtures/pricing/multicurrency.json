@@ -1,0 +1,18 @@
+{
+  "version": "7.0",
+  "updated_at": "2026-03-29T00:00:00Z",
+  "source": "fixture-multicurrency",
+  "models": {
+    "multi-currency-model": {
+      "USD": {
+        "text": { "in": 1.0, "out": 4.0 }
+      },
+      "CNY": {
+        "text": { "in": 7.24, "out": 28.96 }
+      },
+      "EUR": {
+        "text": { "in": 0.92, "out": 3.68 }
+      }
+    }
+  }
+}

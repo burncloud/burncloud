@@ -1,3 +1,4 @@
+use crate::rows::TieredPriceRow;
 use burncloud_commerce_contracts::pricing::{TieredPrice, TieredPriceInput};
 use burncloud_database::{adapt_sql, Database, Result};
 
@@ -15,7 +16,7 @@ impl BillingTieredPriceModel {
 
         let base_select = r#"SELECT id, model, region, currency, tier_type, tier_start, tier_end, input_price, output_price"#;
 
-        let tiers = match region {
+        let tiers: Vec<TieredPriceRow> = match region {
             Some(r) => {
                 let sql = adapt_sql(
                     is_postgres,
@@ -25,7 +26,7 @@ impl BillingTieredPriceModel {
                         base_select
                     ),
                 );
-                sqlx::query_as(&sql)
+                sqlx::query_as::<_, TieredPriceRow>(&sql)
                     .bind(model)
                     .bind(r)
                     .fetch_all(conn.pool())
@@ -41,14 +42,14 @@ impl BillingTieredPriceModel {
                         base_select
                     ),
                 );
-                sqlx::query_as(&sql)
+                sqlx::query_as::<_, TieredPriceRow>(&sql)
                     .bind(model)
                     .fetch_all(conn.pool())
                     .await?
             }
         };
 
-        Ok(tiers)
+        Ok(tiers.into_iter().map(TieredPrice::from).collect())
     }
 
     /// Upsert a tiered price
@@ -136,7 +137,12 @@ impl BillingTieredPriceModel {
         let sql = r#"SELECT id, model, region, currency, tier_type, tier_start, tier_end, input_price, output_price
                      FROM billing_tiered_prices ORDER BY model, tier_start ASC"#;
 
-        let tiers = sqlx::query_as(sql).fetch_all(conn.pool()).await?;
+        let tiers = sqlx::query_as::<_, TieredPriceRow>(sql)
+            .fetch_all(conn.pool())
+            .await?
+            .into_iter()
+            .map(TieredPrice::from)
+            .collect();
 
         Ok(tiers)
     }
