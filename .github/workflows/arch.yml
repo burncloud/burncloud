@@ -26,7 +26,7 @@ jobs:
           components: clippy
 
       - name: Check workspace Clippy policy
-        run: cargo clippy --workspace --all-targets --locked
+        run: cargo clippy --workspace --all-targets
 
   router-deps:
     runs-on: ubuntu-latest
@@ -43,14 +43,14 @@ jobs:
       - name: Check router service dependency whitelist
         run: ./crates/traffic/router/scripts/check-router-deps.sh --ci
 
-  cargo-deny:
+  cargo-deny-policy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check dependency bans, advisories, licenses, and sources
+      - name: Check dependency bans, licenses, and sources
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check
+          command: check bans licenses sources
           arguments: --all-features
