@@ -618,6 +618,41 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .supplier-earnings-number { color: #374151; font: 400 12px/16px var(--mono); font-variant-numeric: tabular-nums; }
 .supplier-earnings-share { font-weight: 600; }
 .supplier-earnings-value { color: #047857 !important; font: 700 12px/16px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.supplier-reliability-stack { display: flex; min-width: 0; flex-direction: column; gap: 24px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.supplier-reliability-page-header { align-items: stretch; flex-direction: column; gap: 16px; margin-bottom: 0; }
+.supplier-reliability-conclusion { margin: 0; }
+.supplier-reliability-metrics { gap: 16px; margin-top: 4px; }
+.supplier-reliability-metrics .metric-card { min-height: 140px; }
+.supplier-reliability-metrics .metric-label { visibility: hidden; }
+.supplier-reliability-metrics .metric-label-row { min-height: 16px; }
+.supplier-reliability-metrics .metric-meta { min-height: 16px; }
+.supplier-reliability-tiers-panel, .supplier-reliability-audit-panel { padding: 48px 24px 24px; }
+.supplier-reliability-tier-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; }
+.supplier-reliability-tier { display: flex; min-width: 0; min-height: 136px; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid #f3f4f6; border-radius: 12px; background: #fafafa; }
+.supplier-reliability-tier-current { border-color: #6ee7b7; background: #ecfdf5; box-shadow: 0 0 0 1px rgba(16,185,129,.16); }
+.supplier-reliability-tier-header { position: relative; display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.supplier-reliability-tier-header strong { min-width: 0; overflow: visible; color: #111827; font: 700 13px/18px var(--sans); overflow-wrap: anywhere; white-space: normal; }
+.supplier-reliability-tier-eligible .supplier-reliability-tier-header strong { max-width: 64px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.supplier-reliability-tier-current .supplier-reliability-tier-header { padding-right: 92px; }
+.supplier-reliability-tier-current .supplier-reliability-tier-status, .supplier-reliability-tier-eligible .supplier-reliability-tier-status { position: absolute; top: 0; right: 0; }
+.supplier-reliability-tier-status { display: inline-flex; flex: 0 0 auto; max-width: 100%; padding: 4px 8px; overflow: hidden; border-radius: 99px; color: #4b5563; background: #f3f4f6; font: 700 10px/12px var(--mono); letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
+.supplier-reliability-tier-current .supplier-reliability-tier-status { border: 1px solid rgba(167,243,208,.8); color: #047857; background: #d1fae5; }
+.supplier-reliability-tier-eligible .supplier-reliability-tier-status { color: #fff; background: #18181b; }
+.supplier-reliability-share { display: flex; align-items: baseline; gap: 8px; }
+.supplier-reliability-share strong { color: #111827; font: 800 15px/20px var(--mono); }
+.supplier-reliability-share span { color: #374151; font: 600 12px/18px var(--mono); }
+.supplier-reliability-tier p { min-height: 36px; margin: auto 0 0; color: #6b7280; font: 500 12px/18px var(--sans); }
+.supplier-reliability-audit-list { display: flex; flex-direction: column; gap: 14px; }
+.supplier-reliability-audit-item { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 16px; border: 1px solid #f3f4f6; border-radius: 12px; background: rgba(249,250,251,.82); }
+.supplier-reliability-audit-main { display: flex; min-width: 0; align-items: flex-start; gap: 14px; }
+.supplier-reliability-audit-icon { display: inline-flex; width: 32px; height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid rgba(229,231,235,.9); border-radius: 10px; color: #047857; background: #fff; }
+.supplier-reliability-audit-item:nth-child(2) .supplier-reliability-audit-icon { color: #d97706; }
+.supplier-reliability-audit-item:nth-child(3) .supplier-reliability-audit-icon { color: #2563eb; }
+.supplier-reliability-audit-copy { min-width: 0; }
+.supplier-reliability-audit-copy h3 { margin: 0; overflow-wrap: anywhere; color: #111827; font: 700 14px/20px var(--sans); }
+.supplier-reliability-audit-copy p { margin: 5px 0 0; color: #4b5563; font: 500 13px/20px var(--sans); }
+.supplier-reliability-audit-status { display: inline-flex; flex: 0 0 auto; margin-top: 1px; padding: 5px 9px; border-radius: 99px; color: #4b5563; background: #f3f4f6; font: 700 10px/12px var(--mono); letter-spacing: .04em; white-space: nowrap; }
+.supplier-reliability-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .placeholder-panel { display: flex; min-height: calc(100vh - 136px); align-items: center; justify-content: center; flex-direction: column; padding: 48px 24px; color: #6b7280; text-align: center; }
 .placeholder-icon { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; margin-bottom: 18px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; color: #4b5563; }
 .placeholder-panel h1 { margin: 0; color: #030712; font-size: 24px; }
@@ -661,6 +696,8 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 @media (max-width: 639px) { .supplier-resource-grid { grid-template-columns: 1fr; gap: 14px; } .supplier-resource-card { padding: 20px; } .supplier-resource-card-header { gap: 10px; } .supplier-resource-name-row { align-items: flex-start; flex-direction: column; gap: 4px; } .supplier-resource-earnings { font-size: 14px; line-height: 20px; } .supplier-drain-modal { padding: 20px; } }
 @media (max-width: 639px) { .supplier-deployments-panel { padding: 20px 16px 8px; } .supplier-deployments-card-header { align-items: flex-start; flex-direction: column; } .supplier-deployments-table { min-width: 850px; } }
 @media (max-width: 639px) { .supplier-earnings-heading-row { align-items: flex-start; } .supplier-earnings-heading-row .page-heading-copy { min-width: 0; } .supplier-earnings-panel { padding: 20px 16px 8px; } .supplier-earnings-table { min-width: 760px; } }
+@media (max-width: 1100px) { .supplier-reliability-tier-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 639px) { .supplier-reliability-tiers-panel, .supplier-reliability-audit-panel { padding: 32px 16px 16px; } .supplier-reliability-tier-grid { grid-template-columns: 1fr; gap: 12px; } .supplier-reliability-audit-item { align-items: flex-start; flex-direction: column; } .supplier-reliability-audit-status { margin-left: 42px; } }
 @media (max-width: 900px) { .supplier-settlements-summary-grid { grid-template-columns: 1fr; } }
 @media (max-width: 639px) { .supplier-settlements-page-header { align-items: flex-start; flex-direction: row; gap: 12px; } .supplier-settlements-page-header .page-heading-copy { min-width: 0; } .supplier-settlements-payout-action { flex: 0 0 auto; } .supplier-settlements-panel { padding: 20px 16px 8px; } .supplier-settlements-modal { padding: 20px; } .supplier-settlements-modal-summary > div { align-items: flex-start; flex-direction: column; gap: 2px; } .supplier-settlements-modal-summary strong { text-align: left; } .supplier-settlements-modal-actions { align-items: stretch; flex-direction: column-reverse; } .supplier-settlements-modal-actions .button { width: 100%; } }
 @media (max-width: 600px) { .global-search { width: min(100%, 448px); flex: 1 1 auto; min-width: 0; } .topbar-actions { gap: 4px; } .language-button { width: 34px; padding: 0; justify-content: center; } .language-button > svg, .language-name { display: none; } .topbar-divider, .profile-copy { display: none; } .language-menu { position: fixed; top: 60px; right: 12px; } }

@@ -6,6 +6,7 @@ use crate::domains::buyer::{
 use crate::domains::supplier::deployments::page::SupplierDeployments as SupplierDeploymentsPage;
 use crate::domains::supplier::earnings::page::SupplierEarnings as SupplierEarningsPage;
 use crate::domains::supplier::overview::SupplierOverview as SupplierOverviewPage;
+use crate::domains::supplier::reliability::page::SupplierReliability as SupplierReliabilityPage;
 use crate::domains::supplier::resources::page::SupplierResources as SupplierResourcesPage;
 use crate::domains::supplier::settlements::page::SupplierSettlements as SupplierSettlementsPage;
 use crate::shared::types::Role;
@@ -221,7 +222,7 @@ pub fn SupplierSettlements() -> Element {
 }
 #[component]
 pub fn SupplierReliability() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "SLA & Reliability".to_string(), role: Role::Supplier } }
+    rsx! { SupplierReliabilityPage {} }
 }
 #[component]
 pub fn SupplierSettings() -> Element {
