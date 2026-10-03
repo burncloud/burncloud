@@ -1,0 +1,15 @@
+[package]
+publish.workspace = true
+license.workspace = true
+name = "burncloud-traffic-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Traffic-owned protocol and scheduling contracts for the BurnCloud platform"
+
+[dependencies]
+serde.workspace = true
+# Runtime dependency: `OpenAIChatRequest::extra` is a `HashMap<String, Value>`.
+serde_json.workspace = true
+
+[lints]
+workspace = true

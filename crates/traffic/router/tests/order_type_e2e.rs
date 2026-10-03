@@ -17,12 +17,12 @@
 mod common;
 
 use burncloud_common::types::Channel;
-use burncloud_common::TrafficColor;
 use burncloud_database_router::{RouterDatabase, RouterLog};
 use burncloud_router::affinity::pick_hrw;
 use burncloud_router::order_type::OrderType;
 use burncloud_router::SchedulingRequest;
 use burncloud_service_user::UserService;
+use burncloud_traffic_contracts::TrafficColor;
 
 use common::{insert_router_token, setup_db};
 

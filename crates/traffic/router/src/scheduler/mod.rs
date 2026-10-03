@@ -13,8 +13,9 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::str::FromStr;
 
-use burncloud_common::types::{Channel, TrafficColor};
+use burncloud_common::types::Channel;
 use burncloud_service_billing::PriceCache;
+use burncloud_traffic_contracts::TrafficColor;
 use serde::{Deserialize, Serialize};
 
 use crate::channel_state::ChannelStateTracker;

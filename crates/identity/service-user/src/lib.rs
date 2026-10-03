@@ -3,10 +3,10 @@
 //! User service layer providing register, login, and token management functionality.
 
 use bcrypt::{hash, verify, DEFAULT_COST};
-use burncloud_common::TrafficColor;
 use burncloud_database::Database;
 use burncloud_database_user::PasswordResetDatabase;
 use burncloud_database_user::UserDatabase;
+use burncloud_traffic_contracts::TrafficColor;
 use dashmap::DashMap;
 
 // Re-export domain types so server can depend on service-user instead of database-user

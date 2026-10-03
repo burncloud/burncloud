@@ -9,7 +9,7 @@
 use crate::adaptor::mapping::{apply_mapping, extract_value, RequestMapping, ResponseMapping};
 use crate::adaptor::{factory::ChannelAdaptor, generate_chat_id};
 use async_trait::async_trait;
-use burncloud_common::types::OpenAIChatRequest;
+use burncloud_traffic_contracts::OpenAIChatRequest;
 use reqwest::RequestBuilder;
 use serde_json::Value;
 
@@ -266,7 +266,7 @@ mod tests {
 
         let req = OpenAIChatRequest {
             model: "gpt-4".to_string(),
-            messages: vec![burncloud_common::types::OpenAIChatMessage {
+            messages: vec![burncloud_traffic_contracts::OpenAIChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
             }],
@@ -294,7 +294,7 @@ mod tests {
 
         let req = OpenAIChatRequest {
             model: "gpt-4".to_string(),
-            messages: vec![burncloud_common::types::OpenAIChatMessage {
+            messages: vec![burncloud_traffic_contracts::OpenAIChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
             }],
