@@ -1,3 +1,30 @@
+# Repository-wide Clippy configuration.
+#
+# Policy: hard-deny shortcuts that let agents bypass correctness, while keeping
+# complexity/style limits as warnings until historical debt is cleaned up.
+
+# Tests are allowed to be intentionally fail-fast. Production code is governed
+# by the workspace lint levels in Cargo.toml.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+
+# Complexity budgets. The corresponding lints are warnings in Cargo.toml so a
+# complex function is visible without forcing unrelated refactors into a PR.
+too-many-arguments-threshold = 6
+too-many-lines-threshold = 120
+cognitive-complexity-threshold = 20
+type-complexity-threshold = 200
+
+# Large async state machines and stack allocations are architectural smells in
+# long-running router/server processes. These thresholds are warnings today.
+future-size-threshold = 16384
+array-size-threshold = 16384
+
+# Untyped JSON is exceptional in BurnCloud. Protocol/adaptor boundaries that
+# must preserve arbitrary upstream fields use a narrowly-scoped lint exception
+# with a reason; business/domain code should use typed contracts.
 disallowed-types = [
-    { path = "serde_json::Value", reason = "Use typed structs instead of untyped JSON values" },
+    { path = "serde_json::Value", reason = "Business logic must use typed contracts; dynamic JSON is allowed only at explicit protocol/adaptor boundaries" },
 ]

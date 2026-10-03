@@ -3,13 +3,34 @@ name: Architecture Checks
 on:
   pull_request:
     paths:
-      - 'crates/traffic/router/Cargo.toml'
+      - 'Cargo.toml'
+      - 'clippy.toml'
       - 'deny.toml'
+      - '.github/workflows/arch.yml'
+      - 'crates/**/Cargo.toml'
+      - 'crates/**/*.rs'
 
 permissions:
   contents: read
 
 jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Check workspace Clippy policy
+        # The UI client's default `desktop` feature pulls GTK native libraries.
+        # Linux architecture CI checks every target with defaults disabled; the
+        # desktop feature remains the responsibility of platform-specific UI CI.
+        run: cargo clippy --workspace --all-targets --no-default-features
+
   router-deps:
     runs-on: ubuntu-latest
     steps:
@@ -25,14 +46,14 @@ jobs:
       - name: Check router service dependency whitelist
         run: ./crates/traffic/router/scripts/check-router-deps.sh --ci
 
-  cargo-deny-bans:
+  cargo-deny-policy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check cargo-deny bans
+      - name: Check dependency bans, licenses, and sources
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check bans
+          command: check bans licenses sources
           arguments: --all-features
