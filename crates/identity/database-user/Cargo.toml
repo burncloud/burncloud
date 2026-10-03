@@ -9,9 +9,13 @@ edition = "2021"
 burncloud-database.workspace = true
 burncloud-common.workspace = true
 sqlx.workspace = true
+tokio.workspace = true
 serde.workspace = true
 tracing.workspace = true
 rand = { workspace = true, features = ["std_rng"] }
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true
