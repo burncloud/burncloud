@@ -35,9 +35,22 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
     (db, path)
 }
 
-fn cleanup(db: Database, path: &std::path::Path) {
-    let _ = std::fs::remove_file(path);
-    drop(db);
+/// Close the pool, wait for the handle to be released, then delete the test database.
+///
+/// Measured on this platform (Windows): dropping a `Database` leaves the file locked and removal
+/// fails with os error 32; `close().await` alone is not enough either, because the pool releases
+/// the handle asynchronously. With a short wait after `close()` the removal succeeds. Before this
+/// was noticed the suite silently leaked one database per test into the temp directory (78 had
+/// accumulated), so the final state is asserted rather than assumed.
+async fn cleanup(db: Database, path: &std::path::Path) {
+    db.close().await.ok();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    std::fs::remove_file(path).unwrap_or_else(|e| {
+        panic!(
+            "test database {} was not removed ({e}); the temp directory would fill up",
+            path.display()
+        )
+    });
 }
 
 fn sample_channel(name: &str, group: &str) -> Channel {
@@ -138,7 +151,7 @@ async fn channel_survives_a_real_insert_and_select() {
         "created_time is stamped by the writer"
     );
 
-    cleanup(db, &path);
+    cleanup(db, &path).await;
 }
 
 #[tokio::test]
@@ -180,7 +193,7 @@ async fn list_decodes_the_group_column_and_list_by_ids_matches_get_by_id() {
     let none = ChannelProviderModel::list_by_ids(&db, &[]).await.unwrap();
     assert!(none.is_empty());
 
-    cleanup(db, &path);
+    cleanup(db, &path).await;
 }
 
 #[tokio::test]
@@ -241,5 +254,5 @@ async fn ability_rows_round_trip_through_the_real_table() {
         "a disabled channel keeps no ability rows, so it cannot be routed"
     );
 
-    cleanup(db, &path);
+    cleanup(db, &path).await;
 }

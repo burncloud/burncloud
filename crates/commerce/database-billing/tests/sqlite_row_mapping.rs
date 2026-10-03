@@ -47,9 +47,22 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
     (db, path)
 }
 
-fn cleanup(db: Database, path: &std::path::Path) {
-    let _ = std::fs::remove_file(path);
-    drop(db);
+/// Close the pool, wait for the handle to be released, then delete the test database.
+///
+/// Measured on this platform (Windows): dropping a `Database` leaves the file locked and removal
+/// fails with os error 32; `close().await` alone is not enough either, because the pool releases
+/// the handle asynchronously. With a short wait after `close()` the removal succeeds. Before this
+/// was noticed the suite silently leaked one database per test into the temp directory (78 had
+/// accumulated), so the final state is asserted rather than assumed.
+async fn cleanup(db: Database, path: &std::path::Path) {
+    db.close().await.ok();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    std::fs::remove_file(path).unwrap_or_else(|e| {
+        panic!(
+            "test database {} was not removed ({e}); the temp directory would fill up",
+            path.display()
+        )
+    });
 }
 
 /// A price input with every column populated by a distinct value.
@@ -110,7 +123,7 @@ fn migrations_create_the_billing_tables() {
                 "migration did not create {expected}; found {names:?}"
             );
         }
-        cleanup(db, &path);
+        cleanup(db, &path).await;
     });
 }
 
@@ -165,7 +178,7 @@ async fn price_survives_a_real_insert_and_select() {
     assert_eq!(stored.supports_function_calling_bool(), Some(false));
     assert!(stored.id > 0, "SQLite assigned a row id");
 
-    cleanup(db, &path);
+    cleanup(db, &path).await;
 }
 
 #[tokio::test]
@@ -206,7 +219,7 @@ async fn absent_optional_columns_decode_as_none() {
     // `region` was written as the empty string by the INSERT above.
     assert_eq!(stored.region.as_deref(), Some(""));
 
-    cleanup(db, &path);
+    cleanup(db, &path).await;
 }
 
 #[tokio::test]
@@ -264,5 +277,5 @@ async fn tiered_price_rows_survive_a_real_insert_and_select() {
     assert_eq!(stored[0].region.as_deref(), Some("cn"));
     assert!(stored[0].id > 0, "SQLite assigned a row id");
 
-    cleanup(db, &path);
+    cleanup(db, &path).await;
 }

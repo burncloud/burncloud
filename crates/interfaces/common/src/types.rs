@@ -110,70 +110,12 @@ pub struct OpenAIChatChoice {
 // S1-C: the Supply-owned channel and ability types moved to the Supply contract crate
 // (`burncloud_supply_contracts`). They are re-exported here under the same names and module path
 // so existing `burncloud_common::types::*` and root-level consumers keep compiling.
-// `Recharge` stays in this module: it is an Identity/Commerce concern for S1-D.
+// S1-D removed the legacy `Recharge`/`User`/`Token` DTOs that used to live here: they had no
+// consumer anywhere in the workspace and duplicated the Identity types.
 // ---------------------------------------------------------------------------
 pub use burncloud_supply_contracts::{
     Ability, Channel, ChannelAbility, ChannelProvider, ChannelType,
 };
-
-/// Recharge record. Amount is stored as i64 nanodollars (9 decimal precision).
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Recharge {
-    pub id: i32,
-    pub user_id: String,
-    /// Amount in nanodollars (9 decimal precision)
-    pub amount: i64,
-    pub description: Option<String>,
-    pub created_at: Option<i64>, // Unix timestamp
-}
-
-/// User with dual-currency wallet for regional pricing support.
-/// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct User {
-    pub id: String,
-    pub username: String,
-    #[serde(skip_serializing)] // Don't expose password hash
-    pub password: String, // Mapped to password_hash in query if aliased?
-    pub display_name: String,
-    pub role: i32,   // 1: Common, 10: Admin, 100: Root
-    pub status: i32, // 1: Enabled, 2: Disabled
-    pub email: Option<String>,
-    pub github_id: Option<String>,
-    pub wechat_id: Option<String>,
-    pub access_token: Option<String>,
-    /// USD balance in nanodollars (9 decimal precision)
-    /// For display: divide by 1_000_000_000 to get dollars
-    #[sqlx(default)]
-    pub balance_usd: i64,
-    /// CNY balance in nanodollars (9 decimal precision)
-    /// For display: divide by 1_000_000_000 to get yuan
-    #[sqlx(default)]
-    pub balance_cny: i64,
-    pub request_count: i32,
-    pub group: String,
-    pub aff_code: Option<String>,
-    pub aff_count: i32,
-    pub inviter_id: Option<String>,
-    /// User's preferred currency for display (USD, CNY, EUR)
-    #[sqlx(default)]
-    pub preferred_currency: Option<String>,
-    #[sqlx(default)]
-    pub created_at: Option<i64>, // Unix timestamp
-}
-
-/// Token without quota tracking - quota is now managed at user level via dual-currency wallet.
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Token {
-    pub id: i32,
-    pub user_id: String,
-    pub key: String,
-    pub status: i32,
-    pub name: String,
-    pub created_time: i64,
-    pub accessed_time: i64,
-    pub expired_time: i64, // -1 for never
-}
 
 /// Protocol Configuration for dynamic protocol adapters
 /// Allows runtime configuration of API endpoints and request/response mappings
