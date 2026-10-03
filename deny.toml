@@ -1,11 +1,12 @@
 # cargo-deny configuration
 # Wave 2: license allow list + baseline advisory ignore
 # Wave 3: layer boundary enforced — server no longer depends on domain-specific database crates.
-#         Remaining server DB deps (burncloud-database-router, burncloud-database-user)
-#         are init-only exceptions for schema migration at startup.
+# Wave 4: agent guardrails — dependency declarations, source provenance, and
+#         compatibility-layer consumers are machine-enforced.
 
 [graph]
 targets = []
+all-features = true
 
 [output]
 feature-depth = 1
@@ -90,32 +91,49 @@ license-files = []
 ignore = true
 
 # ─── Bans ─────────────────────────────────────────────────────────────────────
-# Layer boundary enforcement (Wave 3).
-#
-# Rule: only service crates (and cli/router where documented) may directly
-# depend on domain database crates. The server layer must go through services.
-#
-# Mechanism: cargo-deny [[bans.deny]] with `wrappers` — a banned crate is
-# allowed only when it appears as a DIRECT dependency of a listed wrapper crate.
-# Any attempt to add a banned crate directly to server/Cargo.toml will fail CI.
-#
-# Allowed server → database exceptions (schema migration at startup):
-#   burncloud-database, burncloud-database-router, burncloud-database-user
-# These are NOT in the ban list below and remain freely usable.
+# Layer boundary enforcement (Wave 3) + agent dependency hygiene (Wave 4).
 [bans]
-# "warn" would produce ~50 warnings for transitive dep version conflicts
-# (windows-sys, rand, getrandom, etc.) that we cannot control. "allow" is
-# appropriate for a large workspace with desktop + server + CLI in one repo.
+# Desktop + server + CLI currently have known transitive duplicate-version debt
+# (windows-sys, rand, getrandom, GTK chains). Keep that baseline allowed here;
+# direct workspace declarations are governed separately below.
 multiple-versions = "allow"
-wildcards = "allow"
+
+# Agents may never introduce '*' dependency versions.
+wildcards = "deny"
 
 # systray@0.4 pulls in a full set of old GTK crates (gtk 0.8, gdk 0.12, etc.)
 # while dioxus-desktop pulls in the newer GTK 0.18 series. Both are transitive
-# deps we cannot upgrade directly. Skip systray's entire dep tree to suppress
-# the ~80 duplicate-version warnings these conflicts produce.
+# deps we cannot upgrade directly. Skip systray's entire dep tree to suppress the
+# duplicate-version baseline if multiple-versions is tightened in the future.
 skip-tree = [
     { crate = "systray@0.4.0", reason = "old GTK dep chain conflicts with dioxus-desktop; upgrade blocked by systray API" },
 ]
+
+# Centralized dependency declarations must stay authoritative. This catches the
+# common agent failure mode where a dependency is added directly to a crate even
+# though the workspace already owns the version, or a workspace dependency is
+# left behind after the last consumer disappears.
+[bans.workspace-dependencies]
+duplicates = "deny"
+include-path-dependencies = true
+unused = "deny"
+
+# burncloud-common is now a compatibility/interface layer, not a domain owner.
+# Freeze the current direct consumers so a new domain crate cannot start routing
+# Commerce/Supply/Traffic truth through Common. Existing consumers should be
+# removed in dedicated migration issues, at which point their wrapper entry must
+# also be deleted.
+[[bans.deny]]
+crate = "burncloud-common"
+wrappers = [
+    "burncloud",
+    "burncloud-client",
+    "burncloud-router",
+    "burncloud-database-router",
+    "burncloud-database-billing",
+    "burncloud-tests",
+]
+reason = "Interfaces/Common is compatibility infrastructure; new domain crates must depend on the owning contract directly"
 
 # burncloud-database-model — model_ domain (model_capabilities metadata)
 [[bans.deny]]
