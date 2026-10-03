@@ -1,5 +1,6 @@
 use crate::common::current_timestamp;
-use burncloud_common::types::{Price, PriceInput};
+use crate::rows::PriceRow;
+use burncloud_commerce_contracts::pricing::{Price, PriceInput};
 use burncloud_database::{adapt_sql, Database, Result};
 
 pub struct BillingPriceModel;
@@ -51,12 +52,13 @@ impl BillingPriceModel {
                FROM billing_prices WHERE model = ? AND currency = ? AND region = ?"#
         };
 
-        let price = sqlx::query_as(sql)
+        let price = sqlx::query_as::<_, PriceRow>(sql)
             .bind(model)
             .bind(currency)
             .bind(region_key)
             .fetch_optional(conn.pool())
-            .await?;
+            .await?
+            .map(Price::from);
 
         if price.is_some() {
             return Ok(price);
@@ -94,11 +96,12 @@ impl BillingPriceModel {
                    FROM billing_prices WHERE model = ? AND currency = 'USD' AND region = ?"#
             };
 
-            let usd_price = sqlx::query_as(sql_usd)
+            let usd_price = sqlx::query_as::<_, PriceRow>(sql_usd)
                 .bind(model)
                 .bind(region_key)
                 .fetch_optional(conn.pool())
-                .await?;
+                .await?
+                .map(Price::from);
 
             return Ok(usd_price);
         }
@@ -152,11 +155,12 @@ impl BillingPriceModel {
                FROM billing_prices WHERE model = ? AND region = ?"#
         };
 
-        let price = sqlx::query_as(sql)
+        let price = sqlx::query_as::<_, PriceRow>(sql)
             .bind(model)
             .bind(region_key)
             .fetch_optional(conn.pool())
-            .await?;
+            .await?
+            .map(Price::from);
 
         if price.is_some() {
             return Ok(price);
@@ -194,10 +198,11 @@ impl BillingPriceModel {
                    FROM billing_prices WHERE model = ? AND region = ''"#
             };
 
-            let universal_price: Option<Price> = sqlx::query_as(sql_universal)
+            let universal_price: Option<Price> = sqlx::query_as::<_, PriceRow>(sql_universal)
                 .bind(model)
                 .fetch_optional(conn.pool())
-                .await?;
+                .await?
+                .map(Price::from);
 
             return Ok(universal_price);
         }
@@ -249,11 +254,14 @@ impl BillingPriceModel {
                ORDER BY currency"#
         };
 
-        let prices = sqlx::query_as(sql)
+        let prices: Vec<Price> = sqlx::query_as::<_, PriceRow>(sql)
             .bind(model)
             .bind(region_key)
             .fetch_all(conn.pool())
-            .await?;
+            .await?
+            .into_iter()
+            .map(Price::from)
+            .collect();
 
         Ok(prices)
     }
@@ -300,7 +308,7 @@ impl BillingPriceModel {
                         base_select
                     )
                 };
-                sqlx::query_as(sql)
+                sqlx::query_as::<_, PriceRow>(sql)
                     .bind(curr)
                     .bind(region_key)
                     .bind(limit)
@@ -323,7 +331,7 @@ impl BillingPriceModel {
                         base_select
                     )
                 };
-                sqlx::query_as(sql)
+                sqlx::query_as::<_, PriceRow>(sql)
                     .bind(curr)
                     .bind(limit)
                     .bind(offset)
@@ -345,7 +353,7 @@ impl BillingPriceModel {
                         base_select
                     )
                 };
-                sqlx::query_as(sql)
+                sqlx::query_as::<_, PriceRow>(sql)
                     .bind(region_key)
                     .bind(limit)
                     .bind(offset)
@@ -365,7 +373,7 @@ impl BillingPriceModel {
                         base_select
                     )
                 };
-                sqlx::query_as(sql)
+                sqlx::query_as::<_, PriceRow>(sql)
                     .bind(limit)
                     .bind(offset)
                     .fetch_all(conn.pool())
@@ -373,7 +381,7 @@ impl BillingPriceModel {
             }
         };
 
-        Ok(prices)
+        Ok(prices.into_iter().map(Price::from).collect())
     }
 
     /// Create or update a price (upsert)

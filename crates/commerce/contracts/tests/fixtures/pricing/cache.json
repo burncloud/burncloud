@@ -1,0 +1,13 @@
+{
+  "version": "7.0",
+  "updated_at": "2026-03-29T00:00:00Z",
+  "source": "fixture-cache",
+  "models": {
+    "claude-3-5-sonnet": {
+      "USD": {
+        "text": { "in": 3.0, "out": 15.0 },
+        "cache": { "read": 0.3, "write": 3.75 }
+      }
+    }
+  }
+}

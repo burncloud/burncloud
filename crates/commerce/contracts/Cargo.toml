@@ -7,6 +7,10 @@ edition = "2021"
 description = "Commerce-owned pricing and money conversion contracts for the BurnCloud platform"
 
 [dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

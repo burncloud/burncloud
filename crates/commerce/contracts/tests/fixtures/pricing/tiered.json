@@ -1,0 +1,17 @@
+{
+  "version": "7.0",
+  "updated_at": "2026-03-29T00:00:00Z",
+  "source": "fixture-tiered",
+  "models": {
+    "qwen-max": {
+      "USD": {
+        "text": { "in": 1.2, "out": 2.4 },
+        "tiered": [
+          { "tier_start": 0, "tier_end": 32000, "in": 1.2, "out": 2.4 },
+          { "tier_start": 32000, "tier_end": 128000, "in": 2.4, "out": 4.8 },
+          { "tier_start": 128000, "in": 3.0, "out": 6.0 }
+        ]
+      }
+    }
+  }
+}

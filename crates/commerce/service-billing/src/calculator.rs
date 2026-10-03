@@ -1,7 +1,7 @@
 use crate::cache::PriceCache;
 use crate::error::BillingError;
 use crate::types::{CostBreakdown, CostResult, UnifiedUsage};
-use burncloud_common::types::Price;
+use burncloud_commerce_contracts::pricing::Price;
 use std::collections::HashMap;
 
 // === Pricing percentage constants ===
@@ -382,7 +382,7 @@ fn saturating_mul_percent(price: i64, percent: i64) -> i64 {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use burncloud_common::types::Price;
+    use burncloud_commerce_contracts::pricing::Price;
 
     fn make_price(input: i64, output: i64) -> Price {
         Price {

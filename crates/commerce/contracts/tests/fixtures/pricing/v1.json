@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-29T00:00:00Z",
+  "source": "fixture-v1",
+  "models": {
+    "gpt-4o": {
+      "pricing": {
+        "USD": {
+          "input_price": 2.5,
+          "output_price": 10.0
+        }
+      },
+      "cache_pricing": {
+        "USD": {
+          "cache_read_input_price": 0.25,
+          "cache_creation_input_price": 3.125
+        }
+      },
+      "batch_pricing": {
+        "USD": {
+          "batch_input_price": 1.25,
+          "batch_output_price": 5.0
+        }
+      },
+      "metadata": {
+        "context_window": 128000,
+        "max_output_tokens": 16384,
+        "supports_vision": true,
+        "supports_function_calling": true,
+        "supports_streaming": true,
+        "provider": "openai",
+        "family": "gpt-4",
+        "release_date": "2024-05-13"
+      }
+    }
+  }
+}

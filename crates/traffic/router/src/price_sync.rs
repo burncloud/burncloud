@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use burncloud_common::PricingConfig;
+use burncloud_commerce_contracts::pricing::PricingConfig;
 use burncloud_database::placeholder::adapt_sql;
 use burncloud_database::{sqlx, Database};
 use burncloud_database_billing::{
