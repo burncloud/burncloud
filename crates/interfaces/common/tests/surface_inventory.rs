@@ -1,16 +1,19 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Domain-declaration guard for `burncloud_common` (S1-D, extended by S1-E).
+//! Domain-declaration guard for `burncloud_common` (S1-D, extended by S1-E and S1-F).
 //!
 //! ## What this checks, precisely
 //!
-//! S1-A..S1-E moved or deleted the domain types that used to live in this crate. The invariant worth
-//! protecting is: **`burncloud_common` must not declare a domain type again.** The next feature that
-//! needs a `User`, a price or an OpenAI DTO can reintroduce one in a single line, and that
-//! regression is invisible in review if nobody knows the history.
+//! S1-A..S1-F moved, deleted or retired every domain type that used to live in this crate. The
+//! invariant worth protecting is: **`burncloud_common` must not declare a domain type again.** The
+//! next feature that needs a `User`, a price or an OpenAI DTO can reintroduce one in a single line,
+//! and that regression is invisible in review if nobody knows the history.
 //!
 //! The guard parses the crate's own source for `pub struct` / `pub enum` / `pub type` / `pub fn` /
 //! `pub const` / `pub trait` declarations (comments excluded) and fails when a name whose owner
 //! lives elsewhere reappears.
+//!
+//! After S1-F the crate declares no domain type at all: `types.rs` is pure re-export, and what
+//! remains are two Interfaces URL constants and the Platform-facing `CrudRepository` trait.
 //!
 //! ## What this does NOT check
 //!
@@ -18,7 +21,7 @@
 //! matches its power:
 //!
 //! 1. It covers declarations, not re-export members. That the re-export blocks still exist is
-//!    checked by `contract_reexports_are_intact`, but their contents are not enumerated.
+//!    checked by `only_the_known_interfaces_items_remain`, but their contents are not enumerated.
 //! 2. `common::*` still forwards the nanodollar helpers through `lib.rs`. Those names are **not**
 //!    guarded here.
 //! 3. It cannot see through a `#[path]` module or a macro-generated declaration.
@@ -34,28 +37,11 @@ const SRC_FILES: &[&str] = &[
     "src/lib.rs",
     "src/types.rs",
     "src/constants.rs",
-    "src/error.rs",
     "src/repository.rs",
-    "src/price_u64.rs",
-    "src/pricing_config.rs",
 ];
 
 /// Item kinds the parser understands. Anything not listed is invisible to the guard.
 const KINDS: &[&str] = &["struct", "enum", "type", "fn", "const", "trait"];
-
-/// The surviving declaration inventory of `src/types.rs`, with each item's owner.
-///
-/// After S1-E this file holds exactly one declared type. Everything else either became a re-export
-/// from a domain contract or left:
-///
-/// * `TrafficColor` and the four `OpenAIChat*` DTOs moved to the Traffic contract (S1-E);
-/// * `RequestMapping` / `ResponseMapping` were deleted, because the copies here had no consumer and
-///   duplicated `traffic/router/src/adaptor/mapping.rs`, which is the definition in use.
-const EXPECTED_TYPES_RS: &[(&str, &str)] = &[
-    // S1-F owns the comparison against Supply's `ChannelProtocolConfig`; the ownership ruling is
-    // recorded in #613.
-    ("pub struct ProtocolConfig", "Interfaces -> Supply (S1-F)"),
-];
 
 /// Names that left this crate, with the owner that must provide them instead.
 ///
@@ -106,6 +92,32 @@ const MOVED_OUT: &[(&str, &str)] = &[
         "deleted in S1-D; superseded by UserApiKey / RouterToken",
     ),
     ("User", "deleted in S1-D; superseded by UserAccount"),
+    // Deleted in S1-F: field-for-field duplicate of Supply's ChannelProtocolConfig, no consumer.
+    (
+        "ProtocolConfig",
+        "deleted in S1-F; Supply's ChannelProtocolConfig is the owner (same fields, plus a method)",
+    ),
+    // Retired in S1-F: the legacy combination error, with no consumer anywhere.
+    (
+        "BurnCloudError",
+        "deleted in S1-F; each owner returns its own error and the entry point maps it",
+    ),
+];
+
+/// Items that legitimately remain, with the reason each one stays.
+const EXPECTED_REMAINING: &[(&str, &str)] = &[
+    (
+        "pub const DEFAULT_PORT",
+        "Interfaces URL constant; consumed by the CLI",
+    ),
+    (
+        "pub const INTERNAL_PREFIX",
+        "Interfaces URL constant; consumed by the router tests",
+    ),
+    (
+        "pub trait CrudRepository",
+        "Platform persistence abstraction; the templates and the token repository implement it",
+    ),
 ];
 
 fn read(rel: &str) -> String {
@@ -158,62 +170,38 @@ fn common_does_not_declare_domain_types() {
         violations.is_empty(),
         "burncloud_common must not declare domain types again:\n  {}\n\n\
          Move the item to its owning domain (or its contract crate) instead of adding it here.\n\
-         Owners are recorded in #610 / #613 and docs/architecture-s1-task-contracts.md.",
+         Owners are recorded in #610 / #613 / #615 and docs/architecture-s1-task-contracts.md.",
         violations.join("\n  ")
     );
 }
 
 #[test]
-fn types_rs_inventory_is_unchanged() {
-    let text = read("src/types.rs");
-    let mut declared = declarations(&text);
-    // The contract re-export blocks are `pub use`, not declarations; record their presence so a new
-    // declaration cannot hide behind them.
-    for (needle, tag) in [
-        (
-            "pub use burncloud_commerce_contracts::pricing::{",
-            "pub use::commerce",
-        ),
-        ("pub use burncloud_supply_contracts::{", "pub use::supply"),
-        ("pub use burncloud_traffic_contracts::{", "pub use::traffic"),
-    ] {
-        if text.contains(needle) {
-            declared.push(tag.to_string());
-        }
-    }
+fn only_the_known_interfaces_items_remain() {
+    // The declarations that remain live in constants.rs and repository.rs. Anything new has to be
+    // classified: either it belongs to Interfaces, or it belongs to a domain and must not be here.
+    let mut declared: Vec<String> = SRC_FILES
+        .iter()
+        .flat_map(|f| declarations(&read(f)))
+        .collect();
     declared.sort();
     declared.dedup();
 
-    let mut expected: Vec<String> = EXPECTED_TYPES_RS
+    let mut expected: Vec<String> = EXPECTED_REMAINING
         .iter()
         .map(|(n, _)| n.to_string())
-        .chain([
-            "pub use::commerce".to_string(),
-            "pub use::supply".to_string(),
-            "pub use::traffic".to_string(),
-        ])
         .collect();
     expected.sort();
     expected.dedup();
 
     assert_eq!(
         declared, expected,
-        "the declaration inventory of burncloud_common::types changed.\n\
-         Either add the item to EXPECTED_TYPES_RS with its owner, or move it to the owning domain.\n\
-         Listing it here is only correct if it really belongs to the Interfaces layer."
+        "the declaration inventory of burncloud_common changed.\n\
+         Either add the item to EXPECTED_REMAINING with the reason it stays, or move it to the\n\
+         owning domain. Declaring a domain type here is what S1-A..S1-F removed."
     );
 
-    assert!(
-        !declared.is_empty(),
-        "the inventory came back empty; the parser or the file was changed unexpectedly"
-    );
-}
-
-#[test]
-fn contract_reexports_are_intact() {
-    // The compatibility layer is the only reason the moved domain types are still reachable through
-    // common; if a re-export disappears, existing consumers break.
-    let text = read("src/types.rs");
+    // The re-exports are not declarations, so check them separately.
+    let types = read("src/types.rs");
     for (needle, what) in [
         (
             "pub use burncloud_commerce_contracts::pricing::{",
@@ -223,13 +211,23 @@ fn contract_reexports_are_intact() {
         ("pub use burncloud_traffic_contracts::{", "Traffic"),
     ] {
         assert!(
-            text.contains(needle),
+            types.contains(needle),
             "the {what} re-export disappeared from common::types"
         );
     }
-    let lib = read("src/lib.rs");
     assert!(
-        lib.contains("pub use burncloud_commerce_contracts::price_u64::{"),
+        read("src/lib.rs").contains("pub use burncloud_commerce_contracts::price_u64::{"),
         "the nanodollar re-export disappeared from the crate root"
+    );
+}
+
+#[test]
+fn types_module_is_re_export_only() {
+    // The end state of S1: the module that used to hold every shared type now holds none. If a
+    // declaration reappears here, the migration has started to unwind.
+    let declared = declarations(&read("src/types.rs"));
+    assert!(
+        declared.is_empty(),
+        "common::types must be re-export only after S1-F, found declarations: {declared:?}"
     );
 }

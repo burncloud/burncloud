@@ -12,15 +12,17 @@ keywords = ["burncloud", "common", "utilities"]
 categories = ["development-tools"]
 
 [dependencies]
+# The three domain contracts are the only reason this crate still exists: every type it used to
+# declare is now a re-export from one of them.
 burncloud-commerce-contracts.workspace = true
 burncloud-supply-contracts.workspace = true
 burncloud-traffic-contracts.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-sqlx.workspace = true
-chrono.workspace = true
+# Required by `repository.rs`: the `#[async_trait]` attribute on the CrudRepository trait.
 async-trait.workspace = true
+
+[dev-dependencies]
+# Only the compatibility tests serialize values; no source file names serde_json.
+serde_json.workspace = true
+
 [lints]
 workspace = true

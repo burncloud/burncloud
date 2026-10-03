@@ -1,11 +1,12 @@
-// The two struct fields that legitimately needed `HashMap<String, Value>` left with S1-E:
-// `OpenAIChatRequest::extra` moved to the Traffic contract, and the duplicate `RequestMapping`
-// was deleted with its local counterpart in `traffic/router/src/adaptor/mapping.rs` as the owner.
-// All `Value` uses in this codebase must go through typed structs.
-#![allow(clippy::disallowed_types)]
-
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+// S1-F: this module now holds only re-exports. Every type that used to be declared here has been
+// moved to its owning domain contract, deleted as a duplicate, or retired as dead code:
+//   * prices and pricing     -> burncloud_commerce_contracts (S1-A, S1-B)
+//   * channel, ability       -> burncloud_supply_contracts   (S1-C)
+//   * User, Token, Recharge  -> deleted in S1-D (no consumer)
+//   * OpenAI DTOs, colour    -> burncloud_traffic_contracts  (S1-E)
+//   * ProtocolConfig         -> deleted in S1-F: field-for-field duplicate of Supply's
+//                               ChannelProtocolConfig, with no consumer
+// The module stays so that `burncloud_common::types::*` keeps working for existing consumers.
 
 // Re-export nanodollar conversion utilities owned by Commerce, keeping the legacy
 // alias names used by existing consumers of this module.
@@ -39,8 +40,6 @@ pub use burncloud_traffic_contracts::{
     OpenAIChatChoice, OpenAIChatMessage, OpenAIChatRequest, OpenAIChatResponse, TrafficColor,
 };
 
-// --- Ported from New API ---
-
 // ---------------------------------------------------------------------------
 // S1-C: the Supply-owned channel and ability types moved to the Supply contract crate
 // (`burncloud_supply_contracts`). They are re-exported here under the same names and module path
@@ -51,51 +50,3 @@ pub use burncloud_traffic_contracts::{
 pub use burncloud_supply_contracts::{
     Ability, Channel, ChannelAbility, ChannelProvider, ChannelType,
 };
-
-/// Protocol Configuration for dynamic protocol adapters
-/// Allows runtime configuration of API endpoints and request/response mappings
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct ProtocolConfig {
-    pub id: i32,
-    /// Channel type (1=OpenAI, 2=Anthropic, 3=Azure, etc.)
-    pub channel_type: i32,
-    /// API version string (e.g., "2024-02-01", "v1")
-    pub api_version: String,
-    /// Whether this is the default config for the channel type
-    pub is_default: i32,
-    /// Chat completions endpoint (supports placeholders like {deployment_id})
-    pub chat_endpoint: Option<String>,
-    /// Embeddings endpoint
-    pub embed_endpoint: Option<String>,
-    /// Models list endpoint
-    pub models_endpoint: Option<String>,
-    /// Request field mapping rules (JSON)
-    pub request_mapping: Option<String>,
-    /// Response field mapping rules (JSON)
-    pub response_mapping: Option<String>,
-    /// Detection rules for auto-detection (JSON)
-    pub detection_rules: Option<String>,
-    /// Creation timestamp
-    pub created_at: Option<i64>,
-    /// Update timestamp
-    pub updated_at: Option<i64>,
-}
-
-impl Default for ProtocolConfig {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            channel_type: 1, // OpenAI
-            api_version: "default".to_string(),
-            is_default: 1,
-            chat_endpoint: Some("/v1/chat/completions".to_string()),
-            embed_endpoint: Some("/v1/embeddings".to_string()),
-            models_endpoint: Some("/v1/models".to_string()),
-            request_mapping: None,
-            response_mapping: None,
-            detection_rules: None,
-            created_at: None,
-            updated_at: None,
-        }
-    }
-}
