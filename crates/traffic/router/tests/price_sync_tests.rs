@@ -9,8 +9,8 @@
 
 mod common;
 
-use burncloud_common::dollars_to_nano;
-use burncloud_common::pricing_config::{
+use burncloud_commerce_contracts::price_u64::dollars_to_nano;
+use burncloud_commerce_contracts::pricing::{
     CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
@@ -539,7 +539,7 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
 /// Test model count drop protection: sync still succeeds with a warning when >50% of models drop
 #[tokio::test]
 async fn test_model_count_drop_protection() -> anyhow::Result<()> {
-    use burncloud_common::pricing_config::{CurrencyPricing, ModelPricing};
+    use burncloud_commerce_contracts::pricing::{CurrencyPricing, ModelPricing};
     use std::collections::HashMap;
 
     let (db, _pool, _db_url) = setup_db().await?;
@@ -587,7 +587,7 @@ async fn test_model_count_drop_protection() -> anyhow::Result<()> {
             realtime_pricing: None,
         },
     );
-    let config = burncloud_common::pricing_config::PricingConfig {
+    let config = burncloud_commerce_contracts::pricing::PricingConfig {
         version: "1.0".to_string(),
         updated_at: chrono::Utc::now(),
         source: "test".to_string(),

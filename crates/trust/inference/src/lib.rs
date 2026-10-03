@@ -6,9 +6,9 @@ mod error;
 
 pub use error::{InferenceError, Result};
 
-use burncloud_common::types::Channel;
 use burncloud_database::Database;
 use burncloud_database_channel::{ChannelAbilityInput, ChannelAbilityModel, ChannelProviderModel};
+use burncloud_supply_contracts::Channel;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;

@@ -238,12 +238,14 @@ impl ModelRouter {
                 .await
             {
                 let raw = price.input_price.saturating_add(price.output_price);
-                let nano = match burncloud_common::Currency::from_str(&price.currency) {
-                    Ok(curr) if curr != burncloud_common::Currency::USD => {
+                let nano = match burncloud_commerce_contracts::pricing::Currency::from_str(
+                    &price.currency,
+                ) {
+                    Ok(curr) if curr != burncloud_commerce_contracts::pricing::Currency::USD => {
                         match exchange_rate.convert(
                             raw as f64,
                             curr,
-                            burncloud_common::Currency::USD,
+                            burncloud_commerce_contracts::pricing::Currency::USD,
                         ) {
                             Ok(usd) => usd as i64,
                             Err(e) => {

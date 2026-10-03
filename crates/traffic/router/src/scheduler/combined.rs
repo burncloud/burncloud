@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use burncloud_common::types::Channel;
+use burncloud_supply_contracts::Channel;
 
 use super::{
     CandidateFactors, ChannelScheduler, ScheduleError, SchedulerPolicyConfig, SchedulingContext,

@@ -10,7 +10,7 @@ tokio = { workspace = true, features = ["process", "io-util", "time"] }
 thiserror = { workspace = true }
 serde = { workspace = true }
 reqwest = { workspace = true }
-burncloud-common = { workspace = true }
+burncloud-supply-contracts = { workspace = true }
 burncloud-database = { workspace = true }
 burncloud-database-channel = { workspace = true }
 tracing = { workspace = true }
