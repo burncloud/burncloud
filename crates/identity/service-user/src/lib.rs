@@ -489,8 +489,70 @@ impl UserService {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use burncloud_database::create_default_database;
+    use burncloud_database::create_database_with_url;
 
+    /// An isolated SQLite database for one test.
+    ///
+    /// Tests must never open the default database: it resolves to the developer's real
+    /// `AppData/Local/BurnCloud/data.db`, so a test run writes test users into live data. That
+    /// happened once and the rows had to be removed by hand, so this helper exists and
+    /// `tests/no_default_database.rs` guards against a regression.
+    ///
+    /// A file rather than `:memory:`: the pool opens several connections and an in-memory SQLite
+    /// database is per-connection, so the schema would not be visible to every query.
+    struct TempDb {
+        db: Database,
+        path: std::path::PathBuf,
+    }
+
+    impl TempDb {
+        async fn new(tag: &str) -> anyhow::Result<Self> {
+            let path = std::env::temp_dir().join(format!(
+                "bc_service_user_{}_{}_{}.db",
+                tag,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            let _ = std::fs::remove_file(&path);
+            let normalized = path.to_string_lossy().replace('\\', "/");
+            // Three slashes: `sqlite:///C:/...` is an absolute path on Windows.
+            let url = format!("sqlite:///{}?mode=rwc", normalized);
+            let db = create_database_with_url(&url).await?;
+            Ok(Self { db, path })
+        }
+    }
+
+    impl TempDb {
+        /// Close the pool and delete the file.
+        ///
+        /// Deliberately NOT implemented as `Drop`: dropping a `Database` does not release the
+        /// SQLite handle, and a type with a `Drop` impl cannot hand its fields out by value. The
+        /// same measured behaviour applies as elsewhere in this repository -- `close().await`
+        /// alone is not enough, the pool releases the handle asynchronously, so a short wait is
+        /// required or the removal fails and every run leaves a database in the temp directory.
+        ///
+        /// The cost of not using `Drop` is that a panicking test leaves its file behind. That is
+        /// why the explicit call is enforced by `tests/no_default_database.rs` rather than left to
+        /// this comment.
+        async fn cleanup(self) {
+            let path = self.path.clone();
+            self.db.close().await.ok();
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            std::fs::remove_file(&path).unwrap_or_else(|e| {
+                panic!("test database {} was not removed ({e})", path.display())
+            });
+        }
+    }
+
+    /// Create a temporary database and apply the production schema to it.
+    async fn test_db(tag: &str) -> anyhow::Result<TempDb> {
+        let temp = TempDb::new(tag).await?;
+        UserDatabase::init(&temp.db).await?;
+        Ok(temp)
+    }
     fn test_service() -> UserService {
         UserService::new(
             JwtSecret::new("burncloud-service-user-test-secret")
@@ -519,8 +581,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
-        UserDatabase::init(&db).await?;
+        let temp = test_db("register_user").await?;
+        let db = &temp.db;
 
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
@@ -545,13 +607,15 @@ mod tests {
             username
         );
 
+        temp.cleanup().await;
+
         Ok(())
     }
 
     #[tokio::test]
     async fn test_register_duplicate_user() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
-        UserDatabase::init(&db).await?;
+        let temp = test_db("register_duplicate").await?;
+        let db = &temp.db;
 
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
@@ -571,13 +635,15 @@ mod tests {
         };
         assert!(matches!(e, UserServiceError::UserAlreadyExists));
 
+        temp.cleanup().await;
+
         Ok(())
     }
 
     #[tokio::test]
     async fn test_login_user_success() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
-        UserDatabase::init(&db).await?;
+        let temp = test_db("login_success").await?;
+        let db = &temp.db;
 
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
@@ -595,13 +661,15 @@ mod tests {
         assert_eq!(token.username, username);
         assert!(token.expires_at > Utc::now().timestamp());
 
+        temp.cleanup().await;
+
         Ok(())
     }
 
     #[tokio::test]
     async fn test_login_user_wrong_password() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
-        UserDatabase::init(&db).await?;
+        let temp = test_db("login_wrong_password").await?;
+        let db = &temp.db;
 
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
@@ -619,13 +687,15 @@ mod tests {
         };
         assert!(matches!(e, UserServiceError::InvalidCredentials));
 
+        temp.cleanup().await;
+
         Ok(())
     }
 
     #[tokio::test]
     async fn test_login_user_not_found() -> anyhow::Result<()> {
-        let db = create_default_database().await?;
-        UserDatabase::init(&db).await?;
+        let temp = test_db("login_not_found").await?;
+        let db = &temp.db;
 
         let service = test_service();
 
@@ -636,6 +706,8 @@ mod tests {
             panic!("nonexistent user login should fail");
         };
         assert!(matches!(e, UserServiceError::UserNotFound));
+
+        temp.cleanup().await;
 
         Ok(())
     }

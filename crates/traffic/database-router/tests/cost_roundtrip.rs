@@ -32,7 +32,11 @@ use tempfile::NamedTempFile;
 /// `router_tokens` which `RouterLogModel::insert` updates for quota deduction.
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+    // Three slashes and forward slashes: `sqlite:///C:/...` is an absolute path on Windows, whereas
+    // `sqlite://C:\...` is not a URL SQLite can open and fails with
+    // "(code: 14) unable to open database file" before any assertion runs.
+    let normalized = tmp.path().to_string_lossy().replace('\\', "/");
+    let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));

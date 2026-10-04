@@ -4,8 +4,15 @@ on:
   push:
     branches: [ main, master ]
     paths:
+      # The root manifest carries the application version that this workflow tags.
       - 'Cargo.toml'
-      - 'crates/*/Cargo.toml'
+      # Every crate manifest is nested two or three levels deep
+      # (`crates/<domain>/<name>/Cargo.toml`, `crates/platform/<group>/<name>/Cargo.toml`), so the
+      # previous filter `crates/*/Cargo.toml` matched nothing at all: of the 37 tracked manifests it
+      # hit zero, which meant a dependency-version change never triggered this workflow. `**` spans
+      # any number of path segments, so this matches all of them.
+      - 'crates/**/Cargo.toml'
+      - '.github/workflows/version-check.yml'
   workflow_dispatch:
 
 permissions:
@@ -23,9 +30,23 @@ jobs:
       - name: Get current version from Cargo.toml
         id: get_version
         run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "version=v$VERSION" >> $GITHUB_OUTPUT
-          echo "numeric_version=$VERSION" >> $GITHUB_OUTPUT
+          # Read the root package version only. The scope line is explicit because `version = `
+          # also appears in dependency tables, and picking one of those would tag the wrong number.
+          VERSION=$(awk '
+            /^\[package\]/   { in_package = 1; next }
+            /^\[/            { in_package = 0 }
+            in_package && /^version[[:space:]]*=/ {
+              gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit
+            }
+          ' Cargo.toml)
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::could not read a version from the [package] section of Cargo.toml"
+            exit 1
+          fi
+
+          echo "version=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "numeric_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Current version: v$VERSION"
 
       - name: Check if tag exists
@@ -33,10 +54,10 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           if git tag --list | grep -q "^$VERSION$"; then
-            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
             echo "Tag $VERSION already exists"
           else
-            echo "tag_exists=false" >> $GITHUB_OUTPUT
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
             echo "Tag $VERSION does not exist"
           fi
 
@@ -44,13 +65,12 @@ jobs:
         id: get_previous_version
         if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
-          # Get the latest tag
           LATEST_TAG=$(git tag --sort=-version:refname | head -n 1)
           if [ -n "$LATEST_TAG" ]; then
-            echo "previous_version=$LATEST_TAG" >> $GITHUB_OUTPUT
+            echo "previous_version=$LATEST_TAG" >> "$GITHUB_OUTPUT"
             echo "Previous version: $LATEST_TAG"
           else
-            echo "previous_version=none" >> $GITHUB_OUTPUT
+            echo "previous_version=none" >> "$GITHUB_OUTPUT"
             echo "No previous version found"
           fi
 
@@ -62,20 +82,30 @@ jobs:
           PREVIOUS="${{ steps.get_previous_version.outputs.previous_version }}"
 
           if [ "$PREVIOUS" = "none" ]; then
-            echo "should_create_tag=true" >> $GITHUB_OUTPUT
-            echo "reason=Initial version" >> $GITHUB_OUTPUT
-          else
-            # Remove 'v' prefix from previous version for comparison
-            PREVIOUS_NUM=$(echo "$PREVIOUS" | sed 's/^v//')
+            echo "should_create_tag=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Initial version" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-            # Simple version comparison (assumes semantic versioning)
-            if [ "$CURRENT" != "$PREVIOUS_NUM" ]; then
-              echo "should_create_tag=true" >> $GITHUB_OUTPUT
-              echo "reason=Version changed from $PREVIOUS to v$CURRENT" >> $GITHUB_OUTPUT
-            else
-              echo "should_create_tag=false" >> $GITHUB_OUTPUT
-              echo "reason=Version unchanged" >> $GITHUB_OUTPUT
-            fi
+          PREVIOUS_NUM="${PREVIOUS#v}"
+
+          if [ "$CURRENT" = "$PREVIOUS_NUM" ]; then
+            echo "should_create_tag=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Version unchanged" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # "The string changed" is not the same as "the version advanced": a downgrade from
+          # v1.0.10 to v1.0.9 differs as a string, and the old check would have tagged it. Compare
+          # as versions and only tag when the current one is the newer of the two.
+          NEWEST=$(printf '%s\n%s\n' "$CURRENT" "$PREVIOUS_NUM" | sort -V | tail -n 1)
+          if [ "$NEWEST" = "$CURRENT" ]; then
+            echo "should_create_tag=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Version advanced from $PREVIOUS to v$CURRENT" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_create_tag=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Refusing to tag: v$CURRENT is not newer than $PREVIOUS" >> "$GITHUB_OUTPUT"
+            echo "::warning::root package version v$CURRENT is older than the latest tag $PREVIOUS; no tag created"
           fi
 
       - name: Create git tag
@@ -85,17 +115,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Create annotated tag
           git tag -a "$VERSION" -m "Release $VERSION - ${{ steps.compare_versions.outputs.reason }}"
           git push origin "$VERSION"
 
-          echo "✅ Created and pushed tag: $VERSION"
+          echo "Created and pushed tag: $VERSION"
 
       - name: Summary
         run: |
-          echo "## Version Check Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Current Version**: ${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Previous Version**: ${{ steps.get_previous_version.outputs.previous_version || 'none' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag Exists**: ${{ steps.check_tag.outputs.tag_exists }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Should Create Tag**: ${{ steps.compare_versions.outputs.should_create_tag || 'false' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Reason**: ${{ steps.compare_versions.outputs.reason || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Version Check Summary"
+            echo "- **Current Version**: ${{ steps.get_version.outputs.version }}"
+            echo "- **Previous Version**: ${{ steps.get_previous_version.outputs.previous_version || 'none' }}"
+            echo "- **Tag Exists**: ${{ steps.check_tag.outputs.tag_exists }}"
+            echo "- **Should Create Tag**: ${{ steps.compare_versions.outputs.should_create_tag || 'false' }}"
+            echo "- **Reason**: ${{ steps.compare_versions.outputs.reason || 'N/A' }}"
+            echo ""
+            echo "> A tag pushed with the default \`GITHUB_TOKEN\` does not trigger other workflows."
+            echo "> If the release pipeline must run automatically after this tag, either use a PAT"
+            echo "> here or have the release workflow also listen for \`workflow_run\` on this one."
+            echo "> Recorded in .github/README.md; deliberately NOT implemented in this change."
+          } >> "$GITHUB_STEP_SUMMARY"

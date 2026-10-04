@@ -16,9 +16,11 @@ reqwest.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 
-[[example]]
-name = "service-models-usage"
-path = "examples/usage.rs"
+# The `service-models-usage` example was retired here. It imported `ModelInfo`, which this crate no
+# longer exports -- #630 replaced that type with the manifest/variant structures -- so the example had
+# not compiled since, and nothing but its own declaration referenced it. It is deleted rather than
+# rewritten against a shape this crate has not settled on yet; a fresh example is worth writing once
+# the resolver work lands.
 
 [lints]
 workspace = true
