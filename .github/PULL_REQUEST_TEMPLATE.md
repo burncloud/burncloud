@@ -40,11 +40,30 @@ verify, and why (no environment, needs credentials, pre-existing failure, out of
 | If no: why not? | <!-- a workflow filtered out by `paths` reports nothing; that is not a pass --> |
 | Required checks affected? | <!-- main currently has none; note if this PR changes that --> |
 
+## Scope check (run this, do not assume it)
+
+Paste the output of `git diff --name-only main...HEAD` and confirm every path is inside the issue's
+Allowed Paths. A clean description is not evidence that the diff is clean: two branches in this
+repository carried 7 and 9 files where the issue allowed 2, because they were created while `HEAD`
+pointed at another feature branch.
+
+```
+<output of: git diff --name-only main...HEAD>
+```
+
+- [ ] Every path above is inside this issue's Allowed Paths.
+- [ ] If the branch was created from another branch rather than from `main`, say so here, or rebuild
+      it with `git cherry-pick` onto `main`.
+
 ## Review checklist
 
 - [ ] The change does what the issue asked, and nothing else. Scope expansions are stated above with
       a reason.
-- [ ] No test was weakened, deleted, or `ignore`d to get a green run.
+- [ ] **No test asserts the current, wrong output as the expected value.** A defect gets a bug issue
+      and a failing test that references it; the expected value is never the observed one. (See the
+      two rules in `.github/README.md`.)
+- [ ] No test was weakened, deleted, or `ignore`d to get a green run. An `#[ignore]`d test is allowed
+      only when it records a known defect and names the issue in its reason.
 - [ ] No `continue-on-error`, `|| true`, or swallowed error was added to hide a failure.
 - [ ] Comments that promised future work were updated if this PR completes or abandons that work.
 - [ ] Genuinely pre-existing failures are named as such, with evidence they exist on `main`.
