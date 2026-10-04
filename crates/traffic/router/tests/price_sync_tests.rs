@@ -465,7 +465,15 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
     // Use a unique temp file so this test is isolated from the shared test DB
     let tmp_path = "/tmp/burncloud_cold_start_test.db".to_string();
     let _ = std::fs::remove_file(&tmp_path); // clean up from any previous run
-    let url = format!("sqlite://{}?mode=rwc", tmp_path);
+    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
+    #[cfg(windows)]
+    let normalized = tmp_path.replace('\\', "/");
+    #[cfg(not(windows))]
+    let normalized = {
+        let _ = &tmp_path;
+        tmp_path.to_string()
+    };
+    let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let db = Arc::new(db);
@@ -499,7 +507,15 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
     // Use a unique temp file so this test is isolated from the shared test DB
     let tmp_path = "/tmp/burncloud_fast_path_test.db".to_string();
     let _ = std::fs::remove_file(&tmp_path);
-    let url = format!("sqlite://{}?mode=rwc", tmp_path);
+    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
+    #[cfg(windows)]
+    let normalized = tmp_path.replace('\\', "/");
+    #[cfg(not(windows))]
+    let normalized = {
+        let _ = &tmp_path;
+        tmp_path.to_string()
+    };
+    let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let db = Arc::new(db);
