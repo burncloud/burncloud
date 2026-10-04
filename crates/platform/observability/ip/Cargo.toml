@@ -11,5 +11,17 @@ reqwest.workspace = true
 serde.workspace = true
 tokio.workspace = true
 
+# The provider bodies are JSON whose schema is owned by the provider, so they are read as documents rather
+# than through a domain type; `serde_json` is named explicitly because `country_code_from_body` parses a
+# string rather than using `reqwest`'s `json` convenience.
+serde_json.workspace = true
+
+[dev-dependencies]
+# A local fake HTTP server, so the provider behaviour (fallback order, cache hits, malformed bodies, both
+# sources failing) is exercised without reaching the public internet. `traffic/router` uses the same one.
+mockito.workspace = true
+# Isolated temporary databases, so a cache test cannot see another test's location.
+burncloud-database.workspace = true
+
 [lints]
 workspace = true
