@@ -41,6 +41,16 @@ impl InstallerDB {
         Ok(instance)
     }
 
+    /// Wrap an existing database connection and create the installation table on it.
+    ///
+    /// See [`DownloadDB::new_with_db`](crate::DownloadDB::new_with_db): [`InstallerDB::new`] opens the **shared
+    /// default database**, so a test must be able to supply its own.
+    pub async fn new_with_db(db: Database) -> Result<Self> {
+        let instance = Self { db };
+        instance.init_tables().await?;
+        Ok(instance)
+    }
+
     /// Initialize database tables
     async fn init_tables(&self) -> Result<()> {
         self.db

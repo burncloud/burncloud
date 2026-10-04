@@ -47,6 +47,19 @@ impl DownloadDB {
         Ok(instance)
     }
 
+    /// Wrap an existing database connection and create the download table on it.
+    ///
+    /// The counterpart of [`SettingDatabase::new_with_db`](crate::SettingDatabase::new_with_db), and it exists
+    /// for the same reason: [`DownloadDB::new`] opens `Database::new()`, which honours `BURNCLOUD_DATABASE_URL`
+    /// and otherwise uses the **shared default path** under the user's data directory. A test that used it would
+    /// write download records into the developer's real database and could not run twice cleanly. This lets a
+    /// caller -- a test, or a binary that already holds a connection -- supply the database instead.
+    pub async fn new_with_db(db: Database) -> Result<Self> {
+        let instance = Self { db };
+        instance.init_tables().await?;
+        Ok(instance)
+    }
+
     /// Initialize database tables
     async fn init_tables(&self) -> Result<()> {
         self.db
