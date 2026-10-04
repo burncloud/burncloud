@@ -4,7 +4,7 @@
 
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
-use crate::usage::UsageParser;
+use crate::usage::{read_count, UsageParser};
 use serde_json::Value;
 
 /// Usage parser for Anthropic (Claude) APIs.
@@ -30,22 +30,14 @@ impl UsageParser for AnthropicParser {
         };
 
         Ok(UnifiedUsage {
-            input_tokens: usage
-                .get("input_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-            output_tokens: usage
-                .get("output_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-            cache_read_tokens: usage
-                .get("cache_read_input_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-            cache_write_tokens: usage
-                .get("cache_creation_input_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            input_tokens: read_count(usage, "input_tokens", self.provider_name())?,
+            output_tokens: read_count(usage, "output_tokens", self.provider_name())?,
+            cache_read_tokens: read_count(usage, "cache_read_input_tokens", self.provider_name())?,
+            cache_write_tokens: read_count(
+                usage,
+                "cache_creation_input_tokens",
+                self.provider_name(),
+            )?,
             ..Default::default()
         })
     }
@@ -70,18 +62,17 @@ impl UsageParser for AnthropicParser {
                     return Ok(None);
                 };
                 Ok(Some(UnifiedUsage {
-                    input_tokens: usage
-                        .get("input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0),
-                    cache_read_tokens: usage
-                        .get("cache_read_input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0),
-                    cache_write_tokens: usage
-                        .get("cache_creation_input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0),
+                    input_tokens: read_count(usage, "input_tokens", self.provider_name())?,
+                    cache_read_tokens: read_count(
+                        usage,
+                        "cache_read_input_tokens",
+                        self.provider_name(),
+                    )?,
+                    cache_write_tokens: read_count(
+                        usage,
+                        "cache_creation_input_tokens",
+                        self.provider_name(),
+                    )?,
                     ..Default::default()
                 }))
             }
@@ -91,15 +82,13 @@ impl UsageParser for AnthropicParser {
                     return Ok(None);
                 };
                 Ok(Some(UnifiedUsage {
-                    output_tokens: usage
-                        .get("output_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0),
+                    output_tokens: read_count(usage, "output_tokens", self.provider_name())?,
                     // Some delta events also carry updated cache counts
-                    cache_read_tokens: usage
-                        .get("cache_read_input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0),
+                    cache_read_tokens: read_count(
+                        usage,
+                        "cache_read_input_tokens",
+                        self.provider_name(),
+                    )?,
                     ..Default::default()
                 }))
             }
