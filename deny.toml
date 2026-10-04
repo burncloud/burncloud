@@ -1,19 +1,22 @@
 # cargo-deny configuration
 # Wave 2: license allow list + baseline advisory ignore
 # Wave 3: layer boundary enforced — server no longer depends on domain-specific database crates.
-#         Remaining server DB deps (burncloud-database-router, burncloud-database-user)
-#         are init-only exceptions for schema migration at startup.
+# Wave 4: agent guardrails — source provenance and compatibility-layer consumers
+#         are machine-enforced without folding historical dependency cleanup into
+#         this policy change.
 
 [graph]
 targets = []
+all-features = true
 
 [output]
 feature-depth = 1
 
 # ─── Advisories ──────────────────────────────────────────────────────────────
 # Baseline: all advisories below existed when cargo-deny was initialized (Wave 1).
-# New advisories added by future dependency updates will be caught automatically.
-# To suppress a new advisory, add it here with a reason and the date it was reviewed.
+# New advisories must not be silently added here merely to make CI green.
+# Current quick-xml findings RUSTSEC-2026-0194/0195 are tracked by #626 and are
+# intentionally NOT ignored.
 [advisories]
 ignore = [
     # ── systray@0.4 + dioxus-desktop transitive chain ─────────────────────────
@@ -90,32 +93,41 @@ license-files = []
 ignore = true
 
 # ─── Bans ─────────────────────────────────────────────────────────────────────
-# Layer boundary enforcement (Wave 3).
-#
-# Rule: only service crates (and cli/router where documented) may directly
-# depend on domain database crates. The server layer must go through services.
-#
-# Mechanism: cargo-deny [[bans.deny]] with `wrappers` — a banned crate is
-# allowed only when it appears as a DIRECT dependency of a listed wrapper crate.
-# Any attempt to add a banned crate directly to server/Cargo.toml will fail CI.
-#
-# Allowed server → database exceptions (schema migration at startup):
-#   burncloud-database, burncloud-database-router, burncloud-database-user
-# These are NOT in the ban list below and remain freely usable.
+# Layer boundary enforcement (Wave 3) + compatibility-boundary freeze (Wave 4).
 [bans]
-# "warn" would produce ~50 warnings for transitive dep version conflicts
-# (windows-sys, rand, getrandom, etc.) that we cannot control. "allow" is
-# appropriate for a large workspace with desktop + server + CLI in one repo.
+# Desktop + server + CLI currently have known transitive duplicate-version debt
+# (windows-sys, rand, getrandom, GTK chains). Keep that baseline allowed here.
 multiple-versions = "allow"
+
+# Internal workspace dependencies are currently path-only and cargo-deny treats
+# their `workspace = true` uses as wildcard dependencies. Normalizing that model,
+# plus current duplicate/unused workspace declarations, is tracked by #627.
 wildcards = "allow"
 
 # systray@0.4 pulls in a full set of old GTK crates (gtk 0.8, gdk 0.12, etc.)
 # while dioxus-desktop pulls in the newer GTK 0.18 series. Both are transitive
-# deps we cannot upgrade directly. Skip systray's entire dep tree to suppress
-# the ~80 duplicate-version warnings these conflicts produce.
+# deps we cannot upgrade directly. Skip systray's entire dep tree to suppress the
+# duplicate-version baseline if multiple-versions is tightened in the future.
 skip-tree = [
     { crate = "systray@0.4.0", reason = "old GTK dep chain conflicts with dioxus-desktop; upgrade blocked by systray API" },
 ]
+
+# burncloud-common is now a compatibility/interface layer, not a domain owner.
+# Freeze the current direct consumers so a new domain crate cannot start routing
+# Commerce/Supply/Traffic truth through Common. Existing consumers should be
+# removed in dedicated migration issues, at which point their wrapper entry must
+# also be deleted.
+[[bans.deny]]
+crate = "burncloud-common"
+wrappers = [
+    "burncloud",
+    "burncloud-client",
+    "burncloud-database-billing",
+    "burncloud-database-router",
+    "burncloud-router",
+    "burncloud-server",
+]
+reason = "Interfaces/Common is compatibility infrastructure; new domain crates must depend on the owning contract directly"
 
 # burncloud-database-model — model_ domain (model_capabilities metadata)
 [[bans.deny]]
