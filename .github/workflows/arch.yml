@@ -30,12 +30,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Install Python for hook regression tests
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - name: Test local hook installation and commit gates
-        run: python .github/scripts/test-code-init.py
+        shell: bash
+        run: bash .github/scripts/test-code-init.sh
 
   clippy:
     runs-on: ubuntu-latest
