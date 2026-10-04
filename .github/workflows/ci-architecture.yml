@@ -6,7 +6,12 @@ on:
       - 'Cargo.toml'
       - 'clippy.toml'
       - 'deny.toml'
+      # This workflow's own name, which this branch changed. The previous name no longer exists in the
+      # workflows directory, so keeping it would leave a filter that can never match.
       - '.github/workflows/ci-architecture.yml'
+      # Added by `main` while this branch was open. Unrelated to the rename, and it would be lost by taking
+      # this branch's side of the conflict.
+      - '.github/hooks/**'
       - 'crates/**/Cargo.toml'
       - 'crates/**/*.rs'
 
@@ -14,6 +19,26 @@ permissions:
   contents: read
 
 jobs:
+  code-init:
+    name: Code commands (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting used by local code test
+        run: cargo fmt --all -- --check
+      - name: Test initialization, affected-package selection and commit gates
+        run: cargo test -p burncloud-code
+
   clippy:
     runs-on: ubuntu-latest
     steps:
