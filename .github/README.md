@@ -130,6 +130,67 @@ here because getting them wrong would publish releases or break mirrors:
   how deletions are handled, needs verification against a temporary bare repository rather than
   trial-and-error against the real mirror.
 
+## Two rules that are not optional
+
+Both were learned by getting them wrong. They apply to every PR in this repository, not only to
+CI or test work.
+
+### 1. Check the actual diff before opening the PR
+
+A clean PR description is not evidence that the diff is clean. Run:
+
+```bash
+git diff --name-only main...HEAD
+```
+
+and check every path against the Allowed Paths of the issue. This failed twice: two branches were
+created while `HEAD` still pointed at another feature branch, so their diffs contained 7 and 9
+files where the issue allowed 2 -- a closed PR's `.github` documentation and a sibling test PR's
+changes both rode along. Both were rebuilt from `main` with `git cherry-pick`.
+
+Why it matters more than tidiness: a reviewer cannot assess a change whose diff contains three
+unrelated responsibilities, and a revert of one takes the others with it.
+
+### 2. A test must never freeze a defect as the contract
+
+When a test reveals that the implementation is wrong, the expected value is **not** the current
+output. Writing
+
+```rust
+let observed = calculate_cost_safe(...);
+assert_eq!(observed, true_value as i64); // observed is the wrapped, wrong value
+```
+
+declares a wrong result to be the contract. The practical harm is concrete: the eventual fix turns
+that test red, so the fix looks like a regression and the next person either reverts it or edits the
+expectation again.
+
+The procedure instead:
+
+```text
+a test reveals wrong behaviour
+        |
+        v
+file a bug issue stating the decision to be made
+        |
+        v
+leave a failing test that records the defect and references the issue
+  (#[ignore] with the reason, so the suite stays green and the defect stays visible)
+        |
+        v
+decide the correct behaviour, then fix
+        |
+        v
+remove the ignore; the same test becomes the regression test
+```
+
+A defect may be asserted as **not** what it should be (`assert_ne!` against the clamp that would be
+wrong to assume), but never as the expected value. The same rule covers the neighbouring temptation:
+do not `ignore` a failing test to make a suite green, and do not widen a tolerance until it passes.
+
+Recorded because it happened: `calculate_cost_safe` wraps an out-of-range cost to
+`3875820019684212736` instead of erroring, and the first version of its test asserted that value as
+correct. See #640 for the defect and the decision it needs.
 ## Adding a workflow
 
 1. Read `test-plan/coverage-matrix.md` to see whether the area already has a job, and extend it
