@@ -11,7 +11,12 @@ use std::sync::Arc;
 #[tokio::test]
 async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     let temp = tempfile::NamedTempFile::new().expect("temp database");
-    let url = format!("sqlite://{}?mode=rwc", temp.path().display());
+    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
+    #[cfg(windows)]
+    let normalized = temp.path().to_string_lossy().replace('\\', "/").to_string();
+    #[cfg(not(windows))]
+    let normalized = temp.path().to_string_lossy().to_string();
+    let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = Arc::new(
         create_database_with_url(&url)
             .await
@@ -76,7 +81,12 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
 #[tokio::test]
 async fn failed_quarantine_rolls_back_routing_ability() {
     let temp = tempfile::NamedTempFile::new().expect("temp database");
-    let url = format!("sqlite://{}?mode=rwc", temp.path().display());
+    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
+    #[cfg(windows)]
+    let normalized = temp.path().to_string_lossy().replace('\\', "/").to_string();
+    #[cfg(not(windows))]
+    let normalized = temp.path().to_string_lossy().to_string();
+    let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = Arc::new(
         create_database_with_url(&url)
             .await

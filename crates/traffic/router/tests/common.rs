@@ -279,11 +279,17 @@ pub async fn insert_test_channel(
 ) -> anyhow::Result<()> {
     ensure_channel_tables(pool).await?;
 
+    // `type = 1` is `ChannelType::OpenAI`, and it is not cosmetic: the router filters candidates by path
+    // format at `lib.rs:2194-2202`, so a `/v1/chat/completions` request is only routed to a channel whose
+    // type is OpenAI or Zai. This fixture used to write `type = 0` (Unknown), which meant every test that
+    // drove an OpenAI-format request through this channel was answered `404 no_available_channel` with no
+    // error and no visible log -- the channel was silently skipped after passing every other filter.
+    // Measured, not inferred: see the bisection in #660.
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO channel_providers
         (id, type, key, status, name, weight, base_url, models, `group`, priority)
-        VALUES (?, 0, ?, 1, ?, 1, ?, ?, ?, 0)
+        VALUES (?, 1, ?, 1, ?, 1, ?, ?, ?, 0)
         "#,
     )
     .bind(channel_id)
@@ -316,7 +322,17 @@ pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     let path = tmp.path().to_string_lossy().to_string();
     // Keep the NamedTempFile alive by leaking it; the OS will clean it up after the process exits.
     std::mem::forget(tmp);
-    let url = format!("sqlite://{}?mode=rwc", path);
+    // Three slashes plus a platform-aware separator: `sqlite:///C:/...` is absolute on Windows,
+    // whereas the two-slash form is not a URL SQLite can open and fails with
+    // "(code: 14) unable to open database file" before any assertion runs.
+    #[cfg(windows)]
+    let normalized = path.replace('\\', "/");
+    #[cfg(not(windows))]
+    let normalized = {
+        let _ = &path;
+        path.to_string()
+    };
+    let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let conn = db.get_connection()?;
