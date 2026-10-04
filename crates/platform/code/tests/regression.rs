@@ -260,9 +260,13 @@ fn receipt_uses_matching_index_and_replaces_old_footer_on_amend() -> Result<()> 
     assert_eq!(report.integration.context("integration counts")?.passed, 1);
     assert!(report.steps[0].log.exists());
     f.write("crates/a/src/lib.rs", "changed after checks")?;
-    f.git(&["add", "."])?;
     let message_file = f.base.join("message.txt");
     fs::write(&message_file, "subject\n")?;
+    failed(
+        f.command(BIN).arg("stamp").arg(&message_file).output()?,
+        "Working tree changed after checks",
+    );
+    f.git(&["add", "."])?;
     failed(
         f.command(BIN).arg("stamp").arg(&message_file).output()?,
         "Staged tree or HEAD changed",
