@@ -927,10 +927,8 @@ async fn optional_fields_accept_null_and_survive_round_trips(
 // than `"default"`** -- and the two tables a channel is made of start empty. `ChannelProviderModel::create`
 // ends with `sync_abilities` (`channel_provider.rs:85`), which is what writes abilities, not the seed.
 //
-// Rewriting the test against the version `2099-01-01` throughout is mechanical and was started; it is not
-// finished here because the measurements above are the part worth publishing first. The twelve other tests in
-// this file pass.
-#[ignore = "unresolved: half-migrated between two versions; the probe output below is the finding"]
+// The probe output is recorded because establishing it took several wrong assumptions: the `Channel` shape, the
+// config's key, and the seed's contents were each guessed wrongly before the database was asked directly.
 #[tokio::test]
 async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -940,9 +938,19 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     // config and did not compile; the shape is recorded here because the assumption is a natural one.
     let temp = TempDb::new("protocol").await?;
 
+    // **A version that cannot collide with the seed.** A probe against a fresh file reports
+    // `channel_protocol_configs: 4` -- (1,"default"), (2,"2023-06-01"), (3,"2024-02-01"), (4,"v1") -- while
+    // `channel_providers` and `channel_abilities` are both at **0** rows, and `ChannelType::OpenAI` is 1. So the
+    // only OpenAI config present at the start is `"default"`, and a year-2099 version is this test's own.
+    //
+    // The probe output is recorded because establishing it took several wrong assumptions -- the `Channel`
+    // shape, the config's key, and the seed's contents were each guessed wrongly before the database was asked.
+    let version = "2099-01-01";
+    let other_version = "2099-02-02";
+
     let input = |is_default: Option<bool>, chat: Option<&str>| ChannelProtocolConfigInput {
         channel_type: ChannelType::OpenAI as i32,
-        api_version: "2024-02-01".to_string(),
+        api_version: version.to_string(),
         is_default,
         chat_endpoint: chat.map(str::to_string),
         embed_endpoint: None,
@@ -957,50 +965,11 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
         ChannelProtocolConfigModel::get_by_type_version(
             &temp.db,
             ChannelType::OpenAI as i32,
-            "2024-02-01"
+            version
         )
         .await?
         .is_none(),
         "an unwritten config reads as None"
-    );
-
-    ChannelProtocolConfigModel::upsert(&temp.db, &input(Some(true), Some("/v1/chat"))).await?;
-
-    let fetched = ChannelProtocolConfigModel::get_by_type_version(
-        &temp.db,
-        ChannelType::OpenAI as i32,
-        "2024-02-01",
-    )
-    .await?
-    .expect("exists");
-    println!("fetched: {fetched:?}");
-    assert_eq!(fetched.channel_type, ChannelType::OpenAI as i32);
-    assert_eq!(fetched.api_version, "2024-02-01");
-    assert_eq!(fetched.chat_endpoint.as_deref(), Some("/v1/chat"));
-    assert_eq!(fetched.is_default, 1, "the default flag is a 1/0 integer");
-    assert_eq!(fetched.embed_endpoint, None, "an absent field stays absent");
-
-    // `upsert` on the same key replaces rather than adding a second row.
-    ChannelProtocolConfigModel::upsert(&temp.db, &input(Some(true), Some("/v2/chat"))).await?;
-    let after = ChannelProtocolConfigModel::get_by_type_version(
-        &temp.db,
-        ChannelType::OpenAI as i32,
-        "2024-02-01",
-    )
-    .await?
-    .expect("exists");
-    println!(
-        "after the second upsert: chat_endpoint={:?}",
-        after.chat_endpoint
-    );
-    assert_eq!(
-        after.chat_endpoint.as_deref(),
-        Some("/v2/chat"),
-        "the value was replaced"
-    );
-    assert_eq!(
-        after.id, fetched.id,
-        "and it is the same row, not a new one"
     );
 
     // **The table already holds rows, so counting them is not this test's business.** `Schema::init` seeds
@@ -1010,15 +979,13 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     // What this test establishes is about **its own key**, read back through `get_by_type_version`, so no
     // assertion here depends on what else is in the table -- which is also what makes it robust to a change in
     // the seed data.
-    let key_version = "2099-01-01";
-    let mut keyed = input(Some(true), Some("/v1/chat"));
-    keyed.api_version = key_version.to_string();
+    let keyed = input(Some(true), Some("/v1/chat"));
     ChannelProtocolConfigModel::upsert(&temp.db, &keyed).await?;
 
     let first = ChannelProtocolConfigModel::get_by_type_version(
         &temp.db,
         ChannelType::OpenAI as i32,
-        key_version,
+        version,
     )
     .await?
     .expect("the key written above exists");
@@ -1032,7 +999,7 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     let second = ChannelProtocolConfigModel::get_by_type_version(
         &temp.db,
         ChannelType::OpenAI as i32,
-        key_version,
+        version,
     )
     .await?
     .expect("still exactly one row for the key");
@@ -1041,12 +1008,12 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
 
     // Changing a field does replace it.
     let mut changed = input(Some(true), Some("/v2/chat"));
-    changed.api_version = key_version.to_string();
+    changed.api_version = version.to_string();
     ChannelProtocolConfigModel::upsert(&temp.db, &changed).await?;
     let third = ChannelProtocolConfigModel::get_by_type_version(
         &temp.db,
         ChannelType::OpenAI as i32,
-        key_version,
+        version,
     )
     .await?
     .expect("exists");
@@ -1058,9 +1025,9 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     assert_eq!(third.id, first.id, "and still the same row");
 
     // A different version is a different key and so a different row.
-    let mut other_version = input(Some(false), Some("/other/chat"));
-    other_version.api_version = "2099-02-02".to_string();
-    ChannelProtocolConfigModel::upsert(&temp.db, &other_version).await?;
+    let mut second_version = input(Some(false), Some("/other/chat"));
+    second_version.api_version = other_version.to_string();
+    ChannelProtocolConfigModel::upsert(&temp.db, &second_version).await?;
     let other_row = ChannelProtocolConfigModel::get_by_type_version(
         &temp.db,
         ChannelType::OpenAI as i32,
@@ -1103,18 +1070,11 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     let removed = ChannelProtocolConfigModel::delete(&temp.db, third.id).await?;
     println!("deleted: {removed}");
     assert!(removed, "the row was there");
-    assert!(ChannelProtocolConfigModel::get_by_type_version(
-        &temp.db,
-        ChannelType::OpenAI as i32,
-        "2024-02-01"
-    )
-    .await?
-    .is_none());
     assert!(
         ChannelProtocolConfigModel::get_by_type_version(
             &temp.db,
             ChannelType::OpenAI as i32,
-            key_version
+            version
         )
         .await?
         .is_none(),
@@ -1132,7 +1092,10 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     );
 
     // Deleting again reports false rather than erroring.
-    assert!(!ChannelProtocolConfigModel::delete(&temp.db, fetched.id).await?);
+    assert!(
+        !ChannelProtocolConfigModel::delete(&temp.db, third.id).await?,
+        "there was nothing left to delete"
+    );
 
     temp.cleanup().await;
     Ok(())
