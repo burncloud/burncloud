@@ -279,11 +279,17 @@ pub async fn insert_test_channel(
 ) -> anyhow::Result<()> {
     ensure_channel_tables(pool).await?;
 
+    // `type = 1` is `ChannelType::OpenAI`, and it is not cosmetic: the router filters candidates by path
+    // format at `lib.rs:2194-2202`, so a `/v1/chat/completions` request is only routed to a channel whose
+    // type is OpenAI or Zai. This fixture used to write `type = 0` (Unknown), which meant every test that
+    // drove an OpenAI-format request through this channel was answered `404 no_available_channel` with no
+    // error and no visible log -- the channel was silently skipped after passing every other filter.
+    // Measured, not inferred: see the bisection in #660.
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO channel_providers
         (id, type, key, status, name, weight, base_url, models, `group`, priority)
-        VALUES (?, 0, ?, 1, ?, 1, ?, ?, ?, 0)
+        VALUES (?, 1, ?, 1, ?, 1, ?, ?, ?, 0)
         "#,
     )
     .bind(channel_id)

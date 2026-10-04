@@ -129,19 +129,73 @@ async fn grant_quota(
     Ok(())
 }
 
+/// The model this file routes. Named once so a failure message and the seeded price cannot drift apart.
+const MODEL: &str = "no-double-bill-model";
+
+/// Seed a price through the same model the production code reads.
+///
+/// A raw `INSERT INTO billing_prices` is **not** what the router reads: with one written by hand the router
+/// answered `400 model_not_found`, "Model 'no-double-bill-model' is not supported or has no price
+/// configured". `BillingPriceModel::upsert` is what `e2e_billing_tests.rs` uses and what the price lookup
+/// sees, so this goes through it too.
+///
+/// `PriceInput` has no `Default`, so every field is named. The unset ones are `None` deliberately: this file
+/// is about settlement, not about which optional prices exist.
+async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::Result<()> {
+    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
+    use burncloud_database_billing::{BillingPriceModel, PriceInput};
+
+    let input = PriceInput {
+        model: model.to_string(),
+        // A deliberately large price: one request must settle a visible, non-zero amount, which is what
+        // makes "settled once" distinguishable from "never settled".
+        input_price: dollars_to_nano(1.0),
+        output_price: dollars_to_nano(1.0),
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        music_price: None,
+        source: None,
+        region: None,
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
+    };
+    BillingPriceModel::upsert(db, &input).await?;
+
+    // Assert the price is readable through the same lookup the router uses, so a seeding mistake fails here
+    // rather than as a confusing 400 later.
+    let stored = BillingPriceModel::get(db, model, "USD", None).await?;
+    assert!(
+        stored.is_some(),
+        "the price for {model} is not readable after seeding, so the router would answer model_not_found"
+    );
+
+    Ok(())
+}
+
 /// Bring up a router with a database and one channel serving one model.
 async fn routed_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::Database)> {
     let (db, pool, db_url) = setup_db().await?;
     let router_port = 21_000 + (tag.len() as u16 % 20) * 100;
 
-    // A price for the model, so `cost > 0` and the settlement path is reachable.
-    burncloud_database::sqlx::query(
-        "INSERT OR REPLACE INTO billing_prices \
-         (model, currency, region, input_price, output_price) \
-         VALUES ('no-double-bill-model', 'USD', 'international', 1000000000, 1000000000)",
-    )
-    .execute(&pool)
-    .await?;
+    seed_price(&db, MODEL).await?;
 
     let upstream_port = 21_500 + (tag.len() as u16 % 20) * 100;
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{upstream_port}")).await?;
