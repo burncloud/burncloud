@@ -570,8 +570,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use burncloud_node_runtime::{
-        FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
+        ArtifactVerificationStatus, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
+        FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
     };
     use burncloud_service_models::{
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
@@ -852,7 +852,10 @@ mod tests {
             .artifact = Some(
             PreparedArtifact::new(
                 std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
-                true,
+                // The status replaced a bool that meant "verification succeeded". `Verified` is the
+                // faithful translation; `NotRequired` also maps to `is_verified() == true` but would
+                // describe a different scenario, and `Failed` would reverse the fixture.
+                ArtifactVerificationStatus::Verified,
             )
             .unwrap(),
         );
@@ -908,7 +911,10 @@ mod tests {
             .artifact = Some(
             PreparedArtifact::new(
                 std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
-                true,
+                // The status replaced a bool that meant "verification succeeded". `Verified` is the
+                // faithful translation; `NotRequired` also maps to `is_verified() == true` but would
+                // describe a different scenario, and `Failed` would reverse the fixture.
+                ArtifactVerificationStatus::Verified,
             )
             .unwrap(),
         );

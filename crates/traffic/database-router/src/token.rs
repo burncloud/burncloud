@@ -550,6 +550,15 @@ impl RouterTokenModel {
     }
 
     /// Check if IP is allowed for token
+    ///
+    /// An absent credential, a credential with no allowlist configured and an allowlist that is empty
+    /// all permit the address: "no restriction configured" is the documented meaning in every case.
+    ///
+    /// The column is nullable, so the row's value is decoded as `Option<Option<String>>`. Decoding it
+    /// as a single `Option<String>` conflates "the query returned no row" with "the row's value is
+    /// NULL", and sqlx reports the second case as `ColumnDecode { expected TEXT, got Null(Text) }`
+    /// instead of yielding `None`. That made `set_ip_whitelist(token, NULL)` -- and any credential
+    /// inserted with a NULL allowlist -- fail at the IP check rather than pass it.
     pub async fn is_ip_allowed(db: &Database, token: &str, client_ip: &str) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = adapt_sql(
@@ -557,15 +566,18 @@ impl RouterTokenModel {
             "SELECT ip_whitelist FROM router_tokens WHERE token = ? AND status = 'active'",
         );
 
-        let ip_whitelist: Option<String> = sqlx::query_scalar(&sql)
+        let row: Option<Option<String>> = sqlx::query_scalar(&sql)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
 
-        match ip_whitelist {
+        match row {
+            // No such credential, or an inactive one: nothing is configured, so nothing is restricted.
             None => Ok(true),
-            Some(ref list) if list.is_empty() => Ok(true),
-            Some(list) => {
+            // The credential exists and its allowlist is NULL or empty: no restriction.
+            Some(None) => Ok(true),
+            Some(Some(list)) if list.is_empty() => Ok(true),
+            Some(Some(list)) => {
                 for entry in list.split(',') {
                     let entry = entry.trim();
                     if entry.is_empty() {

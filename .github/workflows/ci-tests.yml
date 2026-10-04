@@ -19,6 +19,11 @@ on:
       - "crates/commerce/database-billing/**"
       - "crates/supply/database-channel/**"
       - "crates/identity/database-user/**"
+      # Identity owns the credential and identity facts. `service-token` carries the validation,
+      # quota-settlement and rotation rules, and `service-user` the registration, login and JWT
+      # rules; both use isolated temporary SQLite files, so they run without any service.
+      - "crates/identity/service-token/**"
+      - "crates/identity/service-user/**"
       - ".github/workflows/ci-tests.yml"
   push:
     branches: [main]
@@ -36,6 +41,11 @@ on:
       - "crates/commerce/database-billing/**"
       - "crates/supply/database-channel/**"
       - "crates/identity/database-user/**"
+      # Identity owns the credential and identity facts. `service-token` carries the validation,
+      # quota-settlement and rotation rules, and `service-user` the registration, login and JWT
+      # rules; both use isolated temporary SQLite files, so they run without any service.
+      - "crates/identity/service-token/**"
+      - "crates/identity/service-user/**"
       - ".github/workflows/ci-tests.yml"
   # Manual runs exist so that a change to this file can be validated on GitHub before it merges. A
   # `pull_request` run uses the workflow definition from the base branch, so a renamed or newly added
@@ -148,6 +158,75 @@ jobs:
 
       - name: Security invariants
         run: cargo test -p burncloud-server --test security_invariants
+
+  identity-invariants:
+    name: Identity invariants
+    # No `needs: formatting`. That job used to gate every suite in this workflow, and it now lives in
+    # `ci-quality.yml` -- the split exists precisely so a formatting failure cannot stop the Billing, Security,
+    # Identity, Node and contract verdicts from reporting. "All of these must pass" belongs in the `CI Required`
+    # aggregate rather than in a `needs` chain.
+    #
+    # `actionlint` caught this: the job arrived on `main` in #623 with `needs: formatting`, and merging that
+    # into this branch's split left the dependency pointing at a job that is no longer in this file.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      # Credential validation, quota settlement and rotation. The rules pinned here are the ones
+      # that decide whether a revoked or exhausted credential can still spend, so they are worth a
+      # job of their own rather than riding along with the contract tests.
+      - name: Credential validation, quota and rotation
+        shell: bash
+        run: |
+          # The suite is 18 tests. Asserting a floor means a renamed file, a lost `tests/`
+          # directory or a typo in a filter fails here instead of passing over zero tests:
+          # `cargo test` exits 0 when it runs nothing.
+          set -o pipefail
+          cargo test -p burncloud-service-token 2>&1 | tee /tmp/identity-token.log
+          # awk rather than `grep | paste | bc`: bc is not installed in this environment and is not
+          # guaranteed on the runner, so the pipeline would fail with "command not found" instead of
+          # reporting the discovery problem it is meant to catch. Verified on a multi-line log and on
+          # an empty one, where awk prints 0 rather than erroring.
+          executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/identity-token.log)
+          echo "executed $executed test(s)"
+          if [ "${executed:-0}" -lt 18 ]; then
+            echo "::error::expected at least 18 tests in burncloud-service-token, found ${executed:-0}."
+            echo "A zero count means the tests were not discovered; check that the package name"
+            echo "and the tests/ directory still match."
+            exit 1
+          fi
+
+      # Registration, login and JWT handling against isolated temporary databases. The isolation is
+      # what makes this runnable in CI at all: before it, these tests opened the developer's real
+      # database, which is neither present nor writable on a hosted runner.
+      - name: Identity user rules against isolated databases
+        shell: bash
+        run: |
+          # 11 in-crate tests plus 3 guards that assert the temporary-database helper is still
+          # used and still cleans up. The guard count matters: if the helper is bypassed, the
+          # suite would go back to writing into whatever database it can find.
+          set -o pipefail
+          cargo test -p burncloud-service-user 2>&1 | tee /tmp/identity-user.log
+          executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/identity-user.log)
+          echo "executed $executed test(s)"
+          if [ "${executed:-0}" -lt 14 ]; then
+            echo "::error::expected at least 14 tests in burncloud-service-user, found ${executed:-0}."
+            exit 1
+          fi
 
   migration-contracts:
     name: Migration contracts

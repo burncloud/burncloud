@@ -106,11 +106,10 @@ async fn accounts_round_trip_through_the_real_schema() {
     let json = serde_json::to_value(&stored).unwrap();
     assert_eq!(json["username"], serde_json::json!("alice"));
     // Balance is projected into JSON under the same names (Commerce-facing projection).
-    // `serde_json::json!` types integer literals as i32, so the nanodollar amount is passed as i64.
-    assert_eq!(
-        json["balance_usd"],
-        serde_json::Value::from(stored.balance_usd)
-    );
+    // `json!` is used rather than naming `serde_json::Value`: the workspace's type gate disallows that
+    // type outside protocol boundaries, and the macro produces the right numeric variant from the
+    // value itself, so the nanodollar amount stays an i64 without an explicit constructor.
+    assert_eq!(json["balance_usd"], serde_json::json!(stored.balance_usd));
 
     // Lookup paths share the writer's column list.
     let by_name = UserDatabase::get_user_by_username(&db, "alice")

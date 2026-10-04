@@ -1,20 +1,11 @@
-# CI and repository maintenance
+Workflow documentation moved to ../README.md.
 
-Every workflow in this directory, what triggers it, and what it actually runs. Kept short on purpose:
-the authoritative list is the workflow files themselves, and this file exists so a reader does not have
-to open seven YAML files to find out which check ran on their PR.
+The overview, trigger coverage, known-failing checks, conventions and the list of planned changes now live
+in `.github/README.md`; a second copy here would be a second source of truth. The matrix of which crate is
+verified by which job is in `../test-plan/coverage-matrix.md`.
 
-## Workflows
-
-| File | Display name | Triggers | What it runs |
-| --- | --- | --- | --- |
-| `ci-quality.yml` | `CI / Quality` | PR and push to `main`, on any Rust file, `Cargo.toml` or `clippy.toml` | `rustfmt --check` on the files the change touched |
-| `ci-architecture.yml` | `CI / Architecture` | PR and push to `main`, on Rust manifests, `clippy.toml`, `deny.toml` | `clippy` across the workspace, `cargo-deny` policy, and the router dependency whitelist |
-| `ci-client.yml` | `CI / Client` | PR, on the client crates and the root manifest | UI convention checks, LiveView check, Windows and macOS desktop checks |
-| `ci-tests.yml` | `CI / Tests` | PR and push to `main`, on the crates whose behaviour the suites cover | Node invariants, billing invariants, security invariants, migration contracts |
-| `cd-release.yml` | `CD / Release` | Push to `main` and `workflow_dispatch`; also `v*` tags | Builds the release artifacts and creates the GitHub release |
-| `maintenance-version-tag.yml` | `Maintenance / Version Tag` | Push to `main` on manifests | Compares the root package version with the newest tag and creates the tag when the version moved forward |
-| `maintenance-sync-gitee.yml` | `Maintenance / Sync to Gitee` | Push to `main` and `workflow_dispatch` | Mirrors the repository to Gitee |
+What follows is only what that document does **not** carry: the naming scheme for the files in this
+directory, and two decisions that were measured here.
 
 ## Naming
 
@@ -64,28 +55,16 @@ for a workspace that ships binaries, and it was considered. It is **not done her
   mismatch rather than a code error -- worth naming, because that is the cost of the choice.
 
 Until then, no part of this project should claim reproducible builds or pinned dependency versions.
+
+## Why formatting has its own workflow
+
 Formatting lives in `ci-quality.yml` rather than in `ci-tests.yml` on purpose. It used to be the first
 job of the test workflow with every other job declaring `needs: formatting`, so a formatting failure
 stopped the Billing, Security, Node and contract suites from reporting at all -- one early failure
 suppressing five verdicts. The two workflows now report separately, and "all of them must pass" belongs
 in the `CI Required` aggregate rather than in a `needs` chain.
 
-## Two rules that are not optional
-
-Both were learned by getting them wrong.
-
-**Check the real diff before opening a PR.** Run `git diff --name-only main...HEAD` and verify every
-path is inside the issue's Allowed Paths. A clean description is not evidence of a clean diff: two
-branches in this repository carried 7 and 9 files where the issue allowed 2, because they were created
-while `HEAD` pointed at another feature branch.
-
-**A test must never freeze a defect as the contract.** When a test reveals wrong behaviour, the expected
-value is not the current output. Writing the observed (wrong) value into the assertion declares it
-correct and makes the eventual fix look like a regression. Instead: file a bug issue that states the
-decision to be made, leave a failing test that records the defect and references the issue, then fix and
-remove the `ignore`.
-
-## Known limits of local verification
+## What `actionlint` cannot check here
 
 `actionlint` checks syntax, expressions and deprecated action versions, and the `paths` filters can be
 evaluated against `git ls-files` to catch an entry that matches nothing. Neither can check the trigger
@@ -96,11 +75,3 @@ is a real run on GitHub.
 One caveat on the path check: it reads every quoted entry under a `paths:` key, so a tag filter such as
 `v*` in `cd-release.yml` is reported as matching no tracked file. That is a limitation of the check, not
 a defect in the workflow.
-
-## Adding a workflow
-
-- Prefer a step in an existing workflow over a new file; each file is another trigger to reason about.
-- Give every job `timeout-minutes` and a domain `name`.
-- If a workflow is triggered by `pull_request`, remember that the version used is the one on the base
-  branch, so a new job cannot be verified before it is merged.
-- Add the workflow's own path to its `paths` filter so a change to the workflow re-runs it.

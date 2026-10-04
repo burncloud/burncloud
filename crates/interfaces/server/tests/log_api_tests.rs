@@ -5,6 +5,12 @@
     clippy::disallowed_types
 )]
 
+// The shared test helpers live in `test_utils.rs`. Each integration test target is its own crate, so
+// the module must be declared in every file that uses it -- `api_tests.rs` and
+// `security_invariants.rs` already do. This file called into it without declaring it and therefore
+// did not compile.
+mod test_utils;
+
 use burncloud_database::create_database_with_url;
 use burncloud_database_router::{RouterDatabase, RouterLog};
 use burncloud_database_user::UserDatabase;
