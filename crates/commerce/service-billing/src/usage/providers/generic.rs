@@ -4,7 +4,7 @@
 
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
-use crate::usage::UsageParser;
+use crate::usage::{read_count, read_count_either, UsageParser};
 use serde_json::Value;
 
 /// Generic fallback parser — tries OpenAI format first.
@@ -20,16 +20,21 @@ impl UsageParser for GenericParser {
         // Try OpenAI-style `usage` block
         if let Some(usage) = response.get("usage") {
             return Ok(UnifiedUsage {
-                input_tokens: usage
-                    .get("prompt_tokens")
-                    .or_else(|| usage.get("input_tokens"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
-                output_tokens: usage
-                    .get("completion_tokens")
-                    .or_else(|| usage.get("output_tokens"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
+                // Two spellings of the same count. `read_count_either` prefers whichever is present and
+                // reports an unreadable one rather than falling through to the other spelling -- the two are
+                // not necessarily the same number, so choosing the other would invent a count.
+                input_tokens: read_count_either(
+                    usage,
+                    "prompt_tokens",
+                    "input_tokens",
+                    self.provider_name(),
+                )?,
+                output_tokens: read_count_either(
+                    usage,
+                    "completion_tokens",
+                    "output_tokens",
+                    self.provider_name(),
+                )?,
                 ..Default::default()
             });
         }
@@ -37,14 +42,8 @@ impl UsageParser for GenericParser {
         // Try Gemini-style `usageMetadata` block
         if let Some(meta) = response.get("usageMetadata") {
             return Ok(UnifiedUsage {
-                input_tokens: meta
-                    .get("promptTokenCount")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
-                output_tokens: meta
-                    .get("candidatesTokenCount")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
+                input_tokens: read_count(meta, "promptTokenCount", self.provider_name())?,
+                output_tokens: read_count(meta, "candidatesTokenCount", self.provider_name())?,
                 ..Default::default()
             });
         }
