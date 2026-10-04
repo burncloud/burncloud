@@ -8,8 +8,6 @@ on:
       - 'deny.toml'
       - '.github/workflows/arch.yml'
       - '.github/hooks/**'
-      - '.github/scripts/*code-init*'
-      - '.github/scripts/pre-commit-checks.sh'
       - 'crates/**/Cargo.toml'
       - 'crates/**/*.rs'
 
@@ -18,21 +16,20 @@ permissions:
 
 jobs:
   code-init:
-    name: Code init hooks (${{ matrix.os }})
+    name: Code commands (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Test local hook installation and commit gates
-        shell: bash
-        run: bash .github/scripts/test-code-init.sh
+      - name: Test initialization, affected-package selection and commit gates
+        run: cargo test -p burncloud-code
 
   clippy:
     runs-on: ubuntu-latest

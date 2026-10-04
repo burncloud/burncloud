@@ -4,7 +4,7 @@ set -eu
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-sh "$root/.github/scripts/pre-commit-checks.sh"
+cargo run --quiet -- code test --staged
 
 # Keep the previous hook's interpreter, arguments and exit status intact.
 hooks=$(git rev-parse --git-path hooks)

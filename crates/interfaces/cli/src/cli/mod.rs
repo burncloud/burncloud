@@ -1,6 +1,5 @@
 pub mod bundle;
 pub mod channel;
-pub mod code;
 pub mod commands;
 pub mod currency;
 pub mod install;

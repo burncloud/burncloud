@@ -4,7 +4,22 @@ use std::io::{self, Error, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const HOOK: &str = include_str!("../../../../../.github/hooks/pre-commit");
+const HOOK: &str = include_str!("../../../../.github/hooks/pre-commit");
+// Exact previous managed wrapper: upgrade it without chaining the deleted script.
+const LEGACY_HOOK: &str = r#"#!/bin/sh
+# BurnCloud managed pre-commit hook. Reinstall with: cargo run -- code init
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+sh "$root/.github/scripts/pre-commit-checks.sh"
+
+# Keep the previous hook's interpreter, arguments and exit status intact.
+hooks=$(git rev-parse --git-path hooks)
+if [ -x "$hooks/pre-commit.burncloud-original" ]; then
+    exec "$hooks/pre-commit.burncloud-original" "$@"
+fi
+"#;
 
 fn git(directory: &Path, args: &[&str]) -> io::Result<String> {
     let output = Command::new("git")
@@ -23,18 +38,18 @@ fn git(directory: &Path, args: &[&str]) -> io::Result<String> {
         .map_err(Error::other)
 }
 
-pub fn init() -> io::Result<()> {
+pub(crate) fn init() -> io::Result<()> {
     let hooks = install(&std::env::current_dir()?)?;
     println!("Pre-commit checks installed in {}", hooks.display());
     println!("Required tools: rustup component add rustfmt clippy");
     println!("Dependency checker: cargo install cargo-deny --locked");
-    println!("Commits must pass formatting, workspace tests, Clippy and cargo deny.");
+    println!("Commits run code test --staged: formatting, affected tests, Clippy and cargo deny.");
     Ok(())
 }
 
 fn install(directory: &Path) -> io::Result<PathBuf> {
     let root = PathBuf::from(git(directory, &["rev-parse", "--show-toplevel"])?);
-    if !root.join(".github/scripts/pre-commit-checks.sh").is_file()
+    if !root.join(".github/hooks/pre-commit").is_file()
         || !root.join("deny.toml").is_file()
         || !root.join("Cargo.toml").is_file()
     {
@@ -52,7 +67,7 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
         Some(1) => {}
         Some(0) => {
             return Err(Error::other(
-                "core.hooksPath is already configured. Integrate .github/scripts/pre-commit-checks.sh into your existing hook manager, or remove that setting before code init.",
+                "core.hooksPath is already configured. Integrate cargo run -- code test --staged into your existing hook manager, or remove that setting before code init.",
             ));
         }
         _ => return Err(Error::other("Unable to inspect Git core.hooksPath.")),
@@ -84,22 +99,24 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
             make_executable(&hook)?;
             return Ok(hooks);
         }
+        let upgrading = existing.as_deref() == Some(LEGACY_HOOK.as_bytes());
         match fs::symlink_metadata(&backup) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
-            Ok(_) => return Err(Error::other(
+            Ok(_) if !upgrading => return Err(Error::other(
                 "A saved pre-commit.burncloud-original already exists; refusing to overwrite hooks.",
             )),
+            Ok(_) => {}
         }
         file.write_all(HOOK.as_bytes())?;
         file.sync_all()?;
         drop(file);
         make_executable(&pending)?;
-        if existing.is_some() {
+        if existing.is_some() && !upgrading {
             fs::rename(&hook, &backup)?;
         }
         if let Err(error) = fs::rename(&pending, &hook) {
-            if existing.is_some() {
+            if existing.is_some() && !upgrading {
                 fs::rename(&backup, &hook)?;
             }
             return Err(error);
