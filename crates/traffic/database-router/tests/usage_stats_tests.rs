@@ -10,13 +10,86 @@ use burncloud_database_router::{
 };
 use tempfile::NamedTempFile;
 
-/// Create an isolated SQLite test database with all required tables.
-async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
+/// An isolated SQLite database plus the router tables, in a temp file that this type tries to delete.
+///
+/// **This helper reduces the leak; it does not eliminate it.** Measured on this platform: 20 leftover
+/// files per run of this crate before, 9 after, and still 9 after a ten-second wait -- so the remainder
+/// is not a slow cleanup, it is cleanup that never happens. `tests/temp_file_leak.rs` asserts the current
+/// number so it cannot silently get worse, and #643 records the unfinished work.
+///
+/// The background: dropping a `Database` does not release the SQLite handle and `close().await` releases
+/// it only asynchronously, so a removal attempted from `Drop` loses the race and the file survives.
+///
+/// Two fixes were tried and do not work. They are recorded so they are not retried: calling `block_on` on
+/// a new runtime inside `Drop` panics with "Cannot start a runtime from within a runtime", and so does
+/// reusing `Handle::try_current()`, because the destructor runs inside the test's own runtime.
+///
+/// What this does instead is hand the connection to a **separate thread** with its own runtime, so
+/// nothing blocks the test thread and no runtime is entered from within another. That recovers roughly
+/// half the files. The likely reason it is not all of them is that nothing joins these threads: a test
+/// binary exits when its tests finish, and a detached thread's work is lost. Joining them needs a
+/// process-level hook the standard test harness does not offer, which is why it is left to #643.
+///
+/// Requires a multi-threaded test runtime, which `#[tokio::test]` provides by default.
+struct TestDb {
+    db: Option<burncloud_database::Database>,
+    path: std::path::PathBuf,
+}
+
+impl std::ops::Deref for TestDb {
+    type Target = burncloud_database::Database;
+
+    fn deref(&self) -> &Self::Target {
+        self.db
+            .as_ref()
+            .unwrap_or_else(|| panic!("the test database was used after cleanup"))
+    }
+}
+
+impl Drop for TestDb {
+    fn drop(&mut self) {
+        let Some(db) = self.db.take() else {
+            return;
+        };
+        let path = self.path.clone();
+
+        // The thread owns the close. If it cannot be spawned the files are simply left behind, which is
+        // the pre-existing behaviour rather than a new failure, so the test result is unaffected.
+        let _ = std::thread::Builder::new()
+            .name("bc-testdb-cleanup".to_string())
+            .spawn(move || {
+                if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    if let Err(e) = rt.block_on(db.close()) {
+                        eprintln!("test database close failed (cleanup continues): {e}");
+                    }
+                }
+                // SQLite releases the OS handle slightly after the pool closes.
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                for suffix in ["", "-wal", "-shm"] {
+                    let mut candidate = path.clone().into_os_string();
+                    candidate.push(suffix);
+                    let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+                }
+            });
+    }
+}
+
+/// Create an isolated SQLite test database with the production schema applied.
+async fn create_test_db() -> TestDb {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    // Three slashes and forward slashes: `sqlite:///C:/...` is an absolute path on Windows, whereas
-    // `sqlite://C:\...` is not a URL SQLite can open and fails with
-    // "(code: 14) unable to open database file" before any assertion runs.
-    let normalized = tmp.path().to_string_lossy().replace('\\', "/");
+    // Take the path away from the temp-file guard so deletion is controlled here rather than racing the
+    // connection pool.
+    let path = tmp
+        .into_temp_path()
+        .keep()
+        .unwrap_or_else(|e| panic!("failed to keep temp path: {e}"));
+    // Three slashes with forward slashes: an absolute path on Windows, whereas the two-slash form is not
+    // a URL SQLite can open and fails with "(code: 14) unable to open database file" before any
+    // assertion runs.
+    let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = create_database_with_url(&url)
         .await
@@ -24,7 +97,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     RouterDatabase::init(&db)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize router tables: {e}"));
-    (db, tmp)
+    TestDb { db: Some(db), path }
 }
 
 /// Insert a router_logs row with a specific created_at timestamp.
@@ -85,7 +158,7 @@ async fn insert_user_account(
 /// After the fix, strftime('%s', created_at) correctly converts to epoch seconds.
 #[tokio::test]
 async fn test_b4_time_filter_day_returns_recent_data() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b4-test-user-day";
 
     // Insert a log with current timestamp (within the last day)
@@ -111,7 +184,7 @@ async fn test_b4_time_filter_day_returns_recent_data() {
 /// for logs inserted within the last 7 days.
 #[tokio::test]
 async fn test_b4_time_filter_week_returns_recent_data() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b4-test-user-week";
 
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -132,7 +205,7 @@ async fn test_b4_time_filter_week_returns_recent_data() {
 /// for logs inserted within the last 30 days.
 #[tokio::test]
 async fn test_b4_time_filter_month_returns_recent_data() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b4-test-user-month";
 
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -152,7 +225,7 @@ async fn test_b4_time_filter_month_returns_recent_data() {
 /// B4 regression: get_usage_stats returns zero for old data outside the period.
 #[tokio::test]
 async fn test_b4_time_filter_old_data_excluded() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b4-test-user-old";
 
     // Insert a log from 90 days ago — should be outside day/week/month windows
@@ -182,7 +255,7 @@ async fn test_b4_time_filter_old_data_excluded() {
 /// After the fix, fetch_optional + ok_or_else returns Err(DatabaseError::Query).
 #[tokio::test]
 async fn test_v2_deduct_usd_user_not_found_returns_err() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
 
     let result = BalanceModel::deduct_usd(&db, "nonexistent-user-v2", 1_000_000).await;
 
@@ -196,7 +269,7 @@ async fn test_v2_deduct_usd_user_not_found_returns_err() {
 /// V2 regression: deduct_cny returns Err (not Ok(false)) when user does not exist.
 #[tokio::test]
 async fn test_v2_deduct_cny_user_not_found_returns_err() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
 
     let result = BalanceModel::deduct_cny(&db, "nonexistent-user-v2", 1_000_000).await;
 
@@ -210,7 +283,7 @@ async fn test_v2_deduct_cny_user_not_found_returns_err() {
 /// V2 complement: deduct_usd returns Ok(false) for existing user with insufficient balance.
 #[tokio::test]
 async fn test_v2_deduct_usd_insufficient_balance_returns_ok_false() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "v2-poor-user";
 
     // User has 1M nanodollars ($0.001)
@@ -230,7 +303,7 @@ async fn test_v2_deduct_usd_insufficient_balance_returns_ok_false() {
 /// V2 complement: deduct_usd returns Ok(true) for existing user with sufficient balance.
 #[tokio::test]
 async fn test_v2_deduct_usd_sufficient_balance_returns_ok_true() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "v2-rich-user";
 
     // User has 100M nanodollars ($0.1)
@@ -257,7 +330,7 @@ async fn test_v2_deduct_usd_sufficient_balance_returns_ok_true() {
 /// After the fix, period="day" filters to the last 24 hours.
 #[tokio::test]
 async fn test_b5_period_day_filters_by_model() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b5-test-user-day";
 
     // Insert a recent log
@@ -281,7 +354,7 @@ async fn test_b5_period_day_filters_by_model() {
 /// B5 regression: get_usage_stats_by_model with period="week" returns recent data.
 #[tokio::test]
 async fn test_b5_period_week_filters_by_model() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b5-test-user-week";
 
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -300,7 +373,7 @@ async fn test_b5_period_week_filters_by_model() {
 /// B5 regression: get_usage_stats_by_model excludes old data outside the period.
 #[tokio::test]
 async fn test_b5_period_excludes_old_data_by_model() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
     let user_id = "b5-test-user-old";
 
     // Insert a log from 90 days ago
