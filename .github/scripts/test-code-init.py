@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""POSIX black-box tests of the actual Rust installer and Git commit hooks.
+"""Windows/Linux black-box tests of the actual Rust installer and Git commit hooks.
 
 Only Cargo commands are stubbed: these tests verify gating, not workspace health.
-Run with Python 3, rustc and Git on PATH; no third-party Python dependencies.
+Run with Python 3.10+, rustc and Git on PATH; no third-party Python dependencies.
+Windows uses Git for Windows and its bundled shell, just like normal commits.
 """
 import json
 import os
@@ -32,7 +33,7 @@ class CodeInitTests(unittest.TestCase):
             f"#[path = {json.dumps(str(source))}] mod code;\n"
             "fn main() -> std::io::Result<()> { code::init() }\n"
         )
-        cls.binary = build / "code-init"
+        cls.binary = build / ("code-init.exe" if os.name == "nt" else "code-init")
         subprocess.run(
             ["rustc", "--edition=2021", "-Dwarnings", str(harness), "-o", str(cls.binary)],
             check=True,
@@ -62,11 +63,13 @@ class CodeInitTests(unittest.TestCase):
             '  [ "$1" != "${MISSING_TOOL-}" ]; exit $?\n'
             'fi\n'
             'printf "%s\\n" "$*" >> "$CHECK_LOG"\n'
-            '[ "$1" != "${FAIL_CHECK-}" ]\n'
+            '[ "$1" != "${FAIL_CHECK-}" ]\n',
+            newline="\n",
         )
         cargo.chmod(0o755)
         self.env["PATH"] = str(mock_bin) + os.pathsep + self.env["PATH"]
         self.run_cmd("git", "init")
+        self.run_cmd("git", "config", "core.autocrlf", "false")
         self.run_cmd("git", "config", "user.name", "Hook Test")
         self.run_cmd("git", "config", "user.email", "hook-test@example.invalid")
         for relative in (".github/hooks/pre-commit", ".github/scripts/pre-commit-checks.sh", "deny.toml", "Cargo.toml"):
@@ -120,7 +123,7 @@ class CodeInitTests(unittest.TestCase):
 
     def test_preserves_original_hook_and_its_failure(self):
         original = '#!/bin/sh\necho original >> "$CHECK_LOG"\nexit 7\n'
-        self.hook.write_text(original)
+        self.hook.write_text(original, newline="\n")
         self.hook.chmod(0o755)
         self.init()
         self.init()
@@ -129,7 +132,7 @@ class CodeInitTests(unittest.TestCase):
         self.assertEqual(Path(str(self.hook) + ".burncloud-original").read_text(), original)
 
     def test_failed_gate_does_not_run_original(self):
-        self.hook.write_text('#!/bin/sh\necho original >> "$CHECK_LOG"\n')
+        self.hook.write_text('#!/bin/sh\necho original >> "$CHECK_LOG"\n', newline="\n")
         self.hook.chmod(0o755)
         self.init()
         self.env["FAIL_CHECK"] = "test"
@@ -166,7 +169,12 @@ class CodeInitTests(unittest.TestCase):
     def test_symlink_is_untouched(self):
         target = self.base / "shared-hook"
         target.write_text("original")
-        self.hook.symlink_to(target)
+        try:
+            self.hook.symlink_to(target)
+        except OSError as error:
+            if os.name == "nt" and error.winerror == 1314:
+                self.skipTest("Windows account lacks symbolic-link privilege")
+            raise
         self.init(ok=False)
         self.assertTrue(self.hook.is_symlink())
         self.assertEqual(target.read_text(), "original")

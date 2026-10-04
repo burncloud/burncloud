@@ -18,15 +18,24 @@ permissions:
 
 jobs:
   code-init:
-    runs-on: ubuntu-latest
+    name: Code init hooks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Install Python for hook regression tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Test local hook installation and commit gates
-        run: python3 .github/scripts/test-code-init.py
+        run: python .github/scripts/test-code-init.py
 
   clippy:
     runs-on: ubuntu-latest

@@ -16,8 +16,9 @@ The versioned `.github/scripts/pre-commit-checks.sh` gates commits on formatting
 workspace tests, Clippy and the full `cargo deny check` policy. Existing failures
 are not suppressed. See the root README for prerequisites, staging requirements
 and existing hook handling. The `code-init` job in `arch.yml` tests the installer
-and commit failure propagation independently of application dependencies; Cargo
+and commit failure propagation on Windows and Linux independently of application dependencies; Cargo
 is stubbed in those hook tests, so a green job is not a workspace-health result.
+Python is needed only for those regression tests, not for setup or commits.
 
 | File | Trigger | What it checks |
 | --- | --- | --- |

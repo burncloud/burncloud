@@ -127,10 +127,13 @@ advisories can therefore block commits until those underlying issues are fixed.
 necessary. Local hooks are not GitHub branch protection and can be bypassed by Git
 options, so required remote checks must be configured separately if needed.
 
-Hook regression tests run independently of application dependencies on Linux:
-`python3 .github/scripts/test-code-init.py`. They compile the actual Rust installer,
+Hook regression tests run independently of application dependencies on Windows and Linux:
+`python .github/scripts/test-code-init.py` (Python 3.10+). They compile the actual Rust installer,
 exercise real Git commits, and stub Cargo only to verify gate ordering and failure
 propagation. They do not establish that the full workspace passes its checks.
+Python is only a test dependency: `code init` and normal Git commits do not invoke it.
+CI runs the hook tests on both operating systems. The symbolic-link test is skipped
+on Windows only when the runner account lacks permission to create symbolic links.
 
 Typical local checks include targeted package checks/tests plus the relevant integration/E2E flow. Provider/cloud tests may require environment credentials; do not treat unavailable external tests as a pass.
 
