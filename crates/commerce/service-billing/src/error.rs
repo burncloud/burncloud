@@ -21,4 +21,13 @@ pub enum ParseError {
 
     #[error("Missing required field: {0}")]
     MissingField(String),
+
+    /// A field is present but is not the number it should be -- a string, a float with a fraction, `null`,
+    /// a boolean, an array or an object.
+    ///
+    /// Separate from [`ParseError::MissingField`] because the two mean different things to a caller: an
+    /// absent count is "nothing to bill", while a malformed one is "the count exists and could not be
+    /// read", which is a reason to distrust the charge rather than to treat it as zero. #664.
+    #[error("Malformed field: {0}")]
+    MalformedField(String),
 }

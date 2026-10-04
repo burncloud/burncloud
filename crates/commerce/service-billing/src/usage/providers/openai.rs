@@ -4,7 +4,7 @@
 
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
-use crate::usage::UsageParser;
+use crate::usage::{read_count, UsageParser};
 use serde_json::Value;
 
 /// Usage parser for OpenAI and OpenAI-compatible APIs.
@@ -25,38 +25,22 @@ impl UsageParser for OpenAIParser {
             return Ok(UnifiedUsage::default());
         };
 
+        // Every count goes through `read_count`, which tolerates the shapes an upstream may send and reports
+        // a field that is present but unreadable. See its documentation and #664.
         let mut u = UnifiedUsage {
-            input_tokens: usage
-                .get("prompt_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-            output_tokens: usage
-                .get("completion_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            input_tokens: read_count(usage, "prompt_tokens", self.provider_name())?,
+            output_tokens: read_count(usage, "completion_tokens", self.provider_name())?,
             ..Default::default()
         };
 
-        // Prompt Caching
+        // Prompt Caching. The details object may be absent or `null`; `get(..).and_then(get)` handles both,
+        // and an absent field inside it stays zero.
         if let Some(details) = usage.get("prompt_tokens_details") {
-            u.cache_read_tokens = details
-                .get("cached_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-        }
-
-        // Audio tokens
-        if let Some(details) = usage.get("prompt_tokens_details") {
-            u.audio_input_tokens = details
-                .get("audio_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            u.cache_read_tokens = read_count(details, "cached_tokens", self.provider_name())?;
+            u.audio_input_tokens = read_count(details, "audio_tokens", self.provider_name())?;
         }
         if let Some(details) = usage.get("completion_tokens_details") {
-            u.audio_output_tokens = details
-                .get("audio_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            u.audio_output_tokens = read_count(details, "audio_tokens", self.provider_name())?;
         }
 
         Ok(u)
@@ -84,15 +68,11 @@ impl UsageParser for OpenAIParser {
                 continue;
             };
 
-            // Only process chunks that carry usage info
-            let input = usage
-                .get("prompt_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            let output = usage
-                .get("completion_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            // Only process chunks that carry usage info. A count that is present but unreadable is reported
+            // rather than folded into the `input == 0 && output == 0` skip below, which exists for chunks
+            // that genuinely carry no usage.
+            let input = read_count(usage, "prompt_tokens", self.provider_name())?;
+            let output = read_count(usage, "completion_tokens", self.provider_name())?;
             if input == 0 && output == 0 {
                 continue;
             }
@@ -104,20 +84,11 @@ impl UsageParser for OpenAIParser {
             };
 
             if let Some(details) = usage.get("prompt_tokens_details") {
-                u.cache_read_tokens = details
-                    .get("cached_tokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-                u.audio_input_tokens = details
-                    .get("audio_tokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                u.cache_read_tokens = read_count(details, "cached_tokens", self.provider_name())?;
+                u.audio_input_tokens = read_count(details, "audio_tokens", self.provider_name())?;
             }
             if let Some(details) = usage.get("completion_tokens_details") {
-                u.audio_output_tokens = details
-                    .get("audio_tokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                u.audio_output_tokens = read_count(details, "audio_tokens", self.provider_name())?;
             }
 
             return Ok(Some(u));

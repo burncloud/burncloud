@@ -8,26 +8,34 @@
 //!
 //! The plan asks for "each provider's usage with missing or malformed fields". The existing inline tests
 //! cover the shapes that are *absent*: a missing `usage` object, an empty one, a missing `metadata`, and
-//! malformed JSON. They do not cover the shapes that are *mistyped* -- a field that is present but is not
+//! malformed JSON. They did not cover the shapes that are *mistyped* -- a field that is present but is not
 //! the number the parser expects.
 //!
-//! ## Why that class matters more than a missing field
+//! ## What was found, and what changed
 //!
-//! All five parsers read numbers as `.get(..).and_then(|v| v.as_i64()).unwrap_or(0)`. `as_i64` returns
-//! `None` for anything that is not a JSON integer, so a **string**, a **float**, a **boolean** and a
-//! **null** all become `0` rather than an error. `parse_response` returns `Result<UnifiedUsage, ParseError>`,
-//! so the parsers have a way to report a problem and choose not to use it for this class.
+//! All five parsers read numbers as `.get(..).and_then(|v| v.as_i64()).unwrap_or(0)`, and `as_i64` returns
+//! `None` for anything that is not a JSON integer. A **string**, a **float**, a **boolean** and a **null**
+//! therefore became `0`, reported as a successful parse. Measured end to end: a request that consumed 2000
+//! tokens was billed **zero**, indistinguishable from a free request. Filed as #664.
 //!
-//! A zeroed usage is a **billing under-count**: the request is served and charged as if it used nothing,
-//! and nothing downstream can tell that apart from a genuinely empty request. That is the finding these
-//! tests exist to make visible.
+//! The fix is a shared `read_count` in [`crate::usage`], used by all five parsers so they cannot drift
+//! apart on this. A decimal integer string, a float with no fraction, and `"1500.0"` are now read; `null`,
+//! booleans, non-numeric strings and fractional floats are **reported** as
+//! [`crate::error::ParseError::MalformedField`]; an absent field stays `0`, which is the documented shape
+//! for a response that carries no usage.
+//!
+//! ## What this file still records rather than fixes
+//!
+//! `parse_response_or_default` maps `Err` to `UnifiedUsage::default()`, which is zero, so a malformed count
+//! still ends up billed as nothing one layer up -- with a warning where there used to be silence. The
+//! parsers now say "this count is unreadable"; what the **caller** should do instead of billing zero is a
+//! decision about refusing a request or billing an estimate, and `a_malformed_count_still_becomes_a_zero_charge_at_the_caller`
+//! records that boundary so it is not mistaken for a solved problem.
 //!
 //! ## How these tests are written
 //!
-//! They **measure and name the behaviour**; they do not assert that it is correct. Writing
-//! `assert_eq!(parsed.input_tokens, 0)` would freeze a suspected defect as the contract, which is the
-//! failure mode being avoided here. Each test states what is observed and why it is or is not acceptable,
-//! and the suspected defects are filed as issues rather than encoded as expectations.
+//! Each names the behaviour and the reason it is or is not acceptable, and the amounts are derived by hand
+//! rather than read off a run -- the plan asks for the expected amount to be independently calculated.
 
 use burncloud_service_billing::usage::get_parser;
 use burncloud_supply_contracts::ChannelType;
@@ -80,57 +88,71 @@ fn an_absent_usage_object_yields_zero_without_an_error() {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn a_token_count_sent_as_a_string_is_measured() {
-    // `"150"` is the number the provider meant. JSON allows it, some gateways emit it, and `as_i64` returns
-    // `None` for it, so the count is lost rather than recovered or reported.
+fn a_token_count_sent_as_a_string_is_parsed() {
+    // `"150"` is the number the provider meant, and JSON allows it. This used to be dropped to zero and
+    // reported as success; #664 changed that, and this test was updated with it.
     let (input, output, err) = parse(ChannelType::OpenAI, openai_body(json!("150"), json!("250")));
 
     println!("string counts parsed as: input={input} output={output} error={err:?}");
-
-    // The observation, stated as a count rather than as an expectation: the tokens were dropped.
+    assert_eq!(err, None);
     assert_eq!(
         (input, output),
-        (0, 0),
-        "if this now recovers 150/250 the parser has been taught to coerce strings, which is an \
-         improvement worth updating this test for"
-    );
-    assert_eq!(
-        err, None,
-        "and it is reported as success, which is what makes the loss invisible to the caller"
+        (150, 250),
+        "a decimal integer string has exactly one numeric reading, so recovering it cannot change what a \
+         correct request costs"
     );
 }
 
 #[test]
-fn a_token_count_sent_as_a_float_is_measured() {
-    // `150.0` is an integer written as a float. `as_i64` rejects it, so a gateway that serialises counts as
-    // doubles bills zero for every request.
+fn a_token_count_sent_as_a_float_with_no_fraction_is_parsed() {
+    // `150.0` is an integer written as a float, so it has one numeric reading. A gateway that serialises
+    // counts as doubles used to bill zero for every request.
     let (input, output, err) = parse(ChannelType::OpenAI, openai_body(json!(150.0), json!(250.0)));
 
     println!("float counts parsed as: input={input} output={output} error={err:?}");
-    assert_eq!((input, output), (0, 0));
     assert_eq!(err, None);
+    assert_eq!((input, output), (150, 250));
 }
 
 #[test]
-fn a_token_count_sent_as_null_is_measured() {
-    // A provider that knows the field but not the value may send `null`. Distinguishing "no count" from
-    // "zero tokens" is impossible after this coercion.
+fn a_token_count_sent_as_a_float_with_a_fraction_is_reported() {
+    // The boundary of that tolerance. `150.5` has no single reading as a token count, and rounding would
+    // invent a number the upstream did not report, so it is reported instead.
+    let (input, output, err) = parse(ChannelType::OpenAI, openai_body(json!(150.5), json!(250)));
+
+    println!("fractional float parsed as: input={input} output={output} error={err:?}");
+    assert!(
+        err.as_deref()
+            .is_some_and(|e| e.contains("Malformed field")),
+        "a fractional token count must be reported, got {err:?}"
+    );
+}
+
+#[test]
+fn a_token_count_sent_as_null_is_reported() {
+    // A provider that knows the field but not the value may send `null`. "Unknown count" is not "zero
+    // tokens", so it is reported rather than billed as nothing.
     let (input, output, err) = parse(ChannelType::OpenAI, openai_body(json!(null), json!(null)));
 
     println!("null counts parsed as: input={input} output={output} error={err:?}");
-    assert_eq!((input, output), (0, 0));
-    assert_eq!(err, None);
+    assert!(
+        err.as_deref()
+            .is_some_and(|e| e.contains("Malformed field") && e.contains("prompt_tokens")),
+        "a null count must be reported and must name the field, got {err:?}"
+    );
 }
 
 #[test]
-fn a_token_count_sent_as_a_boolean_is_measured() {
-    // `true` is not a number in any reading. Recorded because it produces the same silent zero as a string,
-    // which is what makes the coercion a class of behaviour rather than one special case.
+fn a_token_count_sent_as_a_boolean_is_reported() {
+    // `true` is not a number in any reading.
     let (input, output, err) = parse(ChannelType::OpenAI, openai_body(json!(true), json!(false)));
 
     println!("boolean counts parsed as: input={input} output={output} error={err:?}");
-    assert_eq!((input, output), (0, 0));
-    assert_eq!(err, None);
+    assert!(
+        err.as_deref()
+            .is_some_and(|e| e.contains("Malformed field")),
+        "a boolean count must be reported, got {err:?}"
+    );
 }
 
 // -------------------------------------------------------------------------------------------
@@ -178,9 +200,9 @@ fn an_enormous_token_count_is_measured() {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn a_string_count_is_dropped_by_every_provider() {
-    // If only one parser behaved this way it would be a bug in that parser. The point of measuring all five
-    // is that it is a property of the shared reading style, so a fix has to be made once and consistently.
+fn a_string_count_is_recovered_by_every_provider() {
+    // The defect was shared -- all five read counts the same way -- so this checks that the fix is shared
+    // too. If one provider recovered strings and another did not, the others were left behind.
     let cases: Vec<(&str, ChannelType, serde_json::Value)> = vec![
         (
             "openai",
@@ -211,24 +233,18 @@ fn a_string_count_is_dropped_by_every_provider() {
         ),
     ];
 
-    let mut dropped = Vec::new();
-    let mut recovered = Vec::new();
+    let mut wrong = Vec::new();
     for (provider, channel, body) in cases {
         let (input, output, err) = parse(channel, body);
         println!("{provider}: input={input} output={output} error={err:?}");
-        if (input, output) == (0, 0) {
-            dropped.push(provider);
-        } else {
-            recovered.push(provider);
+        if (input, output) != (150, 250) {
+            wrong.push(format!("{provider}: got {input}/{output} (error {err:?})"));
         }
     }
 
-    println!("providers that dropped the string counts: {dropped:?}");
-    println!("providers that recovered them: {recovered:?}");
-
     assert!(
-        !dropped.is_empty(),
-        "no provider dropped a string count, so the reading style has changed and this file is out of date"
+        wrong.is_empty(),
+        "these providers did not recover the string counts: {wrong:?}"
     );
 }
 
@@ -236,18 +252,16 @@ fn a_string_count_is_dropped_by_every_provider() {
 // the defect, filed as an issue and pinned by a failing test
 // -------------------------------------------------------------------------------------------
 
-/// The behaviour #664 asks for, which does not hold today.
+/// The contract #664 asked for, now satisfied.
 ///
-/// **Ignored, not deleted**, and it is the failing test that #664 refers to: it states the contract the fix
-/// must satisfy, so the fix has something to turn green rather than a prose description. Run it with
-/// `cargo test -p burncloud-service-billing --test malformed_usage_fields -- --ignored` to see the defect.
+/// This was written **failing** and marked `#[ignore]` so the fix would have something to turn green rather
+/// than a prose description, and the fix has landed. It is kept as a regression guard: it is the test that
+/// fails if any of the five parsers goes back to reading counts with `as_i64().unwrap_or(0)`.
 ///
-/// The choice of contract is deliberate. A decimal integer string is not an ambiguous case -- `"1500"` has
+/// The contract is deliberately narrow. A decimal integer string is not an ambiguous case -- `"1500"` has
 /// exactly one numeric reading -- so recovering it is the least surprising behaviour and cannot silently
-/// change what a correct request costs. `null`, booleans and non-numeric strings are left out of this test
-/// and handled by #664's requirement to either error or warn, because for those the right answer depends on
-/// a policy decision rather than on a reading.
-#[ignore = "the contract for #664: a decimal integer string must be parsed, not dropped"]
+/// change what a correct request costs. `null`, booleans and non-numeric strings are handled by the tests
+/// below, which require them to be **reported** rather than zeroed.
 #[test]
 fn a_decimal_integer_string_is_parsed_rather_than_dropped() {
     let cases: Vec<(&str, ChannelType, serde_json::Value)> = vec![
@@ -290,6 +304,59 @@ fn a_decimal_integer_string_is_parsed_rather_than_dropped() {
     assert!(
         wrong.is_empty(),
         "these providers dropped the string counts instead of reading them: {wrong:?}"
+    );
+}
+
+// -------------------------------------------------------------------------------------------
+// the boundary that is still open
+// -------------------------------------------------------------------------------------------
+
+#[test]
+fn a_malformed_count_still_becomes_a_zero_charge_at_the_caller() {
+    // The parsers now report an unreadable count, but the function the router actually calls does not
+    // propagate that: `parse_response_or_default` maps `Err` to `UnifiedUsage::default()`, which is zero.
+    //
+    // So the under-count from #664 is **narrowed, not closed**: a string count is recovered and billed
+    // correctly, while a `null` or non-numeric count still ends up billed as nothing -- now with a
+    // `tracing::warn!` where there used to be silence.
+    //
+    // Recorded as a test rather than as prose because it is the part a reader is most likely to assume was
+    // fixed along with the rest. Closing it needs a decision about what the caller should do instead of
+    // zero: refuse the request, or bill at an estimate. That is #664's remaining half.
+    use burncloud_service_billing::usage::parse_response_or_default;
+
+    let parser = get_parser(ChannelType::OpenAI);
+
+    // The unreadable case: reported by the parser...
+    let malformed = json!({ "usage": { "prompt_tokens": null, "completion_tokens": 250 } });
+    assert!(
+        parser.parse_response(&malformed).is_err(),
+        "the parser must report this, which is the part that was fixed"
+    );
+
+    // ...and turned into zero by the caller, which is the part that was not.
+    let usage = parse_response_or_default(parser.as_ref(), &malformed, "req-malformed");
+    println!(
+        "caller received: input={} output={}",
+        usage.input_tokens, usage.output_tokens
+    );
+    assert_eq!(
+        usage.input_tokens, 0,
+        "the caller still receives zero for an unreadable count. The 250 that WAS readable is lost too, \
+         because the whole response falls back to a default -- so one bad field discards the good ones"
+    );
+    assert_eq!(
+        usage.output_tokens, 0,
+        "and the readable output count is discarded along with it, which is a second way this loses money"
+    );
+
+    // The contrast: the recoverable case now reaches the caller intact.
+    let recoverable = json!({ "usage": { "prompt_tokens": "1500", "completion_tokens": "500" } });
+    let usage = parse_response_or_default(parser.as_ref(), &recoverable, "req-recoverable");
+    assert_eq!(
+        (usage.input_tokens, usage.output_tokens),
+        (1500, 500),
+        "a string count now survives the caller, which is the half that was fixed"
     );
 }
 
@@ -376,16 +443,26 @@ async fn a_string_token_count_produces_a_zero_charge_for_a_non_empty_request(
     //
     // The price is chosen so the difference between "charged" and "not charged" is a number that cannot be
     // confused with rounding: 2000 tokens at $1 per million is 2000 nano-dollars.
-    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
     use burncloud_database_billing::BillingPriceModel;
     use burncloud_service_billing::{CostCalculator, PriceCache};
 
     let (db, path) = fresh_db("string_zero_charge").await;
 
-    let per_token = dollars_to_nano(1.0) / 1_000_000;
-    BillingPriceModel::upsert(&db, &price_input("mistyped-model", per_token, per_token))
-        .await
-        .expect("seed price");
+    // `input_price` is **nano-dollars per million tokens** (`calculator.rs:349`:
+    // `cost_nano = tokens * price_per_million / 1_000_000`), so 1_000_000 means one nano-dollar per token and
+    // 2000 tokens cost 2_000_000 nano-dollars.
+    //
+    // Two mistakes were made here before this comment. The first computed the price as
+    // `dollars_to_nano(1.0) / 1_000_000`, which is integer division and truncates to 0. The second read the
+    // field as per-token rather than per-million and set 1000. The exact-figure assertion below caught both:
+    // it came out as 1 each time instead of 2_000_000.
+    let price_per_million: i64 = 1_000_000;
+    BillingPriceModel::upsert(
+        &db,
+        &price_input("mistyped-model", price_per_million, price_per_million),
+    )
+    .await
+    .expect("seed price");
 
     let cache = PriceCache::load(&db).await?;
     let calc = CostCalculator::new(cache);
@@ -414,18 +491,33 @@ async fn a_string_token_count_produces_a_zero_charge_for_a_non_empty_request(
     println!("charged for a 2000-token request: {cost:?}");
 
     assert_eq!(
-        usage.input_tokens, 0,
-        "the string counts were dropped, so the usage handed to the calculator is empty even though the \
-         provider reported 2000 tokens"
+        usage.input_tokens, 1500,
+        "the string counts must be recovered rather than dropped -- this was the defect in #664, where the \
+         usage handed to the calculator was empty even though the provider reported 2000 tokens"
+    );
+    assert_eq!(usage.output_tokens, 500);
+
+    // The expected charge, worked out by hand rather than read off a run, because the plan asks for the
+    // amount to be independently derived.
+    //
+    // `input_price` is nano-dollars per **million** tokens and the cost is
+    // `tokens * input_price / 1_000_000` (`calculator.rs:349`). With `input_price = 1_000_000` the same
+    // division appears on both sides and cancels, leaving `tokens` nano-dollars: 1500 input + 500 output =
+    // 2000 nano-dollars. The breakdown assertions below check that split rather than only the total, so a
+    // charge that came from one of the two counts twice would fail.
+    assert_eq!(
+        cost.usd_amount_nano, 2000,
+        "1500 input + 500 output at one nano-dollar per token. Before #664 both counts were dropped and \
+         this was 0"
     );
     assert_eq!(
-        cost.usd_amount_nano, 0,
-        "and the charge is therefore zero. If this is no longer zero the parser has learned to coerce \
-         strings, and this test should be updated to assert the recovered amount instead"
+        cost.breakdown.input_cost, 1500,
+        "the input half of the split"
     );
+    assert_eq!(cost.breakdown.output_cost, 500, "the output half");
 
-    // The contrast that makes this a defect rather than a rounding detail: the same numbers sent as
-    // integers are charged, so the only difference between the two requests is their JSON types.
+    // The contrast that made it a defect rather than a rounding detail: the same numbers sent as integers
+    // are charged the same, so the two requests now differ in nothing but their JSON types.
     let as_integers = parse(
         ChannelType::OpenAI,
         json!({ "usage": { "prompt_tokens": 1500, "completion_tokens": 500 } }),

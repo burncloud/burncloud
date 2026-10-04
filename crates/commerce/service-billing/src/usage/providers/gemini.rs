@@ -4,7 +4,7 @@
 
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
-use crate::usage::UsageParser;
+use crate::usage::{read_count, UsageParser};
 use serde_json::Value;
 
 /// Usage parser for Google Gemini and Vertex AI.
@@ -26,32 +26,24 @@ fn clean_gemini_chunk(chunk: &str) -> &str {
         .trim_end_matches(']')
 }
 
-fn parse_usage_metadata(metadata: &Value) -> UnifiedUsage {
-    let prompt = metadata
-        .get("promptTokenCount")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let candidates = metadata
-        .get("candidatesTokenCount")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+/// Read the four counts out of a `usageMetadata` object.
+///
+/// Takes the provider name so a malformed field can be attributed, and returns a `Result` so an unreadable
+/// count is reported rather than folded into a zero -- see `read_count` and #664.
+fn parse_usage_metadata(metadata: &Value, provider: &str) -> Result<UnifiedUsage, ParseError> {
+    let prompt = read_count(metadata, "promptTokenCount", provider)?;
+    let candidates = read_count(metadata, "candidatesTokenCount", provider)?;
     // Gemini 2.5: thoughtsTokenCount billed at output rate
-    let thoughts = metadata
-        .get("thoughtsTokenCount")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let cached = metadata
-        .get("cachedContentTokenCount")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let thoughts = read_count(metadata, "thoughtsTokenCount", provider)?;
+    let cached = read_count(metadata, "cachedContentTokenCount", provider)?;
 
-    UnifiedUsage {
+    Ok(UnifiedUsage {
         input_tokens: prompt - cached,
         output_tokens: candidates,
         reasoning_tokens: thoughts,
         cache_read_tokens: cached,
         ..Default::default()
-    }
+    })
 }
 
 impl UsageParser for GeminiParser {
@@ -63,7 +55,7 @@ impl UsageParser for GeminiParser {
         let Some(metadata) = response.get("usageMetadata") else {
             return Ok(UnifiedUsage::default());
         };
-        Ok(parse_usage_metadata(metadata))
+        parse_usage_metadata(metadata, self.provider_name())
     }
 
     fn parse_streaming_chunk(&self, chunk: &str) -> Result<Option<UnifiedUsage>, ParseError> {
@@ -77,7 +69,7 @@ impl UsageParser for GeminiParser {
             return Ok(None);
         };
 
-        let u = parse_usage_metadata(metadata);
+        let u = parse_usage_metadata(metadata, self.provider_name())?;
         if u.is_empty() {
             Ok(None)
         } else {

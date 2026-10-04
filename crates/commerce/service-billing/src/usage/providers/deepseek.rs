@@ -4,7 +4,7 @@
 
 use crate::error::ParseError;
 use crate::types::UnifiedUsage;
-use crate::usage::UsageParser;
+use crate::usage::{read_count, read_count_at, UsageParser};
 use serde_json::Value;
 
 /// Usage parser for DeepSeek models.
@@ -23,26 +23,22 @@ impl UsageParser for DeepSeekParser {
             return Ok(UnifiedUsage::default());
         };
 
-        let reasoning = usage
+        // Two lookups, so the second step hands back the value itself rather than a parent object; that is
+        // why this uses `read_count_at`. `None` here means the details object or the field inside it is
+        // absent, which stays zero.
+        let reasoning = match usage
             .get("completion_tokens_details")
             .and_then(|d| d.get("reasoning_tokens"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        {
+            Some(v) => read_count_at(v, "reasoning_tokens", self.provider_name())?,
+            None => 0,
+        };
 
-        let cache_hit = usage
-            .get("prompt_cache_hit_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let cache_hit = read_count(usage, "prompt_cache_hit_tokens", self.provider_name())?;
 
         Ok(UnifiedUsage {
-            input_tokens: usage
-                .get("prompt_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-            output_tokens: usage
-                .get("completion_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            input_tokens: read_count(usage, "prompt_tokens", self.provider_name())?,
+            output_tokens: read_count(usage, "completion_tokens", self.provider_name())?,
             cache_read_tokens: cache_hit,
             reasoning_tokens: reasoning,
             ..Default::default()
@@ -64,28 +60,24 @@ impl UsageParser for DeepSeekParser {
             return Ok(None);
         };
 
-        let input = usage
-            .get("prompt_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        let output = usage
-            .get("completion_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let input = read_count(usage, "prompt_tokens", self.provider_name())?;
+        let output = read_count(usage, "completion_tokens", self.provider_name())?;
         if input == 0 && output == 0 {
             return Ok(None);
         }
 
-        let reasoning = usage
+        // Two lookups, so the second step hands back the value itself rather than a parent object; that is
+        // why this uses `read_count_at`. `None` here means the details object or the field inside it is
+        // absent, which stays zero.
+        let reasoning = match usage
             .get("completion_tokens_details")
             .and_then(|d| d.get("reasoning_tokens"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        {
+            Some(v) => read_count_at(v, "reasoning_tokens", self.provider_name())?,
+            None => 0,
+        };
 
-        let cache_hit = usage
-            .get("prompt_cache_hit_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let cache_hit = read_count(usage, "prompt_cache_hit_tokens", self.provider_name())?;
 
         Ok(Some(UnifiedUsage {
             input_tokens: input,
