@@ -75,6 +75,7 @@ Areas that still have **no** CI coverage (see `test-plan/coverage-matrix.md` for
 | --- | --- | --- |
 | `node-invariants` | `interfaces/server/src/node_orchestrator.rs:855,911` E0308 (mismatched types against `platform/node/src/preparation/prepared_artifact.rs:16`) | **Fails on `main`.** Kept visible on purpose: it now reports only the Node side, and no longer hides Billing/Security |
 | `security-invariants` | — | passes |
+| `release.yml` action pin | `softprops/action-gh-release@v1` was pinned, which `actionlint` reports as a runner version GitHub no longer supports | **Fixed in this PR** (bumped to `@v2`); needs a release-correctness check before it is relied on. Tracked separately so it is not buried here |
 | `billing-invariants` | — | passes |
 
 Pre-existing compile failures elsewhere in the workspace, which is why no workflow runs
