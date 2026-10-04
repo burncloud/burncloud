@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const HOOK: &str = include_str!("../../../../.github/hooks/pre-commit");
+const MESSAGE_HOOK: &str = include_str!("../../../../.github/hooks/commit-msg");
 // Exact previous managed wrapper: upgrade it without chaining the deleted script.
 const LEGACY_HOOK: &str = r#"#!/bin/sh
 # BurnCloud managed pre-commit hook. Reinstall with: cargo run -- code init
@@ -40,7 +41,7 @@ fn git(directory: &Path, args: &[&str]) -> io::Result<String> {
 
 pub(crate) fn init() -> io::Result<()> {
     let hooks = install(&std::env::current_dir()?)?;
-    println!("Pre-commit checks installed in {}", hooks.display());
+    println!("Pre-commit checks and commit-message receipts installed in {}", hooks.display());
     println!("Required tools: rustup component add rustfmt clippy");
     println!("Dependency checker: cargo install cargo-deny --locked");
     println!("Commits run code test --staged: formatting, affected tests, Clippy and cargo deny.");
@@ -50,6 +51,7 @@ pub(crate) fn init() -> io::Result<()> {
 fn install(directory: &Path) -> io::Result<PathBuf> {
     let root = PathBuf::from(git(directory, &["rev-parse", "--show-toplevel"])?);
     if !root.join(".github/hooks/pre-commit").is_file()
+        || !root.join(".github/hooks/commit-msg").is_file()
         || !root.join("deny.toml").is_file()
         || !root.join("Cargo.toml").is_file()
     {
@@ -76,39 +78,57 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     // Git resolves the common hooks directory correctly for linked worktrees.
     let hooks = root.join(git(&root, &["rev-parse", "--git-path", "hooks"])?);
     fs::create_dir_all(&hooks)?;
-    let hook = hooks.join("pre-commit");
-    let backup = hooks.join("pre-commit.burncloud-original");
+    // Check both hooks before changing either one.
+    for (name, content, legacy) in [("pre-commit", HOOK, Some(LEGACY_HOOK)), ("commit-msg", MESSAGE_HOOK, None)] {
+        inspect(&hooks, name, content, legacy)?;
+    }
+    install_hook(&hooks, "pre-commit", HOOK, Some(LEGACY_HOOK))?;
+    install_hook(&hooks, "commit-msg", MESSAGE_HOOK, None)?;
+    Ok(hooks)
+}
+
+fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io::Result<()> {
+    let hook = hooks.join(name);
+    let backup = hooks.join(format!("{name}.burncloud-original"));
+    let existing = match fs::symlink_metadata(&hook) {
+        Ok(metadata) if metadata.is_file() => Some(fs::read(&hook)?),
+        Ok(_) => return Err(Error::other(format!("Existing {name} is not a regular file; leaving it unchanged."))),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let upgrading = legacy.is_some_and(|text| existing.as_deref() == Some(text.as_bytes()));
+    if existing.as_deref() != Some(content.as_bytes()) && !upgrading {
+        match fs::symlink_metadata(&backup) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+            Ok(_) => return Err(Error::other(format!("A saved {name}.burncloud-original already exists; refusing to overwrite hooks."))),
+        }
+    }
+    Ok(())
+}
+
+fn install_hook(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io::Result<()> {
+    let hook = hooks.join(name);
+    let backup = hooks.join(format!("{name}.burncloud-original"));
     // Lock before reading existing state, including across linked worktrees.
-    let pending = hooks.join("pre-commit.burncloud-pending");
+    let pending = hooks.join(format!("{name}.burncloud-pending"));
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&pending)?;
     let result = (|| {
-        let existing = match fs::symlink_metadata(&hook) {
-            Ok(metadata) if metadata.is_file() => Some(fs::read(&hook)?),
-            Ok(_) => {
-                return Err(Error::other(
-                    "Existing pre-commit is not a regular file; leaving it unchanged.",
-                ))
-            }
+        inspect(hooks, name, content, legacy)?;
+        let existing = match fs::read(&hook) {
+            Ok(content) => Some(content),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => return Err(error),
         };
-        if existing.as_deref() == Some(HOOK.as_bytes()) {
+        if existing.as_deref() == Some(content.as_bytes()) {
             make_executable(&hook)?;
-            return Ok(hooks);
+            return Ok(());
         }
-        let upgrading = existing.as_deref() == Some(LEGACY_HOOK.as_bytes());
-        match fs::symlink_metadata(&backup) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
-            Ok(_) if !upgrading => return Err(Error::other(
-                "A saved pre-commit.burncloud-original already exists; refusing to overwrite hooks.",
-            )),
-            Ok(_) => {}
-        }
-        file.write_all(HOOK.as_bytes())?;
+        let upgrading = legacy.is_some_and(|text| existing.as_deref() == Some(text.as_bytes()));
+        file.write_all(content.as_bytes())?;
         file.sync_all()?;
         drop(file);
         make_executable(&pending)?;
@@ -121,7 +141,7 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
             }
             return Err(error);
         }
-        Ok(hooks)
+        Ok(())
     })();
     if pending.exists() {
         fs::remove_file(pending)?;

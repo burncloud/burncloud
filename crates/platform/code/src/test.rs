@@ -5,11 +5,13 @@ use std::process::{Command, Output};
 use anyhow::{Context, Result};
 
 use crate::plan::{self, Metadata};
+use crate::report;
 
 pub(crate) struct Options {
     pub(crate) all: bool,
     pub(crate) plan_only: bool,
     pub(crate) staged: bool,
+    pub(crate) last: bool,
     pub(crate) base: Option<String>,
 }
 
@@ -29,7 +31,7 @@ fn output(root: &Path, program: &str, args: &[&str]) -> Result<Output> {
     Ok(result)
 }
 
-fn git(root: &Path, args: &[&str]) -> Result<String> {
+pub(crate) fn git(root: &Path, args: &[&str]) -> Result<String> {
     String::from_utf8(output(root, "git", args)?.stdout)
         .context("Non-UTF-8 Git output; refusing to omit changed paths")
 }
@@ -137,6 +139,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
     let root = PathBuf::from(
         git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
+    if options.last { return report::show_latest(&root); }
     let files = changes(&root, &options)?;
     println!("Changed paths ({}):", files.len());
     for file in &files {
@@ -144,6 +147,10 @@ pub(crate) fn run(options: Options) -> Result<()> {
     }
     if !options.all && files.iter().all(|file| plan::documentation(file)) {
         println!("No code changes selected; no checks executed. Use --all for the full workspace or --base REF for branch changes.");
+        if !options.plan_only {
+            let mut summary = report::new(&root, if options.staged { "staged" } else { "working" }, files.iter().cloned().collect(), Vec::new())?;
+            report::finish(&root, &mut summary, "skipped", None)?;
+        }
         return Ok(());
     }
     let raw = output(
@@ -175,12 +182,22 @@ pub(crate) fn run(options: Options) -> Result<()> {
         println!("PLAN ONLY: no checks executed.");
         return Ok(());
     }
+    let mode = if options.staged { "staged" } else if options.all { "all" } else if options.base.is_some() { "base" } else { "working" };
+    let mut summary = report::new(&root, mode, files.iter().cloned().collect(), plan.affected.iter().cloned().collect())?;
+    let result = run_checks(&root, &commands, &mut summary);
+    report::finish(&root, &mut summary, if result.is_ok() { "passed" } else { "failed" }, result.as_ref().err().map(ToString::to_string))?;
+    result?;
+    println!("All selected checks passed.");
+    Ok(())
+}
+
+fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summary) -> Result<()> {
     for (tool, install) in [
         ("fmt", "rustup component add rustfmt"),
         ("clippy", "rustup component add clippy"),
         ("deny", "cargo install cargo-deny --locked"),
     ] {
-        output(&root, "cargo", &[tool, "--version"])
+        output(root, "cargo", &[tool, "--version"])
             .with_context(|| format!("Missing or broken {tool}. Run: {install}"))?;
     }
     for (index, args) in commands.iter().enumerate() {
@@ -190,11 +207,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
             commands.len(),
             args.join(" ")
         );
-        let status = Command::new("cargo")
-            .args(args)
-            .current_dir(&root)
-            .status()
-            .context("Cannot start Cargo check")?;
+        let status = report::execute(root, summary, ["fmt", "test", "clippy", "deny"][index], args)?;
         anyhow::ensure!(
             status.success(),
             "Check failed ({}): cargo {}",
@@ -202,6 +215,5 @@ pub(crate) fn run(options: Options) -> Result<()> {
             args.join(" ")
         );
     }
-    println!("All selected checks passed.");
     Ok(())
 }

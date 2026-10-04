@@ -19,6 +19,7 @@ use tempfile::{tempdir, TempDir};
 
 const BIN: &str = env!("CARGO_BIN_EXE_burncloud-code");
 const HOOK: &str = include_str!("../../../../.github/hooks/pre-commit");
+const MESSAGE_HOOK: &str = include_str!("../../../../.github/hooks/commit-msg");
 const FULL: &str = "fmt --all -- --check\ntest --workspace --no-default-features\nclippy --workspace --all-targets --no-default-features\ndeny check\n";
 
 #[derive(Deserialize, Serialize)]
@@ -111,6 +112,7 @@ impl Fixture {
             fixture.write(file, "// fixture\n")?;
         }
         fixture.write(".github/hooks/pre-commit", HOOK)?;
+        fixture.write(".github/hooks/commit-msg", MESSAGE_HOOK)?;
         let package = |name: &str, directory: &str, dependencies: &[&str]| {
             json!({
                 "id": name, "name": name, "manifest_path": fixture.repo.join(directory).join("Cargo.toml"),
@@ -159,6 +161,9 @@ impl Fixture {
     fn saved(&self) -> PathBuf {
         self.repo.join(".git/hooks/pre-commit.burncloud-original")
     }
+    fn latest(&self) -> Result<serde_json::Value> {
+        Ok(serde_json::from_slice(&fs::read(self.repo.join(".git/burncloud/checks/latest.json"))?)?)
+    }
     fn seed(&self) -> Result<()> {
         self.git(&["commit", "-qm", "seed"])?;
         Ok(())
@@ -201,6 +206,12 @@ fn install_repeat_commit_and_legacy_upgrade() -> Result<()> {
     assert!(!f.saved().exists());
     f.seed()?;
     assert_eq!(f.log()?, FULL);
+    let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
+    assert!(message.contains("BurnCloud-Checks: ✅ PASS"));
+    assert!(message.contains("BurnCloud-Tests: ✅ PASS (3 passed, 0 failed, 1 ignored; unit 2 passed"));
+    assert!(message.contains("BurnCloud-Clippy: ✅ PASS"));
+    assert!(message.contains("BurnCloud-Deny: ✅ PASS"));
+    assert_eq!(f.latest()?["status"], "passed");
     assert!(!f.repo.join(".env").exists());
     let legacy = HOOK.replace(
         "cargo run --quiet -- code test --staged",
@@ -211,6 +222,55 @@ fn install_repeat_commit_and_legacy_upgrade() -> Result<()> {
     f.run(&["init"])?;
     assert_eq!(fs::read_to_string(f.hook())?, HOOK);
     assert_eq!(fs::read_to_string(f.saved())?, "keep me");
+    Ok(())
+}
+
+#[test]
+fn receipt_uses_matching_index_and_replaces_old_footer_on_amend() -> Result<()> {
+    let f = Fixture::new()?;
+    f.run(&["init"])?;
+    f.run(&["test", "--staged"])?;
+    let log = String::from_utf8(f.run(&["test", "--last"])?.stdout)?;
+    assert!(log.contains("✅ test: passed"));
+    assert!(log.contains("Tests: 3 passed, 0 failed, 1 ignored"));
+    let report = f.latest()?;
+    assert_eq!(report["unit"]["passed"], 2);
+    assert_eq!(report["integration"]["passed"], 1);
+    assert!(Path::new(report["steps"][0]["log"].as_str().context("log path")?).exists());
+    f.write("crates/a/src/lib.rs", "changed after checks")?;
+    f.git(&["add", "."])?;
+    let message_file = f.base.join("message.txt");
+    fs::write(&message_file, "subject\n")?;
+    failed(f.command(BIN).arg("stamp").arg(&message_file).output()?, "Staged tree or HEAD changed");
+    f.git(&["commit", "-qm", "subject"])?;
+    let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
+    assert_eq!(message.matches("BurnCloud-Checks: ✅ PASS").count(), 1);
+    f.write("crates/a/src/lib.rs", "amended")?;
+    f.git(&["add", "."])?;
+    f.git(&["commit", "--amend", "--no-edit", "-q"])?;
+    let amended = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
+    assert_eq!(amended.matches("BurnCloud-Checks: ✅ PASS").count(), 1);
+    assert_eq!(amended.matches("BurnCloud-Checks-Tree:").count(), 1);
+    Ok(())
+}
+
+#[test]
+fn existing_message_hook_runs_and_docs_only_receipt_is_skipped() -> Result<()> {
+    let f = Fixture::new()?;
+    let hook = f.repo.join(".git/hooks/commit-msg");
+    fs::write(&hook, "#!/bin/sh\necho original-message >> \"$CHECK_LOG\"\n")?;
+    executable(&hook)?;
+    f.run(&["init"])?;
+    assert!(f.repo.join(".git/hooks/commit-msg.burncloud-original").exists());
+    f.seed()?;
+    assert!(f.log()?.contains("original-message\n"));
+    f.write("README.md", "documentation")?;
+    f.git(&["add", "."])?;
+    f.git(&["commit", "-qm", "docs"])?;
+    let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
+    assert!(message.contains("BurnCloud-Checks: ➖ SKIP (no code checks executed)"));
+    assert!(message.contains("BurnCloud-Tests: ➖ SKIP"));
+    assert_eq!(f.latest()?["status"], "skipped");
     Ok(())
 }
 
@@ -231,6 +291,7 @@ fn each_failed_gate_stops_and_blocks_commit() -> Result<()> {
             f.log()?,
             FULL.lines().take(index + 1).collect::<Vec<_>>().join("\n") + "\n"
         );
+        assert_eq!(f.latest()?["status"], "failed");
         assert!(!f
             .command("git")
             .args(["rev-parse", "--verify", "HEAD"])

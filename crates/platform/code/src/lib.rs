@@ -4,6 +4,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 
 mod init;
 mod plan;
+mod report;
 mod test;
 
 /// Shared command definition for the application and the lightweight tooling binary.
@@ -36,8 +37,13 @@ pub fn command() -> Command {
                 )
                 .arg(Arg::new("base").long("base").value_name("REF").help(
                     "Include branch changes since the merge base with REF, plus local changes",
-                )),
+                ))
+                .arg(Arg::new("last").long("last").action(ArgAction::SetTrue)
+                    .conflicts_with_all(["all", "plan", "staged", "base"])
+                    .help("Show the latest saved check results and log paths")),
         )
+        .subcommand(Command::new("stamp").hide(true)
+            .arg(Arg::new("message").required(true)))
 }
 
 /// Execute a parsed `code` subcommand.
@@ -48,8 +54,11 @@ pub fn handle(matches: &ArgMatches) -> Result<()> {
             all: options.get_flag("all"),
             plan_only: options.get_flag("plan"),
             staged: options.get_flag("staged"),
+            last: options.get_flag("last"),
             base: options.get_one::<String>("base").cloned(),
         }),
+        Some(("stamp", options)) => report::stamp(std::path::Path::new(
+            options.get_one::<String>("message").expect("required message"))),
         _ => anyhow::bail!("Expected code init or code test"),
     }
 }

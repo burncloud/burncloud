@@ -28,6 +28,10 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting used by local code test
+        run: cargo fmt --all -- --check
       - name: Test initialization, affected-package selection and commit gates
         run: cargo test -p burncloud-code
 

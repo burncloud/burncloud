@@ -14,6 +14,7 @@ cargo run -- code test --plan
 cargo run -- code test --base origin/main --plan
 cargo run -- code test --all
 cargo run -- code test --staged
+cargo run -- code test --last
 ```
 
 The lightweight equivalent, useful when application compilation is broken, is
@@ -29,6 +30,7 @@ command definition and implementation. Tests are `cargo test -p burncloud-code`.
 | `--base REF` | Changes since the merge base of REF and HEAD, plus local changes; invalid refs fail |
 | `--all` | All workspace packages, even in a clean checkout |
 | `--plan` | Print changed paths, selection reason, affected packages and commands; execute no checks |
+| `--last` | Show the latest local status, per-check logs and parsed test counts |
 | Source, assets or test data in a package | Owning package plus every transitive workspace consumer |
 | Root application `src/` or `crates/interfaces/cli/` | Root application and its consumers |
 | Any Cargo manifest/lock, shared checks/toolchain configuration, `.github` automation | Whole workspace |
@@ -64,8 +66,19 @@ other operating systems. Dynamic relationships not represented in Cargo remain
 a reason to run `--all` and retain the existing CI suites. No test-result cache is
 used. Source edits and dependency allowlist changes are never automated here.
 
-The installed hook only invokes `cargo run --quiet -- code test --staged`, then
-the preserved original hook. Initialization is idempotent, upgrades the previous
+Each executed check writes its full output under `.git/burncloud/checks/<run>/`,
+alongside `summary.json`; `latest.json` tracks the most recent result. The terminal
+shows ✅/❌, log locations, and unit/integration/doc test counts. A count is marked
+unavailable when Cargo emitted no parseable summary. A skipped documentation-only
+run is recorded explicitly as `SKIP`.
+
+The installed pre-commit hook runs `cargo run --quiet -- code test --staged`, then
+the preserved original hook. The commit-msg hook runs the preserved original hook
+and then stamps the message with check status, test counts and the staged tree hash.
+It rejects a changed index or HEAD after checks. On `--amend`, the previous receipt
+is replaced. Full logs remain local; commit messages carry only the compact result.
+Git hooks can be bypassed with `--no-verify`, so remote CI is still authoritative.
+Initialization is idempotent, upgrades the previous
 exact managed wrapper, and refuses custom `core.hooksPath`, symlinks, conflicting
 backups and concurrent setup. Linux uses Git's system shell and Windows uses Git
 for Windows. Selection/execution and regression tests are native Rust, with no

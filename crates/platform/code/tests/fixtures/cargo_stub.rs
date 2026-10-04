@@ -27,5 +27,17 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
     }
     let mut log = fs::OpenOptions::new().append(true).create(true).open(env::var("CHECK_LOG")?)?;
     writeln!(log, "{}", args.join(" "))?;
+    if kind == "test" {
+        println!("Running unittests src/lib.rs");
+        if env::var("FAIL_CHECK").ok().as_deref() == Some("test") {
+            println!("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured");
+        } else {
+            println!("test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured");
+            println!("Running tests/regression.rs");
+            println!("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured");
+            println!("Doc-tests fixture");
+            println!("test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured");
+        }
+    }
     Ok(if env::var("FAIL_CHECK").ok().as_deref() == Some(kind) { 23 } else { 0 })
 }
