@@ -85,7 +85,11 @@ fn stub() -> Result<&'static PathBuf> {
             anyhow::ensure!(status.success(), "Cannot compile native Cargo stub");
             fs::copy(
                 &binary,
-                dir.path().join(if cfg!(windows) { "rustup.exe" } else { "rustup" }),
+                dir.path().join(if cfg!(windows) {
+                    "rustup.exe"
+                } else {
+                    "rustup"
+                }),
             )?;
             Ok((dir, binary))
         })()
