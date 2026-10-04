@@ -17,6 +17,11 @@ cargo run -- code test --staged
 cargo run -- code test --last
 ```
 
+`code init` checks for rustfmt, Clippy and cargo-deny. It installs missing Rust
+components with `rustup component add` and missing cargo-deny with
+`cargo install --locked cargo-deny`. It verifies each command before activating
+the Git hooks. Repeating `code init` does not reinstall available tools.
+
 The lightweight equivalent, useful when application compilation is broken, is
 `cargo run -p burncloud-code -- test` (or `-- init`). Both binaries use the same
 command definition and implementation. Tests are `cargo test -p burncloud-code`.
