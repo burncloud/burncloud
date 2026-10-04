@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    reason = "This is an end-to-end test of the node lifecycle: every step is a precondition for the \
+              next, so a failing step must abort the test at that point rather than be ignored. \
+              `unwrap` is the assertion mechanism here, and the same allowance is used by the other \
+              integration tests in this workspace. Only two sites are `Result` unwraps that the lint \
+              reports; the rest are `Option` unwraps, which the lint does not flag."
+)]
+
 use burncloud_node_runtime::{
     ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
     FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
