@@ -24,11 +24,43 @@ use std::time::Duration;
 
 static SERVER_HANDLE: OnceLock<ServerHandle> = OnceLock::new();
 
+/// A handle to the server the suite is talking to.
+///
+/// **`process` is a bare `Child` and the server is NOT terminated when the suite ends. That is a recorded
+/// defect, not something left unexamined.**
+///
+/// Measured: after `cargo test -p burncloud-tests --test api_tests`, one `burncloud` process is still running,
+/// with a start time matching the run. It has to be terminated by hand, and it holds its port.
+///
+/// **Two fixes were written, measured, and both failed**, which is why neither is in this file:
+///
+/// 1. A `Drop` impl calling `Child::kill()` then `wait()`. **Still one process left.**
+/// 2. The same `Drop`, but using `taskkill /F /T /PID` on Windows to terminate the process **tree**, on the
+///    theory that `burncloud server start` spawns descendants that `kill` does not reach. **Still one process.**
+///
+/// The reason is neither: **`SERVER_HANDLE` is a `static`, and Rust does not run destructors for `static`
+/// values during process exit.** The `Drop` never executes, so the kill strategy inside it is irrelevant. That
+/// was established only after the second failure; the first two attempts guessed at the wrong layer.
+///
+/// The fix is therefore not a `Drop`. It has to be one of:
+///
+/// * an explicit shutdown after the last test, which this fixture cannot express today because the handle is
+///   behind a `OnceLock` and no test owns its lifetime;
+/// * the server exiting on its own when its stdin closes, which is how most harnesses get this for free;
+/// * a `Drop` on a value that actually gets dropped, i.e. not a `static` -- which means restructuring
+///   `spawn_app` rather than patching it.
+///
+/// The plan's item 29 states the rule for the opposite case -- "只终止自己启动的进程". This is the other half of
+/// the same rule, and it is unmet here.
+///
+/// **Worth checking wherever a test starts a process**, because the failure is silent: the suite reports 71
+/// passed either way, and the leftover process holds the port the next run wants.
 #[derive(Debug)]
 struct ServerHandle {
     pub base_url: String,
-    #[allow(dead_code)]
-    process: Option<Child>, // Keep child alive
+    /// `None` when the suite reused a server it did not start -- on port 3000, or one named by `E2E_BASE_URL`.
+    /// Killing that one would be exactly the mistake item 29 names.
+    process: Option<Child>,
 }
 
 pub async fn spawn_app() -> String {
@@ -76,9 +108,16 @@ pub async fn spawn_app() -> String {
         };
 
         if !binary_path.exists() {
+            // **Cargo does not build this binary for these tests**, because the tests are integration tests of
+            // another crate. Eleven tests failed with this message before the prerequisite was met, and the
+            // message did not say which command produces the file, so the failure read like a broken test suite
+            // rather than a missing build step. The command is now spelled out.
             panic!(
-                "Binary not found at {:?}. Run 'cargo build --bin burncloud' first.",
-                binary_path
+                "The black-box API tests need the server binary, which Cargo does not build for them.\n\
+                 Expected: {}\n\
+                 Build it first:  cargo build --bin burncloud\n\
+                 Then re-run:     cargo test -p burncloud-tests --test api_tests",
+                binary_path.display()
             );
         }
 
@@ -103,7 +142,8 @@ pub async fn spawn_app() -> String {
             .spawn()
             .expect("Failed to spawn server");
 
-        // Return handle immediately, wait async later
+        // Return handle immediately, wait async later. **The child is stored, not owned by anything that gets
+        // dropped** -- see `ServerHandle`'s note: it keeps running after the suite exits.
         ServerHandle {
             base_url: format!("http://127.0.0.1:{}", port),
             process: Some(process),
