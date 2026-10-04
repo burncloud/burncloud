@@ -111,9 +111,12 @@ fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io:
         match fs::symlink_metadata(&backup) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
-            Ok(_) => return Err(Error::other(format!(
-                "A saved {name}.burncloud-original already exists; refusing to overwrite hooks."
-            ))),
+            Ok(_) => {
+                let message = format!(
+                    "A saved {name}.burncloud-original already exists; refusing to overwrite hooks."
+                );
+                return Err(Error::other(message));
+            }
         }
     }
     Ok(())
