@@ -90,6 +90,64 @@ A request requires valid runtime configuration such as credentials/tokens and us
 
 ## Development and tests
 
+Initialize each source checkout once:
+
+```bash
+rustup component add rustfmt clippy
+cargo install cargo-deny --locked
+cargo run -- code init
+```
+
+`code init` installs local Git `pre-commit` and `commit-msg` hooks without starting the application or
+creating runtime secrets. It is safe to repeat and also works from a checkout's
+subdirectory or linked Git worktree. Windows requires Git for Windows (including
+its bundled shell); the hook uses no PowerShell or Unix-only package manager.
+Existing regular hooks are saved as `<hook>.burncloud-original` and run along with
+the BurnCloud checks. Configured `core.hooksPath` and symlink hooks are left
+untouched: integrate `cargo run -- code test --staged` into that hook manager
+instead, or remove the custom setting before initializing.
+
+Run the same local automation yourself:
+
+```bash
+cargo run -- code test                         # select from local changes
+cargo run -- code test --plan                  # explain selection without checking
+cargo run -- code test --base origin/main      # include committed branch changes
+cargo run -- code test --all                   # full workspace, even if clean
+cargo run -- code test --last                  # latest result, counts and local log paths
+```
+
+`code test` uses Cargo's dependency graph to select changed packages and every
+transitive workspace consumer. Manifest/shared configuration changes and unknown
+paths force full-workspace checks. It prints the affected packages and commands.
+Selected code must pass workspace formatting, affected-package tests, affected-package
+Clippy (`--all-targets`), and full `cargo deny check`. Tests and Clippy use
+`--no-default-features`. A clean checkout or documentation-only change explicitly
+reports that no checks ran; use `--all` to override. No failures are suppressed.
+
+The hook delegates to `code test --staged`. Stage or stash tracked changes and
+non-ignored untracked files before committing: Cargo checks the working tree, so
+partial staging is rejected. Missing tools and failed commands block the commit.
+Each run records a JSON summary and individual Cargo logs under the repository's
+Git directory (`.git/burncloud/checks/`). The terminal shows ✅ or ❌ per check and
+counts passed, failed and ignored tests by unit, integration and doc suite. On
+successful commits, `commit-msg` appends `BurnCloud-Checks`, `BurnCloud-Fmt`,
+`BurnCloud-Tests`, `BurnCloud-Clippy`, `BurnCloud-Deny` and the checked staged-tree
+hash to the commit message. Documentation-only commits say `SKIP`; no checks are
+presented as passing. Full logs stay local; the compact receipt travels with the
+commit. A changed index or HEAD after the checks blocks stamping.
+External test prerequisites, ignored files, existing lint/advisory policies and
+platform-specific CI still apply. This local command does not replace remote
+branch protection or claim to run every CI script/feature combination.
+
+The implementation and regression tests live in the independent Rust package
+[`burncloud-code`](crates/platform/code/README.md). `cargo test -p burncloud-code`
+checks initialization, selection and real Git commit blocking on Windows and Linux
+without building application services; Cargo check execution is stubbed in those
+regression tests. There is no Python or Shell test executor. The lightweight
+`cargo run -p burncloud-code -- test` also works when application compilation blocks
+the root command, using exactly the same Rust implementation.
+
 Typical local checks include targeted package checks/tests plus the relevant integration/E2E flow. Provider/cloud tests may require environment credentials; do not treat unavailable external tests as a pass.
 
 Repository-wide formatting/lint commands include:

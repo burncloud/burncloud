@@ -1,0 +1,11 @@
+#!/bin/sh
+# BurnCloud managed commit-message hook. Reinstall with: cargo run -- code init
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+hooks=$(git rev-parse --git-path hooks)
+if [ -x "$hooks/commit-msg.burncloud-original" ]; then
+    "$hooks/commit-msg.burncloud-original" "$@"
+fi
+cargo run --quiet -- code stamp "$1"

@@ -9,6 +9,20 @@ of describing the intention as if it were the behaviour.
 
 ## Workflows
 
+### Local pre-commit setup
+
+Run `cargo run -- code init` once per checkout to install the local Git hook.
+The hook delegates to `cargo run -- code test --staged`. Rust tooling selects
+changed packages and transitive consumers from Cargo metadata, with a full-workspace
+fallback for shared configuration and unknown paths. It gates selected code on
+formatting, tests, Clippy and the full `cargo deny check`; existing failures are
+not suppressed. `--plan`, `--base REF` and `--all` support manual local verification.
+See the root README and `crates/platform/code/README.md` for the selection contract.
+The `code-init` job in `arch.yml` runs `cargo test -p burncloud-code` on Windows
+and Linux. Native Rust regression tests verify real Git commits and selection,
+with Cargo check execution stubbed. Their success is not a workspace-health result.
+There is no Python or Shell test harness; Git's hook remains a thin shell wrapper.
+
 | File | Trigger | What it checks |
 | --- | --- | --- |
 | `arch.yml` | changes to `crates/traffic/router/Cargo.toml` or `deny.toml` | Router dependency whitelist (`crates/traffic/router/scripts/check-router-deps.sh --ci`) and `cargo-deny` bans |
