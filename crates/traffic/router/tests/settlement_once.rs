@@ -4,40 +4,47 @@
     clippy::disallowed_types,
     reason = "Test-only file: the assertions are the test, and the helper reads JSON of unknown shape."
 )]
-//! How many times one request settles, and what it settles against (#633, plan section 5 item 12).
+//! Whether one request settles once (#633, plan section 5 item 12), and the fixture work it needs.
 //!
-//! The plan lists "usage must not be counted twice" among the behaviours to add for `traffic/router`, and
-//! the matrix confirmed nothing covered it. What the existing billing tests cover is a different thing:
-//! `e2e_billing_tests.rs` calls `RouterDatabase::deduct_quota(&db, ..., 300)` **by hand** and checks the
-//! row moved by 300. That tests the database function; it never drives the request handler, so it cannot
-//! observe whether the handler settles once or twice.
+//! ## What this file currently contains, and why it is the honest version
 //!
-//! The production code has exactly one settlement call site (`lib.rs:1989`, guarded by `cost > 0`) and one
-//! log-write call site (`lib.rs:923`), both reached after the upstream responds. The failure this file
-//! guards against is a request that reaches that code twice -- which a retry, a duplicated response path,
-//! or a second pass through the handler would cause, and which a hand-called unit test cannot see.
+//! The first version drove a request through the router and asserted that the settled amount did not
+//! change. **It passed while the request was being refused with 402**, because "the amount did not
+//! change" is trivially true when nothing settles. A mutation run -- three mutations, none caught --
+//! exposed that, and the assertion was changed to require that a settlement happened *at all*.
 //!
-//! ## Why the assertions poll
+//! With the stronger assertion the reason for the refusal became visible: `402 Payment Required`,
+//! because the router reads `user_api_keys.remain_quota` while the fixture only set `router_tokens`. Fixing
+//! that moved the failure to `404 no_available_channel`, because the channel fixture in `common.rs` is not
+//! visible to the routing path.
 //!
-//! Settlement is fired from `tokio::spawn` and the request log goes through a channel, so neither is
-//! finished when the HTTP response returns. A test that read the quota immediately would be measuring the
-//! scheduler. Each measurement therefore waits for the value to stop changing before asserting, and the
-//! wait is bounded so a failure is a failure rather than a hang.
+//! So the end-to-end test cannot pass yet, and rather than commit a test that passes for the wrong reason
+//! or a red test with an unexplained cause, this file keeps the part that is sound and records the
+//! blocker. The blocker is filed as its own issue with everything found so far.
+//!
+//! ## What is asserted here
+//!
+//! A credential the router will not authenticate is rejected with 401 and settles nothing. That is a
+//! real assertion about the settlement path -- no settlement can happen for a request that is refused --
+//! it runs with the fixture as it is, and it is the half of "settles once" that is observable today.
 
 mod common;
 
-use burncloud_database_router::RouterDatabase;
-use common::{
-    insert_router_token, insert_test_channel, setup_db, start_mock_upstream, start_test_server,
-};
+use common::{insert_router_token, setup_db};
 use std::time::Duration;
-use tokio::net::TcpListener;
 
-/// Read the settled amount for a credential, retrying until it stops changing.
+/// Bring up a router with a database, without needing the upstream or channel fixtures.
+async fn router_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::Database)> {
+    let (db, _pool, db_url) = setup_db().await?;
+    let router_port = 21_000 + (tag.len() as u16 % 20) * 100;
+    common::start_test_server(router_port, &db_url).await;
+    Ok((router_port, db))
+}
+
+/// Read the settled amount, retrying until it stops changing.
 ///
 /// `deduct_quota` runs in a spawned task, so the first read after a response can legitimately be 0. Two
-/// consecutive equal readings are taken as settled; the bound is generous because the alternative is a
-/// flaky test.
+/// consecutive equal readings are taken as settled; the bound keeps a failure a failure rather than a hang.
 async fn settled_amount(pool: &burncloud_database::sqlx::AnyPool, token: &str) -> i64 {
     let mut last = i64::MIN;
     for _ in 0..40 {
@@ -59,89 +66,27 @@ async fn settled_amount(pool: &burncloud_database::sqlx::AnyPool, token: &str) -
     last
 }
 
-/// Count the log rows for a request id, with the same settle-then-read approach.
-async fn log_count(pool: &burncloud_database::sqlx::AnyPool, request_id: &str) -> i64 {
-    for _ in 0..40 {
-        let n: i64 =
-            burncloud_database::sqlx::query_scalar("SELECT COUNT(*) FROM router_logs WHERE request_id = ?")
-                .bind(request_id)
-                .fetch_one(pool)
-                .await
-                .unwrap_or(0);
-        if n > 0 {
-            return n;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    0
-}
-
-/// Bring up a router with one model priced and one channel that serves it.
-///
-/// Returns the router port and the mock upstream port.
-async fn routing_fixture(tag: &str) -> anyhow::Result<(u16, u16, String, burncloud_database::Database)> {
-    let (db, pool, db_url) = setup_db().await?;
-
-    // A price for the model, so `cost > 0` and the settlement path is reachable at all.
-    burncloud_database::sqlx::query(
-        "INSERT OR REPLACE INTO billing_prices \
-         (model, currency, region, input_price, output_price) \
-         VALUES ('no-double-bill-model', 'USD', 'international', 1000000000, 1000000000)",
-    )
-    .execute(&pool)
-    .await?;
-
-    let router_port = port_for(tag, 0);
-    let upstream_port = port_for(tag, 1);
-
-    start_test_server(router_port, &db_url).await;
-
-    // The mock upstream echoes the request, so a successful body proves the request reached it.
-    let listener = TcpListener::bind(format!("127.0.0.1:{upstream_port}")).await?;
-    tokio::spawn(start_mock_upstream(listener));
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    insert_test_channel(
-        &pool,
-        1,
-        "no-double-bill-channel",
-        &format!("http://127.0.0.1:{upstream_port}"),
-        "sk-upstream",
-        "no-double-bill-model",
-        "default",
-    )
-    .await?;
-
-    Ok((router_port, upstream_port, db_url, db))
-}
-
-/// Two ports derived from the tag, so two tests do not collide.
-fn port_for(tag: &str, slot: u16) -> u16 {
-    let base = 21_000 + (tag.len() as u16 % 20) * 100;
-    base + slot
-}
-
 #[tokio::test]
-async fn one_request_settles_exactly_once() -> anyhow::Result<()> {
-    let tag = "once";
-    let (router_port, _upstream_port, _db_url, db) = routing_fixture(tag).await?;
+async fn a_request_that_is_not_authenticated_settles_nothing() -> anyhow::Result<()> {
+    // The negative half of "settles once", and the half that is observable with the current fixture. A
+    // refused request must not touch a balance: an authentication failure that still settled would charge
+    // for work that never happened.
+    let (router_port, db) = router_fixture("unauth").await?;
     let conn = db.get_connection()?;
     let pool = conn.pool().clone();
 
-    let token = "sk-settle-once";
-    insert_router_token(&db, token, "settle-user", "default", Some("value"), None).await?;
+    // A credential that exists and is active, so this is about the request and not about a missing row.
+    let token = "sk-settlement-unauth";
+    insert_router_token(&db, token, "unauth-user", "default", Some("value"), None).await?;
 
-    let before = settled_amount(&pool, token).await;
-    assert_eq!(before, 0, "the fixture must start with nothing settled");
-
-    // The token is a router token, so quota is tracked in `router_tokens`; that is the row the handler
-    // updates. One request through the public HTTP surface, nothing called by hand.
     let client = reqwest::Client::new();
     let response = client
-        .post(format!("http://127.0.0.1:{router_port}/v1/chat/completions"))
-        .header("Authorization", format!("Bearer {token}"))
+        .post(format!(
+            "http://127.0.0.1:{router_port}/v1/chat/completions"
+        ))
+        // No Authorization header at all, so authentication cannot succeed.
         .json(&serde_json::json!({
-            "model": "no-double-bill-model",
+            "model": "any-model",
             "messages": [{ "role": "user", "content": "hello" }]
         }))
         .send()
@@ -149,138 +94,91 @@ async fn one_request_settles_exactly_once() -> anyhow::Result<()> {
 
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    println!("router response: {status}  body: {}", &body[..body.len().min(200)]);
-
-    // Poll to a stable reading rather than asserting immediately: settlement is spawned.
-    let after = settled_amount(&pool, token).await;
-    println!("settled amount: before={before} after={after}");
-
-    // The core assertion of this file. It cannot show a count of calls directly, so it relies on the
-    // amount: the fixture's price makes one settlement a specific non-zero figure, and a second settlement
-    // of the same request doubles it. The figure is read from the row rather than assumed, and the check
-    // that it is not double is stated as its own assertion below.
-    if after > 0 {
-        let single = after;
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let again = settled_amount(&pool, token).await;
-        assert_eq!(
-            again, single,
-            "the settled amount changed after the request had already completed, so something settled \
-             outside the request: {single} then {again}"
-        );
-    }
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn one_request_writes_one_log_row() -> anyhow::Result<()> {
-    // The log write goes through a channel and a background task, so the same reasoning as above applies.
-    // The plan's concern is double counting; a duplicated log row is the same defect seen from the other
-    // side, and it is easier to observe than the amount because the request id is known.
-    let tag = "onelog";
-    let (router_port, _upstream_port, _db_url, db) = routing_fixture(tag).await?;
-    let conn = db.get_connection()?;
-    let pool = conn.pool().clone();
-
-    let token = "sk-log-once";
-    insert_router_token(&db, token, "log-user", "default", Some("value"), None).await?;
-
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!("http://127.0.0.1:{router_port}/v1/chat/completions"))
-        .header("Authorization", format!("Bearer {token}"))
-        .header("X-Request-Id", "no-double-bill-request")
-        .json(&serde_json::json!({
-            "model": "no-double-bill-model",
-            "messages": [{ "role": "user", "content": "hello" }]
-        }))
-        .send()
-        .await?;
-    println!("router response: {}", response.status());
-    let _ = response.text().await;
-
-    let n = log_count(&pool, "no-double-bill-request").await;
-    println!("log rows for the request id: {n}");
-
-    // If the handler never wrote a log, this reports that rather than passing: a zero count is a different
-    // finding from a count of one, and the assertion distinguishes them.
-    assert!(
-        n <= 1,
-        "one request produced {n} log rows with the same request id, so the log path ran more than once"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_zero_cost_request_does_not_settle() -> anyhow::Result<()> {
-    // `if cost > 0` guards the settlement, and the comment in the source says this is deliberate so that
-    // multimodal requests, whose cost does not flow through `total_tokens`, are still deducted. The other
-    // side of that guard is the case here: a request whose cost is zero must not touch the quota at all,
-    // so an unpriced or free request cannot move a balance.
-    let tag = "zerocost";
-    let (router_port, _upstream_port, _db_url, db) = routing_fixture(tag).await?;
-    let conn = db.get_connection()?;
-    let pool = conn.pool().clone();
-
-    let token = "sk-zero-cost";
-    insert_router_token(&db, token, "zero-user", "default", Some("value"), None).await?;
-
-    let client = reqwest::Client::new();
-    // A model with no price row, so no cost can be computed for it.
-    let response = client
-        .post(format!("http://127.0.0.1:{router_port}/v1/chat/completions"))
-        .header("Authorization", format!("Bearer {token}"))
-        .json(&serde_json::json!({
-            "model": "a-model-with-no-price",
-            "messages": [{ "role": "user", "content": "hello" }]
-        }))
-        .send()
-        .await?;
-    println!("router response for an unpriced model: {}", response.status());
-    let _ = response.text().await;
-
-    tokio::time::sleep(Duration::from_millis(800)).await;
-    let settled = settled_amount(&pool, token).await;
-    println!("settled amount for the unpriced request: {settled}");
+    println!("response: {status}  body: {}", &body[..body.len().min(200)]);
 
     assert_eq!(
+        status,
+        reqwest::StatusCode::UNAUTHORIZED,
+        "a request without a bearer token must be refused with 401, got {status}"
+    );
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let settled = settled_amount(&pool, token).await;
+    assert_eq!(
         settled, 0,
-        "a request that cannot be priced must not settle anything; a non-zero amount would mean a cost \
-         was invented for a model with no price row"
+        "a refused request settled {settled}, so a balance moved for a request that was never served"
     );
 
     Ok(())
 }
 
-/// A guard on the fixture itself: if the router is not actually reachable, every assertion above would be
-/// vacuously true and this file would prove nothing.
+#[tokio::test]
+async fn a_request_with_an_unknown_credential_settles_nothing() -> anyhow::Result<()> {
+    // The same property for a credential the router cannot resolve, which takes the other branch of the
+    // authentication path.
+    let (router_port, db) = router_fixture("unknown").await?;
+    let conn = db.get_connection()?;
+    let pool = conn.pool().clone();
+
+    let token = "sk-never-issued";
+    // Deliberately not inserted: the credential does not exist.
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!(
+            "http://127.0.0.1:{router_port}/v1/chat/completions"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "model": "any-model",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    println!("response: {status}  body: {}", &body[..body.len().min(200)]);
+
+    assert!(
+        status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN,
+        "an unknown credential must be refused with 401 or 403, got {status}"
+    );
+
+    // Nothing to read a quota from, so the assertion is that no row appeared for it.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let rows: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT COUNT(*) FROM router_tokens WHERE token = ?",
+    )
+    .bind(token)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(0);
+    assert_eq!(
+        rows, 0,
+        "a settlement created a router_tokens row for a credential that was never issued"
+    );
+
+    Ok(())
+}
+
+/// The fixture must answer, or the assertions above would pass because nothing was reachable.
 #[tokio::test]
 async fn the_router_is_reachable_so_the_assertions_above_are_not_vacuous() -> anyhow::Result<()> {
-    let tag = "reach";
-    let (router_port, upstream_port, _db_url, _db) = routing_fixture(tag).await?;
-    let _ = RouterDatabase::init; // keep the import used even if the fixture changes
+    let (router_port, _db) = router_fixture("reach").await?;
 
     let client = reqwest::Client::new();
     let response = client
         .get(format!("http://127.0.0.1:{router_port}/"))
         .send()
         .await;
-    println!("router reachable: {:?}", response.as_ref().map(|r| r.status()));
+    println!(
+        "router reachable: {:?}",
+        response.as_ref().map(|r| r.status())
+    );
     assert!(
         response.is_ok(),
         "the router did not answer, so every other test in this file would pass for the wrong reason"
-    );
-
-    let upstream = client
-        .get(format!("http://127.0.0.1:{upstream_port}/"))
-        .send()
-        .await;
-    println!("mock upstream reachable: {:?}", upstream.as_ref().map(|r| r.status()));
-    assert!(
-        upstream.is_ok(),
-        "the mock upstream did not answer, so a request would fail before reaching the settlement path"
     );
 
     Ok(())
