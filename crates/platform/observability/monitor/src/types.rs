@@ -43,9 +43,18 @@ impl MemoryInfo {
         }
     }
 
-    /// 格式化内存大小显示
+    /// Format a byte count for display.
+    ///
+    /// **The units are binary and are labelled as such.** The divisor is 1024, so the values are kibibytes,
+    /// mebibytes and so on, and the suffixes are `KiB`/`MiB`/`GiB`/`TiB`. They were previously written `KB`,
+    /// `MB`, `GB`, `TB`, which are the **decimal** units: `1024` bytes printed as `1.0 KB` is wrong by 2.4%,
+    /// and the error grows with each step. `B` is unaffected because a byte is a byte.
+    ///
+    /// Recorded rather than chosen: whether the display should switch to decimal units (dividing by 1000) is a
+    /// presentation decision for whoever owns the UI; what is corrected here is the mismatch between the
+    /// divisor and the label, which is a defect under either convention.
     pub fn format_size(bytes: u64) -> String {
-        const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+        const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB"];
         let mut size = bytes as f64;
         let mut unit_index = 0;
 
@@ -124,5 +133,53 @@ impl SystemMetrics {
             disks,
             timestamp,
         }
+    }
+
+    /// The same value with an explicit timestamp.
+    ///
+    /// Exists so the cache's freshness decision can be exercised at a chosen instant rather than only at
+    /// whatever the clock says, which is what the crate's plan asks for ("可控时钟/样本用于确定性校验"). The
+    /// public [`SystemMetrics::new`] is unchanged and still reads the clock.
+    pub fn with_timestamp(
+        cpu: CpuInfo,
+        memory: MemoryInfo,
+        disks: Vec<DiskInfo>,
+        timestamp: u64,
+    ) -> Self {
+        Self {
+            cpu,
+            memory,
+            disks,
+            timestamp,
+        }
+    }
+}
+
+/// Whether metrics collected at `collected_at` are still fresh at `now`, given `ttl_secs`.
+///
+/// **Extracted from the service so the decision is testable, and because the subtraction it replaces could
+/// underflow.** The original check was
+///
+/// ```text
+/// if now - metrics.timestamp < self.update_interval.as_secs()
+/// ```
+///
+/// on `u64`: when the clock moves **backwards** -- an NTP correction, a VM restored from a snapshot, a
+/// container whose clock is set from the host -- `now` is smaller than `collected_at` and the subtraction
+/// underflows. In a debug build that panics, which would take the caller down; in a release build it wraps to
+/// a value near `u64::MAX`, so the comparison is false and the cache is treated as **infinitely stale**,
+/// meaning every call collects again. This function treats a timestamp in the future as not fresh, which is
+/// the safe reading: the data cannot be shown to be recent.
+///
+/// A timestamp equal to `now` is fresh, and so is one exactly `ttl_secs` old -- the boundary is `<`, as it
+/// was.
+pub fn is_fresh(collected_at: u64, now: u64, ttl_secs: u64) -> bool {
+    match now.checked_sub(collected_at) {
+        // The clock has not moved backwards, so the age is meaningful.
+        Some(age) => age < ttl_secs,
+        // `collected_at` is in the future. Not fresh: a timestamp ahead of the clock cannot be evidence that
+        // the data is recent, and the alternative -- treating it as age zero -- would pin a stale value in the
+        // cache until the clock caught up.
+        None => false,
     }
 }

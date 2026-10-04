@@ -47,7 +47,7 @@ impl SystemMonitorService {
                     .unwrap_or_default()
                     .as_secs();
 
-                if now - metrics.timestamp < self.update_interval.as_secs() {
+                if crate::types::is_fresh(metrics.timestamp, now, self.update_interval.as_secs()) {
                     return Ok(metrics.clone());
                 }
             }
