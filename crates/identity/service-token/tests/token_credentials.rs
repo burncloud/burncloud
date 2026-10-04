@@ -3,9 +3,16 @@
 //! item 03).
 //!
 //! `TokenService` delegates to `RouterTokenModel`; that crate had **no tests at all** while carrying
-//! the credential path, so every rule below is pinned for the first time. The eight behaviours come
-//! from the plan's own list: valid / disabled / expired / unknown token, quota boundaries,
-//! credential isolation, rotation, and database-failure propagation.
+//! the credential path, so every rule below is pinned for the first time. The behaviours come from the
+//! plan's own list: valid / disabled / expired / unknown token, quota boundaries, credential isolation,
+//! and rotation.
+//!
+//! **This file does not cover database-failure propagation, and an earlier version of this header said it
+//! did.** Measured when the claim was checked: zero occurrences of `DROP TABLE`, zero of `NotInitialized`, zero
+//! of `close()`, and one `is_err()` -- which belongs to `rotating_an_unknown_credential_is_an_error_not_a_silent_success`
+//! and is about an unknown credential rather than a broken database. That behaviour lives in
+//! `token_service_entries.rs`, which also carries the service-entry correspondence table the plan asks for.
+//! The claim was left standing for as long as it was because nothing checked it.
 //!
 //! Two properties of the implementation were read from the source before writing anything, because
 //! guessing them would have produced a test that freezes the wrong thing:
