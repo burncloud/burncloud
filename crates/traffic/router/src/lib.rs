@@ -54,7 +54,7 @@ impl EmptyResponseCounter {
 
     /// Record an empty response. Returns true if threshold exceeded (should penalize).
     pub fn record_empty(&self, channel_id: &str) -> bool {
-        let mut counters = self.counters.write().unwrap();
+        let mut counters = self.counters.write().unwrap_or_else(|e| e.into_inner());
         let count = counters.entry(channel_id.to_string()).or_insert(0);
         *count += 1;
         let exceeded = *count >= self.threshold;
@@ -87,7 +87,7 @@ impl EmptyResponseCounter {
 
     /// Reset counter on successful response (non-empty).
     pub fn reset(&self, channel_id: &str) {
-        let mut counters = self.counters.write().unwrap();
+        let mut counters = self.counters.write().unwrap_or_else(|e| e.into_inner());
         if let Some(count) = counters.get_mut(channel_id) {
             if *count > 0 {
                 tracing::debug!(
@@ -102,14 +102,14 @@ impl EmptyResponseCounter {
 
     /// Get current counter value for a channel (for monitoring/admin purposes).
     pub fn get_count(&self, channel_id: &str) -> u32 {
-        let counters = self.counters.read().unwrap();
+        let counters = self.counters.read().unwrap_or_else(|e| e.into_inner());
         counters.get(channel_id).copied().unwrap_or(0)
     }
 
     /// Force reset counter for a channel (admin override).
     /// Returns the previous count value.
     pub fn force_reset(&self, channel_id: &str) -> u32 {
-        let mut counters = self.counters.write().unwrap();
+        let mut counters = self.counters.write().unwrap_or_else(|e| e.into_inner());
         let previous_count = counters.remove(channel_id).unwrap_or(0);
         if previous_count > 0 {
             tracing::info!(
@@ -123,7 +123,7 @@ impl EmptyResponseCounter {
 
     /// Get all channels with non-zero counters (for monitoring).
     pub fn get_all_counts(&self) -> Vec<(String, u32)> {
-        let counters = self.counters.read().unwrap();
+        let counters = self.counters.read().unwrap_or_else(|e| e.into_inner());
         counters
             .iter()
             .filter(|(_, &count)| count > 0)
