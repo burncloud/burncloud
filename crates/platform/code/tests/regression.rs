@@ -162,7 +162,9 @@ impl Fixture {
         self.repo.join(".git/hooks/pre-commit.burncloud-original")
     }
     fn latest(&self) -> Result<serde_json::Value> {
-        Ok(serde_json::from_slice(&fs::read(self.repo.join(".git/burncloud/checks/latest.json"))?)?)
+        Ok(serde_json::from_slice(&fs::read(
+            self.repo.join(".git/burncloud/checks/latest.json"),
+        )?)?)
     }
     fn seed(&self) -> Result<()> {
         self.git(&["commit", "-qm", "seed"])?;
@@ -208,7 +210,9 @@ fn install_repeat_commit_and_legacy_upgrade() -> Result<()> {
     assert_eq!(f.log()?, FULL);
     let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
     assert!(message.contains("BurnCloud-Checks: ✅ PASS"));
-    assert!(message.contains("BurnCloud-Tests: ✅ PASS (3 passed, 0 failed, 1 ignored; unit 2 passed"));
+    assert!(
+        message.contains("BurnCloud-Tests: ✅ PASS (3 passed, 0 failed, 1 ignored; unit 2 passed")
+    );
     assert!(message.contains("BurnCloud-Clippy: ✅ PASS"));
     assert!(message.contains("BurnCloud-Deny: ✅ PASS"));
     assert_eq!(f.latest()?["status"], "passed");
@@ -241,7 +245,10 @@ fn receipt_uses_matching_index_and_replaces_old_footer_on_amend() -> Result<()> 
     f.git(&["add", "."])?;
     let message_file = f.base.join("message.txt");
     fs::write(&message_file, "subject\n")?;
-    failed(f.command(BIN).arg("stamp").arg(&message_file).output()?, "Staged tree or HEAD changed");
+    failed(
+        f.command(BIN).arg("stamp").arg(&message_file).output()?,
+        "Staged tree or HEAD changed",
+    );
     f.git(&["commit", "-qm", "subject"])?;
     let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
     assert_eq!(message.matches("BurnCloud-Checks: ✅ PASS").count(), 1);
@@ -258,10 +265,16 @@ fn receipt_uses_matching_index_and_replaces_old_footer_on_amend() -> Result<()> 
 fn existing_message_hook_runs_and_docs_only_receipt_is_skipped() -> Result<()> {
     let f = Fixture::new()?;
     let hook = f.repo.join(".git/hooks/commit-msg");
-    fs::write(&hook, "#!/bin/sh\necho original-message >> \"$CHECK_LOG\"\n")?;
+    fs::write(
+        &hook,
+        "#!/bin/sh\necho original-message >> \"$CHECK_LOG\"\n",
+    )?;
     executable(&hook)?;
     f.run(&["init"])?;
-    assert!(f.repo.join(".git/hooks/commit-msg.burncloud-original").exists());
+    assert!(f
+        .repo
+        .join(".git/hooks/commit-msg.burncloud-original")
+        .exists());
     f.seed()?;
     assert!(f.log()?.contains("original-message\n"));
     f.write("README.md", "documentation")?;

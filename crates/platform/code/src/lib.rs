@@ -38,12 +38,19 @@ pub fn command() -> Command {
                 .arg(Arg::new("base").long("base").value_name("REF").help(
                     "Include branch changes since the merge base with REF, plus local changes",
                 ))
-                .arg(Arg::new("last").long("last").action(ArgAction::SetTrue)
-                    .conflicts_with_all(["all", "plan", "staged", "base"])
-                    .help("Show the latest saved check results and log paths")),
+                .arg(
+                    Arg::new("last")
+                        .long("last")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with_all(["all", "plan", "staged", "base"])
+                        .help("Show the latest saved check results and log paths"),
+                ),
         )
-        .subcommand(Command::new("stamp").hide(true)
-            .arg(Arg::new("message").required(true)))
+        .subcommand(
+            Command::new("stamp")
+                .hide(true)
+                .arg(Arg::new("message").required(true)),
+        )
 }
 
 /// Execute a parsed `code` subcommand.
@@ -58,7 +65,10 @@ pub fn handle(matches: &ArgMatches) -> Result<()> {
             base: options.get_one::<String>("base").cloned(),
         }),
         Some(("stamp", options)) => report::stamp(std::path::Path::new(
-            options.get_one::<String>("message").expect("required message"))),
+            options
+                .get_one::<String>("message")
+                .expect("required message"),
+        )),
         _ => anyhow::bail!("Expected code init or code test"),
     }
 }

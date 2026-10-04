@@ -41,7 +41,10 @@ fn git(directory: &Path, args: &[&str]) -> io::Result<String> {
 
 pub(crate) fn init() -> io::Result<()> {
     let hooks = install(&std::env::current_dir()?)?;
-    println!("Pre-commit checks and commit-message receipts installed in {}", hooks.display());
+    println!(
+        "Pre-commit checks and commit-message receipts installed in {}",
+        hooks.display()
+    );
     println!("Required tools: rustup component add rustfmt clippy");
     println!("Dependency checker: cargo install cargo-deny --locked");
     println!("Commits run code test --staged: formatting, affected tests, Clippy and cargo deny.");
@@ -79,7 +82,10 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     let hooks = root.join(git(&root, &["rev-parse", "--git-path", "hooks"])?);
     fs::create_dir_all(&hooks)?;
     // Check both hooks before changing either one.
-    for (name, content, legacy) in [("pre-commit", HOOK, Some(LEGACY_HOOK)), ("commit-msg", MESSAGE_HOOK, None)] {
+    for (name, content, legacy) in [
+        ("pre-commit", HOOK, Some(LEGACY_HOOK)),
+        ("commit-msg", MESSAGE_HOOK, None),
+    ] {
         inspect(&hooks, name, content, legacy)?;
     }
     install_hook(&hooks, "pre-commit", HOOK, Some(LEGACY_HOOK))?;
@@ -92,7 +98,11 @@ fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io:
     let backup = hooks.join(format!("{name}.burncloud-original"));
     let existing = match fs::symlink_metadata(&hook) {
         Ok(metadata) if metadata.is_file() => Some(fs::read(&hook)?),
-        Ok(_) => return Err(Error::other(format!("Existing {name} is not a regular file; leaving it unchanged."))),
+        Ok(_) => {
+            return Err(Error::other(format!(
+                "Existing {name} is not a regular file; leaving it unchanged."
+            )))
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => return Err(error),
     };
@@ -101,7 +111,9 @@ fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io:
         match fs::symlink_metadata(&backup) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
-            Ok(_) => return Err(Error::other(format!("A saved {name}.burncloud-original already exists; refusing to overwrite hooks."))),
+            Ok(_) => return Err(Error::other(format!(
+                "A saved {name}.burncloud-original already exists; refusing to overwrite hooks."
+            ))),
         }
     }
     Ok(())
