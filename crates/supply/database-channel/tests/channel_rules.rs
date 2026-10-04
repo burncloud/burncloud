@@ -468,16 +468,19 @@ async fn syncing_twice_does_not_duplicate_abilities() -> Result<(), Box<dyn std:
     Ok(())
 }
 
-// **Unresolved: the fixture holds channels and abilities this test did not create.** `sync_abilities` for a
-// channel whose `models` repeats a name reaches SQLite as a duplicate and fails with
-// `code: 1555, UNIQUE constraint failed: channel_abilities.group, channel_abilities.model, channel_abilities.channel_id`
-// -- which is itself a finding, because `ChannelAbilityModel::create_batch` documents `INSERT OR IGNORE` and
-// `sync_abilities` does not go through it. But the key that collides here may belong to a **seeded** channel, so
-// the failure cannot yet be attributed to the repeated model with confidence.
+// **A repeated model fails at `create`, not at a sync.** `ChannelProviderModel::create` ends with
+// `Self::sync_abilities` (`channel_provider.rs:85`), and that function builds its own plain `INSERT`
+// (`:337`) rather than going through `ChannelAbilityModel::create_batch` -- which documents `INSERT OR IGNORE`
+// (`channel_ability.rs:23`) and uses it for SQLite (`:50`). So `models = "m1,m1"` produces
 //
-// Three attempts to characterise the seed were each wrong about which rows or which channel types it contains.
-// Ignored rather than left failing, and rather than asserting the seed, because the question the test asks is
-// real and worth answering once the initial state is understood.
+//     code: 1555, UNIQUE constraint failed: channel_abilities.group, channel_abilities.model, channel_abilities.channel_id
+//
+// while the same duplicate list through `create_batch` is **accepted and counted as one row**. The two paths
+// disagree, and the one a channel is actually created through is the one that fails.
+//
+// An earlier revision of this file ignored this test, believing the colliding key belonged to a seeded channel.
+// It does not: a probe against a fresh database shows `channel_abilities: 0 rows`, so every ability here was
+// written by `create`.
 #[tokio::test]
 async fn a_model_listed_twice_does_not_produce_a_duplicate_ability(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -673,14 +676,11 @@ async fn a_directly_written_ability_is_filtered_by_its_own_enabled_column_not_th
     Ok(())
 }
 
-// **Unresolved: this test's own baseline fails.** It asserts that a freshly created channel has no abilities,
-// and that assertion is false -- so `Schema::init` seeds `channel_providers` and `channel_abilities` as well as
-// the protocol configs, and a channel created by the test is not the only row in the table.
-//
-// Three attempts to characterise the seed were each wrong about which rows or which channel types it contains,
-// and the counts moved between runs in a way the process-wide counter in this fixture did not explain. Ignored
-// rather than left failing, and rather than asserting the seed: what the test checks -- that a batch reports the
-// rows it actually inserted -- is worth having once the initial state is understood.
+// **A channel that has just been created already has abilities.** `ChannelProviderModel::create` ends with
+// `Self::sync_abilities(db, channel)` (`channel_provider.rs:85`), so the count is one per model × group rather
+// than zero. An earlier revision of this file asserted zero and was ignored when that failed, believing the seed
+// was responsible; a probe against a fresh database shows `channel_abilities: 0 rows`, so `create` is the only
+// writer and the assertion was simply wrong about the code path.
 #[tokio::test]
 async fn create_batch_reports_only_the_rows_it_actually_inserted(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -905,30 +905,23 @@ async fn optional_fields_accept_null_and_survive_round_trips(
 // Protocol config
 // ===========================================================================================
 
-// **Unresolved: the protocol config table already holds `(OpenAI, "2024-02-01")`, which this test assumed was
-// free.** `Schema::init` seeds four configurations (`schema/user.rs:283-309`) and the migrations backfill from a
-// legacy `protocol_configs` table, so the table is not empty on a fresh database -- and the row present is not
-// the one the seed list alone predicts, since the seed entries are `(1, "default")`, `(2, "2023-06-01")`,
-// `(3, "2024-02-01")` and `(4, "v1")` while the read-back shows `(1, "2024-02-01")` as well.
-//
-// Three attempts to characterise the initial state were each wrong. Ignored rather than left failing, and rather
-// than asserting the seed, because what the test checks -- that an upsert replaces rather than adds, keyed on
-// `(channel_type, api_version)` -- is worth having once the initial state is understood.
-// **Unresolved: this test was left half-migrated.** It works against the version `2024-02-01` in some places
-// and `2099-01-01` in others, so it reads a row it never wrote. The probe that established the real initial
-// state is the useful part, and it is recorded below:
+// **The initial state of a fresh channel database, measured rather than inferred.** A probe against a brand-new
+// file reports:
 //
 //     channel_providers:        0 rows
 //     channel_abilities:        0 rows
 //     channel_protocol_configs: 4 rows
 //       (1, "default"), (2, "2023-06-01"), (3, "2024-02-01"), (4, "v1"), all is_default = 1
 //
-// `ChannelType::OpenAI` is 1 and `ChannelType::Azure` is 3, so **the seed contains no config for OpenAI other
-// than `"default"`** -- and the two tables a channel is made of start empty. `ChannelProviderModel::create`
-// ends with `sync_abilities` (`channel_provider.rs:85`), which is what writes abilities, not the seed.
+// Two tables start empty and one is seeded exactly as `Schema::init` lists it (`schema/user.rs:283-309`).
+// `ChannelType::OpenAI` is 1 and `ChannelType::Azure` is 3, so **the only OpenAI config present at the start is
+// `"default"`** -- and the abilities a channel appears to have come from `ChannelProviderModel::create`, which
+// ends with `sync_abilities` (`channel_provider.rs:85`), not from the seed.
 //
-// The probe output is recorded because establishing it took several wrong assumptions: the `Channel` shape, the
-// config's key, and the seed's contents were each guessed wrongly before the database was asked directly.
+// Establishing that took several wrong assumptions -- the `Channel` shape, the config's key, and the seed's
+// contents were each guessed wrongly before the database was asked directly -- so the probe's output is recorded
+// here rather than left to be re-derived. An earlier revision of this file carried three `#[ignore]`d tests
+// because of those wrong assumptions; all three now pass.
 #[tokio::test]
 async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
 ) -> Result<(), Box<dyn std::error::Error>> {
