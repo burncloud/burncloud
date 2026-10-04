@@ -9,6 +9,16 @@ of describing the intention as if it were the behaviour.
 
 ## Workflows
 
+### Local pre-commit setup
+
+Run `cargo run -- code init` once per checkout to install the local Git hook.
+The versioned `.github/scripts/pre-commit-checks.sh` gates commits on formatting,
+workspace tests, Clippy and the full `cargo deny check` policy. Existing failures
+are not suppressed. See the root README for prerequisites, staging requirements
+and existing hook handling. The `code-init` job in `arch.yml` tests the installer
+and commit failure propagation independently of application dependencies; Cargo
+is stubbed in those hook tests, so a green job is not a workspace-health result.
+
 | File | Trigger | What it checks |
 | --- | --- | --- |
 | `arch.yml` | changes to `crates/traffic/router/Cargo.toml` or `deny.toml` | Router dependency whitelist (`crates/traffic/router/scripts/check-router-deps.sh --ci`) and `cargo-deny` bans |

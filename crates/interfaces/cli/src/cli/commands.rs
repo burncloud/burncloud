@@ -21,6 +21,12 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
         .about("AI model deployment and management platform")
         .subcommand_required(false)
         .subcommand(
+            Command::new("code")
+                .about("Set up the source-code development environment")
+                .subcommand_required(true)
+                .subcommand(Command::new("init").about("Install local pre-commit quality checks")),
+        )
+        .subcommand(
             Command::new("update").about("Check and update the application").arg(
                 Arg::new("check-only")
                     .long("check-only")
@@ -1112,6 +1118,7 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
     )?;
 
     match matches.subcommand() {
+        Some(("code", _)) => super::code::init()?,
         Some(("update", sub_m)) => {
             let check_only = sub_m.get_flag("check-only");
             let res = tokio::task::spawn_blocking(move || handle_update_command(check_only)).await;
@@ -1235,6 +1242,7 @@ pub fn show_help() {
     println!("  burncloud                     - Start GUI (Windows) / Show help (Linux)");
     println!("  burncloud client              - Start GUI client");
     println!("  burncloud server              - Start server");
+    println!("  burncloud code init           - Install local pre-commit quality checks");
     println!("  burncloud update              - Update application");
     println!("  burncloud update --check-only - Check for updates only");
     println!();

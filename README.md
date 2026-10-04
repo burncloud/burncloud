@@ -90,6 +90,48 @@ A request requires valid runtime configuration such as credentials/tokens and us
 
 ## Development and tests
 
+Initialize each source checkout once:
+
+```bash
+rustup component add rustfmt clippy
+cargo install cargo-deny --locked
+cargo run -- code init
+```
+
+`code init` installs a local Git `pre-commit` hook without starting the application or
+creating runtime secrets. It is safe to repeat and also works from a checkout's
+subdirectory or linked Git worktree. Windows requires Git for Windows (including
+its bundled shell); the hook uses no PowerShell or Unix-only package manager.
+An existing regular hook is saved as `pre-commit.burncloud-original` and runs after
+the BurnCloud checks pass. Configured `core.hooksPath` and symlink hooks are left
+untouched: integrate `sh .github/scripts/pre-commit-checks.sh` into that hook manager
+instead, or remove the custom setting before initializing.
+
+Every commit must pass, in order:
+
+```bash
+cargo fmt --all -- --check
+cargo test --workspace --no-default-features
+cargo clippy --workspace --all-targets --no-default-features
+cargo deny check
+```
+
+The first failure blocks the commit, including missing tools. Stage or stash all
+tracked changes and untracked files first: Cargo checks the working tree, so the
+hook rejects partial staging. Ignored local files remain subject to the normal
+test environment requirements. These checks use the existing workspace lint and
+`deny.toml` policies, including advisory checks; they do not add warning overrides
+or suppress existing failures. Workspace tests/formatting or known dependency
+advisories can therefore block commits until those underlying issues are fixed.
+`--no-default-features` matches the Linux Clippy scope; platform desktop CI remains
+necessary. Local hooks are not GitHub branch protection and can be bypassed by Git
+options, so required remote checks must be configured separately if needed.
+
+Hook regression tests run independently of application dependencies on Linux:
+`python3 .github/scripts/test-code-init.py`. They compile the actual Rust installer,
+exercise real Git commits, and stub Cargo only to verify gate ordering and failure
+propagation. They do not establish that the full workspace passes its checks.
+
 Typical local checks include targeted package checks/tests plus the relevant integration/E2E flow. Provider/cloud tests may require environment credentials; do not treat unavailable external tests as a pass.
 
 Repository-wide formatting/lint commands include:

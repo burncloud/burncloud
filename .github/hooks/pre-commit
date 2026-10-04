@@ -1,0 +1,13 @@
+#!/bin/sh
+# BurnCloud managed pre-commit hook. Reinstall with: cargo run -- code init
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+sh "$root/.github/scripts/pre-commit-checks.sh"
+
+# Keep the previous hook's interpreter, arguments and exit status intact.
+hooks=$(git rev-parse --git-path hooks)
+if [ -x "$hooks/pre-commit.burncloud-original" ]; then
+    exec "$hooks/pre-commit.burncloud-original" "$@"
+fi
