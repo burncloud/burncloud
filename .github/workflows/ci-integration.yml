@@ -1,0 +1,125 @@
+name: CI / Integration
+
+on:
+  pull_request:
+    paths:
+      - 'crates/identity/database-user/**'
+      - 'crates/platform/storage/database/src/**'
+      - 'crates/platform/storage/database/migrations/**'
+      - 'Cargo.toml'
+      - '.github/workflows/ci-integration.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/identity/database-user/**'
+      - 'crates/platform/storage/database/src/**'
+      - 'crates/platform/storage/database/migrations/**'
+      - 'Cargo.toml'
+      - '.github/workflows/ci-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The first job in the plan's `ci-integration.yml` (todos_1.txt line 50: real PostgreSQL and controlled
+# local end-to-end tests). It is deliberately one test file against one crate rather than a matrix: the
+# plan asks for a smallest-first job, and a matrix over crates whose PostgreSQL support has never been
+# exercised would fail for many reasons at once and make none of them attributable.
+#
+# What it exists to falsify: 18 PostgreSQL migrations are referenced from the Rust migration list and
+# nothing in this repository has ever applied them to a server. SQLite has the same 18, and the SQLite
+# half of this contract is already covered. So the untested claim is "the PostgreSQL migrations apply and
+# the same round trip works".
+jobs:
+  postgres:
+    name: PostgreSQL round trip
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUST_BACKTRACE: "1"
+      # A superuser URL, because the test creates and drops its own database per run rather than sharing
+      # one. Sharing would leave rows between tests and make the assertions order-dependent.
+      BURNCLOUD_TEST_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        # Without this the first connection races the server's startup and fails.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      # The test skips when the variable is unset, and `cargo test` exits 0 for a suite that ran nothing.
+      # So the executed count is asserted: a misconfigured service, a renamed variable or a renamed test
+      # file would otherwise show as a passing job that verified nothing.
+      - name: PostgreSQL contract
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -p burncloud-database-user --test postgres_round_trip -- --nocapture 2>&1 \
+            | tee /tmp/postgres-contract.log
+
+          if grep -q "SKIPPED: BURNCLOUD_TEST_POSTGRES_URL is not set" /tmp/postgres-contract.log; then
+            echo "::error::the tests skipped because BURNCLOUD_TEST_POSTGRES_URL was not visible to them."
+            echo "That means this job proved nothing; check the env block and the service definition."
+            exit 1
+          fi
+
+          executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/postgres-contract.log)
+          echo "executed $executed test(s) against PostgreSQL"
+          if [ "${executed:-0}" -lt 2 ]; then
+            echo "::error::expected at least 2 tests in the PostgreSQL contract, found ${executed:-0}."
+            exit 1
+          fi
+
+      # The migrations must not merely apply: the same suite has to pass on a database built by them.
+      # This asserts the schema the test depends on actually exists, so a migration that silently
+      # no-ops on PostgreSQL is caught here rather than by an empty SELECT.
+      #
+      # `psql` directly rather than `docker run ... psql`: the runner already has the PostgreSQL client,
+      # and nesting a container to reach a service container adds a failure mode (image pull, network
+      # mode) that has nothing to do with what is being checked. `pg_isready` in the service health check
+      # already proves the server accepts connections before this step runs.
+      - name: The migrations created the tables the contract needs
+        shell: bash
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -o pipefail
+          psql -h localhost -U postgres -d postgres -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE 'user_%'" \
+            | tee /tmp/table-count.txt
+          count=$(tr -d '[:space:]' < /tmp/table-count.txt)
+          echo "user_* tables present: $count"
+          if [ "${count:-0}" -lt 1 ]; then
+            echo "::error::no user_* table exists after the migrations ran"
+            exit 1
+          fi
+
+      - name: Upload the log when the contract fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-contract-log
+          path: /tmp/postgres-contract.log
+          if-no-files-found: ignore
