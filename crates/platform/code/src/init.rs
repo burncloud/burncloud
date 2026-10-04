@@ -45,8 +45,7 @@ pub(crate) fn init() -> io::Result<()> {
         "Pre-commit checks and commit-message receipts installed in {}",
         hooks.display()
     );
-    println!("Required tools: rustup component add rustfmt clippy");
-    println!("Dependency checker: cargo install cargo-deny --locked");
+    println!("Required tools ready: rustfmt, Clippy and cargo-deny.");
     println!("Commits run code test --staged: formatting, affected tests, Clippy and cargo deny.");
     Ok(())
 }
@@ -88,9 +87,43 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     ] {
         inspect(&hooks, name, content, legacy)?;
     }
+    // Install tools before activating either hook. A failed installation leaves
+    // the existing Git hooks unchanged, and a later code init can retry.
+    ensure_tool(&root, "fmt", "rustup", &["component", "add", "rustfmt"])?;
+    ensure_tool(&root, "clippy", "rustup", &["component", "add", "clippy"])?;
+    ensure_tool(&root, "deny", "cargo", &["install", "--locked", "cargo-deny"])?;
     install_hook(&hooks, "pre-commit", HOOK, Some(LEGACY_HOOK))?;
     install_hook(&hooks, "commit-msg", MESSAGE_HOOK, None)?;
     Ok(hooks)
+}
+
+fn ensure_tool(root: &Path, tool: &str, installer: &str, args: &[&str]) -> io::Result<()> {
+    let available = || -> io::Result<bool> {
+        Ok(Command::new("cargo")
+            .current_dir(root)
+            .args([tool, "--version"])
+            .output()?
+            .status
+            .success())
+    };
+    if available()? {
+        println!("Already available: cargo {tool}");
+        return Ok(());
+    }
+    println!("Installing {tool}: {installer} {}", args.join(" "));
+    let status = Command::new(installer).current_dir(root).args(args).status()?;
+    if !status.success() {
+        return Err(Error::other(format!(
+            "Could not install {tool} ({status}). Retry: {installer} {}",
+            args.join(" ")
+        )));
+    }
+    if !available()? {
+        return Err(Error::other(format!(
+            "{installer} completed, but cargo {tool} --version still fails. Check PATH and retry code init."
+        )));
+    }
+    Ok(())
 }
 
 fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io::Result<()> {
