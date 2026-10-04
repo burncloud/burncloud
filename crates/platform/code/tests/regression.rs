@@ -83,6 +83,10 @@ fn stub() -> Result<&'static PathBuf> {
                 .arg(&binary)
                 .status()?;
             anyhow::ensure!(status.success(), "Cannot compile native Cargo stub");
+            fs::copy(
+                &binary,
+                dir.path().join(if cfg!(windows) { "rustup.exe" } else { "rustup" }),
+            )?;
             Ok((dir, binary))
         })()
         .map_err(|e| e.to_string())
@@ -155,6 +159,8 @@ impl Fixture {
             .env("GIT_CONFIG_GLOBAL", self.base.join("gitconfig"))
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("CHECK_LOG", self.base.join("checks.log"))
+            .env("INSTALL_LOG", self.base.join("install.log"))
+            .env("TOOL_STATE_DIR", self.base.join("tools"))
             .env("METADATA_FILE", self.base.join("metadata.json"))
             .env("CODE_TEST_BIN", BIN);
         cmd
@@ -244,6 +250,55 @@ fn install_repeat_commit_and_legacy_upgrade() -> Result<()> {
     f.run(&["init"])?;
     assert_eq!(fs::read_to_string(f.hook())?, HOOK);
     assert_eq!(fs::read_to_string(f.saved())?, "keep me");
+    Ok(())
+}
+
+#[test]
+fn init_installs_missing_tools_once() -> Result<()> {
+    let f = Fixture::new()?;
+    success(
+        f.command(BIN)
+            .arg("init")
+            .env("MISSING_TOOLS", "fmt,clippy,deny")
+            .output()?,
+    )?;
+    let installed = fs::read_to_string(f.base.join("install.log"))?;
+    assert_eq!(
+        installed,
+        "rustup component add rustfmt\nrustup component add clippy\ncargo install --locked cargo-deny\n"
+    );
+    success(
+        f.command(BIN)
+            .arg("init")
+            .env("MISSING_TOOLS", "fmt,clippy,deny")
+            .output()?,
+    )?;
+    assert_eq!(fs::read_to_string(f.base.join("install.log"))?, installed);
+    assert!(f.hook().exists());
+    assert!(f.repo.join(".git/hooks/commit-msg").exists());
+    Ok(())
+}
+
+#[test]
+fn failed_tool_install_leaves_hooks_unchanged_and_can_retry() -> Result<()> {
+    let f = Fixture::new()?;
+    failed(
+        f.command(BIN)
+            .arg("init")
+            .env("MISSING_TOOL", "deny")
+            .env("FAIL_INSTALL", "deny")
+            .output()?,
+        "Could not install deny",
+    );
+    assert!(!f.hook().exists());
+    assert!(!f.repo.join(".git/hooks/commit-msg").exists());
+    success(
+        f.command(BIN)
+            .arg("init")
+            .env("MISSING_TOOL", "deny")
+            .output()?,
+    )?;
+    assert!(f.hook().exists());
     Ok(())
 }
 
