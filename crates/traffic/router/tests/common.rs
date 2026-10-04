@@ -310,13 +310,43 @@ pub async fn insert_test_channel(
     Ok(())
 }
 
+/// Build a SQLite connection URL for a filesystem path.
+///
+/// **The three-slash rule.** `sqlite:///C:/data/db.sqlite` is the absolute form; `sqlite://C:/data/db.sqlite`
+/// has only two slashes after the scheme, so SQLite reads `C:` as a **host** and refuses the connection with
+/// `(code: 14) unable to open database file`. A relative path keeps two slashes, because with three the leading
+/// `/` would become part of the path and turn `data/db.sqlite` into `/data/db.sqlite`, which is not what the
+/// caller asked for.
+///
+/// This is a local copy of `burncloud_database::sqlite_url`, which lives in an open pull request rather than on
+/// `main`. Duplicating eight lines across the three test files that need it is the price of a PR that does not
+/// depend on another one landing first; once that function is on `main`, these copies should be replaced by it.
+fn sqlite_url(path: &str) -> String {
+    let normalised = path.replace('\\', "/");
+    if normalised.starts_with('/') || has_drive_letter(&normalised) {
+        format!("sqlite:///{}?mode=rwc", normalised.trim_start_matches('/'))
+    } else {
+        format!("sqlite://{}?mode=rwc", normalised)
+    }
+}
+
+/// Whether the path begins with a Windows drive letter followed by a separator (`C:/`).
+fn has_drive_letter(path: &str) -> bool {
+    let bytes: Vec<char> = path.chars().take(3).collect();
+    bytes.len() == 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == ':' && bytes[2] == '/'
+}
 pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
     let tmp = tempfile::NamedTempFile::new()?;
     let path = tmp.path().to_string_lossy().to_string();
     // Keep the NamedTempFile alive by leaking it; the OS will clean it up after the process exits.
     std::mem::forget(tmp);
-    let url = format!("sqlite://{}?mode=rwc", path);
+    // **`sqlite_url`, not `format!("sqlite://{}?mode=rwc", path)`.** The two-slash form is correct only for a
+    // *relative* path; `tempfile` returns an absolute one, and SQLite reads `sqlite://C:\...` as a host named
+    // `C:` and refuses it with `(code: 14) unable to open database file`. Every `burncloud-router` integration
+    // test builds its database through this one helper, so the malformed URL failed seventeen test targets at
+    // once rather than one.
+    let url = sqlite_url(&path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let conn = db.get_connection()?;
