@@ -91,7 +91,12 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     // the existing Git hooks unchanged, and a later code init can retry.
     ensure_tool(&root, "fmt", "rustup", &["component", "add", "rustfmt"])?;
     ensure_tool(&root, "clippy", "rustup", &["component", "add", "clippy"])?;
-    ensure_tool(&root, "deny", "cargo", &["install", "--locked", "cargo-deny"])?;
+    ensure_tool(
+        &root,
+        "deny",
+        "cargo",
+        &["install", "--locked", "cargo-deny"],
+    )?;
     install_hook(&hooks, "pre-commit", HOOK, Some(LEGACY_HOOK))?;
     install_hook(&hooks, "commit-msg", MESSAGE_HOOK, None)?;
     Ok(hooks)
@@ -111,7 +116,10 @@ fn ensure_tool(root: &Path, tool: &str, installer: &str, args: &[&str]) -> io::R
         return Ok(());
     }
     println!("Installing {tool}: {installer} {}", args.join(" "));
-    let status = Command::new(installer).current_dir(root).args(args).status()?;
+    let status = Command::new(installer)
+        .current_dir(root)
+        .args(args)
+        .status()?;
     if !status.success() {
         return Err(Error::other(format!(
             "Could not install {tool} ({status}). Retry: {installer} {}",
