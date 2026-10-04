@@ -93,13 +93,14 @@ A request requires valid runtime configuration such as credentials/tokens and us
 Initialize each source checkout once:
 
 ```bash
-rustup component add rustfmt clippy
-cargo install cargo-deny --locked
 cargo run -- code init
 ```
 
 `code init` installs local Git `pre-commit` and `commit-msg` hooks without starting the application or
-creating runtime secrets. It is safe to repeat and also works from a checkout's
+creating runtime secrets. It checks for rustfmt, Clippy and cargo-deny, and installs
+missing tools with `rustup component add` or `cargo install --locked cargo-deny`.
+If an installation fails, existing hooks remain unchanged; rerun `code init` after
+resolving the installation error. It is safe to repeat and also works from a checkout's
 subdirectory or linked Git worktree. Windows requires Git for Windows (including
 its bundled shell); the hook uses no PowerShell or Unix-only package manager.
 Existing regular hooks are saved as `<hook>.burncloud-original` and run along with
