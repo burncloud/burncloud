@@ -160,19 +160,38 @@ fn a_token_count_sent_as_a_boolean_is_reported() {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn a_negative_token_count_is_measured() {
-    // A negative count is a number, so `as_i64` accepts it and `unwrap_or(0)` does not apply -- the value
-    // passes through. This is the one case in this file where the parser does **not** zero the field, and
-    // the consequence is the opposite of the others: a negative input contributes a negative cost.
+fn a_negative_input_count_is_clamped_and_a_negative_output_count_is_not() {
+    // This test used to assert that both negative counts passed through as `-100` and `-50`, and it passed.
+    // The de-duplication fix in #670 changed the input side, and the change is an improvement.
+    //
+    // The input count now goes through the same clamp as the cached-token subtraction, so a negative
+    // `prompt_tokens` becomes **0** instead of a negative number reaching the cost calculation. That clamp
+    // was written for the cache split and applies here as a side effect -- a welcome one, since a negative
+    // input count would *reduce* a charge.
+    //
+    // The **output** count has no such path and still passes through negative, and the calculator's own guard
+    // (`calculator.rs:350`, which logs "negative token count ... treating as 0") is what handles it. So the
+    // two fields are treated differently, which is worth recording rather than leaving to be discovered:
+    // negative counts are caught in two different places depending on which field they arrive in.
     let (input, output, err) = parse(ChannelType::OpenAI, openai_body(json!(-100), json!(-50)));
 
     println!("negative counts parsed as: input={input} output={output} error={err:?}");
-    assert_eq!(err, None);
     assert_eq!(
-        (input, output),
-        (-100, -50),
-        "negative counts are accepted as-is, so they reach the cost calculation rather than being \
-         rejected or clamped"
+        err, None,
+        "a negative is a number, so it is not reported as malformed"
+    );
+    assert_eq!(
+        input, 0,
+        "the input side is clamped by the same expression that splits out the cached tokens"
+    );
+    assert_eq!(
+        output, -50,
+        "and the output side still passes through, relying on the calculator's guard rather than the parser's"
+    );
+    assert!(
+        output < 0,
+        "which means a negative output count does reach the cost calculation, where calculator.rs:350 \
+         zeroes it with a warning instead of the parser refusing it"
     );
 }
 

@@ -72,9 +72,13 @@ fn expected_with_deduplication(
 }
 
 #[test]
-fn the_openai_parser_reports_cached_tokens_inside_input_tokens() {
-    // The measurement that the rest of this file depends on. If OpenAI's parser ever starts subtracting, this
-    // test fails and the issue below can be closed.
+fn the_openai_parser_reports_only_uncached_tokens_as_input() {
+    // **This test used to assert 1000 and passed.** It recorded the double count rather than a contract, which
+    // is why it was written as a measurement with the reason in its failure message instead of as a positive
+    // expectation -- and the fix in #670 is what changed it.
+    //
+    // The parser now subtracts, so `input_tokens` means for OpenAI what it already meant for Gemini: the
+    // uncached input.
     use burncloud_service_billing::usage::get_parser;
     use burncloud_supply_contracts::ChannelType;
 
@@ -99,10 +103,14 @@ fn the_openai_parser_reports_cached_tokens_inside_input_tokens() {
         "the cached count is read from the details object"
     );
     assert_eq!(
-        usage.input_tokens, 1000,
-        "and the input count is the full `prompt_tokens`, which for OpenAI **includes** the 800 cached \
-         tokens. So this usage object describes 200 uncached tokens and 800 cached ones, but reports 1000 \
-         input tokens"
+        usage.input_tokens, 200,
+        "and the input count is the uncached remainder. It was 1000 before #670, which billed those 800 \
+         cached tokens at the full input rate as well as at the cache rate"
+    );
+    assert_eq!(
+        usage.input_tokens + usage.cache_read_tokens,
+        1000,
+        "the two together reconstruct `prompt_tokens`, so this is a split rather than a loss of usage"
     );
 }
 
