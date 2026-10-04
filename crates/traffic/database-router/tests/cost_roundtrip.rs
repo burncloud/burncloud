@@ -21,21 +21,93 @@ use burncloud_database::create_database_with_url;
 use burncloud_database_router::{RouterDatabase, RouterLog, RouterLogModel};
 use tempfile::NamedTempFile;
 
-/// Create an isolated SQLite test database backed by a temp file.
+/// An isolated SQLite database plus the router tables, in a temp file that this type tries to delete.
 ///
-/// SQLite `:memory:` fails with connection pools because each pool connection
-/// gets a fresh empty database; the schema written on one connection is invisible
-/// to others. A temp file is shared across all pool connections within the process.
+/// SQLite `:memory:` is not used: each pool connection would get its own empty database, so the schema
+/// written on one connection is invisible to the others. A temp file is shared across the pool.
 ///
-/// Both `Schema::init()` (via `create_database_with_url`) and `RouterDatabase::init()`
-/// are required: the former creates `router_logs` with all columns, the latter creates
-/// `router_tokens` which `RouterLogModel::insert` updates for quota deduction.
-async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
+/// Both `Schema::init()` (via `create_database_with_url`) and `RouterDatabase::init()` are required: the
+/// former creates `router_logs` with all its columns, the latter creates `router_tokens`, which the log
+/// writer updates for quota settlement.
+///
+/// **This helper reduces the leak; it does not eliminate it.** Measured on this platform: 20 leftover
+/// files per run of this crate before, 9 after, and still 9 after a ten-second wait -- so the remainder
+/// is not a slow cleanup, it is cleanup that never happens. `tests/temp_file_leak.rs` asserts the current
+/// number so it cannot silently get worse, and #643 records the unfinished work.
+///
+/// The background: dropping a `Database` does not release the SQLite handle and `close().await` releases
+/// it only asynchronously, so a removal attempted from `Drop` loses the race and the file survives.
+///
+/// Two fixes were tried and do not work. They are recorded so they are not retried: calling `block_on` on
+/// a new runtime inside `Drop` panics with "Cannot start a runtime from within a runtime", and so does
+/// reusing `Handle::try_current()`, because the destructor runs inside the test's own runtime.
+///
+/// What this does instead is hand the connection to a **separate thread** with its own runtime, so
+/// nothing blocks the test thread and no runtime is entered from within another. That recovers roughly
+/// half the files. The likely reason it is not all of them is that nothing joins these threads: a test
+/// binary exits when its tests finish, and a detached thread's work is lost. Joining them needs a
+/// process-level hook the standard test harness does not offer, which is why it is left to #643.
+///
+/// Requires a multi-threaded test runtime, which `#[tokio::test]` provides by default.
+struct TestDb {
+    db: Option<burncloud_database::Database>,
+    path: std::path::PathBuf,
+}
+
+impl std::ops::Deref for TestDb {
+    type Target = burncloud_database::Database;
+
+    fn deref(&self) -> &Self::Target {
+        self.db
+            .as_ref()
+            .unwrap_or_else(|| panic!("the test database was used after cleanup"))
+    }
+}
+
+impl Drop for TestDb {
+    fn drop(&mut self) {
+        let Some(db) = self.db.take() else {
+            return;
+        };
+        let path = self.path.clone();
+
+        // The thread owns the close. If it cannot be spawned the files are simply left behind, which is
+        // the pre-existing behaviour rather than a new failure, so the test result is unaffected.
+        let _ = std::thread::Builder::new()
+            .name("bc-testdb-cleanup".to_string())
+            .spawn(move || {
+                if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    if let Err(e) = rt.block_on(db.close()) {
+                        eprintln!("test database close failed (cleanup continues): {e}");
+                    }
+                }
+                // SQLite releases the OS handle slightly after the pool closes.
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                for suffix in ["", "-wal", "-shm"] {
+                    let mut candidate = path.clone().into_os_string();
+                    candidate.push(suffix);
+                    let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+                }
+            });
+    }
+}
+
+/// Create an isolated SQLite test database with the production schema applied.
+async fn create_test_db() -> TestDb {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    // Three slashes and forward slashes: `sqlite:///C:/...` is an absolute path on Windows, whereas
-    // `sqlite://C:\...` is not a URL SQLite can open and fails with
-    // "(code: 14) unable to open database file" before any assertion runs.
-    let normalized = tmp.path().to_string_lossy().replace('\\', "/");
+    // Take the path away from the temp-file guard so deletion is controlled here rather than racing the
+    // connection pool.
+    let path = tmp
+        .into_temp_path()
+        .keep()
+        .unwrap_or_else(|e| panic!("failed to keep temp path: {e}"));
+    // Three slashes with forward slashes: an absolute path on Windows, whereas the two-slash form is not
+    // a URL SQLite can open and fails with "(code: 14) unable to open database file" before any
+    // assertion runs.
+    let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{normalized}?mode=rwc");
     let db = create_database_with_url(&url)
         .await
@@ -43,7 +115,7 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     RouterDatabase::init(&db)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize router tables: {e}"));
-    (db, tmp)
+    TestDb { db: Some(db), path }
 }
 
 /// Fetch all logs and find one by request_id.
@@ -104,7 +176,7 @@ fn make_log(request_id: &str) -> RouterLog {
 /// or SELECT query in RouterLogModel, the assert below will catch it.
 #[tokio::test]
 async fn test_cost_breakdown_roundtrip() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
 
     let request_id = format!("test-roundtrip-{}", uuid::Uuid::new_v4());
     let log = make_log(&request_id);
@@ -165,7 +237,7 @@ async fn test_cost_breakdown_roundtrip() {
 /// For Postgres, run against a live instance with the BIGINT migration applied.
 #[tokio::test]
 async fn test_large_cost_no_truncation() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
 
     // $5.00 = 5_000_000_000 nanodollars — exceeds i32::MAX (2,147,483,647)
     let big_cost: i64 = 5_000_000_000;
@@ -205,7 +277,7 @@ async fn test_large_cost_no_truncation() {
 /// Verifies #[sqlx(default)] contract: NULL in DB → 0 in struct, no panic.
 #[tokio::test]
 async fn test_zero_values_read_as_zero_not_null() {
-    let (db, _tmp) = create_test_db().await;
+    let db = create_test_db().await;
 
     let request_id = format!("test-zeros-{}", uuid::Uuid::new_v4());
     let log = RouterLog {
