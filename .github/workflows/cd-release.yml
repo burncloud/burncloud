@@ -1,4 +1,4 @@
-name: Release
+name: CD / Release
 
 on:
   push:
@@ -233,7 +233,11 @@ jobs:
           Get-ChildItem
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        # v1 runs on a runner image GitHub no longer supports; actionlint reports it as
+        # "too old to run on GitHub Actions". The `with:` inputs below are accepted by both v1 and v2,
+        # so this is a version bump rather than a behaviour change -- but it touches the release path,
+        # so it still needs a release-correctness check before it is relied on.
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.check-version.outputs.version }}
           target_commitish: ${{ github.sha }}

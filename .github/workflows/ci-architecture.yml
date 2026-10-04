@@ -1,4 +1,4 @@
-name: Architecture Checks
+name: CI / Architecture
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
       - 'Cargo.toml'
       - 'clippy.toml'
       - 'deny.toml'
-      - '.github/workflows/arch.yml'
+      - '.github/workflows/ci-architecture.yml'
       - 'crates/**/Cargo.toml'
       - 'crates/**/*.rs'
 

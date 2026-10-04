@@ -1,4 +1,4 @@
-name: Security & Billing Invariants
+name: CI / Tests
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ on:
       - "crates/commerce/database-billing/**"
       - "crates/supply/database-channel/**"
       - "crates/identity/database-user/**"
-      - ".github/workflows/security-billing-invariants.yml"
+      - ".github/workflows/ci-tests.yml"
   push:
     branches: [main]
     paths:
@@ -36,7 +36,7 @@ on:
       - "crates/commerce/database-billing/**"
       - "crates/supply/database-channel/**"
       - "crates/identity/database-user/**"
-      - ".github/workflows/security-billing-invariants.yml"
+      - ".github/workflows/ci-tests.yml"
 
 permissions:
   contents: read

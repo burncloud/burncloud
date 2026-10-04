@@ -1,11 +1,11 @@
-name: Version Check and Auto Tag
+name: Maintenance / Version Tag
 
 on:
   push:
     branches: [ main, master ]
     paths:
       - 'Cargo.toml'
-      - 'crates/*/Cargo.toml'
+      - 'crates/**/Cargo.toml'
   workflow_dispatch:
 
 permissions:
