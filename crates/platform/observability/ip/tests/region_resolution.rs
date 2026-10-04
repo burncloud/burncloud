@@ -42,6 +42,12 @@ use std::error::Error;
 use std::net::TcpListener;
 
 /// An isolated settings database in a temporary file, removed when the guard is dropped.
+///
+/// **The handle is not closed here, and the files are still removed.** `SettingDatabase::close` consumes the
+/// handle and is `async`, which a `Drop` cannot await; an attempt to drive it through
+/// `Handle::block_on` inside `Drop` was made and **reverted**, because it broke three tests and left *more*
+/// residue rather than less. The deletion below therefore races the open handles and the `-wal`/`-shm` sidecars
+/// sometimes survive on Windows. That is the state this file is in, and it is recorded rather than papered over.
 struct TempDb {
     settings: SettingDatabase,
     path: std::path::PathBuf,
@@ -75,8 +81,7 @@ impl TempDb {
 
 impl Drop for TempDb {
     fn drop(&mut self) {
-        // The handle is consumed by `close`, which a `Drop` cannot await, so the file is left to the OS to
-        // release and only the bytes are removed. SQLite in WAL mode leaves sidecars, so those go too.
+        // Attempted, and no panic either way: a `Drop` that panics during unwinding aborts the process.
         for suffix in ["", "-wal", "-shm"] {
             let mut candidate = self.path.clone().into_os_string();
             candidate.push(suffix);
@@ -227,26 +232,21 @@ async fn a_cached_location_is_returned_without_asking_either_provider() -> Resul
 }
 
 #[tokio::test]
-#[ignore = "unresolved: the mock returns an empty body for this call and the cause was not found; see the note \
-            inside. The intent is worth keeping, so it is ignored rather than deleted or left failing."]
 async fn an_uncached_location_asks_the_primary_and_writes_the_cache() -> Result<(), Box<dyn Error>>
 {
-    // **Unresolved, and the symptom is recorded rather than hidden.**
+    // A cache miss must consult the provider and then **write** the value, which is read back directly here
+    // rather than inferred from a second call.
     //
-    // The mock is configured for `GET /json`, the URL passed in is `http://127.0.0.1:<port>/json`, and a direct
-    // `reqwest::get` against that same URL returns the body -- measured with a temporary probe while this was
-    // being investigated. Through `get_location_with` the same URL yields an **empty body**, so
-    // `country_code_from_body` fails with `EOF while parsing a value` and the call falls through to the
-    // deliberately unreachable fallback.
+    // **This test was `#[ignore]`d for a round, and the cause is worth recording** because the symptom pointed
+    // away from it. It failed with `EOF while parsing a value` on a body the mock was definitely serving -- a
+    // direct `reqwest::get` against the same URL returned it -- which read like a `mockito` problem. It was not:
+    // `country_code_from_body` chooses the response shape from the **URL**, and the mock's URL did not contain
+    // `ip-api`, so the crate parsed the body with the *fallback* provider's shape, looked for `country`, found
+    // only `countryCode`, and reported a parse error on a body that was perfectly well formed. The fix is the
+    // `ip-api` segment in the path below.
     //
-    // Ruled out, each by measurement: the URL construction (the probe printed the joined URL and fetched it
-    // successfully), a single-use mock (`expect_at_least(1)` was added to all nine mocks and the symptom is
-    // unchanged), a duplicate expectation (nine mocks, nine expectations), and the trailing slash -- though that
-    // one is a clue rather than a resolution, because `/json/` fails this test while `/json` fails others.
-    //
-    // Ignored rather than deleted because the behaviour is worth having: a cache miss must consult the provider
-    // and then **write** the value, which nothing else asserts. Whoever has more context on `mockito`'s matching
-    // should start from the empty-body measurement above.
+    // Recorded rather than quietly fixed because the debugging went the wrong way for a round: the fixture had to
+    // satisfy the crate's own dispatch rule, and no amount of changing the mock's expectations would have helped.
     let db = TempDb::new("cache_miss").await?;
     assert_eq!(
         SettingService::get(db.handle(), LOCATION_CACHE_KEY).await?,
@@ -255,8 +255,12 @@ async fn an_uncached_location_asks_the_primary_and_writes_the_cache() -> Result<
     );
 
     let mut server = mockito::Server::new_async().await;
+    // **The path contains `ip-api` on purpose.** `country_code_from_body` chooses the response shape from the
+    // URL, because the two providers spell the country differently, so a mock serving a `countryCode` body must
+    // have a URL that selects the `countryCode` shape -- `mock_url(&server, "json")` does not, which is why this
+    // test and its neighbour failed with `EOF while parsing a value` while the fallback tests passed.
     let mock = server
-        .mock("GET", "/json")
+        .mock("GET", "/ip-api/json/")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"countryCode":"CN"}"#)
@@ -264,7 +268,7 @@ async fn an_uncached_location_asks_the_primary_and_writes_the_cache() -> Result<
         .create_async()
         .await;
 
-    let primary = mock_url(&server, "json");
+    let primary = mock_url(&server, "ip-api/json/");
     let unreachable = unbound_url("fallback");
     let location = get_location_with(db.handle(), &primary, &unreachable).await?;
 
@@ -443,20 +447,14 @@ async fn a_malformed_fallback_is_an_error_and_not_the_world() -> Result<(), Box<
 }
 
 #[tokio::test]
-#[ignore = "unresolved: the same empty-body symptom as `an_uncached_location_asks_the_primary_and_writes_the_\
-            cache`; the mapping itself is covered without HTTP by `region_parsing_accepts_only_the_two_known_\
-            spellings`"]
 async fn a_non_cn_country_is_the_world_from_either_provider() -> Result<(), Box<dyn Error>> {
-    // **The same unresolved symptom**, so this is ignored for the same reason: a mock created inside the loop
-    // serves an empty body to the crate's request while a direct request against the same URL succeeds.
+    // The mapping applied through real HTTP for both shapes, so the provider is shown to agree with the pure rule
+    // on the same inputs. `TW` is used as well as `US`, because a naive implementation comparing against a list of
+    // "China" spellings could treat neighbouring regions inconsistently.
     //
-    // What is lost by ignoring it: the mapping for `US`, `TW` and an empty string is asserted through real HTTP
-    // here and only as a pure function in `region_parsing_accepts_only_the_two_known_spellings` -- which does
-    // cover the same rule, so nothing about the decision is untested. What is untested is that a **later**
-    // request to the same mock server still gets a body, which is the shape the other ignored test shares.
-    // The mapping applied through real HTTP for both shapes, so the two providers are shown to agree on the same
-    // input. `TW` is used as well as `US`, because a naive implementation comparing against a list of "China"
-    // spellings could treat neighbouring regions inconsistently.
+    // This test was ignored alongside `an_uncached_location_asks_the_primary_and_writes_the_cache` for the same
+    // round and the same cause -- a mock URL without `ip-api` in it, so the body was parsed with the wrong
+    // provider's shape. The path below carries the segment that selects the shape.
     let mut server = mockito::Server::new_async().await;
     for (code, expected) in [
         ("CN", Region::CN),
@@ -465,14 +463,15 @@ async fn a_non_cn_country_is_the_world_from_either_provider() -> Result<(), Box<
         ("", Region::WORLD),
     ] {
         let mock = server
-            .mock("GET", "/json")
+            .mock("GET", "/ip-api/json/")
             .with_status(200)
             .with_body(format!(r#"{{"countryCode":"{code}"}}"#))
             .expect_at_least(1)
             .create_async()
             .await;
         let unreachable = unbound_url("fallback");
-        let region = get_user_region_with(&mock_url(&server, "json"), &unreachable).await?;
+        // `ip-api` in the path is what selects the `countryCode` shape; see the note on the cache-miss test.
+        let region = get_user_region_with(&mock_url(&server, "ip-api/json/"), &unreachable).await?;
         println!("countryCode {code:?} -> {region:?}");
         assert_eq!(region, expected, "countryCode {code:?}");
         mock.assert_async().await;
