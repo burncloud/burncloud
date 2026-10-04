@@ -1,4 +1,4 @@
-name: Architecture Checks
+name: CI / Architecture
 
 on:
   pull_request:
@@ -6,7 +6,11 @@ on:
       - 'Cargo.toml'
       - 'clippy.toml'
       - 'deny.toml'
-      - '.github/workflows/arch.yml'
+      # This workflow's own name, which this branch changed. The previous name no longer exists in the
+      # workflows directory, so keeping it would leave a filter that can never match.
+      - '.github/workflows/ci-architecture.yml'
+      # Added by `main` while this branch was open. Unrelated to the rename, and it would be lost by taking
+      # this branch's side of the conflict.
       - '.github/hooks/**'
       - 'crates/**/Cargo.toml'
       - 'crates/**/*.rs'

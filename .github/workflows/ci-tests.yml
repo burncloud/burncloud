@@ -1,4 +1,4 @@
-name: Security & Billing Invariants
+name: CI / Tests
 
 on:
   pull_request:
@@ -24,7 +24,7 @@ on:
       # rules; both use isolated temporary SQLite files, so they run without any service.
       - "crates/identity/service-token/**"
       - "crates/identity/service-user/**"
-      - ".github/workflows/security-billing-invariants.yml"
+      - ".github/workflows/ci-tests.yml"
   push:
     branches: [main]
     paths:
@@ -46,59 +46,28 @@ on:
       # rules; both use isolated temporary SQLite files, so they run without any service.
       - "crates/identity/service-token/**"
       - "crates/identity/service-user/**"
-      - ".github/workflows/security-billing-invariants.yml"
+      - ".github/workflows/ci-tests.yml"
+  # Manual runs exist so that a change to this file can be validated on GitHub before it merges. A
+  # `pull_request` run uses the workflow definition from the base branch, so a renamed or newly added
+  # file is not parsed by the PR that introduces it -- measured on the rename PR, which reported no
+  # checks at all. The steps are read-only (`permissions: contents: read`), so dispatching is safe.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 # Each invariant class reports on its own. Run steps stop at the first non-zero exit, so putting them
 # in one job meant an early failure (the known-failing Node P0 compile) silently skipped the Billing
-# and Security suites entirely -- those had no CI coverage at all for a long stretch. The jobs below
-# are deliberately independent: only `formatting` gates the rest, and nothing depends on
-# `node-invariants`, so a Node failure can no longer hide a Billing or Security verdict.
+# and Security suites entirely -- those had no CI coverage at all for a long stretch.
+#
+# The jobs below are deliberately independent of each other: nothing here depends on
+# `node-invariants`, so a Node failure cannot hide a Billing or Security verdict. The formatting
+# check that used to gate them lives in `ci-quality.yml` now, and the two workflows report
+# separately; "all of these must pass" belongs in the `CI Required` aggregate, not in a `needs`
+# chain that lets one early failure suppress five verdicts.
 jobs:
-  formatting:
-    name: Formatting
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: rustfmt on changed files
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base_sha="${{ github.event.pull_request.base.sha }}"
-            head_sha="${{ github.event.pull_request.head.sha }}"
-          else
-            base_sha="${{ github.event.before }}"
-            head_sha="${{ github.sha }}"
-          fi
-
-          mapfile -d '' rust_files < <(
-            git diff --name-only --diff-filter=ACMR -z "$base_sha" "$head_sha" -- '*.rs'
-          )
-
-          if [ "${#rust_files[@]}" -eq 0 ]; then
-            echo "No changed Rust files to format-check."
-            exit 0
-          fi
-
-          printf 'Checking rustfmt on %s changed Rust file(s):\n' "${#rust_files[@]}"
-          printf '  %s\n' "${rust_files[@]}"
-          rustfmt --edition 2021 --check --config skip_children=true "${rust_files[@]}"
-
   node-invariants:
     name: Node invariants
-    needs: formatting
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -135,7 +104,6 @@ jobs:
 
   billing-invariants:
     name: Billing invariants
-    needs: formatting
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -166,7 +134,6 @@ jobs:
 
   security-invariants:
     name: Security invariants
-    needs: formatting
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -194,7 +161,13 @@ jobs:
 
   identity-invariants:
     name: Identity invariants
-    needs: formatting
+    # No `needs: formatting`. That job used to gate every suite in this workflow, and it now lives in
+    # `ci-quality.yml` -- the split exists precisely so a formatting failure cannot stop the Billing, Security,
+    # Identity, Node and contract verdicts from reporting. "All of these must pass" belongs in the `CI Required`
+    # aggregate rather than in a `needs` chain.
+    #
+    # `actionlint` caught this: the job arrived on `main` in #623 with `needs: formatting`, and merging that
+    # into this branch's split left the dependency pointing at a job that is no longer in this file.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -257,7 +230,6 @@ jobs:
 
   migration-contracts:
     name: Migration contracts
-    needs: formatting
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

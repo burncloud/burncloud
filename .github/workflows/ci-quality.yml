@@ -1,0 +1,66 @@
+name: CI / Quality
+
+on:
+  pull_request:
+    paths:
+      # Any Rust change can be unformatted, so this is deliberately broad rather than a list of domain
+      # crates. Verified against `git ls-files`: `crates/**/*.rs` matches all 660 tracked Rust files
+      # under crates/, including the deepest nesting, so it is not a dead trigger.
+      - 'crates/**/*.rs'
+      - 'Cargo.toml'
+      - 'clippy.toml'
+      - '.github/workflows/ci-quality.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**/*.rs'
+      - 'Cargo.toml'
+      - 'clippy.toml'
+      - '.github/workflows/ci-quality.yml'
+
+permissions:
+  contents: read
+
+# Formatting has its own workflow so that it cannot gate the test classes. It used to be the first job
+# in `ci-tests.yml` with every other job depending on it, which meant a formatting failure stopped
+# Billing, Security, Node and the contract suites from reporting at all -- the same shape of problem the
+# original job split was made to fix, one level up.
+jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: rustfmt on changed files
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          mapfile -d '' rust_files < <(
+            git diff --name-only --diff-filter=ACMR -z "$base_sha" "$head_sha" -- '*.rs'
+          )
+
+          if [ "${#rust_files[@]}" -eq 0 ]; then
+            echo "No changed Rust files to format-check."
+            exit 0
+          fi
+
+          printf 'Checking rustfmt on %s changed Rust file(s):\n' "${#rust_files[@]}"
+          printf '  %s\n' "${rust_files[@]}"
+          rustfmt --edition 2021 --check --config skip_children=true "${rust_files[@]}"
