@@ -8,9 +8,10 @@ to open seven YAML files to find out which check ran on their PR.
 
 | File | Display name | Triggers | What it runs |
 | --- | --- | --- | --- |
+| `ci-quality.yml` | `CI / Quality` | PR and push to `main`, on any Rust file, `Cargo.toml` or `clippy.toml` | `rustfmt --check` on the files the change touched |
 | `ci-architecture.yml` | `CI / Architecture` | PR and push to `main`, on Rust manifests, `clippy.toml`, `deny.toml` | `clippy` across the workspace, `cargo-deny` policy, and the router dependency whitelist |
 | `ci-client.yml` | `CI / Client` | PR, on the client crates and the root manifest | UI convention checks, LiveView check, Windows and macOS desktop checks |
-| `ci-tests.yml` | `CI / Tests` | PR and push to `main`, on the crates whose behaviour the suites cover | Formatting, node invariants, billing invariants, security invariants, migration contracts |
+| `ci-tests.yml` | `CI / Tests` | PR and push to `main`, on the crates whose behaviour the suites cover | Node invariants, billing invariants, security invariants, migration contracts |
 | `cd-release.yml` | `CD / Release` | Push to `main` and `workflow_dispatch`; also `v*` tags | Builds the release artifacts and creates the GitHub release |
 | `maintenance-version-tag.yml` | `Maintenance / Version Tag` | Push to `main` on manifests | Compares the root package version with the newest tag and creates the tag when the version moved forward |
 | `maintenance-sync-gitee.yml` | `Maintenance / Sync to Gitee` | Push to `main` and `workflow_dispatch` | Mirrors the repository to Gitee |
@@ -63,6 +64,11 @@ for a workspace that ships binaries, and it was considered. It is **not done her
   mismatch rather than a code error -- worth naming, because that is the cost of the choice.
 
 Until then, no part of this project should claim reproducible builds or pinned dependency versions.
+Formatting lives in `ci-quality.yml` rather than in `ci-tests.yml` on purpose. It used to be the first
+job of the test workflow with every other job declaring `needs: formatting`, so a formatting failure
+stopped the Billing, Security, Node and contract suites from reporting at all -- one early failure
+suppressing five verdicts. The two workflows now report separately, and "all of them must pass" belongs
+in the `CI Required` aggregate rather than in a `needs` chain.
 
 ## Two rules that are not optional
 
