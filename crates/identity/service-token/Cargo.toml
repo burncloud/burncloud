@@ -9,5 +9,11 @@ edition = "2021"
 burncloud-database-router.workspace = true
 burncloud-database.workspace = true
 
+[dev-dependencies]
+# The credential tests exercise the real schema on an isolated temporary SQLite file, so they need the
+# async runtime and a self-deleting temp file. No new runtime dependency is introduced.
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
 [lints]
 workspace = true
