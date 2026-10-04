@@ -37,6 +37,11 @@ on:
       - "crates/supply/database-channel/**"
       - "crates/identity/database-user/**"
       - ".github/workflows/ci-tests.yml"
+  # Manual runs exist so that a change to this file can be validated on GitHub before it merges. A
+  # `pull_request` run uses the workflow definition from the base branch, so a renamed or newly added
+  # file is not parsed by the PR that introduces it -- measured on the rename PR, which reported no
+  # checks at all. The steps are read-only (`permissions: contents: read`), so dispatching is safe.
+  workflow_dispatch:
 
 permissions:
   contents: read
