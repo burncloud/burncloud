@@ -30,8 +30,140 @@
 
 mod common;
 
-use common::{insert_router_token, setup_db};
+use common::{insert_router_token, insert_test_channel, setup_db};
 use std::time::Duration;
+
+/// Print what the routing path will actually see, so a failure names the missing row instead of reporting
+/// "no candidates".
+///
+/// The routing lookup in `model_router.rs:98-145` needs a `channel_abilities` row matching
+/// `(group, model, enabled = 1)`; only then does it resolve the channel through
+/// `ChannelProviderModel::list_by_ids`. When any of those is absent the router answers 404
+/// `no_available_channel`, which does not say which condition failed. This dumps the tables so the
+/// condition is visible in the test output.
+async fn describe_routing_inputs(
+    pool: &burncloud_database::sqlx::AnyPool,
+    group: &str,
+    model: &str,
+) {
+    let abilities: Vec<(String, String, i32, i64, i64)> = burncloud_database::sqlx::query_as(
+        "SELECT `group`, model, channel_id, enabled, priority FROM channel_abilities",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    println!("channel_abilities rows: {abilities:?}");
+
+    let matching: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT COUNT(*) FROM channel_abilities WHERE `group` = ? AND model = ? AND enabled = 1",
+    )
+    .bind(group)
+    .bind(model)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    println!("rows matching (group={group}, model={model}, enabled=1): {matching}");
+
+    let providers: Vec<(i32, String, i64, String)> = burncloud_database::sqlx::query_as(
+        "SELECT id, name, status, models FROM channel_providers",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    println!("channel_providers rows: {providers:?}");
+
+    // The columns the router's channel lookup reads. A fixture created before a migration added a column
+    // would be missing them, which is the hypothesis this prints an answer to.
+    let cols: Vec<String> = burncloud_database::sqlx::query("PRAGMA table_info(channel_providers)")
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| {
+            use burncloud_database::sqlx::Row;
+            r.get::<String, _>("name")
+        })
+        .collect();
+    println!("channel_providers columns: {cols:?}");
+}
+
+/// Give a credential enough quota that the router will serve it.
+///
+/// **The served path reads `user_api_keys.remain_quota`, not `router_tokens.quota_limit`.** From
+/// `lib.rs:1432-1448`: when `validate_token_and_get_info` succeeds, the router takes the limit from
+/// `info.remain_quota`, which is that column. The `router_tokens` row is only read in the `Ok(None)`
+/// fallback branch, which a credential present in `user_api_keys` never reaches. Without this the router
+/// answers 402 before reaching the upstream.
+///
+/// Both rows are set: the first because it is the one that is read, the second to keep the fallback usable.
+async fn grant_quota(
+    db: &burncloud_database::Database,
+    token: &str,
+    user_id: &str,
+) -> anyhow::Result<()> {
+    let pool = db.get_connection()?.pool();
+
+    let updated = burncloud_database::sqlx::query(
+        "UPDATE user_api_keys SET remain_quota = 1000000000, used_quota = 0 WHERE key = ?",
+    )
+    .bind(token)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    assert_eq!(
+        updated, 1,
+        "the credential must already exist in user_api_keys for its quota to be set; the fixture inserts \
+         it first, so a count of 0 means the fixture changed"
+    );
+
+    burncloud_database::sqlx::query(
+        "INSERT OR REPLACE INTO router_tokens \
+         (token, user_id, status, quota_limit, used_quota, expired_time, accessed_time) \
+         VALUES (?, ?, 'active', 1000000000, 0, -1, 0)",
+    )
+    .bind(token)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Bring up a router with a database and one channel serving one model.
+async fn routed_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::Database)> {
+    let (db, pool, db_url) = setup_db().await?;
+    let router_port = 21_000 + (tag.len() as u16 % 20) * 100;
+
+    // A price for the model, so `cost > 0` and the settlement path is reachable.
+    burncloud_database::sqlx::query(
+        "INSERT OR REPLACE INTO billing_prices \
+         (model, currency, region, input_price, output_price) \
+         VALUES ('no-double-bill-model', 'USD', 'international', 1000000000, 1000000000)",
+    )
+    .execute(&pool)
+    .await?;
+
+    let upstream_port = 21_500 + (tag.len() as u16 % 20) * 100;
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{upstream_port}")).await?;
+    tokio::spawn(common::start_mock_upstream(listener));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    insert_test_channel(
+        &pool,
+        1,
+        "no-double-bill-channel",
+        &format!("http://127.0.0.1:{upstream_port}"),
+        "sk-upstream",
+        "no-double-bill-model",
+        "default",
+    )
+    .await?;
+
+    describe_routing_inputs(&pool, "default", "no-double-bill-model").await;
+
+    common::start_test_server(router_port, &db_url).await;
+    Ok((router_port, db))
+}
 
 /// Bring up a router with a database, without needing the upstream or channel fixtures.
 async fn router_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::Database)> {
@@ -157,6 +289,55 @@ async fn a_request_with_an_unknown_credential_settles_nothing() -> anyhow::Resul
     assert_eq!(
         rows, 0,
         "a settlement created a router_tokens row for a credential that was never issued"
+    );
+
+    Ok(())
+}
+
+/// Diagnostic probe for the routing fixture blocker (#660). Not an assertion about behaviour yet: it prints
+/// what the routing path sees and what the router answers, so the failing condition is named rather than
+/// inferred from a 404.
+///
+/// **Ignored, not deleted.** It fails today, on purpose: the fixture does not produce a served request. It is
+/// kept so the blocker is reproducible with one command rather than a paragraph --
+/// `cargo test -p burncloud-router --test settlement_once -- --ignored --nocapture` prints the tables, the
+/// candidate count at each pipeline stage, and the router's answer. Remove the `ignore` when #660 is fixed;
+/// the test then asserts the served request and becomes the end-to-end half of this file.
+#[ignore = "blocked on #660: the routing fixture does not produce a served request"]
+#[tokio::test]
+async fn probe_what_the_routing_path_sees() -> anyhow::Result<()> {
+    let (router_port, db) = routed_fixture("probe").await?;
+    let conn = db.get_connection()?;
+    let pool = conn.pool().clone();
+
+    let token = "sk-probe-channel";
+    insert_router_token(&db, token, "probe-user", "default", Some("value"), None).await?;
+    grant_quota(&db, token, "probe-user").await?;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!(
+            "http://127.0.0.1:{router_port}/v1/chat/completions"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "model": "no-double-bill-model",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    println!("PROBE status: {status}");
+    println!("PROBE body: {}", &body[..body.len().min(300)]);
+
+    let settled = settled_amount(&pool, token).await;
+    println!("PROBE settled: {settled}");
+    assert!(
+        status.is_success(),
+        "the routing fixture still does not produce a served request; the PROBE lines above name which \
+         condition is unmet"
     );
 
     Ok(())
