@@ -11,7 +11,10 @@ use tempfile::NamedTempFile;
 /// Create an isolated `SettingDatabase` backed by a fresh SQLite temp file.
 async fn create_test_setting_db() -> (SettingDatabase, NamedTempFile) {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+    let url = format!(
+        "sqlite:///{}?mode=rwc",
+        tmp.path().display().to_string().replace('\\', "/")
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to connect to test database: {e}"));

@@ -6,6 +6,57 @@ use std::str::FromStr;
 
 use crate::error::{DatabaseError, Result};
 
+/// Build a SQLite connection URL for a filesystem path.
+///
+/// **Extracted so the rules can be tested without touching the filesystem**, which the crate's plan asks for
+/// ("先规划最小可测试接缝"). The logic lived inside `Database::new`, where exercising it meant creating a real
+/// database and reading an environment variable.
+///
+/// The rules, and the defect the old form had:
+///
+/// * **An absolute path always needs three slashes.** `sqlite:///C:/data/db.sqlite` is the absolute form;
+///   `sqlite://C:/data/db.sqlite` is parsed as a **host** named `C:` and fails with
+///   `(code: 14) unable to open database file`. The same is true of a Unix-style path beginning with `/`, which
+///   Windows accepts -- `sqlite:///tmp/db.sqlite` is absolute but `sqlite:///tmp...` written with two slashes is
+///   not.
+/// * **A relative path keeps two slashes**, because with three the leading `/` would become part of the path
+///   and turn `data/db.sqlite` into `/data/db.sqlite`, i.e. an absolute path the caller did not ask for.
+///
+/// The previous condition was `is_windows() && !path.starts_with('/')`, which sent a Windows absolute path
+/// written with forward slashes -- `/tmp/db.sqlite` -- down the **relative** branch, producing
+/// `sqlite:///tmp/db.sqlite`'s broken sibling `sqlite://tmp/db.sqlite`. That is the exact failure this function
+/// now prevents, and it is why the rule is about the path shape rather than the platform.
+///
+/// `is_windows` is still a parameter because the *separator* convention differs, and because a caller may be
+/// building a URL for a database on another machine; it affects only how a bare drive path is recognised.
+pub fn sqlite_url(path: &str, is_windows: bool, create_if_missing: bool) -> String {
+    let suffix = if create_if_missing { "?mode=rwc" } else { "" };
+    if is_absolute_path(path, is_windows) {
+        format!("sqlite:///{}{}", path.trim_start_matches('/'), suffix)
+    } else {
+        format!("sqlite://{}{}", path, suffix)
+    }
+}
+
+/// Whether `path` is absolute under the given platform's conventions.
+///
+/// Three shapes count: a leading `/` (POSIX, and accepted by Windows), a drive letter followed by `:` (Windows
+/// only, so `C:foo` is not treated as absolute on Unix), and a UNC path (`//server/share`).
+fn is_absolute_path(path: &str, is_windows: bool) -> bool {
+    if path.starts_with('/') || path.starts_with("//") {
+        return true;
+    }
+    if !is_windows {
+        return false;
+    }
+    // `C:/...` or `C:\...` -- a drive letter, a colon, then a separator.
+    let bytes: Vec<char> = path.chars().take(3).collect();
+    bytes.len() == 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == ':'
+        && (bytes[2] == '/' || bytes[2] == '\\')
+}
+
 #[derive(Clone)]
 pub struct DatabaseConnection {
     pool: AnyPool,
@@ -74,11 +125,7 @@ impl Database {
                 .to_string()
                 .replace('\\', "/");
             // Ensure we use mode=rwc for SQLite to create file
-            if is_windows() && !normalized_path.starts_with('/') {
-                format!("sqlite:///{}?mode=rwc", normalized_path)
-            } else {
-                format!("sqlite://{}?mode=rwc", normalized_path)
-            }
+            sqlite_url(&normalized_path, is_windows(), true)
         };
 
         let mut db = Self {
