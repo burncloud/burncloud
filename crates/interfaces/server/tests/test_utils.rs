@@ -2,7 +2,13 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::let_and_return,
-    clippy::disallowed_types
+    clippy::disallowed_types,
+    dead_code,
+    reason = "Shared test helper. Each file in `tests/` is its own crate, so this one is also built as a \
+              standalone test binary in which none of these helpers is used; the binaries that do use them \
+              are `api_tests.rs`, `log_api_tests.rs` and `security_invariants.rs`. The helpers stay `pub` \
+              within the crate for that reason, which is also why some are reported as unreachable from \
+              outside it."
 )]
 
 use burncloud_database::{create_database_with_url, Database};
@@ -12,14 +18,14 @@ use burncloud_server::InternalSecret;
 use burncloud_service_user::JwtSecret;
 use std::sync::Arc;
 
-pub const TEST_INTERNAL_SECRET: &str = "burncloud-server-test-internal-secret";
+pub(crate) const TEST_INTERNAL_SECRET: &str = "burncloud-server-test-internal-secret";
 
-pub fn test_jwt_secret() -> JwtSecret {
+pub(crate) fn test_jwt_secret() -> JwtSecret {
     JwtSecret::new("burncloud-server-test-jwt-secret")
         .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"))
 }
 
-pub fn test_internal_secret() -> InternalSecret {
+pub(crate) fn test_internal_secret() -> InternalSecret {
     InternalSecret::new(TEST_INTERNAL_SECRET)
         .unwrap_or_else(|e| panic!("test internal secret must be valid: {e}"))
 }
@@ -27,7 +33,7 @@ pub fn test_internal_secret() -> InternalSecret {
 /// Create an isolated temp-file database for a server test.
 /// Each call returns a fresh `Arc<Database>` backed by a unique temp file,
 /// so concurrent server tests do not share SQLite state and cannot lock each other.
-pub async fn make_isolated_db() -> Arc<Database> {
+pub(crate) async fn make_isolated_db() -> Arc<Database> {
     if std::env::var("MASTER_KEY").is_err() {
         std::env::set_var(
             "MASTER_KEY",

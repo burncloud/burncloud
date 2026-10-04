@@ -13,11 +13,11 @@ use serde_json::{json, Value};
 /// SSE stream termination marker.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 
-pub struct ZaiAdaptor;
+pub(crate) struct ZaiAdaptor;
 
 impl ZaiAdaptor {
     /// Convert OpenAI Chat request to z.ai (Anthropic-compatible) request
-    pub fn convert_request(req: OpenAIChatRequest) -> Value {
+    pub(crate) fn convert_request(req: OpenAIChatRequest) -> Value {
         let mut system_prompt = None;
         let mut messages = Vec::new();
 
@@ -55,7 +55,7 @@ impl ZaiAdaptor {
     }
 
     /// Convert z.ai (Anthropic-compatible) response to OpenAI format
-    pub fn convert_response(zai_resp: Value, model: &str) -> Value {
+    pub(crate) fn convert_response(zai_resp: Value, model: &str) -> Value {
         // Extract text from content array
         let text = zai_resp
             .get("content")
@@ -103,7 +103,7 @@ impl ZaiAdaptor {
     ///
     /// ```
     /// This function handles both single-line and multi-line chunks.
-    pub fn convert_stream_chunk(chunk: &str, model: &str) -> Option<String> {
+    pub(crate) fn convert_stream_chunk(chunk: &str, model: &str) -> Option<String> {
         let mut current_event: Option<&str> = None;
 
         // Process each line in the chunk

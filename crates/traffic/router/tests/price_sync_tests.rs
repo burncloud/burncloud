@@ -465,7 +465,7 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
     // Use a unique temp file so this test is isolated from the shared test DB
     let tmp_path = "/tmp/burncloud_cold_start_test.db".to_string();
     let _ = std::fs::remove_file(&tmp_path); // clean up from any previous run
-    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
+                                             // Three slashes plus a platform-aware separator; see the note in `common.rs`.
     #[cfg(windows)]
     let normalized = tmp_path.replace('\\', "/");
     #[cfg(not(windows))]

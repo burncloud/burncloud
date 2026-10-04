@@ -7,7 +7,7 @@
 use crate::{DatabaseError, Result};
 use sqlx::{AnyPool, Row};
 
-pub async fn apply(pool: &AnyPool) -> Result<()> {
+pub(super) async fn apply(pool: &AnyPool) -> Result<()> {
     ensure_channel_protocol_configs(pool).await?;
     fix_bool_column(
         pool,

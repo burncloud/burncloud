@@ -55,7 +55,7 @@ pub trait ChannelAdaptor: Send + Sync {
 }
 
 // Implementations will go here or in submodules
-pub struct OpenAIAdaptor;
+pub(crate) struct OpenAIAdaptor;
 #[async_trait]
 impl ChannelAdaptor for OpenAIAdaptor {
     fn name(&self) -> &'static str {
@@ -72,7 +72,7 @@ impl ChannelAdaptor for OpenAIAdaptor {
     }
 }
 
-pub struct AnthropicAdaptor;
+pub(crate) struct AnthropicAdaptor;
 #[async_trait]
 impl ChannelAdaptor for AnthropicAdaptor {
     fn name(&self) -> &'static str {
@@ -104,7 +104,7 @@ impl ChannelAdaptor for AnthropicAdaptor {
     }
 }
 
-pub struct GoogleGeminiAdaptor;
+pub(crate) struct GoogleGeminiAdaptor;
 #[async_trait]
 impl ChannelAdaptor for GoogleGeminiAdaptor {
     fn name(&self) -> &'static str {
@@ -204,7 +204,7 @@ impl ChannelAdaptor for GoogleGeminiAdaptor {
 }
 
 /// z.ai Adaptor - Uses Anthropic-compatible protocol with Bearer authentication
-pub struct ZaiAdaptor;
+pub(crate) struct ZaiAdaptor;
 
 #[async_trait]
 impl ChannelAdaptor for ZaiAdaptor {
@@ -241,10 +241,10 @@ impl ChannelAdaptor for ZaiAdaptor {
     }
 }
 
-pub struct AdaptorFactory;
+pub(crate) struct AdaptorFactory;
 
 impl AdaptorFactory {
-    pub fn get_adaptor(channel_type: ChannelType) -> Box<dyn ChannelAdaptor> {
+    pub(crate) fn get_adaptor(channel_type: ChannelType) -> Box<dyn ChannelAdaptor> {
         match channel_type {
             ChannelType::OpenAI
             | ChannelType::Azure

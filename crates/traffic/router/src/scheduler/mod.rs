@@ -22,13 +22,13 @@ use crate::channel_state::ChannelStateTracker;
 use crate::exchange_rate::ExchangeRateService;
 use crate::order_type::OrderType;
 
-pub use combined::CombinedScheduler;
+pub(crate) use combined::CombinedScheduler;
 #[cfg(test)]
-pub use passthrough::PassthroughScheduler;
+pub(crate) use passthrough::PassthroughScheduler;
 
 /// Error type for scheduling operations.
 #[derive(Debug, thiserror::Error)]
-pub enum ScheduleError {
+pub(crate) enum ScheduleError {
     #[error("scheduling failed: {0}")]
     #[allow(dead_code)] // Used by trait implementors; compiler can't see across dyn dispatch
     Internal(String),
@@ -36,7 +36,7 @@ pub enum ScheduleError {
 
 /// Pre-computed scheduling factors for a single candidate.
 #[derive(Debug, Clone, Copy)]
-pub struct CandidateFactors {
+pub(crate) struct CandidateFactors {
     pub health: f64,
     pub cost: f64,
     pub rpm: f64,
@@ -50,7 +50,7 @@ pub struct CandidateFactors {
 /// DiffServ principle: schedulers stay color-agnostic, the L2 Shaper is the
 /// only layer that consumes color (audit decision D6 / E-D1 / E-D2).
 #[derive(Debug, Clone, Default)]
-pub struct SchedulingContext {
+pub(crate) struct SchedulingContext {
     /// Per-candidate pre-computed factors (health, cost, rpm).
     pub factors: HashMap<i32, CandidateFactors>,
 }
@@ -85,7 +85,7 @@ impl SchedulingRequest {
 ///
 /// Implementations must be stateless and panic-safe.
 /// The orchestrator wraps `score()` in `catch_unwind` for protection.
-pub trait ChannelScheduler: Send + Sync {
+pub(crate) trait ChannelScheduler: Send + Sync {
     fn name(&self) -> &'static str;
     fn score(
         &self,
@@ -144,7 +144,7 @@ pub enum SchedulerKind {
 }
 
 /// Maps group name → scheduler kind.
-pub type SchedulerPolicyMap = HashMap<String, SchedulerKind>;
+pub(crate) type SchedulerPolicyMap = HashMap<String, SchedulerKind>;
 
 /// RPM factor for channels in Learning state — neutral, capacity unknown.
 const RPM_FACTOR_LEARNING: f64 = 1.0;
@@ -162,7 +162,7 @@ const RPM_FACTOR_COOLDOWN: f64 = 0.1;
 /// ```
 ///
 /// Falls back to all-groups-passthrough if env var is missing or invalid.
-pub fn load_scheduler_config() -> SchedulerPolicyMap {
+pub(crate) fn load_scheduler_config() -> SchedulerPolicyMap {
     let json_str = match std::env::var("SCHEDULER_POLICIES") {
         Ok(v) => v,
         Err(_) => return HashMap::new(),
@@ -231,7 +231,7 @@ fn default_type() -> String {
 /// Currently only used in tests; `route_with_scheduler` inlines this logic
 /// to avoid an extra dyn dispatch when the passthrough fast-path is taken.
 #[cfg(test)]
-pub fn pick_scheduler<'a>(
+pub(crate) fn pick_scheduler<'a>(
     group: &str,
     policies: &'a SchedulerPolicyMap,
     passthrough: &'a PassthroughScheduler,
@@ -248,7 +248,7 @@ pub fn pick_scheduler<'a>(
 /// Wraps `score()` in `catch_unwind` for panic protection.
 /// On panic or error, falls back to PassthroughScheduler ordering.
 /// Takes ownership to avoid cloning Channels.
-pub fn rank_candidates(
+pub(crate) fn rank_candidates(
     candidates: Vec<(Channel, i32)>,
     ctx: &SchedulingContext,
     scheduler: &dyn ChannelScheduler,
@@ -292,7 +292,7 @@ pub fn rank_candidates(
 /// Short-circuits to a simple sort by admin weight (descending) without
 /// allocating SchedulingContext or going through the full scoring pipeline.
 /// Takes ownership to avoid cloning Channels.
-pub fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i32)> {
+pub(crate) fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i32)> {
     if candidates.len() <= 1 {
         return candidates;
     }
@@ -304,7 +304,7 @@ pub fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Channel, i3
 ///
 /// Pre-computes all scheduling factors (health, cost, rpm) per candidate
 /// in a single pass over channel state.
-pub async fn build_context(
+pub(crate) async fn build_context(
     model: &str,
     candidates: &[(Channel, i32)],
     state_tracker: &ChannelStateTracker,
@@ -381,11 +381,11 @@ pub async fn build_context(
 }
 
 #[cfg(test)]
-pub mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Helper to create a Channel for tests.
-    pub fn make_channel(id: i32, weight: i32) -> (Channel, i32) {
+    pub(crate) fn make_channel(id: i32, weight: i32) -> (Channel, i32) {
         (
             Channel {
                 id,

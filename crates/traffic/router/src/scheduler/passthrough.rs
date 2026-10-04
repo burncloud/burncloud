@@ -12,7 +12,7 @@ use super::{ChannelScheduler, ScheduleError, SchedulingContext};
 /// Passthrough scheduler — uses admin-configured weights only.
 ///
 /// Test-only. Production code uses `rank_passthrough` directly.
-pub struct PassthroughScheduler;
+pub(crate) struct PassthroughScheduler;
 
 impl ChannelScheduler for PassthroughScheduler {
     fn name(&self) -> &'static str {

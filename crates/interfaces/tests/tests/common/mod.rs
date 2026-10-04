@@ -11,7 +11,7 @@
     clippy::redundant_pattern_matching,
     dead_code
 )]
-pub mod evidence;
+pub(crate) mod evidence;
 
 use dotenvy::dotenv;
 use reqwest::Client;
@@ -31,7 +31,7 @@ struct ServerHandle {
     process: Option<Child>, // Keep child alive
 }
 
-pub async fn spawn_app() -> String {
+pub(crate) async fn spawn_app() -> String {
     // Load .env
     dotenv().ok();
 
@@ -153,17 +153,17 @@ async fn wait_for_server(url: &str) {
 }
 
 #[allow(dead_code)]
-pub fn get_root_token() -> String {
+pub(crate) fn get_root_token() -> String {
     "sk-root-token-123456".to_string()
 }
 
 #[allow(dead_code)]
-pub fn get_demo_token() -> String {
+pub(crate) fn get_demo_token() -> String {
     "sk-burncloud-demo".to_string()
 }
 
 #[allow(dead_code)]
-pub fn get_openai_config() -> Option<(String, String)> {
+pub(crate) fn get_openai_config() -> Option<(String, String)> {
     dotenv().ok();
     let key = env::var("TEST_OPENAI_KEY").ok().filter(|k| !k.is_empty())?;
     let url =
@@ -175,7 +175,7 @@ pub fn get_openai_config() -> Option<(String, String)> {
 
 /// Insert a price entry for a mock model so the router's preflight check passes.
 #[allow(dead_code)]
-pub async fn insert_mock_price(model: &str) {
+pub(crate) async fn insert_mock_price(model: &str) {
     let db_url = std::env::var("BURNCLOUD_DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:///tmp/test_burncloud.db?mode=rwc".to_string());
     let pool = sqlx::sqlite::SqlitePoolOptions::new()

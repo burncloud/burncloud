@@ -18,7 +18,7 @@ const SCAN_DIRS: &[&str] = &[
     "src",
 ];
 
-pub fn run_ui_conventions(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
+pub(super) fn run_ui_conventions(root: &Path) -> anyhow::Result<(bool, Vec<String>)> {
     let client = client_crate_dir(root);
     let patterns: &[(&str, &str)] = &[
         (

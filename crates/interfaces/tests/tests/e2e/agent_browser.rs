@@ -27,7 +27,7 @@ struct RawResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct BrowserResponse {
+pub(crate) struct BrowserResponse {
     #[allow(dead_code)]
     pub success: bool,
     pub data: Option<serde_json::Value>,
@@ -35,7 +35,7 @@ pub struct BrowserResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct SnapshotResult {
+pub(crate) struct SnapshotResult {
     pub text: String,
     #[allow(dead_code)]
     pub refs: serde_json::Value,
@@ -46,7 +46,7 @@ pub struct SnapshotResult {
 /// Each instance uses a unique `--session` to isolate browser state between
 /// parallel tests. The daemon persists between commands within the same session,
 /// maintaining cookies/localStorage for login flows.
-pub struct AgentBrowser {
+pub(crate) struct AgentBrowser {
     base_url: String,
     screenshot_dir: String,
     session: String,
@@ -54,7 +54,7 @@ pub struct AgentBrowser {
 }
 
 impl AgentBrowser {
-    pub fn new(base_url: &str) -> Self {
+    pub(crate) fn new(base_url: &str) -> Self {
         // Use absolute path for screenshots since agent-browser runs in a
         // different working directory than the test process.
         let screenshot_dir = std::env::var("AESTHETIC_ARTIFACTS_DIR")
@@ -161,7 +161,7 @@ impl AgentBrowser {
     }
 
     /// Navigate to a URL path (relative to base_url).
-    pub fn open(&mut self, path: &str) -> Result<BrowserResponse> {
+    pub(crate) fn open(&mut self, path: &str) -> Result<BrowserResponse> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self.exec(&["open", &url])?;
         let _ = self.exec(&["wait", "--load", "domcontentloaded"]);
@@ -171,14 +171,14 @@ impl AgentBrowser {
     }
 
     /// Click an element by selector.
-    pub fn click(&mut self, selector: &str) -> Result<BrowserResponse> {
+    pub(crate) fn click(&mut self, selector: &str) -> Result<BrowserResponse> {
         self.exec(&["click", selector])
     }
 
     /// Click an element by its accessible name (from the accessibility tree).
     /// Takes a snapshot, finds the ref with matching name, then clicks via ref.
     /// Supports matching by role: e.g. "button:登录", "link:Sign In".
-    pub fn click_by_name(&mut self, name: &str, timeout_ms: u64) -> Result<BrowserResponse> {
+    pub(crate) fn click_by_name(&mut self, name: &str, timeout_ms: u64) -> Result<BrowserResponse> {
         let start = Instant::now();
         loop {
             let snap = self.snapshot()?;
@@ -216,12 +216,12 @@ impl AgentBrowser {
     }
 
     /// Fill an input field by selector.
-    pub fn fill(&mut self, selector: &str, text: &str) -> Result<BrowserResponse> {
+    pub(crate) fn fill(&mut self, selector: &str, text: &str) -> Result<BrowserResponse> {
         self.exec(&["fill", selector, text])
     }
 
     /// Get the accessibility tree snapshot.
-    pub fn snapshot(&mut self) -> Result<SnapshotResult> {
+    pub(crate) fn snapshot(&mut self) -> Result<SnapshotResult> {
         let resp = self.exec(&["snapshot", "-i"])?;
         if Self::is_daemon_error(&resp.raw_stdout) {
             let _ = self.exec(&["close"]);
@@ -259,7 +259,7 @@ impl AgentBrowser {
 
     /// Wait for any of the given strings to appear in the accessibility tree.
     /// One snapshot per poll (OR semantics).
-    pub fn wait_for_any_text(
+    pub(crate) fn wait_for_any_text(
         &mut self,
         expected: &[&str],
         timeout_ms: u64,
@@ -293,19 +293,23 @@ impl AgentBrowser {
     ///
     /// Essential for Dioxus LiveView: the HTML page is a shell that renders
     /// content via WebSocket after page load.
-    pub fn wait_for_text(&mut self, expected: &str, timeout_ms: u64) -> Result<SnapshotResult> {
+    pub(crate) fn wait_for_text(
+        &mut self,
+        expected: &str,
+        timeout_ms: u64,
+    ) -> Result<SnapshotResult> {
         self.wait_for_any_text(&[expected], timeout_ms)
     }
 
     /// Take a screenshot and save to the screenshot directory.
-    pub fn screenshot(&self, name: &str) -> Result<()> {
+    pub(crate) fn screenshot(&self, name: &str) -> Result<()> {
         let path = format!("{}/{}.png", self.screenshot_dir, name);
         self.exec(&["screenshot", &path])?;
         Ok(())
     }
 
     /// Full-page screenshot (viewport + scrollable content).
-    pub fn screenshot_full(&self, name: &str) -> Result<()> {
+    pub(crate) fn screenshot_full(&self, name: &str) -> Result<()> {
         let path = format!("{}/{}.png", self.screenshot_dir, name);
         self.exec(&["screenshot", "--full", &path])?;
         Ok(())
@@ -313,7 +317,7 @@ impl AgentBrowser {
 
     /// Evaluate JavaScript in the browser context.
     /// Returns the `result` field from the eval response data.
-    pub fn eval(&mut self, js: &str) -> Result<serde_json::Value> {
+    pub(crate) fn eval(&mut self, js: &str) -> Result<serde_json::Value> {
         let resp = self.exec(&["eval", js])?;
         // agent-browser eval returns {"data": {"result": <value>}}
         if let Some(data) = resp.data {
@@ -329,7 +333,7 @@ impl AgentBrowser {
 
     /// Close the browser session.
     #[allow(dead_code)]
-    pub fn close(&self) -> Result<()> {
+    pub(crate) fn close(&self) -> Result<()> {
         let _ = self.exec(&["close"]);
         Ok(())
     }
@@ -342,7 +346,7 @@ impl Drop for AgentBrowser {
 }
 
 /// Check if agent-browser CLI is available.
-pub fn is_agent_browser_available() -> bool {
+pub(crate) fn is_agent_browser_available() -> bool {
     find_agent_browser_binary().is_some()
 }
 

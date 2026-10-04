@@ -44,7 +44,7 @@
 //! calculator which convention it is being handed, or normalise in the parser) and choosing belongs to
 //! whoever owns the billing contract. Filed as its own issue, with the failing test that names the contract.
 
-use burncloud_service_billing::types::{CostBreakdown, UnifiedUsage};
+use burncloud_service_billing::types::UnifiedUsage;
 
 /// The de-duplication question, expressed on `CostBreakdown` so it does not depend on a database.
 ///
@@ -52,7 +52,7 @@ use burncloud_service_billing::types::{CostBreakdown, UnifiedUsage};
 /// matter and the arithmetic is stated explicitly. Where a value comes from the calculator it is labelled.
 mod reference {
     /// `cost = tokens * price_per_million / 1_000_000`, the calculator's own formula.
-    pub fn nano(tokens: i64, price_per_million: i64) -> i64 {
+    pub(crate) fn nano(tokens: i64, price_per_million: i64) -> i64 {
         tokens * price_per_million / 1_000_000
     }
 }
