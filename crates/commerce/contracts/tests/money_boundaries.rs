@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test-only file: unwrap/expect are how these boundary assertions report a failure"
+)]
 //! Boundary behaviour of the nanodollar money contract (#633).
 //!
 //! `src/price_u64.rs` already tests the ordinary range. What was untested is what happens *outside*

@@ -1,4 +1,11 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    reason = "test-only file: unwrap/expect are the assertion mechanism, and the negative cases must \
+              build JSON of the wrong shape by hand -- a typed fixture cannot express 'a number where \
+              a string is required', which is precisely what these tests reject"
+)]
 //! Rejection behaviour of the Supply contract (#633).
 //!
 //! `channel_contract.rs` covers what the contract accepts: the discriminant table, the `type` field
