@@ -137,3 +137,140 @@ async fn wait_for_rpc_ready(port: u16, secret: &Option<String>) -> Aria2Result<(
     // 所有轮询均失败后返回启动超时错误
     Err(Aria2Error::RpcError("RPC 服务启动超时".to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{check_port_available, find_available_port};
+    use crate::constants::{DEFAULT_PORT, MAX_PORT_RANGE};
+
+    /// A port that something is listening on is reported unavailable, and the same port is available once the
+    /// listener is gone.
+    ///
+    /// Both directions matter: a function that always returned `true` would let `find_available_port` hand out a
+    /// port already in use, and one that always returned `false` would make it fail on an idle machine.
+    #[test]
+    fn a_bound_port_is_unavailable_and_becomes_available_when_released() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("an ephemeral port");
+        let port = listener.local_addr().expect("a local address").port();
+
+        assert!(
+            !check_port_available(port),
+            "port {port} is bound by this test, so it must report as unavailable"
+        );
+
+        drop(listener);
+
+        // Reported as available again. A short retry, because the OS releases the socket asynchronously on some
+        // platforms and asserting immediately can be a race rather than a fact.
+        let mut available = false;
+        for _ in 0..50 {
+            if check_port_available(port) {
+                available = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        println!("port {port} available after release: {available}");
+        assert!(
+            available,
+            "the port must be available once the listener is dropped"
+        );
+    }
+
+    /// `find_available_port` returns a free port **inside the configured range**, and the port it returns can
+    /// actually be bound.
+    ///
+    /// The second half is the part worth asserting: a function that returned a port without checking, or checked
+    /// a different one, would still return a number in range.
+    #[test]
+    fn the_port_found_is_in_range_and_free() {
+        let port = find_available_port().expect("an idle machine has a free port in the range");
+        println!("find_available_port -> {port}");
+
+        assert!(
+            (DEFAULT_PORT..=DEFAULT_PORT + MAX_PORT_RANGE).contains(&port),
+            "the port must be within {DEFAULT_PORT}..={}, got {port}",
+            DEFAULT_PORT + MAX_PORT_RANGE
+        );
+
+        // Binding it proves nothing else holds it, which is what "available" is supposed to mean. If this fails
+        // the check and the search disagreed.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port));
+        assert!(
+            listener.is_ok(),
+            "find_available_port returned {port} but it cannot be bound: {:?}",
+            listener.err()
+        );
+    }
+
+    /// The search prefers the **first** free port in the range, so the default is used when it is free.
+    ///
+    /// Recorded as a property of the search rather than a requirement: the loop starts at `DEFAULT_PORT` and
+    /// returns the first candidate that binds. A test that only checked "some free port" would accept a search
+    /// that scanned backwards, which would move the daemon off its documented default on every launch.
+    #[test]
+    fn the_search_starts_at_the_default_port() {
+        // Only meaningful when the default port is free, which it is on a machine running no aria2.
+        if !check_port_available(DEFAULT_PORT) {
+            println!(
+                "port {DEFAULT_PORT} is in use, so the starting point cannot be observed here"
+            );
+            return;
+        }
+
+        let port = find_available_port().expect("a free port");
+        println!("default {DEFAULT_PORT} is free; find_available_port -> {port}");
+        assert_eq!(
+            port, DEFAULT_PORT,
+            "with the default free, the search must return it rather than a later candidate"
+        );
+    }
+
+    /// **Recorded, not fixed, and deliberately not invoked.**
+    ///
+    /// `kill_existing_aria2` runs `taskkill /F /IM aria2c.exe`, which terminates **every** aria2 process on the
+    /// machine, and `start_aria2_rpc` calls it unconditionally before starting its own. The plan lists "只终止
+    /// 自己启动的进程"; this is the opposite -- it terminates processes this program did not start, so a user's
+    /// own downloads are killed when the application launches.
+    ///
+    /// There is no assertion to make without killing something: calling the function in a test would terminate
+    /// real aria2 processes on the machine running the tests, which is exactly the behaviour being reported. So
+    /// the test asserts the *shape of the code* instead -- that the function is reached from the start path --
+    /// by reading the source, which is a weaker check than executing it and the only one available.
+    ///
+    /// The proper fix is to track the child process and terminate only that one, which is what `Aria2Daemon::stop`
+    /// already does through `self.instance`. The initial sweep is the part that cannot distinguish "a process I
+    /// left behind" from "a process the user started".
+    #[test]
+    fn the_initial_process_sweep_terminates_aria2_processes_this_program_did_not_start() {
+        // Read the source of this module, so the assertion is about the shipped code rather than about a copy of
+        // its behaviour.
+        let source = include_str!("process.rs");
+
+        assert!(
+            source.contains("taskkill"),
+            "the sweep is still performed with `taskkill`"
+        );
+        assert!(
+            source.contains("\"/IM\""),
+            "and it is an image-name match, which selects every aria2c.exe on the machine rather than one \
+             process"
+        );
+        // The call site: the sweep happens before the port is chosen, so it runs on every start.
+        let sweep = source
+            .find("kill_existing_aria2();")
+            .expect("the call site");
+        let port = source
+            .find("let port = find_available_port()?")
+            .expect("the port choice");
+        assert!(
+            sweep < port,
+            "the sweep runs before the port is chosen, so it is unconditional on every start"
+        );
+
+        println!(
+            "recorded: `start_aria2_rpc` terminates every aria2c.exe before starting its own, which the plan \
+             forbids; `Aria2Daemon::stop` correctly kills only its own instance"
+        );
+    }
+}

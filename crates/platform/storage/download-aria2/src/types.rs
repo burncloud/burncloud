@@ -10,7 +10,16 @@ use crate::error::{Aria2Error, Aria2Result};
 // 数据结构定义
 // ============================================================================
 
-#[derive(Debug, Clone)]
+/// Configuration for an aria2 process.
+///
+/// **`Debug` is written by hand so the secret cannot be printed.** The derived implementation would have
+/// included `secret`, and `Aria2Config` is held by `Aria2Instance`, which the daemon stores -- so a single
+/// `println!("{:?}", ...)` anywhere on that path would put the RPC token into a log. The plan lists "token 不写
+/// 日志" and this is the one place where the type invites it.
+///
+/// The substitution is a fixed marker rather than a masked prefix: a partial token is still a token, and the
+/// useful information in a log line is *whether* a secret is set, not what it is.
+#[derive(Clone)]
 pub struct Aria2Config {
     pub port: u16,
     pub secret: Option<String>,
@@ -36,6 +45,26 @@ impl Default for Aria2Config {
             split_size: "1M".to_string(),
             aria2_path: get_burncloud_dir().join("aria2c.exe"),
         }
+    }
+}
+
+impl std::fmt::Debug for Aria2Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Aria2Config")
+            .field("port", &self.port)
+            // Whether a secret exists, never the secret itself.
+            .field(
+                "secret",
+                &match &self.secret {
+                    Some(_) => "<redacted>",
+                    None => "<none>",
+                },
+            )
+            .field("download_dir", &self.download_dir)
+            .field("max_connections", &self.max_connections)
+            .field("split_size", &self.split_size)
+            .field("aria2_path", &self.aria2_path)
+            .finish()
     }
 }
 
@@ -122,5 +151,88 @@ impl Aria2Instance {
             .wait()
             .map_err(|e| Aria2Error::ProcessError(e.to_string()))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Aria2Config;
+
+    /// **The token must not appear in the `Debug` output**, which is what a log line uses.
+    ///
+    /// The derived `Debug` printed `secret: Some("s3cr3t")`, and `Aria2Config` is reachable from `Aria2Instance`,
+    /// which the daemon stores -- so any `{:?}` on that path would write the RPC token to a log. The plan lists
+    /// "token 不写日志" and this is where the type invites the mistake.
+    ///
+    /// The assertion is on the **whole rendered string** rather than on a field, because a partial leak is a
+    /// leak: `format!("{:?}", config)` is what a caller writes.
+    #[test]
+    fn the_debug_output_does_not_contain_the_secret() {
+        let secret = "s3cr3t-token-value";
+        let config = Aria2Config {
+            secret: Some(secret.to_string()),
+            ..Aria2Config::default()
+        };
+
+        let rendered = format!("{config:?}");
+        println!("{rendered}");
+
+        assert!(
+            !rendered.contains(secret),
+            "the secret must not be in the Debug output: {rendered}"
+        );
+        // No prefix either: a partial token is still a token.
+        for length in [3, 6, 8] {
+            let prefix = &secret[..length];
+            assert!(
+                !rendered.contains(prefix),
+                "not even the first {length} characters ({prefix:?}): {rendered}"
+            );
+        }
+
+        // The useful information survives: that a secret is set at all.
+        assert!(
+            rendered.contains("redacted"),
+            "the output says a secret is present: {rendered}"
+        );
+        // And nothing is lost from the other fields, or the substitution would have broken diagnosis.
+        for field in [
+            "port",
+            "download_dir",
+            "max_connections",
+            "split_size",
+            "aria2_path",
+        ] {
+            assert!(
+                rendered.contains(field),
+                "{field} is still printed: {rendered}"
+            );
+        }
+    }
+
+    /// With no secret configured the output says so, which is different from hiding one.
+    #[test]
+    fn the_debug_output_distinguishes_no_secret_from_a_hidden_one() {
+        let without = format!("{:?}", Aria2Config::default());
+        let with = format!(
+            "{:?}",
+            Aria2Config {
+                secret: Some("x".to_string()),
+                ..Aria2Config::default()
+            }
+        );
+
+        println!("without: {without}");
+        println!("with:    {with}");
+
+        assert!(
+            without.contains("<none>"),
+            "an unset secret reads as absent"
+        );
+        assert!(with.contains("<redacted>"), "a set secret reads as hidden");
+        assert_ne!(
+            without, with,
+            "the two states must be distinguishable, or a log cannot tell whether auth is configured"
+        );
     }
 }
