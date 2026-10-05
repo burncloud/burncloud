@@ -23,6 +23,7 @@ jobs:
       - name: Format and commit owned Rust files
         shell: bash
         run: |
+          # Keep the source committed in the same format checked by code test.
           cargo fmt --all
           git add crates/identity/database-user/src/lib.rs \
                   crates/identity/service-user/src/lib.rs \
