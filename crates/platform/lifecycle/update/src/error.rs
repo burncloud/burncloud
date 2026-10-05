@@ -48,10 +48,23 @@ impl From<anyhow::Error> for UpdateError {
 
 impl From<self_update::errors::Error> for UpdateError {
     fn from(error: self_update::errors::Error) -> Self {
-        match error {
-            self_update::errors::Error::Network(_) => UpdateError::Network(error.to_string()),
-            self_update::errors::Error::Release(_) => UpdateError::GitHub(error.to_string()),
-            _ => UpdateError::Unknown(error.to_string()),
+        let message = error.to_string();
+        match &error {
+            // self_update 1.x replaced the old Network variant with a transport
+            // error for requests that never completed.
+            self_update::errors::Error::Transport(_) => UpdateError::Network(message),
+            // Completed HTTP failures and release-list/asset failures are remote
+            // GitHub/update-source failures from BurnCloud's point of view.
+            self_update::errors::Error::NotFound { .. }
+            | self_update::errors::Error::Unauthorized { .. }
+            | self_update::errors::Error::HttpStatus { .. }
+            | self_update::errors::Error::RateLimited { .. }
+            | self_update::errors::Error::NoReleaseFound { .. }
+            | self_update::errors::Error::MissingAssetField { .. }
+            | self_update::errors::Error::InvalidResponse { .. } => UpdateError::GitHub(message),
+            // Error is #[non_exhaustive] in self_update 1.x, so new categories
+            // must remain safely representable without breaking BurnCloud.
+            _ => UpdateError::Unknown(message),
         }
     }
 }

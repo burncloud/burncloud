@@ -62,3 +62,15 @@ jobs:
 
       - name: Check router service dependency whitelist
         run: ./crates/traffic/router/scripts/check-router-deps.sh --ci
+
+  cargo-deny-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check dependency advisories, bans, licenses, and sources
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+          arguments: --all-features
