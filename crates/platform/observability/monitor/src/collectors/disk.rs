@@ -69,12 +69,10 @@ impl DiskCollector {
                 )));
             }
 
-            let used = total_bytes - free_bytes;
-            let usage_percent = if total_bytes > 0 {
-                (used as f64 / total_bytes as f64 * 100.0) as f32
-            } else {
-                0.0
-            };
+            // The same guard as the Unix branch: `free_bytes` comes from the platform and is not guaranteed to
+            // be at most `total_bytes`, so the subtraction saturates rather than wrapping.
+            let used = total_bytes.saturating_sub(free_bytes);
+            let usage_percent = super::usage_percent(used, total_bytes);
 
             Ok(DiskInfo {
                 total: total_bytes,
@@ -138,13 +136,13 @@ impl DiskCollector {
 
             let total = total_blocks * block_size;
             let available = free_blocks * block_size;
-            let used = total - available;
+            // `saturating_sub`, because `f_bavail > f_blocks` is possible: `f_bavail` counts blocks available
+            // to an unprivileged process, and a filesystem with reserved blocks or a container overlay can
+            // report more available than total. The plain subtraction underflowed to a value near `u64::MAX`,
+            // which then produced a usage percentage far above 100 and a nonsensical "used" figure.
+            let used = total.saturating_sub(available);
 
-            let usage_percent = if total > 0 {
-                (used as f64 / total as f64 * 100.0) as f32
-            } else {
-                0.0
-            };
+            let usage_percent = super::usage_percent(used, total);
 
             Ok(DiskInfo {
                 total,
