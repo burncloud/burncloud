@@ -12,12 +12,6 @@ jobs:
   code-test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
-      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
-      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
-      SKIP_INITIAL_PRICE_SYNC: "1"
-      RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,7 +20,20 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+      - uses: taiki-e/install-action@cargo-deny
+      - name: Configure test environment
+        shell: bash
+        run: |
+          echo "JWT_SECRET=burncloud-ci-test" >> "$GITHUB_ENV"
+          echo "BURNCLOUD_INTERNAL_SECRET=burncloud-ci-test" >> "$GITHUB_ENV"
+          printf 'MASTER_KEY=' >> "$GITHUB_ENV"
+          printf 'a%.0s' {1..64} >> "$GITHUB_ENV"
+          printf '\nSKIP_INITIAL_PRICE_SYNC=1\nRUST_BACKTRACE=1\n' >> "$GITHUB_ENV"
       - name: cargo run -- code test
-        run: cargo run -- code test
+        shell: bash
+        run: |
+          set +e
+          cargo run -- code test > /tmp/code-test.log 2>&1
+          status=$?
+          tail -n 500 /tmp/code-test.log
+          exit $status
