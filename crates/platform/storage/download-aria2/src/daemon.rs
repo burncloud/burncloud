@@ -90,14 +90,15 @@ impl Aria2Daemon {
         // 更新运行标记以结束监控循环
         self.is_running.store(false, Ordering::SeqCst);
 
-        // 终止当前保存的 aria2 进程
+        // 终止当前保存的 aria2 进程. Stop is best-effort by contract, so explicitly discard the
+        // kill result instead of hiding a #[must_use] value behind `let _ = ...`.
         if let Some(ref mut instance) = self
             .instance
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_mut()
         {
-            let _ = instance.kill();
+            drop(instance.kill());
         }
 
         // 清除已停止的运行实例
