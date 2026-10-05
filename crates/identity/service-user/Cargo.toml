@@ -21,9 +21,6 @@ tracing.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 anyhow.workspace = true
-# The JWT tests build tokens by hand: one whose expiry is in the past, one with no `exp` claim, one signed with a
-# different algorithm, and two with an edited payload. Those need the same encoding the library uses -- base64url
-# for the segments, and a JSON value to edit and re-encode.
 base64.workspace = true
 serde_json.workspace = true
 
@@ -31,33 +28,5 @@ serde_json.workspace = true
 name = "service-user-usage"
 path = "examples/usage.rs"
 
-# `register_user` lives in the crate root, so there is no parent module on which
-# to place a narrow `#[expect]`. Mirror the workspace policy and baseline only
-# its measured historical complexity until registration is decomposed.
-[lints.rust]
-non_ascii_idents = "deny"
-unsafe_op_in_unsafe_fn = "deny"
-unused_must_use = "deny"
-unreachable_pub = "warn"
-
-[lints.clippy]
-unwrap_used = "deny"
-disallowed_types = "deny"
-todo = "deny"
-unimplemented = "deny"
-dbg_macro = "deny"
-let_underscore_future = "deny"
-let_underscore_must_use = "warn"
-await_holding_lock = "deny"
-await_holding_refcell_ref = "deny"
-expect_used = "warn"
-panic_in_result_fn = "warn"
-allow_attributes_without_reason = "warn"
-too_many_arguments = "warn"
-too_many_lines = "warn"
-large_futures = "warn"
-wildcard_imports = "warn"
-undocumented_unsafe_blocks = "warn"
-
-# Existing, measured debt from the 2026-10-05 workspace Clippy run.
-cognitive_complexity = "allow"
+[lints]
+workspace = true
