@@ -61,7 +61,8 @@ impl DownloadManager {
                     out: download.filename,
                     split: None,
                     max_connection_per_server: None,
-                    continue_download: Some(true),   // 开启覆盖式下载
+                    continue_download: Some(true),
+                    allow_overwrite: Some(true),     // 开启覆盖式下载
                     auto_file_renaming: Some(false), // 关闭文件自动重命名
                 };
                 if let Ok(outcome) = client.add_uri(uris, Some(options)).await {
