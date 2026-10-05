@@ -17,6 +17,10 @@
 //! - [`price`]  — price table migrations and format conversions
 //! - [`user`]   — token schema migration, quota conversion and seed data
 
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "price migrations are legacy one-shot schema/data compatibility code; #711 made every fallible SQL step explicit, while decomposition is tracked separately from correctness"
+)]
 mod price;
 mod rename;
 mod router;
