@@ -6,8 +6,8 @@ mod resolver;
 
 pub use resolver::{
     FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelManifest,
-    ModelResolutionError, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
-    Variant, VariantResources,
+    ModelResolutionError, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
+    ResolvedModel, Variant, VariantResources,
 };
 
 use burncloud_database_model::ModelDatabase;
