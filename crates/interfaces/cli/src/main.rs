@@ -1,3 +1,5 @@
+#[cfg(any(windows, target_os = "macos"))]
+use anyhow::Context;
 use anyhow::Result;
 use std::env;
 use std::path::PathBuf;
@@ -31,9 +33,10 @@ fn main() -> Result<()> {
             // Native desktop application (no args).
             #[cfg(any(windows, target_os = "macos"))]
             {
+                let rt = tokio::runtime::Runtime::new()
+                    .context("Failed to initialize the background server runtime")?;
                 // Start Server in background thread
-                std::thread::spawn(|| {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                std::thread::spawn(move || {
                     rt.block_on(async {
                         let host =
                             std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
