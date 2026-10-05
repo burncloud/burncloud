@@ -25,10 +25,9 @@ use tempfile::NamedTempFile;
 
 /// An isolated SQLite database with the production schema applied.
 ///
-/// Same shape as the helper in the neighbouring files, including the two things that are easy to get
-/// wrong: the three-slash URL (the two-slash form is not a URL SQLite can open on Windows) and taking
-/// the path away from the temp guard so removal is controlled here rather than racing the pool. This file
-/// does not attempt to fix the residual leak -- `temp_file_leak.rs` measures it and #643 owns the fix.
+/// The path is kept outside `NamedTempFile` so cleanup happens only after the SQLx pool is explicitly
+/// closed. `Drop` delegates that async close to a dedicated thread and joins it before returning; this
+/// avoids nested Tokio runtimes while also preventing detached cleanup from being killed at process exit.
 async fn create_test_db() -> TestDb {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
     let path = tmp
@@ -67,7 +66,7 @@ impl Drop for TestDb {
             return;
         };
         let path = self.path.clone();
-        let _ = std::thread::Builder::new()
+        let cleanup = std::thread::Builder::new()
             .name("bc-gap-testdb-cleanup".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
@@ -82,9 +81,23 @@ impl Drop for TestDb {
                 for suffix in ["", "-wal", "-shm"] {
                     let mut candidate = path.clone().into_os_string();
                     candidate.push(suffix);
-                    let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+                    let candidate = std::path::PathBuf::from(candidate);
+                    if let Err(e) = std::fs::remove_file(&candidate) {
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            eprintln!("failed to remove test database file {}: {e}", candidate.display());
+                        }
+                    }
                 }
             });
+
+        match cleanup {
+            Ok(handle) => {
+                if handle.join().is_err() {
+                    eprintln!("test database cleanup thread panicked");
+                }
+            }
+            Err(e) => eprintln!("failed to spawn test database cleanup thread: {e}"),
+        }
     }
 }
 
