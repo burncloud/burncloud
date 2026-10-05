@@ -2,8 +2,10 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use reqwest::Client;
-#[allow(clippy::disallowed_types)]
-// Value used for aria2 JSON-RPC protocol construction/parsing
+#[allow(
+    clippy::disallowed_types,
+    reason = "aria2 JSON-RPC parameters are intentionally represented as dynamic serde_json::Value values"
+)]
 use serde_json::Value;
 
 use crate::constants::{DEFAULT_PORT, MAX_PORT_RANGE};
@@ -42,10 +44,13 @@ pub fn find_available_port() -> Aria2Result<u16> {
 // 功能：调用 taskkill 强制结束系统中的 aria2c.exe 进程。
 // 错误：命令执行结果被忽略，不向调用方返回错误。
 pub fn kill_existing_aria2() {
-    // 执行 Windows 进程终止命令
-    let _ = Command::new("taskkill")
-        .args(["/F", "/IM", "aria2c.exe"])
-        .output();
+    // The sweep is deliberately best-effort in the current design. Explicitly drop the Result so a failed
+    // `taskkill` remains non-fatal without hiding a #[must_use] value behind `let _ = ...`.
+    drop(
+        Command::new("taskkill")
+            .args(["/F", "/IM", "aria2c.exe"])
+            .output(),
+    );
 }
 
 /// 启动 aria2 RPC 服务
