@@ -55,7 +55,7 @@ path = "examples/configure_apikey_test.rs"
 # Router still owns the largest body of historical warning debt, including
 # warnings in the crate root (`proxy_logic`) where no parent module can carry a
 # narrow `#[expect]`. Mirror the workspace correctness policy and allow only the
-# warning classes measured by the 2026-10-05 strict-Clippy inventory. This keeps
+# warning classes measured by the strict-Clippy inventory. This keeps
 # `cargo clippy -- -D warnings` useful for every *new* warning class while the
 # existing router decomposition proceeds in separate reviewed changes.
 [lints.rust]
@@ -84,8 +84,10 @@ wildcard_imports = "warn"
 undocumented_unsafe_blocks = "warn"
 type_complexity = "warn"
 
-# Existing, measured Router debt from the 2026-10-05 workspace Clippy run.
-# These are intentionally explicit instead of allowing a Clippy group.
+# Existing, measured Router debt. The first group came from the supplied
+# Rust 1.94 run; the final two were newly emitted by stable Rust 1.99 during the
+# aggregate verification PR, so they are recorded explicitly rather than
+# broadening to a lint group.
 let_underscore_must_use = "allow"
 allow_attributes_without_reason = "allow"
 too_many_arguments = "allow"
@@ -96,3 +98,5 @@ manual_range_patterns = "allow"
 new_without_default = "allow"
 needless_option_as_deref = "allow"
 clone_on_copy = "allow"
+result_large_err = "allow"
+useless_borrows_in_formatting = "allow"
