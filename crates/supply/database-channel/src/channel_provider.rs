@@ -15,27 +15,28 @@ impl ChannelProviderModel {
         let group_col = if is_postgres { "\"group\"" } else { "`group`" };
         let type_col = if is_postgres { "\"type\"" } else { "type" };
 
-        // Basic Insert
+        // Supply owns declarative channel configuration. Runtime/accounting columns such as
+        // used_quota, test_time, response_time and auto_ban deliberately remain outside this writer.
         let sql = if is_postgres {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, model_mapping, other_info, tag, setting, remark, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
                 VALUES ({})
                 RETURNING id
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 24)
             )
         } else {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, model_mapping, other_info, tag, setting, remark, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
                 VALUES ({})
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 24)
             )
         };
 
@@ -56,6 +57,11 @@ impl ChannelProviderModel {
             .bind(&channel.group)
             .bind(channel.priority)
             .bind(channel.created_time)
+            .bind(&channel.model_mapping)
+            .bind(&channel.other_info)
+            .bind(&channel.tag)
+            .bind(&channel.setting)
+            .bind(&channel.remark)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
             .bind(&channel.api_version)
@@ -100,7 +106,7 @@ impl ChannelProviderModel {
             &format!(
                 r#"
             UPDATE channel_providers
-            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?
+            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, model_mapping = ?, other_info = ?, tag = ?, setting = ?, remark = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?
             WHERE id = ?
             "#,
                 type_col, group_col
@@ -117,6 +123,11 @@ impl ChannelProviderModel {
             .bind(&channel.models)
             .bind(&channel.group)
             .bind(channel.priority)
+            .bind(&channel.model_mapping)
+            .bind(&channel.other_info)
+            .bind(&channel.tag)
+            .bind(&channel.setting)
+            .bind(&channel.remark)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
             .bind(&channel.api_version)
@@ -316,20 +327,38 @@ impl ChannelProviderModel {
             return Ok(());
         }
 
-        let models: Vec<&str> = channel
-            .models
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
         let groups: Vec<&str> = channel
             .group
             .split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
-        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
 
+        // A channel ability is uniquely identified by (group, model, channel_id). Build the complete
+        // model set before inserting so a model repeated in `models`, a mapping key/value, or both is
+        // inserted exactly once rather than turning a valid mapping into a primary-key failure.
+        let mut ability_models = std::collections::BTreeSet::<String>::new();
+        ability_models.extend(
+            channel
+                .models
+                .split(',')
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .map(ToOwned::to_owned),
+        );
+
+        if let Some(model_mapping_str) = &channel.model_mapping {
+            if let Ok(mapping) =
+                serde_json::from_str::<std::collections::HashMap<String, String>>(model_mapping_str)
+            {
+                for (key, value) in mapping {
+                    ability_models.insert(key.to_lowercase());
+                    ability_models.insert(value.to_lowercase());
+                }
+            }
+        }
+
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
         let sql_insert = adapt_sql(
             is_postgres,
             &format!(
@@ -341,7 +370,7 @@ impl ChannelProviderModel {
             ),
         );
 
-        for model in models {
+        for model in ability_models {
             for group in &groups {
                 tracing::info!(
                     "ChannelProviderModel: Inserting ability - Model: {}, Group: {}, ChannelID: {}",
@@ -351,61 +380,13 @@ impl ChannelProviderModel {
                 );
                 sqlx::query(&sql_insert)
                     .bind(group)
-                    .bind(model)
+                    .bind(&model)
                     .bind(channel.id)
                     .bind(true) // sqlx handles boolean mapping
                     .bind(channel.priority)
                     .bind(channel.weight)
                     .execute(pool)
                     .await?;
-            }
-        }
-
-        // Insert abilities for model_mapping field (both keys and values)
-        if let Some(model_mapping_str) = &channel.model_mapping {
-            if let Ok(mapping) =
-                serde_json::from_str::<std::collections::HashMap<String, String>>(model_mapping_str)
-            {
-                for (key, value) in &mapping {
-                    // Normalize to lowercase
-                    let key_lower = key.to_lowercase();
-                    let value_lower = value.to_lowercase();
-                    for group in &groups {
-                        // Insert for key (user-facing model name)
-                        tracing::info!(
-                            "ChannelProviderModel: Inserting ability from model_mapping key - Key: {}, Group: {}, ChannelID: {}",
-                            key_lower,
-                            group,
-                            channel.id
-                        );
-                        sqlx::query(&sql_insert)
-                            .bind(group)
-                            .bind(&key_lower)
-                            .bind(channel.id)
-                            .bind(true)
-                            .bind(channel.priority)
-                            .bind(channel.weight)
-                            .execute(pool)
-                            .await?;
-
-                        // Insert for value (actual model name)
-                        tracing::info!(
-                            "ChannelProviderModel: Inserting ability from model_mapping value - Value: {}, Group: {}, ChannelID: {}",
-                            value_lower,
-                            group,
-                            channel.id
-                        );
-                        sqlx::query(&sql_insert)
-                            .bind(group)
-                            .bind(&value_lower)
-                            .bind(channel.id)
-                            .bind(true)
-                            .bind(channel.priority)
-                            .bind(channel.weight)
-                            .execute(pool)
-                            .await?;
-                    }
-                }
             }
         }
 
