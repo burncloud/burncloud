@@ -1,13 +1,6 @@
 //! Database operations for user_ domain (accounts, roles, bindings, recharges, API keys).
 //!
-//! The spec-aligned entity layout is split across per-entity files:
-//! - `user_account.rs`: `UserAccount`, `UserAccountInput`
-//! - `user_recharge.rs`: `UserRecharge`
-//! - `user_api_key.rs`: `UserApiKey`, `UserApiKeyModel`, `UserApiKeyInput`, `UserApiKeyUpdateInput`
-//!
-//! `UserDatabase` is the crate-level controller (initialises sub-tables, seeds default roles,
-//! and contains operation-style helpers). `UserAccountModel` is exposed as a spec-aligned alias
-//! so callers can reference it under the canonical `{Domain}{Entity}Model` naming.
+//! The spec-aligned entity layout is split across per-entity files.
 
 mod common;
 mod password_reset;
@@ -28,193 +21,194 @@ pub struct UserDatabase;
 /// Spec-aligned alias: operation type for the `user_accounts` table.
 pub type UserAccountModel = UserDatabase;
 
+fn user_table_sql(kind: &str) -> (&'static str, &'static str, &'static str) {
+    match kind {
+        "sqlite" => (
+            r#"
+            CREATE TABLE IF NOT EXISTS user_roles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT
+            );
+            "#,
+            r#"
+            CREATE TABLE IF NOT EXISTS user_role_bindings (
+                user_id TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                PRIMARY KEY (user_id, role_id),
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY(role_id) REFERENCES user_roles(id) ON DELETE CASCADE
+            );
+            "#,
+            r#"
+            CREATE TABLE IF NOT EXISTS user_recharges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                amount BIGINT NOT NULL,
+                currency VARCHAR(10) DEFAULT 'USD',
+                description TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            );
+            "#,
+        ),
+        "postgres" => (
+            r#"
+            CREATE TABLE IF NOT EXISTS user_roles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT
+            );
+            "#,
+            r#"
+            CREATE TABLE IF NOT EXISTS user_role_bindings (
+                user_id TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                PRIMARY KEY (user_id, role_id),
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY(role_id) REFERENCES user_roles(id) ON DELETE CASCADE
+            );
+            "#,
+            r#"
+            CREATE TABLE IF NOT EXISTS user_recharges (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                amount BIGINT NOT NULL,
+                currency VARCHAR(10) DEFAULT 'USD',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
+            );
+            "#,
+        ),
+        _ => unreachable!("Unsupported database kind"),
+    }
+}
+
+async fn create_user_tables(db: &Database) -> Result<()> {
+    let conn = db.get_connection()?;
+    let (roles, bindings, recharges) = user_table_sql(db.kind().as_str());
+
+    sqlx::query(roles).execute(conn.pool()).await?;
+    sqlx::query(bindings).execute(conn.pool()).await?;
+    sqlx::query(recharges).execute(conn.pool()).await?;
+    tracing::info!("UserDatabase: tables created/verified.");
+    Ok(())
+}
+
+async fn execute_sqlite_add_column(db: &Database, sql: &str) -> Result<()> {
+    let conn = db.get_connection()?;
+    match sqlx::query(sql).execute(conn.pool()).await {
+        Ok(_) => Ok(()),
+        Err(error) if error.to_string().contains("duplicate column name") => {
+            tracing::debug!(%error, "UserDatabase: migration column already exists");
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn migrate_sqlite_user_schema(db: &Database) -> Result<()> {
+    const MIGRATIONS: &[&str] = &[
+        "ALTER TABLE user_accounts ADD COLUMN password_hash TEXT",
+        "ALTER TABLE user_accounts ADD COLUMN github_id TEXT",
+        "ALTER TABLE user_accounts ADD COLUMN status INTEGER DEFAULT 1",
+        "ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0",
+        "ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0",
+        "ALTER TABLE user_accounts ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+        "ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
+    ];
+
+    for sql in MIGRATIONS {
+        execute_sqlite_add_column(db, sql).await?;
+    }
+    Ok(())
+}
+
+async fn migrate_postgres_user_schema(db: &Database) -> Result<()> {
+    const MIGRATIONS: &[&str] = &[
+        "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+        "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+        "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'",
+        "ALTER TABLE user_recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
+    ];
+    let conn = db.get_connection()?;
+
+    for sql in MIGRATIONS {
+        sqlx::query(sql).execute(conn.pool()).await?;
+    }
+    Ok(())
+}
+
+async fn migrate_user_schema(db: &Database) -> Result<()> {
+    match db.kind().as_str() {
+        "sqlite" => migrate_sqlite_user_schema(db).await,
+        "postgres" => migrate_postgres_user_schema(db).await,
+        _ => unreachable!("Unsupported database kind"),
+    }
+}
+
+async fn seed_default_roles(db: &Database) -> Result<()> {
+    let conn = db.get_connection()?;
+    let role_count: i64 = sqlx::query("SELECT COUNT(*) FROM user_roles")
+        .fetch_one(conn.pool())
+        .await?
+        .get(0);
+    if role_count != 0 {
+        return Ok(());
+    }
+
+    tracing::info!("UserDatabase: inserting default roles...");
+    let sql = if db.kind() == "postgres" {
+        "INSERT INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User') ON CONFLICT (id) DO NOTHING"
+    } else {
+        "INSERT OR IGNORE INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')"
+    };
+    sqlx::query(sql).execute(conn.pool()).await?;
+    Ok(())
+}
+
+async fn assign_roles_to_orphan_users(db: &Database) -> Result<()> {
+    let conn = db.get_connection()?;
+    let orphan_sql = if db.kind() == "postgres" {
+        "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
+    } else {
+        "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
+    };
+    let orphan_rows = sqlx::query(orphan_sql).fetch_all(conn.pool()).await?;
+    if orphan_rows.is_empty() {
+        return Ok(());
+    }
+
+    tracing::info!(
+        "UserDatabase: assigning roles to {} orphan user(s)",
+        orphan_rows.len()
+    );
+    let mut first_real = true;
+    for row in &orphan_rows {
+        let user_id: String = row.get(0);
+        let username: String = row.get(1);
+        let password_hash: Option<String> = row.get(2);
+        let is_seed = username == "demo-user" || password_hash.as_deref() == Some("no-login");
+        let role = if !is_seed && first_real {
+            first_real = false;
+            "admin"
+        } else {
+            "user"
+        };
+        if let Err(error) = UserDatabase::assign_role(db, &user_id, role).await {
+            tracing::warn!(role, user_id, %error, "failed to assign role to orphan user");
+        }
+    }
+    Ok(())
+}
+
 impl UserDatabase {
     pub async fn init(db: &Database) -> Result<()> {
-        let conn = db.get_connection()?;
-        let kind = db.kind();
-
-        // Table definitions
-        // Note: balance_usd and balance_cny use BIGINT nanodollars (9 decimal precision)
-        // Note: user_accounts CREATE TABLE is authoritative in schema.rs; omitted here
-        let (user_roles_sql, user_role_bindings_sql, user_recharges_sql) = match kind.as_str() {
-            "sqlite" => (
-                r#"
-                CREATE TABLE IF NOT EXISTS user_roles (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL UNIQUE,
-                    description TEXT
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS user_role_bindings (
-                    user_id TEXT NOT NULL,
-                    role_id TEXT NOT NULL,
-                    PRIMARY KEY (user_id, role_id),
-                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
-                    FOREIGN KEY(role_id) REFERENCES user_roles(id) ON DELETE CASCADE
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS user_recharges (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    amount BIGINT NOT NULL,
-                    currency VARCHAR(10) DEFAULT 'USD',
-                    description TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
-                );
-                "#,
-            ),
-            "postgres" => (
-                r#"
-                CREATE TABLE IF NOT EXISTS user_roles (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL UNIQUE,
-                    description TEXT
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS user_role_bindings (
-                    user_id TEXT NOT NULL,
-                    role_id TEXT NOT NULL,
-                    PRIMARY KEY (user_id, role_id),
-                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
-                    FOREIGN KEY(role_id) REFERENCES user_roles(id) ON DELETE CASCADE
-                );
-                "#,
-                r#"
-                CREATE TABLE IF NOT EXISTS user_recharges (
-                    id SERIAL PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    amount BIGINT NOT NULL,
-                    currency VARCHAR(10) DEFAULT 'USD',
-                    description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES user_accounts(id) ON DELETE CASCADE
-                );
-                "#,
-            ),
-            _ => unreachable!("Unsupported database kind"),
-        };
-
-        sqlx::query(user_roles_sql).execute(conn.pool()).await?;
-        tracing::info!("UserDatabase: tables created/verified.");
-
-        sqlx::query(user_role_bindings_sql)
-            .execute(conn.pool())
-            .await?;
-        sqlx::query(user_recharges_sql).execute(conn.pool()).await?;
-
-        // Migrations for SQLite (Add columns if missing)
-        if kind == "sqlite" {
-            // Ignoring errors as "duplicate column name" is the expected error if it exists
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN password_hash TEXT")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN github_id TEXT")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN status INTEGER DEFAULT 1")
-                .execute(conn.pool())
-                .await;
-            let _ =
-                sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0")
-                    .execute(conn.pool())
-                    .await;
-            let _ =
-                sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0")
-                    .execute(conn.pool())
-                    .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_accounts ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
-            )
-            .execute(conn.pool())
-            .await;
-        }
-
-        // Migrations for PostgreSQL (Add columns if missing)
-        if kind == "postgres" {
-            let _ = sqlx::query(
-                "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
-            )
-            .execute(conn.pool())
-            .await;
-        }
-
-        // Initialize default roles
-        let role_count: i64 = sqlx::query("SELECT COUNT(*) FROM user_roles")
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
-
-        if role_count == 0 {
-            tracing::info!("UserDatabase: inserting default roles...");
-            let _ = sqlx::query("INSERT OR IGNORE INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
-                .execute(conn.pool())
-                .await;
-        }
-
-        // Migration: assign roles to users that were created before the role
-        // system existed (they have no entries in user_role_bindings).
-        // The demo-user seed (password_hash = 'no-login) is always
-        // assigned "user" — it cannot log in and should never be admin.
-        {
-            let orphan_sql = if db.kind() == "postgres" {
-                "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
-            } else {
-                "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
-            };
-            let orphan_rows = sqlx::query(orphan_sql).fetch_all(conn.pool()).await?;
-
-            if !orphan_rows.is_empty() {
-                tracing::info!(
-                    "UserDatabase: assigning roles to {} orphan user(s)",
-                    orphan_rows.len()
-                );
-                // First real orphan (non-seed) gets admin; all others get user.
-                let mut first_real = true;
-                for row in orphan_rows.iter() {
-                    let user_id: String = row.get(0);
-                    let username: String = row.get(1);
-                    let pw_hash: Option<String> = row.get(2);
-                    let is_seed = username == "demo-user" || pw_hash.as_deref() == Some("no-login");
-                    let role = if !is_seed && first_real {
-                        first_real = false;
-                        "admin"
-                    } else {
-                        "user"
-                    };
-                    if let Err(e) = Self::assign_role(db, &user_id, role).await {
-                        tracing::warn!(
-                            "Failed to assign {} role to orphan user {}: {}",
-                            role,
-                            user_id,
-                            e
-                        );
-                    }
-                }
-            }
-        }
-
+        create_user_tables(db).await?;
+        migrate_user_schema(db).await?;
+        seed_default_roles(db).await?;
+        assign_roles_to_orphan_users(db).await?;
         tracing::info!("UserDatabase: init complete.");
         Ok(())
     }
@@ -269,9 +263,7 @@ impl UserDatabase {
             .bind(user_id)
             .fetch_all(conn.pool())
             .await?;
-
-        let roles = rows.iter().map(|r| r.get(0)).collect();
-        Ok(roles)
+        Ok(rows.iter().map(|row| row.get(0)).collect())
     }
 
     pub async fn assign_role(db: &Database, user_id: &str, role_name: &str) -> Result<()> {
@@ -291,17 +283,16 @@ impl UserDatabase {
             .bind(role_name)
             .fetch_optional(conn.pool())
             .await?
-            .map(|r| r.get(0));
+            .map(|row| row.get(0));
 
-        if let Some(rid) = role_id {
-            let res = sqlx::query(insert_sql)
+        if let Some(role_id) = role_id {
+            if let Err(error) = sqlx::query(insert_sql)
                 .bind(user_id)
-                .bind(rid)
+                .bind(role_id)
                 .execute(conn.pool())
-                .await;
-
-            if let Err(e) = res {
-                tracing::warn!("Role assignment skipped (maybe already exists): {}", e);
+                .await
+            {
+                tracing::warn!(%error, "role assignment skipped (maybe already exists)");
             }
         }
         Ok(())
@@ -309,12 +300,12 @@ impl UserDatabase {
 
     pub async fn list_users(db: &Database) -> Result<Vec<UserAccount>> {
         let conn = db.get_connection()?;
-        let users = sqlx::query_as::<_, UserAccount>(
-            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts"
+        sqlx::query_as::<_, UserAccount>(
+            "SELECT id, username, email, password_hash, github_id, status, balance_usd, balance_cny, preferred_currency FROM user_accounts",
         )
-            .fetch_all(conn.pool())
-            .await?;
-        Ok(users)
+        .fetch_all(conn.pool())
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn update_password_hash(
@@ -364,24 +355,15 @@ impl UserDatabase {
         Ok(user)
     }
 
-    /// Count real users (excludes seed/demo accounts). Used by
-    /// first-user-is-admin check to avoid counting the demo-user seed.
-    /// Filters by username (not id) because the demo-user seed row has
-    /// a generated `usr_` prefixed id, not the literal 'demo-user'.
     pub async fn count_users(db: &Database) -> Result<i64> {
         let conn = db.get_connection()?;
-        let sql = "SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'";
-        let count: i64 = sqlx::query(sql).fetch_one(conn.pool()).await?.get(0);
+        let count: i64 = sqlx::query("SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'")
+            .fetch_one(conn.pool())
+            .await?
+            .get(0);
         Ok(count)
     }
 
-    /// Check whether any real user (excluding seed/demo accounts) has the
-    /// admin role. Used by first-user-is-admin logic: if no admin exists,
-    /// the next registrant is promoted so the system always has at least
-    /// one admin.
-    ///
-    /// Excludes: (1) username = 'demo-user' (seed row), (2) password_hash =
-    /// 'no-login' (seed placeholder — cannot log in, so not a real admin).
     pub async fn has_admin_user(db: &Database) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = "SELECT COUNT(*) FROM user_role_bindings urb JOIN user_roles r ON urb.role_id = r.id JOIN user_accounts u ON urb.user_id = u.id WHERE r.name = 'admin' AND u.username != 'demo-user' AND (u.password_hash IS NULL OR u.password_hash != 'no-login')";
@@ -389,7 +371,6 @@ impl UserDatabase {
         Ok(count > 0)
     }
 
-    /// Update USD balance by delta (in nanodollars)
     pub async fn update_balance_usd(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
         let (update_sql, select_sql) = if db.kind() == "postgres" {
@@ -408,17 +389,14 @@ impl UserDatabase {
             .bind(user_id)
             .execute(conn.pool())
             .await?;
-
-        let new_balance: i64 = sqlx::query(select_sql)
+        let balance = sqlx::query(select_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?
             .get(0);
-
-        Ok(new_balance)
+        Ok(balance)
     }
 
-    /// Update CNY balance by delta (in nanodollars)
     pub async fn update_balance_cny(db: &Database, user_id: &str, delta: i64) -> Result<i64> {
         let conn = db.get_connection()?;
         let (update_sql, select_sql) = if db.kind() == "postgres" {
@@ -437,18 +415,14 @@ impl UserDatabase {
             .bind(user_id)
             .execute(conn.pool())
             .await?;
-
-        let new_balance: i64 = sqlx::query(select_sql)
+        let balance = sqlx::query(select_sql)
             .bind(user_id)
             .fetch_one(conn.pool())
             .await?
             .get(0);
-
-        Ok(new_balance)
+        Ok(balance)
     }
 
-    /// Update balance by delta in nanodollars (generic currency-aware method)
-    /// Defaults to USD if currency is not specified
     pub async fn update_balance(
         db: &Database,
         user_id: &str,
@@ -464,7 +438,7 @@ impl UserDatabase {
     pub async fn create_recharge(db: &Database, recharge: &UserRecharge) -> Result<i32> {
         let conn = db.get_connection()?;
         let currency = recharge.currency.as_deref().unwrap_or("USD");
-        let id: i32 = match db.kind().as_str() {
+        let id = match db.kind().as_str() {
             "sqlite" => {
                 sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES (?, ?, ?, ?)")
                     .bind(&recharge.user_id)
@@ -473,10 +447,9 @@ impl UserDatabase {
                     .bind(&recharge.description)
                     .execute(conn.pool())
                     .await?;
-                let id: i32 = sqlx::query_scalar("SELECT last_insert_rowid()")
+                sqlx::query_scalar("SELECT last_insert_rowid()")
                     .fetch_one(conn.pool())
-                    .await?;
-                id
+                    .await?
             }
             "postgres" => {
                 sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES ($1, $2, $3, $4) RETURNING id")
@@ -488,16 +461,14 @@ impl UserDatabase {
                     .await?
                     .get(0)
             }
-            _ => unreachable!(),
+            _ => unreachable!("Unsupported database kind"),
         };
 
-        // Also update user balance based on currency
         if currency == "CNY" {
             Self::update_balance_cny(db, &recharge.user_id, recharge.amount).await?;
         } else {
             Self::update_balance_usd(db, &recharge.user_id, recharge.amount).await?;
         }
-
         Ok(id)
     }
 
