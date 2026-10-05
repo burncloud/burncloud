@@ -13,5 +13,11 @@ tokio.workspace = true
 name = "service-setting-usage"
 path = "examples/usage.rs"
 
+# The tests need `burncloud-database` to open an isolated database per test -- `SettingDatabase::new()` would use
+# the shared default path, which the plan's "互相独立的测试库" rules out -- and to open a second connection for the
+# error-propagation test, since `SettingDatabase`'s handle is private.
+[dev-dependencies]
+burncloud-database.workspace = true
+
 [lints]
 workspace = true
