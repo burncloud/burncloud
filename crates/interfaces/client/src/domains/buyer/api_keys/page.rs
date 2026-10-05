@@ -119,7 +119,9 @@ fn CreateKeyModal(mut state: Signal<ApiKeysState>) -> Element {
                     class: "api-key-modal-body",
                     onsubmit: move |event| {
                         event.prevent_default();
-                        state.with_mut(|value| { let _ = value.create_key(); });
+                        // Validation failures are already stored in `validation_error` by `create_key`; the
+                        // event handler intentionally consumes the Result after that state transition.
+                        state.with_mut(|value| drop(value.create_key()));
                     },
                     div { class: "api-key-field",
                         label { r#for: "api-key-name", {copy.api_keys_name_label} }
