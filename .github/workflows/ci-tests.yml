@@ -102,6 +102,31 @@ jobs:
       - name: Node black-box API tests
         run: cargo test -p burncloud-server --lib node_test
 
+  router-library:
+    name: Router library tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
+      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      SKIP_INITIAL_PRICE_SYNC: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run router library tests
+        run: cargo test -p burncloud-router --lib
+
   billing-invariants:
     name: Billing invariants
     runs-on: ubuntu-latest
