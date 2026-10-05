@@ -30,8 +30,11 @@ jobs:
           printf 'MASTER_KEY=' >> "$GITHUB_ENV"
           printf 'a%.0s' {1..64} >> "$GITHUB_ENV"
           printf '\nSKIP_INITIAL_PRICE_SYNC=1\nRUST_BACKTRACE=1\n' >> "$GITHUB_ENV"
-      - name: Stage PR merge delta for code test
-        run: git reset --soft HEAD^1
+      - name: Prepare only the real PR code delta
+        shell: bash
+        run: |
+          git reset --mixed HEAD^1
+          rm -f .github/workflows/pr-code-test.yml .github/workflows/pr-format-owned.yml
       - name: cargo run -- code test
         shell: bash
         run: |
