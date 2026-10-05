@@ -1,14 +1,22 @@
 name: Maintenance / Sync to Gitee
 
+# Deliberately left automatic. This is repository upkeep rather than a check, so it is not one of the
+# workflows that moved to manual dispatch: the mirror is only useful if it tracks `main`, and a
+# mirror that advances only when someone remembers to press a button is worse than none. It runs no
+# tests and blocks nothing.
 on:
   push:
     branches:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
