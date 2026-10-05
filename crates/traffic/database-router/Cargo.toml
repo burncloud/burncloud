@@ -16,6 +16,7 @@ aes-gcm.workspace = true
 hex.workspace = true
 rand.workspace = true
 md5.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 chrono = { workspace = true }
