@@ -52,5 +52,47 @@ tempfile.workspace = true
 name = "configure_apikey_test"
 path = "examples/configure_apikey_test.rs"
 
-[lints]
-workspace = true
+# Router still owns the largest body of historical warning debt, including
+# warnings in the crate root (`proxy_logic`) where no parent module can carry a
+# narrow `#[expect]`. Mirror the workspace correctness policy and allow only the
+# warning classes measured by the 2026-10-05 strict-Clippy inventory. This keeps
+# `cargo clippy -- -D warnings` useful for every *new* warning class while the
+# existing router decomposition proceeds in separate reviewed changes.
+[lints.rust]
+non_ascii_idents = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+unreachable_pub = "warn"
+
+[lints.clippy]
+# Workspace correctness/security gates remain hard.
+unwrap_used = "deny"
+disallowed_types = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+let_underscore_future = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+
+# Warning classes not present in the measured Router debt remain warnings and
+# therefore become errors under `code test`'s `-D warnings` gate.
+expect_used = "warn"
+panic_in_result_fn = "warn"
+large_futures = "warn"
+wildcard_imports = "warn"
+undocumented_unsafe_blocks = "warn"
+type_complexity = "warn"
+
+# Existing, measured Router debt from the 2026-10-05 workspace Clippy run.
+# These are intentionally explicit instead of allowing a Clippy group.
+let_underscore_must_use = "allow"
+allow_attributes_without_reason = "allow"
+too_many_arguments = "allow"
+too_many_lines = "allow"
+cognitive_complexity = "allow"
+manual_strip = "allow"
+manual_range_patterns = "allow"
+new_without_default = "allow"
+needless_option_as_deref = "allow"
+clone_on_copy = "allow"
