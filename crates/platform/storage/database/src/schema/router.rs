@@ -86,11 +86,9 @@ async fn recreate_router_logs(pool: &AnyPool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_user_id ON router_logs(user_id)")
         .execute(pool)
         .await?;
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at)",
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_router_logs_created_at ON router_logs(created_at)")
+        .execute(pool)
+        .await?;
 
     Ok(())
 }
