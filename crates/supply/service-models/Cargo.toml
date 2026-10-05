@@ -16,6 +16,9 @@ reqwest.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+
 # The `service-models-usage` example was retired here. It imported `ModelInfo`, which this crate no
 # longer exports -- #630 replaced that type with the manifest/variant structures -- so the example had
 # not compiled since, and nothing but its own declaration referenced it. It is deleted rather than
