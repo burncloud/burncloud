@@ -59,9 +59,12 @@ pub fn liveview_router(_db: Arc<Database>) -> Router {
                 async move {
                     ws.on_upgrade(move |socket| async move {
                         let app = app.clone();
-                        let _ = pool
+                        if let Err(error) = pool
                             .launch_virtualdom(axum_socket(socket), move || VirtualDom::new(*app))
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(error = %error, "liveview websocket session ended with an error");
+                        }
                     })
                 }
             }),
