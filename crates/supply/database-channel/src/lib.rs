@@ -6,6 +6,10 @@
 
 mod channel_ability;
 mod channel_protocol_config;
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "channel ability synchronization intentionally reconciles create/update/delete cases in one legacy routine; contract tests cover its behavior while decomposition remains maintainability work"
+)]
 mod channel_provider;
 mod common;
 mod rows;
