@@ -103,8 +103,11 @@ pub async fn create_app_with_node_request_state(
     node_request_state: node_request::NodeRequestState,
 ) -> anyhow::Result<Router> {
     let monitor = Arc::new(SystemMonitorService::new());
-    // Start auto collection in background
-    let _ = monitor.start_auto_update().await;
+    // Auto collection is auxiliary to serving traffic. Keep startup available
+    // if it cannot start, but make the degraded observability state explicit.
+    if let Err(error) = monitor.start_auto_update().await {
+        tracing::warn!(%error, "system monitor auto-update failed to start");
+    }
 
     // Keep the Node runtime and its request-visible status alive with the server.
     let node_context = NodeRuntime::new().start();
