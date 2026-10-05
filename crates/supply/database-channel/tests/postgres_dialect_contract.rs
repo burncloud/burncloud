@@ -7,9 +7,8 @@
 //!
 //! Timestamp convention: `channel_protocol_configs.created_at` / `updated_at` use the millisecond
 //! integer convention (`BIGINT` on PostgreSQL, `INTEGER` on SQLite), not the `TIMESTAMP` convention
-//! used by `router_logs`. The PostgreSQL migration supplies its default with
-//! `(EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT`; the assertions below require those values to be
-//! populated so that branch is actually exercised.
+//! used by `router_logs`. `ChannelProtocolConfigModel::upsert` writes millisecond integers into those
+//! columns, and the assertions below make that cross-backend column contract explicit.
 
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
@@ -201,12 +200,12 @@ async fn protocol_upsert_uses_postgres_conflict_and_default_demote_branches() {
             .expect("v1 must exist");
         assert!(first.is_default_bool());
         assert!(
-            first.created_at > 0,
-            "PostgreSQL millisecond epoch default for created_at must be populated"
+            first.created_at.unwrap_or_default() > 0,
+            "PostgreSQL BIGINT created_at must carry the millisecond timestamp written by upsert"
         );
         assert!(
-            first.updated_at > 0,
-            "PostgreSQL millisecond epoch default for updated_at must be populated"
+            first.updated_at.unwrap_or_default() > 0,
+            "PostgreSQL BIGINT updated_at must carry the millisecond timestamp written by upsert"
         );
 
         // Same (type, version) must execute ON CONFLICT ... DO UPDATE rather than insert a second row.
