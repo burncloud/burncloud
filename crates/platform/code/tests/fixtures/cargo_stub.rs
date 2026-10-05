@@ -46,8 +46,20 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
             || env::var("MISSING_TOOLS").ok().is_some_and(|tools| tools.split(',').any(|tool| tool == kind));
         return Ok(if missing && !state.join(kind).exists() { 23 } else { 0 });
     }
+    let logged_args = if kind == "clippy" {
+        let strict = args.len() >= 3
+            && args[args.len() - 3] == "--"
+            && args[args.len() - 2] == "-D"
+            && args[args.len() - 1] == "warnings";
+        if !strict {
+            return Err("code test clippy must end with `-- -D warnings`".into());
+        }
+        &args[..args.len() - 3]
+    } else {
+        &args[..]
+    };
     let mut log = fs::OpenOptions::new().append(true).create(true).open(env::var("CHECK_LOG")?)?;
-    writeln!(log, "{}", args.join(" "))?;
+    writeln!(log, "{}", logged_args.join(" "))?;
     if kind == "test" {
         println!("Running unittests src/lib.rs");
         if env::var("FAIL_CHECK").ok().as_deref() == Some("test") {
