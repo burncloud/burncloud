@@ -77,8 +77,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check dependency bans, licenses, and sources
+      - name: Check dependency advisories, bans, licenses, and sources
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check bans licenses sources
+          command: check advisories bans licenses sources
           arguments: --all-features
