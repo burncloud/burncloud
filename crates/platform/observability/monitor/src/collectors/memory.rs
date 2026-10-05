@@ -29,6 +29,8 @@ impl MemoryCollector {
 
     #[cfg(windows)]
     async fn collect_windows(&self) -> Result<MemoryInfo, MonitorError> {
+        // SAFETY: MEMORYSTATUSEX is a C POD struct; `dwLength` is initialized as required by
+        // GlobalMemoryStatusEx before the API writes the remaining fields through this live pointer.
         unsafe {
             let mut mem_status: MEMORYSTATUSEX = std::mem::zeroed();
             mem_status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
