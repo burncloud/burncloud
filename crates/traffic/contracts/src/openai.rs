@@ -1,7 +1,10 @@
 // Two struct fields legitimately need HashMap<String, Value>:
 //   OpenAIChatRequest::extra      — generic LLM API passthrough fields
 // All other Value uses in this codebase must go through typed structs.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "OpenAI passthrough must preserve provider-specific JSON fields in the flattened extra map"
+)]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

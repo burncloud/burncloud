@@ -22,7 +22,7 @@ fn format_with_separators(value: u64) -> String {
     let raw = value.to_string();
     let mut out = String::with_capacity(raw.len() + raw.len() / 3);
     for (index, ch) in raw.chars().enumerate() {
-        if index > 0 && (raw.len() - index) % 3 == 0 {
+        if index > 0 && (raw.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);

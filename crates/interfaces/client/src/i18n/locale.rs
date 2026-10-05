@@ -2,18 +2,13 @@
 
 use std::fmt;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub enum Locale {
+    #[default]
     Zh,
     En,
     ZhTw,
     Ja,
-}
-
-impl Default for Locale {
-    fn default() -> Self {
-        Self::Zh
-    }
 }
 
 impl Locale {

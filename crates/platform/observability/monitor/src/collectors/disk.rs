@@ -47,6 +47,8 @@ impl DiskCollector {
 
     #[cfg(windows)]
     async fn get_disk_info_windows(&self, path: &str) -> Result<DiskInfo, MonitorError> {
+        // SAFETY: `path_wide` is NUL-terminated and all output pointers refer to valid local u64 storage.
+        // GetDiskFreeSpaceExW writes only for the duration of the call and no pointer escapes this block.
         unsafe {
             let path_wide: Vec<u16> = OsStr::new(path)
                 .encode_wide()
@@ -118,6 +120,7 @@ impl DiskCollector {
         let path = CString::new(mount_point)
             .map_err(|e| MonitorError::InvalidData(format!("Invalid path: {}", e)))?;
 
+        // SAFETY: `path` is a live NUL-terminated CString and `statvfs` is valid writable storage for libc.
         unsafe {
             let mut statvfs: libc::statvfs = mem::zeroed();
             if libc::statvfs(path.as_ptr(), &mut statvfs) != 0 {

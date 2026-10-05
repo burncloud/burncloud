@@ -67,10 +67,13 @@ impl ModelService {
     pub async fn delete(&self, model_id: &str) -> Result<()> {
         // 尝试清理物理文件
         if let Ok(Some(model)) = self.get(model_id).await {
-            // 忽略文件清理错误，确保数据库记录被删除
-            let _ = self
-                .cleanup_files(model_id, model.filename.as_deref())
-                .await;
+            // File cleanup is best-effort: the database record must still be removable when the file is
+            // already gone or the filesystem is temporarily unavailable. `drop` makes that policy explicit
+            // instead of silently binding a #[must_use] Result to `_`.
+            drop(
+                self.cleanup_files(model_id, model.filename.as_deref())
+                    .await,
+            );
         }
         self.db.delete(model_id).await
     }
@@ -180,7 +183,10 @@ pub async fn get_model_files(
     Ok(result)
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(
+    clippy::type_complexity,
+    reason = "recursive async traversal requires a boxed Future whose borrowed inputs share the same lifetime"
+)]
 fn fetch_files_recursive<'a>(
     host: &'a str,
     model_id: &'a str,
