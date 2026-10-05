@@ -43,3 +43,4 @@ jobs:
           status=$?
           tail -n 500 /tmp/code-test.log
           exit $status
+          # trigger: source-only PR validation
