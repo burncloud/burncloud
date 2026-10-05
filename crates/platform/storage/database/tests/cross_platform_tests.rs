@@ -349,9 +349,8 @@ async fn test_very_long_paths() {
 
 #[cfg(target_os = "windows")]
 fn get_test_windows_default_path(user_profile: Option<&str>) -> Result<PathBuf> {
-    let user_profile = user_profile.ok_or_else(|| {
-        DatabaseError::PathResolution("USERPROFILE not found".to_string())
-    })?;
+    let user_profile = user_profile
+        .ok_or_else(|| DatabaseError::PathResolution("USERPROFILE not found".to_string()))?;
 
     if user_profile.trim().is_empty() {
         return Err(DatabaseError::PathResolution(
