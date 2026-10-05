@@ -1,5 +1,15 @@
 name: Maintenance / Version Tag
 
+# Runs when the root package version advances, and only then. Validating the workspace and creating
+# the release tag are deliberately in this one file: a tag is what starts `cd-release.yml`, so the
+# gate has to run **before** the tag exists. If validation were a separate workflow on `push`, the tag
+# would already be published by the time the checks failed, and the only way back would be deleting a
+# tag that `cd-release.yml` may have begun releasing.
+#
+# The push trigger is not a duplicate of the local hook. The hook answers "is this commit sound"; the
+# push of a version bump is the release decision, and the full workspace suite is what has to pass
+# before an artifact is built. `quality-gate` below runs the same four commands, by calling
+# `ci-quality.yml` rather than restating them.
 on:
   push:
     branches: [ main, master ]
@@ -13,14 +23,33 @@ on:
       # any number of path segments, so this matches all of them.
       - 'crates/**/Cargo.toml'
       - '.github/workflows/maintenance-version-tag.yml'
+      - '.github/workflows/ci-quality.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# One release decision at a time. Two pushes that both bump the version would otherwise race to
+# create the same tag; `cancel-in-progress: false` lets the first run finish rather than killing it
+# half-way through a tag push.
+concurrency:
+  group: version-tag-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # The release gate, and the reason this workflow can create a tag at all. It reads the root package
+  # version and decides whether a tag is warranted; it is deliberately independent of
+  # `quality-gate`, so a workspace that fails to compile still produces the "version unchanged, no tag
+  # needed" verdict instead of hiding it behind a compile error.
   check-version:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      numeric_version: ${{ steps.get_version.outputs.numeric_version }}
+      tag_exists: ${{ steps.check_tag.outputs.tag_exists }}
+      should_create_tag: ${{ steps.compare_versions.outputs.should_create_tag }}
+      reason: ${{ steps.compare_versions.outputs.reason }}
 
     steps:
       - uses: actions/checkout@v4
@@ -108,14 +137,46 @@ jobs:
             echo "::warning::root package version v$CURRENT is older than the latest tag $PREVIOUS; no tag created"
           fi
 
+  # The four commands the local gate runs -- `fmt --all -- --check`,
+  # `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features`
+  # and `deny check` -- executed against the commit being released. Called rather than copied so the
+  # commands are defined in exactly one file; see `ci-quality.yml`.
+  #
+  # Skipped when the version did not change: a version-change job must not be gated on the full suite
+  # merely to report "nothing to do", and skipping is visible in the run summary rather than silent.
+  quality-gate:
+    name: Workspace gate (fmt, test, clippy, deny)
+    needs: check-version
+    if: needs.check-version.outputs.should_create_tag == 'true'
+    uses: ./.github/workflows/ci-quality.yml
+    permissions:
+      contents: read
+
+  create-tag:
+    name: Create the release tag
+    needs: [check-version, quality-gate]
+    # `always()` is required to read `quality-gate`'s result here: without it, a skipped or failed
+    # gate would skip this job before the version condition was ever evaluated. The explicit result
+    # check is what makes a failed gate block the tag -- which is the entire point of the gate, since
+    # the tag is what triggers `cd-release.yml`.
+    if: >-
+      always()
+      && needs.check-version.outputs.should_create_tag == 'true'
+      && needs.quality-gate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Create git tag
-        if: steps.compare_versions.outputs.should_create_tag == 'true'
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="${{ needs.check-version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git tag -a "$VERSION" -m "Release $VERSION - ${{ steps.compare_versions.outputs.reason }}"
+          git tag -a "$VERSION" -m "Release $VERSION - ${{ needs.check-version.outputs.reason }}"
           git push origin "$VERSION"
 
           echo "Created and pushed tag: $VERSION"
@@ -124,11 +185,11 @@ jobs:
         run: |
           {
             echo "## Version Check Summary"
-            echo "- **Current Version**: ${{ steps.get_version.outputs.version }}"
-            echo "- **Previous Version**: ${{ steps.get_previous_version.outputs.previous_version || 'none' }}"
-            echo "- **Tag Exists**: ${{ steps.check_tag.outputs.tag_exists }}"
-            echo "- **Should Create Tag**: ${{ steps.compare_versions.outputs.should_create_tag || 'false' }}"
-            echo "- **Reason**: ${{ steps.compare_versions.outputs.reason || 'N/A' }}"
+            echo "- **Current Version**: ${{ needs.check-version.outputs.version }}"
+            echo "- **Tag Exists**: ${{ needs.check-version.outputs.tag_exists }}"
+            echo "- **Should Create Tag**: ${{ needs.check-version.outputs.should_create_tag }}"
+            echo "- **Reason**: ${{ needs.check-version.outputs.reason }}"
+            echo "- **Workspace gate**: ${{ needs.quality-gate.result }}"
             echo ""
             echo "> A tag pushed with the default \`GITHUB_TOKEN\` does not trigger other workflows."
             echo "> If the release pipeline must run automatically after this tag, either use a PAT"

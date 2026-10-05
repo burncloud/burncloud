@@ -1,19 +1,24 @@
 name: CI / Architecture
 
+# MANUAL ONLY. This used to fire on `pull_request` for anything touching a manifest, a Rust file or
+# the local hook scripts. Those changes are now gated on the developer's machine by the pre-commit
+# hook (`.github/hooks/pre-commit` -> `cargo run --quiet -- code test --staged`), so an automatic
+# trigger here would duplicate a check that has already run.
+#
+# What is left in this file is what the workspace gate does **not** cover, and none of it can be
+# expressed as one of the four gate commands:
+#
+#   - `burncloud-code`'s own regression tests (they exercise real Git hooks and a stubbed Cargo)
+#   - `cargo fmt` as invoked by the local hook, on both Windows and Linux
+#   - the router service's dependency whitelist script
+#   - the crate layering rules in `deny.toml`
+#
+# `clippy` and `cargo deny check` used to live here as `clippy` and `cargo-deny-policy`. They moved to
+# `ci-quality.yml`, which is the single file that names the four commands the local gate runs. A
+# second copy of either command here would be a second place to update and a second verdict to
+# reconcile against the local one.
 on:
-  pull_request:
-    paths:
-      - 'Cargo.toml'
-      - 'clippy.toml'
-      - 'deny.toml'
-      # This workflow's own name, which this branch changed. The previous name no longer exists in the
-      # workflows directory, so keeping it would leave a filter that can never match.
-      - '.github/workflows/ci-architecture.yml'
-      # Added by `main` while this branch was open. Unrelated to the rename, and it would be lost by taking
-      # this branch's side of the conflict.
-      - '.github/hooks/**'
-      - 'crates/**/Cargo.toml'
-      - 'crates/**/*.rs'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,36 +39,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      # The gate runs `cargo fmt --all -- --check` on Linux only. The local hook runs on whatever the
+      # developer uses, and this project is developed on Windows, so the formatting invariant is
+      # checked on both here.
       - name: Check formatting used by local code test
         run: cargo fmt --all -- --check
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
       - name: Test initialization, affected-package selection and commit gates
         run: cargo test -p burncloud-code
 
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Check workspace Clippy policy
-        # The UI client's default `desktop` feature pulls GTK native libraries.
-        # Linux architecture CI checks every target with defaults disabled; the
-        # desktop feature remains the responsibility of platform-specific UI CI.
-        run: cargo clippy --workspace --all-targets --no-default-features
-
   router-deps:
+    name: Router dependency whitelist
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq

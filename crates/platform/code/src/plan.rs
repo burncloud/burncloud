@@ -165,6 +165,9 @@ impl Plan {
         clippy.extend([
             "--all-targets".to_owned(),
             "--no-default-features".to_owned(),
+            "--".to_owned(),
+            "-D".to_owned(),
+            "warnings".to_owned(),
         ]);
         vec![
             vec!["fmt".into(), "--all".into(), "--".into(), "--check".into()],
