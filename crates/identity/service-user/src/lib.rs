@@ -60,9 +60,6 @@ pub enum UserServiceError {
 pub type Result<T> = std::result::Result<T, UserServiceError>;
 
 /// Validated JWT signing and verification secret owned by Identity.
-///
-/// The inner value is intentionally private and its `Debug` implementation is
-/// redacted so application state and errors cannot accidentally expose it.
 #[derive(Clone)]
 pub struct JwtSecret(Arc<str>);
 
@@ -76,7 +73,6 @@ impl JwtSecret {
                 "JWT_SECRET is missing or empty".to_string(),
             ));
         }
-
         Ok(Self(Arc::from(value)))
     }
 
@@ -113,10 +109,10 @@ pub struct AuthToken {
 /// JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
-    sub: String,      // Subject (user ID)
-    username: String, // Username
-    exp: i64,         // Expiration time
-    iat: i64,         // Issued at
+    sub: String,
+    username: String,
+    exp: i64,
+    iat: i64,
 }
 
 /// User service providing business logic for user operations
@@ -151,15 +147,7 @@ impl UserService {
         }
     }
 
-    /// Resolve a user's DiffServ traffic color for the L1 Classifier in the
-    /// router data plane.
-    ///
-    /// Router's `proxy_logic` hot path calls this and injects the result into
-    /// `SchedulingRequest` — the router crate stays color-agnostic (audit
-    /// decision E-D3).
-    ///
-    /// Uses a TTL cache (5 min, audit decision D13) to avoid per-request DB
-    /// queries. Falls back to Yellow on cache miss + DB failure.
+    /// Resolve a user's DiffServ traffic color for the L1 Classifier in the router data plane.
     pub async fn resolve_traffic_class(db: &Database, user_id: &str) -> Result<TrafficColor> {
         use std::sync::OnceLock;
         static CACHE: OnceLock<DashMap<String, (TrafficColor, std::time::Instant)>> =
@@ -167,7 +155,6 @@ impl UserService {
         let cache = CACHE.get_or_init(DashMap::new);
         const TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
-        // Check cache
         if let Some(entry) = cache.get(user_id) {
             if entry.1.elapsed() < TTL {
                 return Ok(entry.0);
@@ -176,7 +163,6 @@ impl UserService {
             cache.remove(user_id);
         }
 
-        // Cache miss — query DB for user roles
         let color = match UserDatabase::get_user_roles(db, user_id).await {
             Ok(roles) => {
                 if roles.iter().any(|r| r == "admin" || r == "enterprise") {
@@ -185,9 +171,10 @@ impl UserService {
                     TrafficColor::Yellow
                 }
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
-                    user_id, error = %e,
+                    user_id,
+                    error = %error,
                     "DB error resolving traffic class, defaulting to Yellow"
                 );
                 TrafficColor::Yellow
@@ -198,35 +185,24 @@ impl UserService {
         Ok(color)
     }
 
-    /// Register a new user
-    ///
-    /// # Arguments
-    /// * `db` - Database connection
-    /// * `username` - Username for the new user
-    /// * `password` - Plain text password (will be hashed)
-    /// * `email` - Optional email address
-    ///
-    /// # Returns
-    /// * `Ok(String)` - The ID of the newly created user
-    /// * `Err(UserServiceError)` - If registration fails
-    pub async fn register_user(
-        &self,
-        db: &Database,
+    async fn ensure_username_available(db: &Database, username: &str) -> Result<()> {
+        if UserDatabase::get_user_by_username(db, username)
+            .await?
+            .is_some()
+        {
+            return Err(UserServiceError::UserAlreadyExists);
+        }
+        Ok(())
+    }
+
+    fn build_registered_user(
         username: &str,
         password: &str,
         email: Option<String>,
-    ) -> Result<String> {
-        // Check if user already exists
-        if let Ok(Some(_)) = UserDatabase::get_user_by_username(db, username).await {
-            return Err(UserServiceError::UserAlreadyExists);
-        }
-
-        // Hash the password
+    ) -> Result<UserAccount> {
         let password_hash =
             hash(password, DEFAULT_COST).map_err(|e| UserServiceError::HashError(e.to_string()))?;
-
-        // Create user
-        let user = UserAccount {
+        Ok(UserAccount {
             id: Uuid::new_v4().to_string(),
             username: username.to_string(),
             email,
@@ -236,103 +212,83 @@ impl UserService {
             balance_usd: SIGNUP_BONUS_NANO,
             balance_cny: 0,
             preferred_currency: Some("USD".to_string()),
-        };
+        })
+    }
 
-        // First-user-is-admin: check BEFORE creating the user so that
-        // count_users() == 0 means this is truly the first real user.
-        // Uses count_users (excludes demo-user seed) instead of
-        // has_admin_user so the check is based on user count, not on
-        // whether a stale admin from a prior run still exists.
-        let is_first_admin = match UserDatabase::count_users(db).await {
+    async fn default_role_for_new_user(db: &Database) -> &'static str {
+        match UserDatabase::count_users(db).await {
             Ok(count) => {
                 tracing::info!("First-user-is-admin check: user count = {count}");
-                count == 0
+                if count == 0 { "admin" } else { "user" }
             }
-            Err(e) => {
-                tracing::warn!("First-user-is-admin check failed: {}", e);
-                false
+            Err(error) => {
+                tracing::warn!(%error, "First-user-is-admin check failed");
+                "user"
             }
-        };
-        let default_role = if is_first_admin { "admin" } else { "user" };
+        }
+    }
+
+    /// Register a new user.
+    pub async fn register_user(
+        &self,
+        db: &Database,
+        username: &str,
+        password: &str,
+        email: Option<String>,
+    ) -> Result<String> {
+        Self::ensure_username_available(db, username).await?;
+        let user = Self::build_registered_user(username, password, email)?;
+        let default_role = Self::default_role_for_new_user(db).await;
 
         UserDatabase::create_user(db, &user).await?;
-
-        if let Err(e) = UserDatabase::assign_role(db, &user.id, default_role).await {
+        if let Err(error) = UserDatabase::assign_role(db, &user.id, default_role).await {
             tracing::warn!(
-                "Warning: Failed to assign {} role to user {}: {}",
-                default_role,
-                user.id,
-                e
+                role = default_role,
+                user_id = user.id,
+                %error,
+                "failed to assign default role to newly registered user"
             );
         }
-
         Ok(user.id)
     }
 
     /// Login user and return authentication token
-    ///
-    /// # Arguments
-    /// * `db` - Database connection
-    /// * `username` - Username
-    /// * `password` - Plain text password
-    ///
-    /// # Returns
-    /// * `Ok(AuthToken)` - Authentication token with user info
-    /// * `Err(UserServiceError)` - If login fails
     pub async fn login_user(
         &self,
         db: &Database,
         username: &str,
         password: &str,
     ) -> Result<AuthToken> {
-        // Fetch user
         let user = UserDatabase::get_user_by_username(db, username)
             .await?
             .ok_or(UserServiceError::UserNotFound)?;
-
-        // Verify password
         let password_hash = user
             .password_hash
             .ok_or(UserServiceError::InvalidCredentials)?;
-
         let valid = verify(password, &password_hash)
             .map_err(|e| UserServiceError::HashError(e.to_string()))?;
-
         if !valid {
             return Err(UserServiceError::InvalidCredentials);
         }
-
-        // Generate token
         self.generate_token(&user.id, &user.username)
     }
 
     /// Generate JWT token for a user
-    ///
-    /// # Arguments
-    /// * `user_id` - User ID
-    /// * `username` - Username
-    ///
-    /// # Returns
-    /// * `Ok(AuthToken)` - Generated authentication token
-    /// * `Err(UserServiceError)` - If token generation fails
     pub fn generate_token(&self, user_id: &str, username: &str) -> Result<AuthToken> {
         let now = Utc::now();
         let expiration = now + Duration::hours(self.token_expiration_hours);
-
         let claims = Claims {
             sub: user_id.to_string(),
             username: username.to_string(),
             exp: expiration.timestamp(),
             iat: now.timestamp(),
         };
-
         let token = encode(
             &Header::default(),
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes()),
         )
         .map_err(|e| UserServiceError::TokenError(e.to_string()))?;
-
         Ok(AuthToken {
             token,
             user_id: user_id.to_string(),
@@ -378,8 +334,6 @@ impl UserService {
         UserDatabase::create_recharge(db, &recharge)
             .await
             .map_err(UserServiceError::DatabaseError)?;
-
-        // create_recharge already updates the balance; read it back
         let balance = UserDatabase::update_balance(db, user_id, 0, Some(currency))
             .await
             .unwrap_or(0);
@@ -394,13 +348,6 @@ impl UserService {
     }
 
     /// Validate JWT token and extract user information
-    ///
-    /// # Arguments
-    /// * `token` - JWT token string
-    ///
-    /// # Returns
-    /// * `Ok((user_id, username))` - Tuple of user ID and username
-    /// * `Err(UserServiceError)` - If token is invalid or expired
     pub fn validate_token(&self, token: &str) -> Result<(String, String)> {
         let token_data = decode::<Claims>(
             token,
@@ -408,7 +355,6 @@ impl UserService {
             &Validation::default(),
         )
         .map_err(|e| UserServiceError::TokenValidationError(e.to_string()))?;
-
         Ok((token_data.claims.sub, token_data.claims.username))
     }
 
@@ -416,11 +362,9 @@ impl UserService {
         let user = UserDatabase::get_user_by_email(db, email)
             .await?
             .ok_or(UserServiceError::UserNotFound)?;
-
         let token = Uuid::new_v4().to_string();
         let expires_at = Utc::now() + Duration::hours(1);
         PasswordResetDatabase::create_token(db, &token, &user.id, &expires_at.to_rfc3339()).await?;
-
         Ok(token)
     }
 
@@ -433,24 +377,18 @@ impl UserService {
         let reset_token = PasswordResetDatabase::get_token(db, token)
             .await?
             .ok_or(UserServiceError::InvalidCredentials)?;
-
         if reset_token.used_at.is_some() {
             return Err(UserServiceError::InvalidCredentials);
         }
-
         let expires_at = chrono::DateTime::parse_from_rfc3339(&reset_token.expires_at)
             .map_err(|e| UserServiceError::ConfigError(e.to_string()))?;
         if Utc::now() > expires_at {
             return Err(UserServiceError::InvalidCredentials);
         }
-
         let password_hash = hash(new_password, DEFAULT_COST)
             .map_err(|e| UserServiceError::HashError(e.to_string()))?;
-
         UserDatabase::update_password_hash(db, &reset_token.user_id, &password_hash).await?;
-
         PasswordResetDatabase::mark_used(db, token).await?;
-
         Ok(())
     }
 
@@ -491,15 +429,6 @@ mod tests {
     use super::*;
     use burncloud_database::create_database_with_url;
 
-    /// An isolated SQLite database for one test.
-    ///
-    /// Tests must never open the default database: it resolves to the developer's real
-    /// `AppData/Local/BurnCloud/data.db`, so a test run writes test users into live data. That
-    /// happened once and the rows had to be removed by hand, so this helper exists and
-    /// `tests/no_default_database.rs` guards against a regression.
-    ///
-    /// A file rather than `:memory:`: the pool opens several connections and an in-memory SQLite
-    /// database is per-connection, so the schema would not be visible to every query.
     struct TempDb {
         db: Database,
         path: std::path::PathBuf,
@@ -518,25 +447,11 @@ mod tests {
             ));
             let _ = std::fs::remove_file(&path);
             let normalized = path.to_string_lossy().replace('\\', "/");
-            // Three slashes: `sqlite:///C:/...` is an absolute path on Windows.
             let url = format!("sqlite:///{}?mode=rwc", normalized);
             let db = create_database_with_url(&url).await?;
             Ok(Self { db, path })
         }
-    }
 
-    impl TempDb {
-        /// Close the pool and delete the file.
-        ///
-        /// Deliberately NOT implemented as `Drop`: dropping a `Database` does not release the
-        /// SQLite handle, and a type with a `Drop` impl cannot hand its fields out by value. The
-        /// same measured behaviour applies as elsewhere in this repository -- `close().await`
-        /// alone is not enough, the pool releases the handle asynchronously, so a short wait is
-        /// required or the removal fails and every run leaves a database in the temp directory.
-        ///
-        /// The cost of not using `Drop` is that a panicking test leaves its file behind. That is
-        /// why the explicit call is enforced by `tests/no_default_database.rs` rather than left to
-        /// this comment.
         async fn cleanup(self) {
             let path = self.path.clone();
             self.db.close().await.ok();
@@ -547,12 +462,12 @@ mod tests {
         }
     }
 
-    /// Create a temporary database and apply the production schema to it.
     async fn test_db(tag: &str) -> anyhow::Result<TempDb> {
         let temp = TempDb::new(tag).await?;
         UserDatabase::init(&temp.db).await?;
         Ok(temp)
     }
+
     fn test_service() -> UserService {
         UserService::new(
             JwtSecret::new("burncloud-service-user-test-secret")
@@ -574,7 +489,6 @@ mod tests {
         let secret = JwtSecret::new(plaintext)
             .unwrap_or_else(|e| panic!("test JWT secret must be valid: {e}"));
         let rendered = format!("{secret:?}");
-
         assert!(!rendered.contains(plaintext));
         assert_eq!(rendered, "JwtSecret([REDACTED])");
     }
@@ -583,32 +497,25 @@ mod tests {
     async fn test_register_user() -> anyhow::Result<()> {
         let temp = test_db("register_user").await?;
         let db = &temp.db;
-
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
-
         let user_id = service
             .register_user(
-                &db,
+                db,
                 &username,
                 "password123",
                 Some("test@example.com".to_string()),
             )
             .await?;
-
         assert!(!user_id.is_empty());
-
-        // Verify user exists
-        let user = UserDatabase::get_user_by_username(&db, &username).await?;
+        let user = UserDatabase::get_user_by_username(db, &username).await?;
         assert!(user.is_some());
         assert_eq!(
             user.unwrap_or_else(|| panic!("user should exist for {username}"))
                 .username,
             username
         );
-
         temp.cleanup().await;
-
         Ok(())
     }
 
@@ -616,27 +523,19 @@ mod tests {
     async fn test_register_duplicate_user() -> anyhow::Result<()> {
         let temp = test_db("register_duplicate").await?;
         let db = &temp.db;
-
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
-
-        // First registration should succeed
         service
-            .register_user(&db, &username, "password123", None)
+            .register_user(db, &username, "password123", None)
             .await?;
-
-        // Second registration should fail
         let result = service
-            .register_user(&db, &username, "password123", None)
+            .register_user(db, &username, "password123", None)
             .await;
-
-        let Err(e) = result else {
+        let Err(error) = result else {
             panic!("duplicate registration should fail");
         };
-        assert!(matches!(e, UserServiceError::UserAlreadyExists));
-
+        assert!(matches!(error, UserServiceError::UserAlreadyExists));
         temp.cleanup().await;
-
         Ok(())
     }
 
@@ -644,25 +543,15 @@ mod tests {
     async fn test_login_user_success() -> anyhow::Result<()> {
         let temp = test_db("login_success").await?;
         let db = &temp.db;
-
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
         let password = "password123";
-
-        // Register user
-        service
-            .register_user(&db, &username, password, None)
-            .await?;
-
-        // Login should succeed
-        let token = service.login_user(&db, &username, password).await?;
-
+        service.register_user(db, &username, password, None).await?;
+        let token = service.login_user(db, &username, password).await?;
         assert!(!token.token.is_empty());
         assert_eq!(token.username, username);
         assert!(token.expires_at > Utc::now().timestamp());
-
         temp.cleanup().await;
-
         Ok(())
     }
 
@@ -670,25 +559,17 @@ mod tests {
     async fn test_login_user_wrong_password() -> anyhow::Result<()> {
         let temp = test_db("login_wrong_password").await?;
         let db = &temp.db;
-
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
-
-        // Register user
         service
-            .register_user(&db, &username, "password123", None)
+            .register_user(db, &username, "password123", None)
             .await?;
-
-        // Login with wrong password should fail
-        let result = service.login_user(&db, &username, "wrongpassword").await;
-
-        let Err(e) = result else {
+        let result = service.login_user(db, &username, "wrongpassword").await;
+        let Err(error) = result else {
             panic!("wrong password login should fail");
         };
-        assert!(matches!(e, UserServiceError::InvalidCredentials));
-
+        assert!(matches!(error, UserServiceError::InvalidCredentials));
         temp.cleanup().await;
-
         Ok(())
     }
 
@@ -696,30 +577,22 @@ mod tests {
     async fn test_login_user_not_found() -> anyhow::Result<()> {
         let temp = test_db("login_not_found").await?;
         let db = &temp.db;
-
         let service = test_service();
-
-        // Login non-existent user should fail
-        let result = service.login_user(&db, "nonexistent", "password").await;
-
-        let Err(e) = result else {
+        let result = service.login_user(db, "nonexistent", "password").await;
+        let Err(error) = result else {
             panic!("nonexistent user login should fail");
         };
-        assert!(matches!(e, UserServiceError::UserNotFound));
-
+        assert!(matches!(error, UserServiceError::UserNotFound));
         temp.cleanup().await;
-
         Ok(())
     }
 
     #[test]
     fn test_generate_token() {
         let service = UserService::with_secret("test-secret".to_string());
-
         let token = service
             .generate_token("user123", "testuser")
             .unwrap_or_else(|e| panic!("token generation should succeed: {e}"));
-
         assert!(!token.token.is_empty());
         assert_eq!(token.user_id, "user123");
         assert_eq!(token.username, "testuser");
@@ -729,15 +602,12 @@ mod tests {
     #[test]
     fn test_validate_token_success() {
         let service = UserService::with_secret("test-secret".to_string());
-
         let token = service
             .generate_token("user123", "testuser")
             .unwrap_or_else(|e| panic!("token generation should succeed: {e}"));
-
         let (user_id, username) = service
             .validate_token(&token.token)
             .unwrap_or_else(|e| panic!("token validation should succeed: {e}"));
-
         assert_eq!(user_id, "user123");
         assert_eq!(username, "testuser");
     }
@@ -745,30 +615,30 @@ mod tests {
     #[test]
     fn test_validate_token_invalid() {
         let service = UserService::with_secret("test-secret".to_string());
-
         let result = service.validate_token("invalid.token.here");
-
-        let Err(e) = result else {
+        let Err(error) = result else {
             panic!("invalid token validation should fail");
         };
-        assert!(matches!(e, UserServiceError::TokenValidationError(_)));
+        assert!(matches!(
+            error,
+            UserServiceError::TokenValidationError(_)
+        ));
     }
 
     #[test]
     fn test_validate_token_wrong_secret() {
         let service1 = UserService::with_secret("secret1".to_string());
         let service2 = UserService::with_secret("secret2".to_string());
-
         let token = service1
             .generate_token("user123", "testuser")
             .unwrap_or_else(|e| panic!("token generation should succeed: {e}"));
-
-        // Validating with a different secret should fail
         let result = service2.validate_token(&token.token);
-
-        let Err(e) = result else {
+        let Err(error) = result else {
             panic!("wrong-secret validation should fail");
         };
-        assert!(matches!(e, UserServiceError::TokenValidationError(_)));
+        assert!(matches!(
+            error,
+            UserServiceError::TokenValidationError(_)
+        ));
     }
 }
