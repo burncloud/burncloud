@@ -2,11 +2,6 @@
 //!
 //! This crate aggregates all router-related database operations and provides
 //! database initialization functionality.
-//!
-//! # Modules
-//! - [`token`] - Token management (RouterToken, RouterTokenModel)
-//! - [`log`] - Router logs, usage stats and balance deduction (RouterLog, RouterLogModel, BalanceModel)
-//! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
 use burncloud_database::{adapt_sql, phs, Database, Result};
 
@@ -14,7 +9,6 @@ pub mod log;
 pub mod router_video_task;
 pub mod token;
 
-// Re-export common types.
 pub use log::{
     get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
     BalanceModel, BillingModelSummary, BillingSummary, CandidateInfo, FailoverAttempt,
@@ -27,20 +21,6 @@ pub use token::{
     TokenRotationResult,
 };
 
-/// Result of [`RouterDatabase::validate_token_and_get_info`].
-///
-/// Carries user identity, quota state, and the L1 Classifier inputs
-/// (`order_type` / `price_cap`) needed by `proxy_logic` to construct a real
-/// `SchedulingRequest`.
-///
-/// `order_type` and `price_cap` are `Option` because:
-/// - `user_api_keys` (the primary token table) does not store them; the values
-///   live in `router_tokens` and are pulled via `LEFT JOIN`. Tokens that don't
-///   have a matching `router_tokens` row read as `None`.
-/// - `price_cap_nanodollars` is also nullable inside `router_tokens` itself
-///   (per migration 0011 — only `order_type` carries a default).
-///
-/// Callers should fall back to `OrderType::default()` when either is `None`.
 #[derive(Debug, Clone)]
 pub struct TokenValidationInfo {
     pub user_id: String,
@@ -51,90 +31,88 @@ pub struct TokenValidationInfo {
     pub price_cap: Option<i64>,
 }
 
-/// Tuple shape of the SELECT inside [`RouterDatabase::validate_token_and_get_info`].
-/// Aliased so the row type does not trip `clippy::type_complexity`.
 type TokenValidationRow = (String, String, i64, i64, Option<String>, Option<i64>);
 
-/// Router database operations
 pub struct RouterDatabase;
 
-impl RouterDatabase {
-    /// Initialize router database tables
-    pub async fn init(db: &Database) -> Result<()> {
-        let conn = db.get_connection()?;
-        let kind = db.kind();
-
-        // Only create router_tokens table (router_upstreams, router_groups removed)
-        let tokens_sql = match kind.as_str() {
-            "sqlite" => {
-                r#"
-                CREATE TABLE IF NOT EXISTS router_tokens (
-                    token TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    quota_limit INTEGER NOT NULL DEFAULT -1,
-                    used_quota INTEGER NOT NULL DEFAULT 0,
-                    expired_time INTEGER NOT NULL DEFAULT -1,
-                    accessed_time INTEGER NOT NULL DEFAULT 0
-                );
+fn router_tokens_table_sql(kind: &str) -> &'static str {
+    match kind {
+        "sqlite" => {
+            r#"
+            CREATE TABLE IF NOT EXISTS router_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                quota_limit INTEGER NOT NULL DEFAULT -1,
+                used_quota INTEGER NOT NULL DEFAULT 0,
+                expired_time INTEGER NOT NULL DEFAULT -1,
+                accessed_time INTEGER NOT NULL DEFAULT 0
+            );
             "#
-            }
-            "postgres" => {
-                r#"
-                CREATE TABLE IF NOT EXISTS router_tokens (
-                    token TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    quota_limit BIGINT NOT NULL DEFAULT -1,
-                    used_quota BIGINT NOT NULL DEFAULT 0,
-                    expired_time BIGINT NOT NULL DEFAULT -1,
-                    accessed_time BIGINT NOT NULL DEFAULT 0
-                );
-            "#
-            }
-            _ => unreachable!("Unsupported database kind"),
-        };
-
-        sqlx::query(tokens_sql).execute(conn.pool()).await?;
-
-        // Migrations for router_tokens
-        if kind == "sqlite" {
-            let _ = sqlx::query(
-                "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_tokens ADD COLUMN expired_time INTEGER NOT NULL DEFAULT -1",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE router_tokens ADD COLUMN accessed_time INTEGER NOT NULL DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0")
-                .execute(conn.pool())
-                .await;
         }
+        "postgres" => {
+            r#"
+            CREATE TABLE IF NOT EXISTS router_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                quota_limit BIGINT NOT NULL DEFAULT -1,
+                used_quota BIGINT NOT NULL DEFAULT 0,
+                expired_time BIGINT NOT NULL DEFAULT -1,
+                accessed_time BIGINT NOT NULL DEFAULT 0
+            );
+            "#
+        }
+        _ => unreachable!("Unsupported database kind"),
+    }
+}
 
-        Ok(())
+async fn execute_sqlite_add_column(db: &Database, sql: &str) -> Result<()> {
+    let conn = db.get_connection()?;
+    match sqlx::query(sql).execute(conn.pool()).await {
+        Ok(_) => Ok(()),
+        Err(error) if error.to_string().contains("duplicate column name") => {
+            tracing::debug!(%error, "router database migration column already exists");
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn migrate_router_schema(db: &Database) -> Result<()> {
+    if db.kind() != "sqlite" {
+        return Ok(());
     }
 
-    // ============== Token delegations ==============
+    const MIGRATIONS: &[&str] = &[
+        "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
+        "ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE router_tokens ADD COLUMN expired_time INTEGER NOT NULL DEFAULT -1",
+        "ALTER TABLE router_tokens ADD COLUMN accessed_time INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0",
+    ];
+    for sql in MIGRATIONS {
+        execute_sqlite_add_column(db, sql).await?;
+    }
+    Ok(())
+}
+
+impl RouterDatabase {
+    /// Initialize router database tables.
+    pub async fn init(db: &Database) -> Result<()> {
+        let conn = db.get_connection()?;
+        sqlx::query(router_tokens_table_sql(db.kind().as_str()))
+            .execute(conn.pool())
+            .await?;
+        migrate_router_schema(db).await
+    }
 
     pub async fn list_tokens(db: &Database) -> Result<Vec<RouterToken>> {
         RouterTokenModel::list(db).await
     }
 
-    pub async fn create_token(db: &Database, t: &RouterToken) -> Result<()> {
-        RouterTokenModel::create(db, t).await
+    pub async fn create_token(db: &Database, token: &RouterToken) -> Result<()> {
+        RouterTokenModel::create(db, token).await
     }
 
     pub async fn delete_token(db: &Database, token: &str) -> Result<()> {
@@ -173,15 +151,6 @@ impl RouterDatabase {
         RouterTokenModel::deduct_quota(db, token, cost).await
     }
 
-    /// Validates a token and returns the [`TokenValidationInfo`] payload
-    /// (user identity, quota state, and L1 Classifier inputs) when the token
-    /// is active. Returns `Ok(None)` on no match — the proxy entrypoint then
-    /// falls back to the legacy `validate_token_detailed` path.
-    ///
-    /// `order_type` and `price_cap_nanodollars` come from `router_tokens` via
-    /// `LEFT JOIN` on the token string. Tokens that exist only in
-    /// `user_api_keys` (no matching `router_tokens` row) get `None` for both
-    /// fields and the L1 Classifier falls back to `OrderType::default()`.
     pub async fn validate_token_and_get_info(
         db: &Database,
         token: &str,
@@ -192,9 +161,7 @@ impl RouterDatabase {
         } else {
             "`group`"
         };
-
         let placeholder = if db.kind() == "postgres" { "$1" } else { "?" };
-
         let query = format!(
             r#"
             SELECT u.id, u.{}, t.remain_quota, t.used_quota,
@@ -206,12 +173,10 @@ impl RouterDatabase {
             "#,
             group_col, placeholder
         );
-
         let row: Option<TokenValidationRow> = sqlx::query_as(&query)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
-
         Ok(row.map(
             |(user_id, group, remain_quota, used_quota, order_type, price_cap)| {
                 TokenValidationInfo {
@@ -226,13 +191,6 @@ impl RouterDatabase {
         ))
     }
 
-    // ============== Log delegations ==============
-
-    /// Insert an immutable usage/billing log entry.
-    ///
-    /// Logging is intentionally side-effect free with respect to credential
-    /// spend quota. Spend settlement is owned by `deduct_quota` and is scoped
-    /// to the credential that actually authorized the request.
     pub async fn insert_log(db: &Database, log: &RouterLog) -> Result<()> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
@@ -250,7 +208,6 @@ impl RouterDatabase {
             "#,
             phs(is_postgres, 32)
         );
-
         sqlx::query(&sql)
             .bind(&log.request_id)
             .bind(&log.user_id)
@@ -286,7 +243,6 @@ impl RouterDatabase {
             .bind(&log.error_type)
             .execute(conn.pool())
             .await?;
-
         Ok(())
     }
 
@@ -309,8 +265,6 @@ impl RouterDatabase {
         RouterLogModel::get_usage_by_user(db, user_id).await
     }
 
-    // ============== Request Log delegations ==============
-
     pub async fn insert_request_log(db: &Database, log: &RouterRequestLog) -> Result<()> {
         RouterRequestLogModel::insert(db, log).await
     }
@@ -326,14 +280,117 @@ impl RouterDatabase {
         RouterRequestLogModel::delete_old_logs(db, days).await
     }
 
-    // ============== Balance delegations ==============
-
     pub async fn deduct_usd(db: &Database, user_id: &str, cost_nano: i64) -> Result<bool> {
         BalanceModel::deduct_usd(db, user_id, cost_nano).await
     }
 
     pub async fn deduct_cny(db: &Database, user_id: &str, cost_nano: i64) -> Result<bool> {
         BalanceModel::deduct_cny(db, user_id, cost_nano).await
+    }
+
+    async fn balances(db: &Database, user_id: &str) -> Result<(i64, i64)> {
+        let conn = db.get_connection()?;
+        let sql = adapt_sql(
+            db.kind() == "postgres",
+            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?",
+        );
+        Ok(sqlx::query_as(&sql)
+            .bind(user_id)
+            .fetch_optional(conn.pool())
+            .await?
+            .unwrap_or((0, 0)))
+    }
+
+    async fn deduct_cny_then_usd(
+        db: &Database,
+        user_id: &str,
+        cost_nano: i64,
+        exchange_rate_nano: i64,
+        balance_usd: i64,
+        balance_cny: i64,
+    ) -> Result<bool> {
+        if balance_cny >= cost_nano {
+            return Self::deduct_cny(db, user_id, cost_nano).await;
+        }
+        let required_cny = cost_nano - balance_cny;
+        let required_usd =
+            (i128::from(required_cny) * 1_000_000_000) / i128::from(exchange_rate_nano);
+        if required_usd > i128::from(balance_usd) {
+            return Ok(false);
+        }
+
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let mut tx = conn.pool().begin().await?;
+        if balance_cny > 0 {
+            let clear_cny = adapt_sql(
+                is_postgres,
+                "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?",
+            );
+            sqlx::query(&clear_cny)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        let usd_to_deduct = required_usd as i64;
+        let deduct_usd = adapt_sql(
+            is_postgres,
+            "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
+        );
+        sqlx::query(&deduct_usd)
+            .bind(usd_to_deduct)
+            .bind(user_id)
+            .bind(usd_to_deduct)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    async fn deduct_usd_then_cny(
+        db: &Database,
+        user_id: &str,
+        cost_nano: i64,
+        exchange_rate_nano: i64,
+        balance_usd: i64,
+        balance_cny: i64,
+    ) -> Result<bool> {
+        if balance_usd >= cost_nano {
+            return Self::deduct_usd(db, user_id, cost_nano).await;
+        }
+        let required_usd = cost_nano - balance_usd;
+        let required_cny =
+            (i128::from(required_usd) * i128::from(exchange_rate_nano)) / 1_000_000_000;
+        if required_cny > i128::from(balance_cny) {
+            return Ok(false);
+        }
+
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let mut tx = conn.pool().begin().await?;
+        if balance_usd > 0 {
+            let clear_usd = adapt_sql(
+                is_postgres,
+                "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?",
+            );
+            sqlx::query(&clear_usd)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        let cny_to_deduct = required_cny as i64;
+        let deduct_cny = adapt_sql(
+            is_postgres,
+            "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
+        );
+        sqlx::query(&deduct_cny)
+            .bind(cny_to_deduct)
+            .bind(user_id)
+            .bind(cny_to_deduct)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(true)
     }
 
     pub async fn deduct_dual_currency(
@@ -346,143 +403,54 @@ impl RouterDatabase {
         if cost_nano <= 0 {
             return Ok(true);
         }
-
-        let conn = db.get_connection()?;
-        let is_postgres = db.kind() == "postgres";
-
-        // Get current balances
-        let balances_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?");
-        let balances: Option<(i64, i64)> = sqlx::query_as(&balances_sql)
-            .bind(user_id)
-            .fetch_optional(conn.pool())
-            .await?;
-
-        let (balance_usd, balance_cny) = balances.unwrap_or((0, 0));
-
+        if exchange_rate_nano <= 0 {
+            return Ok(false);
+        }
+        let (balance_usd, balance_cny) = Self::balances(db, user_id).await?;
         if cost_currency == "CNY" {
-            // CNY model: prioritize CNY balance
-            if balance_cny >= cost_nano {
-                // Sufficient CNY balance
-                return Self::deduct_cny(db, user_id, cost_nano).await;
-            }
-
-            // Need to convert USD to CNY
-            // Required CNY = cost_nano - balance_cny
-            // Required USD in nanodollars = required_cny * 10^9 / exchange_rate_nano
-            // Using i128 for intermediate calculation to avoid overflow
-            let required_cny = cost_nano - balance_cny;
-            let required_usd: i128 =
-                (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
-
-            if required_usd > balance_usd as i128 {
-                // Insufficient total balance
-                return Ok(false);
-            }
-
-            // Deduct from both currencies atomically
-            let mut tx = conn.pool().begin().await?;
-
-            let clear_cny_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?",
-            );
-
-            // Deduct remaining CNY
-            if balance_cny > 0 {
-                sqlx::query(&clear_cny_sql)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
-            // Deduct required USD (already integer, no need to round)
-            let usd_to_deduct = required_usd as i64;
-            let deduct_usd_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?");
-            sqlx::query(&deduct_usd_sql)
-                .bind(usd_to_deduct)
-                .bind(user_id)
-                .bind(usd_to_deduct)
-                .execute(&mut *tx)
-                .await?;
-
-            tx.commit().await?;
-            Ok(true)
+            Self::deduct_cny_then_usd(
+                db,
+                user_id,
+                cost_nano,
+                exchange_rate_nano,
+                balance_usd,
+                balance_cny,
+            )
+            .await
         } else {
-            // USD model (default): prioritize USD balance
-            if balance_usd >= cost_nano {
-                // Sufficient USD balance
-                return Self::deduct_usd(db, user_id, cost_nano).await;
-            }
-
-            // Need to convert CNY to USD
-            // Required USD = cost_nano - balance_usd
-            // Required CNY in nanodollars = required_usd * exchange_rate_nano / 10^9
-            // Using i128 for intermediate calculation to avoid overflow
-            let required_usd = cost_nano - balance_usd;
-            let required_cny: i128 =
-                (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
-
-            if required_cny > balance_cny as i128 {
-                // Insufficient total balance
-                return Ok(false);
-            }
-
-            // Deduct from both currencies atomically
-            let mut tx = conn.pool().begin().await?;
-
-            let clear_usd_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?",
-            );
-
-            // Deduct remaining USD
-            if balance_usd > 0 {
-                sqlx::query(&clear_usd_sql)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
-            // Deduct required CNY (already integer, no need to round)
-            let cny_to_deduct = required_cny as i64;
-            let deduct_cny_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?");
-            sqlx::query(&deduct_cny_sql)
-                .bind(cny_to_deduct)
-                .bind(user_id)
-                .bind(cny_to_deduct)
-                .execute(&mut *tx)
-                .await?;
-
-            tx.commit().await?;
-            Ok(true)
+            Self::deduct_usd_then_cny(
+                db,
+                user_id,
+                cost_nano,
+                exchange_rate_nano,
+                balance_usd,
+                balance_cny,
+            )
+            .await
         }
     }
 }
 
 /// Get aggregated usage statistics by token key over a time period.
-/// Looks up the user_id from user_api_keys, then queries router_logs.
 pub async fn get_usage_stats_by_token(
     db: &Database,
     token_key: &str,
     period: &str,
 ) -> Result<Option<(String, UsageStats)>> {
     let conn = db.get_connection()?;
-    let is_postgres = db.kind() == "postgres";
-
     let sql = adapt_sql(
-        is_postgres,
+        db.kind() == "postgres",
         "SELECT user_id FROM user_api_keys WHERE key = ? AND status = 1",
     );
     let user_id: Option<String> = sqlx::query_scalar(&sql)
         .bind(token_key)
         .fetch_optional(conn.pool())
         .await?;
-
     match user_id {
         None => Ok(None),
-        Some(uid) => {
-            let stats = get_usage_stats(db, &uid, period).await?;
-            Ok(Some((uid, stats)))
+        Some(user_id) => {
+            let stats = get_usage_stats(db, &user_id, period).await?;
+            Ok(Some((user_id, stats)))
         }
     }
 }
