@@ -29,6 +29,8 @@ jobs:
           printf 'MASTER_KEY=' >> "$GITHUB_ENV"
           printf 'a%.0s' {1..64} >> "$GITHUB_ENV"
           printf '\nSKIP_INITIAL_PRICE_SYNC=1\nRUST_BACKTRACE=1\n' >> "$GITHUB_ENV"
+      - name: Stage PR changes for code test
+        run: git reset --soft origin/main
       - name: cargo run -- code test
         shell: bash
         run: |
