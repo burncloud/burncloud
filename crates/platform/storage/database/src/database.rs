@@ -288,7 +288,7 @@ impl Database {
             query_builder = query_builder.bind(param);
         }
 
-        let results = query_builder.fetch_all(connection.pool()).await?;
+        let results = query_builder.fetch_all(conn.pool()).await?;
         Ok(results)
     }
 }
