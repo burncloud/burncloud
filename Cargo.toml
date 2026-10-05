@@ -262,3 +262,6 @@ chrono.workspace = true
 
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 burncloud-client = { workspace = true, default-features = false, features = ["desktop"] }
+
+[lints]
+workspace = true
