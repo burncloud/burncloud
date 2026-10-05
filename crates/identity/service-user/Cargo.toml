@@ -21,6 +21,11 @@ tracing.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 anyhow.workspace = true
+# The JWT tests build tokens by hand: one whose expiry is in the past, one with no `exp` claim, one signed with a
+# different algorithm, and two with an edited payload. Those need the same encoding the library uses -- base64url
+# for the segments, and a JSON value to edit and re-encode.
+base64.workspace = true
+serde_json.workspace = true
 
 [[example]]
 name = "service-user-usage"
