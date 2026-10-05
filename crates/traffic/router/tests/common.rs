@@ -1,4 +1,13 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    dead_code,
+    reason = "Shared test helper. Each file in `tests/` is its own crate, so this one is also built as a \
+              standalone test binary in which none of these helpers is used; the binaries that do use them \
+              are the `*_tests.rs` files beside it. The helpers stay `pub` within the crate for that reason, \
+              which is also why some are reported as unreachable from outside it."
+)]
 
 use burncloud_database::{create_database_with_url, sqlx, Database};
 use burncloud_database_router::RouterDatabase;
@@ -120,7 +129,7 @@ async fn ensure_l1_classifier_tables(pool: &AnyPool) -> anyhow::Result<()> {
 /// SQLite-only DDL (`INSERT OR REPLACE`); intended for the in-process
 /// fixtures used by integration tests that share [`setup_db`].
 #[allow(dead_code)]
-pub async fn insert_router_token(
+pub(crate) async fn insert_router_token(
     db: &Database,
     key: &str,
     user_id: &str,
@@ -183,7 +192,7 @@ pub async fn insert_router_token(
 /// call this first. SQLite `ALTER TABLE ADD COLUMN` is idempotent if
 /// we swallow "duplicate column name" errors.
 #[allow(dead_code)]
-pub async fn ensure_l6_observability_columns(pool: &AnyPool) -> anyhow::Result<()> {
+pub(crate) async fn ensure_l6_observability_columns(pool: &AnyPool) -> anyhow::Result<()> {
     let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN layer_decision VARCHAR(32)")
         .execute(pool)
         .await; // ignore duplicate-column error
@@ -199,7 +208,7 @@ pub async fn ensure_l6_observability_columns(pool: &AnyPool) -> anyhow::Result<(
 /// first. SQLite `ALTER TABLE ADD COLUMN` is idempotent if we swallow
 /// "duplicate column name" errors.
 #[allow(dead_code)]
-pub async fn ensure_cost_status_column(pool: &AnyPool) -> anyhow::Result<()> {
+pub(crate) async fn ensure_cost_status_column(pool: &AnyPool) -> anyhow::Result<()> {
     let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost_status TEXT DEFAULT NULL")
         .execute(pool)
         .await; // ignore duplicate-column error
@@ -209,7 +218,7 @@ pub async fn ensure_cost_status_column(pool: &AnyPool) -> anyhow::Result<()> {
 /// Ensure the `router_logs` table has the `error_type` column added by
 /// migration 0014. Same pattern as `ensure_cost_status_column`.
 #[allow(dead_code)]
-pub async fn ensure_error_type_column(pool: &AnyPool) -> anyhow::Result<()> {
+pub(crate) async fn ensure_error_type_column(pool: &AnyPool) -> anyhow::Result<()> {
     let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN error_type TEXT DEFAULT NULL")
         .execute(pool)
         .await; // ignore duplicate-column error
@@ -220,7 +229,7 @@ pub async fn ensure_error_type_column(pool: &AnyPool) -> anyhow::Result<()> {
 /// These tables supersede the deprecated `router_upstreams`, `router_groups`,
 /// and `router_group_members` tables.
 #[allow(dead_code)]
-pub async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> {
+pub(crate) async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> {
     // Create channel_providers if not exists
     sqlx::query(
         r#"
@@ -268,7 +277,7 @@ pub async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> {
 /// Insert a channel for testing.
 /// Creates entries in both `channel_providers` and `channel_abilities`.
 #[allow(dead_code)]
-pub async fn insert_test_channel(
+pub(crate) async fn insert_test_channel(
     pool: &AnyPool,
     channel_id: i32,
     name: &str,
@@ -316,7 +325,7 @@ pub async fn insert_test_channel(
     Ok(())
 }
 
-pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
+pub(crate) async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     // Use a unique temp file per test to avoid SQLite lock contention when tests run in parallel.
     let tmp = tempfile::NamedTempFile::new()?;
     let path = tmp.path().to_string_lossy().to_string();
@@ -341,7 +350,7 @@ pub async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
 }
 
 #[allow(dead_code)]
-pub async fn start_test_server(port: u16, db_url: &str) {
+pub(crate) async fn start_test_server(port: u16, db_url: &str) {
     // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
     // Use a fixed 64-hex-char test key; does not affect production.
     if std::env::var("MASTER_KEY").is_err() {
@@ -382,7 +391,7 @@ pub async fn start_test_server(port: u16, db_url: &str) {
 
 #[allow(dead_code)]
 #[allow(clippy::disallowed_types)]
-pub async fn start_mock_upstream(listener: TcpListener) {
+pub(crate) async fn start_mock_upstream(listener: TcpListener) {
     let handler = |method: axum::http::Method,
                    uri: axum::http::Uri,
                    headers: axum::http::HeaderMap,

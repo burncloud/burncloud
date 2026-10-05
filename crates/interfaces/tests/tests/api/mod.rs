@@ -10,19 +10,19 @@
     clippy::to_string_in_format_args,
     clippy::redundant_pattern_matching
 )]
-pub mod ability_routing;
-pub mod auth;
-pub mod auth_handlers;
-pub mod channel;
-pub mod claude_relay;
-pub mod gemini_3_pro_image;
-pub mod gemini_billing;
-pub mod gemini_passthrough;
-pub mod gemini_region_pricing;
-pub mod gemini_regression;
-pub mod gemini_thinking;
-pub mod log;
-pub mod monitor;
-pub mod relay;
-pub mod status;
-pub mod user;
+pub(crate) mod ability_routing;
+pub(crate) mod auth;
+pub(crate) mod auth_handlers;
+pub(crate) mod channel;
+pub(crate) mod claude_relay;
+pub(crate) mod gemini_3_pro_image;
+pub(crate) mod gemini_billing;
+pub(crate) mod gemini_passthrough;
+pub(crate) mod gemini_region_pricing;
+pub(crate) mod gemini_regression;
+pub(crate) mod gemini_thinking;
+pub(crate) mod log;
+pub(crate) mod monitor;
+pub(crate) mod relay;
+pub(crate) mod status;
+pub(crate) mod user;

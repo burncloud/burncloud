@@ -67,7 +67,7 @@ async fn test_trend_chart_rendering() {
         .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_trend =
+    let _has_trend =
         snap.text.contains("趋势") || snap.text.contains("7天") || snap.text.contains("Trend");
     let _ = browser.screenshot("trend-chart");
 }
@@ -88,7 +88,7 @@ async fn test_security_score_value_display() {
         .wait_for_text("风控雷达", 10_000)
         .expect("Monitor page did not load");
 
-    let snap = browser.snapshot().expect("Failed to snapshot");
+    let _snap = browser.snapshot().expect("Failed to snapshot");
     // Score might be displayed as number or percentage
     let _ = browser.screenshot("security-score-value");
 }
@@ -109,7 +109,7 @@ async fn test_security_score_color_indicator() {
 
     // Color indicator would be visual, check for status text
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_status = snap.text.contains("良好")
+    let _has_status = snap.text.contains("良好")
         || snap.text.contains("警告")
         || snap.text.contains("危险")
         || snap.text.contains("Good")
@@ -135,7 +135,7 @@ async fn test_risk_events_list() {
         .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_events =
+    let _has_events =
         snap.text.contains("事件") || snap.text.contains("风险") || snap.text.contains("Event");
     let _ = browser.screenshot("risk-events-list");
 }
@@ -176,7 +176,7 @@ async fn test_content_filter_config() {
         .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_filter =
+    let _has_filter =
         snap.text.contains("过滤") || snap.text.contains("黑名单") || snap.text.contains("Filter");
     let _ = browser.screenshot("content-filter-config");
 }
@@ -217,7 +217,7 @@ async fn test_emergency_circuit_break_button() {
         .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_breaker =
+    let _has_breaker =
         snap.text.contains("熔断") || snap.text.contains("紧急") || snap.text.contains("Circuit");
     let _ = browser.screenshot("circuit-break-button");
 }
@@ -256,7 +256,7 @@ async fn test_circuit_breaker_status_indicator() {
         .expect("Monitor page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_status =
+    let _has_status =
         snap.text.contains("正常") || snap.text.contains("熔断") || snap.text.contains("恢复");
     let _ = browser.screenshot("circuit-breaker-status");
 }

@@ -459,7 +459,7 @@ mod nano_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+    pub(super) fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -467,7 +467,7 @@ mod nano_as_dollars {
         dollars.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -481,7 +481,7 @@ mod option_nano_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
+    pub(super) fn serialize<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -494,7 +494,7 @@ mod option_nano_as_dollars {
         }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -509,7 +509,10 @@ mod nano_map_as_dollars {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::collections::HashMap;
 
-    pub fn serialize<S>(value: &HashMap<String, i64>, serializer: S) -> Result<S::Ok, S::Error>
+    pub(super) fn serialize<S>(
+        value: &HashMap<String, i64>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -520,7 +523,7 @@ mod nano_map_as_dollars {
         dollars_map.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, i64>, D::Error>
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, i64>, D::Error>
     where
         D: Deserializer<'de>,
     {

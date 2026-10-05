@@ -46,7 +46,7 @@ fn find_api_tests_exe(root: &Path) -> Option<PathBuf> {
     candidates.pop()
 }
 
-pub struct GateOutput {
+pub(super) struct GateOutput {
     pub passed: bool,
     pub lines: Vec<String>,
     pub timings: Value,

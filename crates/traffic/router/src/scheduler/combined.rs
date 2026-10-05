@@ -20,12 +20,12 @@ use super::{
 /// Small epsilon to avoid division by zero.
 const EPS: f64 = 1e-6;
 
-pub struct CombinedScheduler {
+pub(crate) struct CombinedScheduler {
     config: SchedulerPolicyConfig,
 }
 
 impl CombinedScheduler {
-    pub fn new(config: SchedulerPolicyConfig) -> Self {
+    pub(crate) fn new(config: SchedulerPolicyConfig) -> Self {
         Self { config }
     }
 }

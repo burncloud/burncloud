@@ -163,7 +163,7 @@ async fn test_channel_edit_button_visible() {
         .wait_for_text("模型网络", 10_000)
         .expect("Channel list page did not load");
 
-    let snap = browser.snapshot().expect("Failed to snapshot");
+    let _snap = browser.snapshot().expect("Failed to snapshot");
     let _ = browser.screenshot("channel-edit-button");
 }
 

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 // Claude Specific Types
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ClaudeRequest {
+pub(crate) struct ClaudeRequest {
     pub model: String,
     pub messages: Vec<ClaudeMessage>,
     pub max_tokens: u32,
@@ -19,15 +19,15 @@ pub struct ClaudeRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ClaudeMessage {
+pub(crate) struct ClaudeMessage {
     pub role: String,
     pub content: String,
 }
 
-pub struct ClaudeAdaptor;
+pub(crate) struct ClaudeAdaptor;
 
 impl ClaudeAdaptor {
-    pub fn convert_request(req: OpenAIChatRequest) -> Value {
+    pub(crate) fn convert_request(req: OpenAIChatRequest) -> Value {
         let mut system_prompt = None;
         let mut claude_messages = Vec::new();
 
@@ -54,7 +54,7 @@ impl ClaudeAdaptor {
         json!(claude_req)
     }
 
-    pub fn convert_response(claude_resp: Value, model: &str) -> Value {
+    pub(crate) fn convert_response(claude_resp: Value, model: &str) -> Value {
         // Claude Response: { "content": [ { "text": "..." } ], ... }
         let text = claude_resp
             .get("content")

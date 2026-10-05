@@ -165,7 +165,7 @@ async fn test_api_key_status_display() {
         .expect("Access page did not load");
 
     let snap = browser.snapshot().expect("Failed to snapshot");
-    let has_status =
+    let _has_status =
         snap.text.contains("启用") || snap.text.contains("禁用") || snap.text.contains("状态");
     let _ = browser.screenshot("api-key-status-display");
 }
@@ -228,7 +228,7 @@ async fn test_api_key_rotate_confirmation() {
     let _ = browser.wait_for_text("确认", 5_000);
 
     let _ = browser.click_by_name("button:确认", 3_000);
-    let result = browser
+    let _result = browser
         .wait_for_text("成功", 10_000)
         .or_else(|_| browser.wait_for_text("sk-", 5_000));
     let _ = browser.screenshot("api-key-rotate-confirm");

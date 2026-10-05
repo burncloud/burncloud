@@ -8,13 +8,13 @@ use serde_json::{json, Value};
 
 // Gemini Specific Types
 #[derive(Serialize, Debug)]
-pub struct GeminiContent {
+pub(crate) struct GeminiContent {
     pub role: String,
     pub parts: Vec<GeminiPart>,
 }
 
 #[derive(Serialize, Debug)]
-pub struct GeminiPart {
+pub(crate) struct GeminiPart {
     pub text: String,
 }
 
@@ -23,7 +23,7 @@ pub struct GeminiPart {
                                    // Wait, Gemini API expects camelCase "generationConfig".
                                    // Rust standard is snake_case "generation_config".
                                    // Serde can map this.
-pub struct GeminiRequest {
+pub(crate) struct GeminiRequest {
     pub contents: Vec<GeminiContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation_config: Option<GeminiGenerationConfig>,
@@ -31,17 +31,17 @@ pub struct GeminiRequest {
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct GeminiGenerationConfig {
+pub(crate) struct GeminiGenerationConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
 }
 
-pub struct GeminiAdaptor;
+pub(crate) struct GeminiAdaptor;
 
 impl GeminiAdaptor {
-    pub fn convert_request(req: OpenAIChatRequest) -> Value {
+    pub(crate) fn convert_request(req: OpenAIChatRequest) -> Value {
         let contents: Vec<GeminiContent> = req
             .messages
             .into_iter()
@@ -74,7 +74,7 @@ impl GeminiAdaptor {
 
     // Convert Gemini Response JSON -> OpenAI Response JSON
     // NOTE: This handles non-streaming response only for now.
-    pub fn convert_response(mut gemini_resp: Value, model: &str) -> Value {
+    pub(crate) fn convert_response(mut gemini_resp: Value, model: &str) -> Value {
         // Handle Array (from streamGenerateContent)
         if gemini_resp.is_array() {
             if let Value::Array(mut arr) = gemini_resp {
@@ -135,7 +135,7 @@ impl GeminiAdaptor {
         })
     }
 
-    pub fn convert_stream_response(chunk: &str) -> Option<String> {
+    pub(crate) fn convert_stream_response(chunk: &str) -> Option<String> {
         // Handle SSE format from Gemini API: "data: {...}"
         // Strip the "data: " prefix if present
         let chunk = chunk.trim();

@@ -191,7 +191,7 @@ async fn test_login_logout_flow() {
     let _ = browser.click_by_name("link:登出", 3_000);
 
     // Wait for redirect to login or home page
-    let result = browser
+    let _result = browser
         .wait_for_text("登录", 10_000)
         .or_else(|_| browser.wait_for_text("Sign In", 5_000));
 

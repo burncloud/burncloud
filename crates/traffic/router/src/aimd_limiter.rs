@@ -35,7 +35,7 @@ pub enum RateLimitState {
 
 /// Default initial RPM limit for channels without adaptive rate limit data.
 /// Single source of truth — referenced by AimdConfig::default() and scheduler.
-pub const DEFAULT_INITIAL_LIMIT: u32 = 10;
+pub(crate) const DEFAULT_INITIAL_LIMIT: u32 = 10;
 
 /// Multiplier applied to current limit on rate-limit events (20% reduction).
 const RATE_LIMIT_REDUCTION_RATIO: f64 = 0.8;
