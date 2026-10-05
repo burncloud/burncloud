@@ -14,6 +14,29 @@ use burncloud_commerce_contracts::pricing::{
     CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
+
+/// Build a SQLite connection URL for a filesystem path.
+///
+/// **The three-slash rule.** `sqlite:///C:/data/db.sqlite` is the absolute form; `sqlite://C:/data/db.sqlite`
+/// has only two slashes after the scheme, so SQLite reads `C:` as a **host** and refuses the connection with
+/// `(code: 14) unable to open database file`. A relative path keeps two slashes, because with three the leading
+/// `/` would become part of the path and turn `data/db.sqlite` into `/data/db.sqlite`.
+///
+/// A local copy of `burncloud_database::sqlite_url`, which lives in an open pull request rather than on `main`;
+/// see the note in this crate's `tests/common.rs`.
+fn sqlite_url(path: &str) -> String {
+    let normalised = path.replace('\\', "/");
+    let absolute = normalised.starts_with('/') || {
+        let head: Vec<char> = normalised.chars().take(3).collect();
+        head.len() == 3 && head[0].is_ascii_alphabetic() && head[1] == ':' && head[2] == '/'
+    };
+    if absolute {
+        format!("sqlite:///{}?mode=rwc", normalised.trim_start_matches('/'))
+    } else {
+        format!("sqlite://{}?mode=rwc", normalised)
+    }
+}
+
 use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
@@ -463,17 +486,12 @@ async fn test_sync_failure_preserves_old_prices() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
     // Use a unique temp file so this test is isolated from the shared test DB
-    let tmp_path = "/tmp/burncloud_cold_start_test.db".to_string();
+    let tmp_path = std::env::temp_dir()
+        .join("burncloud_cold_start_test.db")
+        .to_string_lossy()
+        .to_string();
     let _ = std::fs::remove_file(&tmp_path); // clean up from any previous run
-                                             // Three slashes plus a platform-aware separator; see the note in `common.rs`.
-    #[cfg(windows)]
-    let normalized = tmp_path.replace('\\', "/");
-    #[cfg(not(windows))]
-    let normalized = {
-        let _ = &tmp_path;
-        tmp_path.to_string()
-    };
-    let url = format!("sqlite:///{normalized}?mode=rwc");
+    let url = sqlite_url(&tmp_path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let db = Arc::new(db);
@@ -505,17 +523,12 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
     // Use a unique temp file so this test is isolated from the shared test DB
-    let tmp_path = "/tmp/burncloud_fast_path_test.db".to_string();
+    let tmp_path = std::env::temp_dir()
+        .join("burncloud_fast_path_test.db")
+        .to_string_lossy()
+        .to_string();
     let _ = std::fs::remove_file(&tmp_path);
-    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
-    #[cfg(windows)]
-    let normalized = tmp_path.replace('\\', "/");
-    #[cfg(not(windows))]
-    let normalized = {
-        let _ = &tmp_path;
-        tmp_path.to_string()
-    };
-    let url = format!("sqlite:///{normalized}?mode=rwc");
+    let url = sqlite_url(&tmp_path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
     let db = Arc::new(db);

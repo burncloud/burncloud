@@ -1,4 +1,27 @@
 use burncloud_database::create_database_with_url;
+
+/// Build a SQLite connection URL for a filesystem path.
+///
+/// **The three-slash rule.** `sqlite:///C:/data/db.sqlite` is the absolute form; `sqlite://C:/data/db.sqlite`
+/// has only two slashes after the scheme, so SQLite reads `C:` as a **host** and refuses the connection with
+/// `(code: 14) unable to open database file`. A relative path keeps two slashes, because with three the leading
+/// `/` would become part of the path and turn `data/db.sqlite` into `/data/db.sqlite`.
+///
+/// A local copy of `burncloud_database::sqlite_url`, which lives in an open pull request rather than on `main`;
+/// see the note in this crate's `tests/common.rs`.
+fn sqlite_url(path: &str) -> String {
+    let normalised = path.replace('\\', "/");
+    let absolute = normalised.starts_with('/') || {
+        let head: Vec<char> = normalised.chars().take(3).collect();
+        head.len() == 3 && head[0].is_ascii_alphabetic() && head[1] == ':' && head[2] == '/'
+    };
+    if absolute {
+        format!("sqlite:///{}?mode=rwc", normalised.trim_start_matches('/'))
+    } else {
+        format!("sqlite://{}?mode=rwc", normalised)
+    }
+}
+
 use burncloud_router::local_attachment::{
     ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment,
 };
@@ -11,12 +34,10 @@ use std::sync::Arc;
 #[tokio::test]
 async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     let temp = tempfile::NamedTempFile::new().expect("temp database");
-    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
-    #[cfg(windows)]
-    let normalized = temp.path().to_string_lossy().replace('\\', "/").to_string();
-    #[cfg(not(windows))]
-    let normalized = temp.path().to_string_lossy().to_string();
-    let url = format!("sqlite:///{normalized}?mode=rwc");
+    // `sqlite_url`, not an inline `format!`: `main` fixed the same defect with `#[cfg(windows)]`, and the two
+    // produce the identical URL on Windows, compared directly. The helper is kept so the three-slash rule has
+    // one definition rather than a copy per call site.
+    let url = sqlite_url(&temp.path().to_string_lossy());
     let db = Arc::new(
         create_database_with_url(&url)
             .await
@@ -81,12 +102,10 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
 #[tokio::test]
 async fn failed_quarantine_rolls_back_routing_ability() {
     let temp = tempfile::NamedTempFile::new().expect("temp database");
-    // Three slashes plus a platform-aware separator; see the note in `common.rs`.
-    #[cfg(windows)]
-    let normalized = temp.path().to_string_lossy().replace('\\', "/").to_string();
-    #[cfg(not(windows))]
-    let normalized = temp.path().to_string_lossy().to_string();
-    let url = format!("sqlite:///{normalized}?mode=rwc");
+    // `sqlite_url`, not an inline `format!`: `main` fixed the same defect with `#[cfg(windows)]`, and the two
+    // produce the identical URL on Windows, compared directly. The helper is kept so the three-slash rule has
+    // one definition rather than a copy per call site.
+    let url = sqlite_url(&temp.path().to_string_lossy());
     let db = Arc::new(
         create_database_with_url(&url)
             .await
