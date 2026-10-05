@@ -1,6 +1,11 @@
 pub mod api;
 pub mod logging;
 pub mod node_attachment;
+#[expect(
+    clippy::expect_used,
+    clippy::too_many_lines,
+    reason = "node_orchestrator is a legacy state machine whose mutable workload lookups rely on the invariant that each demand is inserted before transition handling; keep the debt explicit until that state machine is decomposed"
+)]
 pub mod node_orchestrator;
 pub mod node_request;
 pub mod node_test;
