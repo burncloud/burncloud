@@ -393,13 +393,18 @@ mod tests {
 
         {
             let mut state = b.states.get_mut("up").expect("state exists");
-            state.half_open_probe_started_at = Some(
-                Instant::now() - Duration::from_secs(HALF_OPEN_PROBE_TIMEOUT_SECS + 1),
-            );
+            state.half_open_probe_started_at =
+                Some(Instant::now() - Duration::from_secs(HALF_OPEN_PROBE_TIMEOUT_SECS + 1));
         }
 
-        assert!(b.allow_request("up"), "expired lease permits a replacement probe");
-        assert!(!b.allow_request("up"), "replacement probe owns the only slot");
+        assert!(
+            b.allow_request("up"),
+            "expired lease permits a replacement probe"
+        );
+        assert!(
+            !b.allow_request("up"),
+            "replacement probe owns the only slot"
+        );
     }
 
     #[test]
@@ -435,10 +440,7 @@ mod tests {
         let tripped = b.trip_all();
         let mut sorted = tripped.clone();
         sorted.sort();
-        assert_eq!(
-            sorted,
-            vec!["known-a".to_string(), "known-b".to_string()]
-        );
+        assert_eq!(sorted, vec!["known-a".to_string(), "known-b".to_string()]);
         assert!(!b.allow_request("known-a"));
         assert!(!b.allow_request("known-b"));
         assert!(b.allow_request("never-seen"));
