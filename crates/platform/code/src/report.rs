@@ -18,6 +18,14 @@ pub(crate) struct Counts {
     pub ignored: u64,
 }
 
+#[derive(Default)]
+struct TestCounts {
+    unit: Option<Counts>,
+    integration: Option<Counts>,
+    doc: Option<Counts>,
+    other: Option<Counts>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Step {
     pub name: String,
@@ -170,13 +178,16 @@ pub(crate) fn execute(
     })();
     if name == "test" {
         let content = fs::read_to_string(&log).unwrap_or_default();
-        let (unit, integration, doc, other) = parse_tests(&content);
-        summary.unit = unit;
-        summary.integration = integration;
-        summary.doc = doc;
-        summary.other = other;
+        let parsed = parse_tests(&content);
+        summary.unit = parsed.unit;
+        summary.integration = parsed.integration;
+        summary.doc = parsed.doc;
+        summary.other = parsed.other;
     }
-    let step = summary.steps.last_mut().expect("just added");
+    let step = summary
+        .steps
+        .last_mut()
+        .context("internal error: check step disappeared after insertion")?;
     step.duration_ms = started.elapsed().as_millis();
     step.exit_code = result.as_ref().ok().and_then(ExitStatus::code);
     step.status = if result.as_ref().is_ok_and(ExitStatus::success) {
@@ -197,15 +208,8 @@ pub(crate) fn execute(
     result
 }
 
-fn parse_tests(
-    content: &str,
-) -> (
-    Option<Counts>,
-    Option<Counts>,
-    Option<Counts>,
-    Option<Counts>,
-) {
-    let (mut unit, mut integration, mut doc, mut other) = (None, None, None, None);
+fn parse_tests(content: &str) -> TestCounts {
+    let mut parsed = TestCounts::default();
     let mut kind = 3;
     for line in content.lines() {
         let trimmed = line.trim();
@@ -230,10 +234,10 @@ fn parse_tests(
             (count("passed"), count("failed"), count("ignored"))
         {
             let slot = match kind {
-                0 => &mut unit,
-                1 => &mut integration,
-                2 => &mut doc,
-                _ => &mut other,
+                0 => &mut parsed.unit,
+                1 => &mut parsed.integration,
+                2 => &mut parsed.doc,
+                _ => &mut parsed.other,
             };
             let total = slot.get_or_insert_with(Counts::default);
             total.passed += passed;
@@ -241,7 +245,7 @@ fn parse_tests(
             total.ignored += ignored;
         }
     }
-    (unit, integration, doc, other)
+    parsed
 }
 
 fn counts(summary: &Summary) -> String {
@@ -399,12 +403,13 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::parse_tests;
+
     #[test]
     fn parses_suite_counts() {
-        let (unit, integration, doc, other) = parse_tests("Running unittests src/lib.rs\ntest result: ok. 3 passed; 1 failed; 2 ignored; 0 measured\nRunning tests/a.rs\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured\nDoc-tests foo\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured");
-        assert_eq!(unit.unwrap().passed, 3);
-        assert_eq!(integration.unwrap().passed, 4);
-        assert_eq!(doc.unwrap().passed, 1);
-        assert!(other.is_none());
+        let parsed = parse_tests("Running unittests src/lib.rs\ntest result: ok. 3 passed; 1 failed; 2 ignored; 0 measured\nRunning tests/a.rs\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured\nDoc-tests foo\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured");
+        assert_eq!(parsed.unit.unwrap().passed, 3);
+        assert_eq!(parsed.integration.unwrap().passed, 4);
+        assert_eq!(parsed.doc.unwrap().passed, 1);
+        assert!(parsed.other.is_none());
     }
 }

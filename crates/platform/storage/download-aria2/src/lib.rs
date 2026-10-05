@@ -8,6 +8,10 @@ mod downloader;
 mod error;
 mod manager;
 mod process;
+#[expect(
+    clippy::allow_attributes_without_reason,
+    reason = "aria2 RPC serialization/deserialization is an explicit dynamic-JSON protocol boundary; legacy Value exceptions remain local to rpc.rs"
+)]
 mod rpc;
 mod types;
 

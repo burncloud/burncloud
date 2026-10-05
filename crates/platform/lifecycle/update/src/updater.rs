@@ -87,18 +87,18 @@ impl AutoUpdater {
 
         let target = self_update::get_target();
         let releases = github::ReleaseList::configure()
-            .repo_owner(&self.config.github_owner)
-            .repo_name(&self.config.github_repo)
-            .with_target(target)
+            .repo_owner(self.config.github_owner.clone())
+            .repo_name(self.config.github_repo.clone())
+            .filter_target(target)
             .build()
             .map_err(UpdateError::from)?
             .fetch()
             .map_err(UpdateError::from)?;
 
-        if let Some(latest_release) = releases.first() {
+        if let Some(latest_release) = releases.latest() {
             Ok(Some((
-                latest_release.version.clone(),
-                latest_release.name.clone(),
+                latest_release.version().to_owned(),
+                latest_release.name().to_owned(),
             )))
         } else {
             Ok(None)
@@ -110,16 +110,16 @@ impl AutoUpdater {
 
         let target = self_update::get_target();
         let releases = github::ReleaseList::configure()
-            .repo_owner(&self.config.github_owner)
-            .repo_name(&self.config.github_repo)
-            .with_target(target)
+            .repo_owner(self.config.github_owner.clone())
+            .repo_name(self.config.github_repo.clone())
+            .filter_target(target)
             .build()
             .map_err(UpdateError::from)?
             .fetch()
             .map_err(UpdateError::from)?;
 
-        if let Some(latest_release) = releases.first() {
-            let latest_version = latest_release.version.to_string();
+        if let Some(latest_release) = releases.latest() {
+            let latest_version = latest_release.version().to_owned();
             // The same decision as `sync_check_for_updates`, from the same function. Before it existed the two
             // paths disagreed: this one parsed both versions, and the other compared the strings.
             Ok(is_upgrade_over(
@@ -138,18 +138,18 @@ impl AutoUpdater {
         let target = self_update::get_target();
 
         let update = github::Update::configure()
-            .repo_owner(&self.config.github_owner)
-            .repo_name(&self.config.github_repo)
+            .repo_owner(self.config.github_owner.clone())
+            .repo_name(self.config.github_repo.clone())
             .target(target)
-            .bin_name(&self.config.bin_name)
-            .current_version(&self.config.current_version)
+            .bin_name(self.config.bin_name.clone())
+            .current_version(self.config.current_version.clone())
             .show_download_progress(false)
             .no_confirm(true)
             .build()
             .map_err(UpdateError::from)?;
 
         let status = update.update().map_err(UpdateError::from)?;
-        if status.updated() {
+        if status.is_updated() {
             info!("更新成功，新版本: {}", status.version());
         } else {
             info!("已是最新版本");
@@ -162,16 +162,16 @@ impl AutoUpdater {
 
         let target = self_update::get_target();
         let releases = github::ReleaseList::configure()
-            .repo_owner(&self.config.github_owner)
-            .repo_name(&self.config.github_repo)
-            .with_target(target)
+            .repo_owner(self.config.github_owner.clone())
+            .repo_name(self.config.github_repo.clone())
+            .filter_target(target)
             .build()
             .map_err(UpdateError::from)?
             .fetch()
             .map_err(UpdateError::from)?;
 
-        if let Some(latest_release) = releases.first() {
-            let release_version = latest_release.version.to_string();
+        if let Some(latest_release) = releases.latest() {
+            let release_version = latest_release.version().to_owned();
             // This compared the two strings for inequality until `is_upgrade_over` was extracted, which meant a
             // release **older** than the running version reported "update available" and the caller's next step
             // -- `sync_update`, which replaces the executable -- would have downgraded the application.

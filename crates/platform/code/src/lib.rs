@@ -64,11 +64,12 @@ pub fn handle(matches: &ArgMatches) -> Result<()> {
             last: options.get_flag("last"),
             base: options.get_one::<String>("base").cloned(),
         }),
-        Some(("stamp", options)) => report::stamp(std::path::Path::new(
-            options
+        Some(("stamp", options)) => {
+            let message = options
                 .get_one::<String>("message")
-                .expect("required message"),
-        )),
+                .ok_or_else(|| anyhow::anyhow!("required stamp message is missing"))?;
+            report::stamp(std::path::Path::new(message))
+        }
         _ => anyhow::bail!("Expected code init or code test"),
     }
 }

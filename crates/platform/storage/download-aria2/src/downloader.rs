@@ -50,8 +50,10 @@ pub async fn download_aria2() -> Aria2Result<PathBuf> {
     // 解压 ZIP 文件
     extract_aria2(&zip_path, &target_dir)?;
 
-    // 删除 ZIP 文件
-    let _ = std::fs::remove_file(&zip_path);
+    // Archive cleanup is best-effort after a successful extraction. Explicitly
+    // consume the result so an intentional cleanup failure cannot be confused
+    // with an accidentally ignored must-use value.
+    drop(std::fs::remove_file(&zip_path));
 
     if exe_path.exists() {
         Ok(exe_path)
