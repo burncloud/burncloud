@@ -14,11 +14,15 @@ impl DownloadManager {
             loop {
                 if let Some(client) = aria2.create_rpc_client() {
                     if let Ok(status) = client.tell_status(&gid).await {
-                        let _ = db.update_status(&gid, &status.status).await;
+                        if let Err(error) = db.update_status(&gid, &status.status).await {
+                            tracing::warn!(gid = %gid, error = %error, "failed to persist download status");
+                        }
                         let total: i64 = status.total_length.parse().unwrap_or(0);
                         let completed: i64 = status.completed_length.parse().unwrap_or(0);
                         let speed: i64 = status.download_speed.parse().unwrap_or(0);
-                        let _ = db.update_progress(&gid, total, completed, speed).await;
+                        if let Err(error) = db.update_progress(&gid, total, completed, speed).await {
+                            tracing::warn!(gid = %gid, error = %error, "failed to persist download progress");
+                        }
 
                         // 如果下载完成或出错，停止监控
                         if status.status == "complete" || status.status == "error" {
@@ -62,8 +66,9 @@ impl DownloadManager {
                 };
                 if let Ok(outcome) = client.add_uri(uris, Some(options)).await {
                     let new_gid = outcome.gid().to_string();
-                    // 更新数据库中的gid为新的gid
-                    let _ = self.db.update_gid(&download.gid, &new_gid).await;
+                    // Updating the persisted gid is part of restoring the task: if it fails, returning the
+                    // new gid would leave the caller and database disagreeing about which aria2 task is active.
+                    self.db.update_gid(&download.gid, &new_gid).await?;
                     // 启动进度监控
                     self.start_progress_monitor(&new_gid).await;
                     restored.push(new_gid);
