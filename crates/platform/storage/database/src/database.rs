@@ -273,7 +273,11 @@ impl Database {
     }
 
     /// 带参数的查询，返回多条记录（防止 SQL 注入）
-    pub async fn fetch_all_with_params<T>(&self, query: &str, params: Vec<String>) -> Result<Vec<T>>
+    pub async fn fetch_all_with_params<T>(
+        &self,
+        query: &str,
+        params: Vec<String>,
+    ) -> Result<Vec<T>>
     where
         T: for<'r> sqlx::FromRow<'r, AnyRow> + Send + Unpin,
     {
@@ -284,7 +288,7 @@ impl Database {
             query_builder = query_builder.bind(param);
         }
 
-        let results = query_builder.fetch_all(conn.pool()).await?;
+        let results = query_builder.fetch_all(connection.pool()).await?;
         Ok(results)
     }
 }
@@ -312,9 +316,27 @@ pub fn is_windows() -> bool {
 pub fn get_default_database_path() -> Result<std::path::PathBuf> {
     let db_dir = if is_windows() {
         // Windows: %USERPROFILE%\AppData\Local\BurnCloud
+        // USERPROFILE must be an absolute path. Empty/relative values would make
+        // `AppData/...` relative to the current working directory; during tests that
+        // previously created `crates/platform/storage/database/AppData/` inside the repo.
         let user_profile = std::env::var("USERPROFILE")
             .map_err(|e| DatabaseError::PathResolution(format!("USERPROFILE not found: {}", e)))?;
-        std::path::PathBuf::from(user_profile)
+        let user_profile = user_profile.trim();
+        if user_profile.is_empty() {
+            return Err(DatabaseError::PathResolution(
+                "USERPROFILE is empty".to_string(),
+            ));
+        }
+
+        let user_profile = std::path::PathBuf::from(user_profile);
+        if !user_profile.is_absolute() {
+            return Err(DatabaseError::PathResolution(format!(
+                "USERPROFILE must be an absolute path: {}",
+                user_profile.display()
+            )));
+        }
+
+        user_profile
             .join("AppData")
             .join("Local")
             .join("BurnCloud")
