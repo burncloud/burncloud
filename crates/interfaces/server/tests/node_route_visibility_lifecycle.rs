@@ -17,13 +17,15 @@
 use burncloud_database::create_database_with_url;
 use burncloud_node_runtime::{
     FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
-    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition,
+    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
 };
 use burncloud_router::local_attachment::{
     ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentId,
 };
 use burncloud_router::model_router::ModelRouter;
-use burncloud_server::node_attachment::{prepare_and_attach_node_route, LocalRouteOutcome};
+use burncloud_server::node_attachment::{
+    detach_unhealthy_node_route, prepare_and_attach_node_route, LocalRouteOutcome,
+};
 use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
 use burncloud_service_models::FakeModelResolver;
 use std::sync::Arc;
@@ -159,18 +161,40 @@ async fn node_start_makes_route_visible_and_stop_detach_removes_it() {
         "Node lifecycle must retain the exact Traffic attachment identity"
     );
 
-    // Stop oracle: delete the exact channel identity, then clear the lifecycle receipt. No production accessor
-    // or retired router_upstreams schema is involved.
-    attacher
-        .detach(attachment_id)
-        .await
-        .expect("detach exact local route on stop");
-    orchestrator
-        .clear_attachment(model, attachment_id)
-        .expect("clear the same attachment identity from Node lifecycle state");
+    // Current teardown lifecycle: Traffic is quarantined first (fail closed), then the exact attachment is
+    // deleted, and only then does node_attachment clear the lifecycle receipt. This is the public application
+    // seam; the test does not widen NodeOrchestrator internals just to manufacture an oracle.
+    let quarantine_attacher = attacher.clone();
+    let detach_attacher = attacher.clone();
+    detach_unhealthy_node_route(
+        &mut orchestrator,
+        model,
+        attachment_id,
+        move |id| {
+            let attacher = quarantine_attacher.clone();
+            async move {
+                attacher
+                    .quarantine(id)
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))
+            }
+        },
+        move |id| {
+            let attacher = detach_attacher.clone();
+            async move {
+                attacher
+                    .detach(id)
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))
+            }
+        },
+    )
+    .await
+    .expect("quarantine and detach exact local route");
 
     assert_not_visible(&router, model).await;
     assert_eq!(orchestrator.workload_attachment_id(model), None);
+    assert_eq!(orchestrator.workload_state(model), Some(NodeState::Unhealthy));
 
     db.close().await.expect("close lifecycle test database");
 }
@@ -187,6 +211,6 @@ async fn lifecycle_oracle_detects_a_stop_that_forgets_route_cleanup() {
 
     assert_visible(&router, model, attachment_id).await;
 
-    // Injected mutation: the stop path forgot `ExistingRouterLocalAttacher::detach(attachment_id)`.
+    // Injected mutation: the stop path forgot the Traffic quarantine/detach cleanup entirely.
     assert_not_visible(&router, model).await;
 }
