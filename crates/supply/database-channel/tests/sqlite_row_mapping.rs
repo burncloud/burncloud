@@ -68,15 +68,12 @@ fn sample_channel(name: &str, group: &str) -> Channel {
         models: "claude-3-5-sonnet,claude-3-haiku".to_string(),
         group: group.to_string(),
         used_quota: 0,
-        // The mapping target must not repeat a model from `models`: the primary key of
-        // `channel_abilities` is (group, model, channel_id), and `sync_abilities` inserts the
-        // mapping keys *and* values as additional ability rows.
         model_mapping: Some(r#"{"claude-3":"claude-3-5-sonnet-2024"}"#.to_string()),
         priority: 7,
         auto_ban: 1,
-        other_info: None,
+        other_info: Some(r#"{"owner":"supply"}"#.to_string()),
         tag: Some("prod".to_string()),
-        setting: None,
+        setting: Some(r#"{"region":"global"}"#.to_string()),
         param_override: None,
         header_override: None,
         remark: Some("primary".to_string()),
@@ -115,26 +112,33 @@ async fn channel_survives_a_real_insert_and_select() {
     assert_eq!(stored.models, "claude-3-5-sonnet,claude-3-haiku");
     assert_eq!(stored.group, "default");
     assert_eq!(stored.priority, 7);
-    // Behaviour of the current writer, asserted rather than assumed. `create()` binds 19 columns;
-    // these data-bearing columns exist in the table and in the domain type but are not written on
-    // create, so they read back as NULL (or keep their column default). See the follow-up issue.
-    assert_eq!(stored.test_time, None, "test_time not in the INSERT list");
+
+    // Supply-owned declarative configuration must survive create/read exactly.
+    assert_eq!(
+        stored.model_mapping.as_deref(),
+        Some(r#"{"claude-3":"claude-3-5-sonnet-2024"}"#)
+    );
+    assert_eq!(stored.other_info.as_deref(), Some(r#"{"owner":"supply"}"#));
+    assert_eq!(stored.tag.as_deref(), Some("prod"));
+    assert_eq!(stored.setting.as_deref(), Some(r#"{"region":"global"}"#));
+    assert_eq!(stored.remark.as_deref(), Some("primary"));
+
+    // Runtime/accounting fields deliberately remain outside the Supply writer.
+    assert_eq!(stored.test_time, None, "runtime test_time is not Supply-owned");
     assert_eq!(
         stored.response_time, None,
-        "response_time not in the INSERT list"
+        "runtime response_time is not Supply-owned"
     );
-    assert_eq!(stored.used_quota, 0, "used_quota keeps its DEFAULT 0");
     assert_eq!(
-        stored.model_mapping, None,
-        "model_mapping not in the INSERT list"
+        stored.used_quota, 0,
+        "Commerce-owned used_quota keeps its database default"
     );
-    assert_eq!(stored.auto_ban, 1, "auto_ban keeps its DEFAULT 1");
-    assert_eq!(stored.other_info, None, "other_info not in the INSERT list");
-    assert_eq!(stored.tag, None, "tag not in the INSERT list");
-    assert_eq!(stored.setting, None, "setting not in the INSERT list");
-    assert_eq!(stored.remark, None, "remark not in the INSERT list");
+    assert_eq!(
+        stored.auto_ban, 1,
+        "runtime auto_ban keeps its database default"
+    );
 
-    // Columns that ARE persisted come back intact.
+    // Existing persisted columns keep their previous semantics.
     assert_eq!(
         stored.base_url.as_deref(),
         Some("https://api.anthropic.com/v1")
@@ -188,6 +192,9 @@ async fn list_decodes_the_group_column_and_list_by_ids_matches_get_by_id() {
     assert_eq!(batched.type_, single.type_);
     assert_eq!(batched.weight, single.weight);
     assert_eq!(batched.tpm_cap, single.tpm_cap);
+    assert_eq!(batched.model_mapping, single.model_mapping);
+    assert_eq!(batched.tag, single.tag);
+    assert_eq!(batched.remark, single.remark);
 
     // An empty id set must not issue a malformed `WHERE id IN ()` statement.
     let none = ChannelProviderModel::list_by_ids(&db, &[]).await.unwrap();
@@ -197,7 +204,7 @@ async fn list_decodes_the_group_column_and_list_by_ids_matches_get_by_id() {
 }
 
 #[tokio::test]
-async fn ability_rows_round_trip_through_the_real_table() {
+async fn ability_rows_include_models_and_persisted_mapping_entries() {
     let (db, path) = fresh_db("ability").await;
 
     let mut channel = sample_channel("with-abilities", "default");
@@ -205,11 +212,17 @@ async fn ability_rows_round_trip_through_the_real_table() {
         .await
         .unwrap();
 
-    // sync_abilities derives the rows from `channel.models`; this is the production writer.
     let stored = ChannelProviderModel::get_by_id(&db, channel_id)
         .await
         .unwrap()
         .unwrap();
+    assert!(
+        stored.model_mapping.is_some(),
+        "the mapping must be persisted before sync_abilities can derive rows from it"
+    );
+
+    // Re-running sync proves the delete-and-rebuild path consumes the persisted row, not only the
+    // in-memory Channel used by create().
     ChannelProviderModel::sync_abilities(&db, &stored)
         .await
         .expect("real INSERT into channel_abilities");
@@ -218,20 +231,17 @@ async fn ability_rows_round_trip_through_the_real_table() {
         burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
             .await
             .expect("real SELECT with the dialect-specific `group` alias");
-    // Abilities come from the `models` column only, because the writer does not persist
-    // `model_mapping` (see the assertion above); `sync_abilities` reads the mapping from the stored
-    // row, so with the current writer the mapping contributes nothing. When that write path is
-    // fixed, this expectation must change to include the mapping key and value.
     let mut models: Vec<&str> = abilities.iter().map(|a| a.model.as_str()).collect();
     models.sort_unstable();
     assert_eq!(
         models,
-        vec!["claude-3-5-sonnet", "claude-3-haiku"],
-        "abilities are derived from `models`; mapping rows need the mapping column persisted"
-    );
-    assert!(
-        !models.contains(&"claude-3"),
-        "the mapping key is absent while model_mapping is not persisted"
+        vec![
+            "claude-3",
+            "claude-3-5-sonnet",
+            "claude-3-5-sonnet-2024",
+            "claude-3-haiku"
+        ],
+        "models plus both mapping sides become routable abilities"
     );
     for ability in &abilities {
         assert_eq!(ability.channel_id, channel_id);
@@ -253,6 +263,87 @@ async fn ability_rows_round_trip_through_the_real_table() {
         after.is_empty(),
         "a disabled channel keeps no ability rows, so it cannot be routed"
     );
+
+    cleanup(db, &path).await;
+}
+
+#[tokio::test]
+async fn mapping_entries_that_repeat_models_are_deduplicated_before_insert() {
+    let (db, path) = fresh_db("mapping_dedup").await;
+
+    let mut channel = sample_channel("dedup", "default");
+    channel.models = "shared-model,other-model,shared-model".to_string();
+    channel.model_mapping = Some(
+        r#"{"alias":"shared-model","shared-model":"other-model"}"#.to_string(),
+    );
+
+    let id = ChannelProviderModel::create(&db, &mut channel)
+        .await
+        .expect("duplicate semantic abilities must not violate the channel_abilities primary key");
+
+    let abilities = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
+        .await
+        .expect("read deduplicated abilities");
+    let mut models: Vec<&str> = abilities.iter().map(|ability| ability.model.as_str()).collect();
+    models.sort_unstable();
+    assert_eq!(
+        models,
+        vec!["alias", "other-model", "shared-model"],
+        "each (group, model, channel_id) is inserted exactly once"
+    );
+
+    cleanup(db, &path).await;
+}
+
+#[tokio::test]
+async fn update_persists_supply_config_without_overwriting_runtime_accounting_state() {
+    let (db, path) = fresh_db("update_config").await;
+    let mut channel = sample_channel("before", "default");
+    let id = ChannelProviderModel::create(&db, &mut channel)
+        .await
+        .expect("create channel");
+
+    // Simulate values owned by other runtime/accounting writers. ChannelProviderModel::update must not
+    // write these columns back from a stale Channel snapshot.
+    db.execute_query(&format!(
+        "UPDATE channel_providers SET used_quota = 9001, response_time = 321, test_time = 654, auto_ban = 0 WHERE id = {id}"
+    ))
+    .await
+    .expect("seed runtime/accounting state");
+
+    let mut edited = ChannelProviderModel::get_by_id(&db, id)
+        .await
+        .expect("read channel")
+        .expect("channel exists");
+    edited.name = "after".to_string();
+    edited.model_mapping = Some(r#"{"new-alias":"new-target"}"#.to_string());
+    edited.other_info = Some(r#"{"owner":"updated"}"#.to_string());
+    edited.tag = Some("updated-tag".to_string());
+    edited.setting = Some(r#"{"mode":"updated"}"#.to_string());
+    edited.remark = Some("updated remark".to_string());
+
+    ChannelProviderModel::update(&db, &edited)
+        .await
+        .expect("update Supply configuration");
+
+    let stored = ChannelProviderModel::get_by_id(&db, id)
+        .await
+        .expect("read updated channel")
+        .expect("channel exists");
+    assert_eq!(stored.name, "after");
+    assert_eq!(
+        stored.model_mapping.as_deref(),
+        Some(r#"{"new-alias":"new-target"}"#)
+    );
+    assert_eq!(stored.other_info.as_deref(), Some(r#"{"owner":"updated"}"#));
+    assert_eq!(stored.tag.as_deref(), Some("updated-tag"));
+    assert_eq!(stored.setting.as_deref(), Some(r#"{"mode":"updated"}"#));
+    assert_eq!(stored.remark.as_deref(), Some("updated remark"));
+
+    assert_eq!(stored.used_quota, 9001, "Supply must not overwrite Commerce usage");
+    assert_eq!(stored.response_time, Some(321));
+    assert_eq!(stored.test_time, Some(654));
+    assert_eq!(stored.auto_ban, 0);
 
     cleanup(db, &path).await;
 }
