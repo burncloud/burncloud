@@ -171,11 +171,9 @@ impl MemoryCollector {
             swap_total,
             swap_used,
             swap_free,
-            swap_usage_percent: if swap_total > 0 {
-                (swap_used as f64 / swap_total as f64 * 100.0) as f32
-            } else {
-                0.0
-            },
+            // The same helper the disk collectors use: a machine with no swap reports a zero total, which must
+            // be zero percent rather than a division by zero.
+            swap_usage_percent: crate::collectors::usage_percent(swap_used, swap_total),
         })
     }
 }

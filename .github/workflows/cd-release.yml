@@ -1,4 +1,4 @@
-name: Release
+name: CD / Release
 
 on:
   push:
@@ -233,6 +233,7 @@ jobs:
           Get-ChildItem
 
       - name: Create Release
+        # v1 runs on a runner image GitHub no longer supports; actionlint reports it as
         # v1 runs on a runner image GitHub no longer supports; actionlint reports it as
         # "too old to run on GitHub Actions", which would make an actionlint gate fail from birth.
         # The `with:` inputs below are accepted by both v1 and v2, so this is a version bump and not

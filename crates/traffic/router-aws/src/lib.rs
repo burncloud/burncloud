@@ -60,7 +60,25 @@ pub fn sign_request(
     config: &AwsConfig,
     body_bytes: &[u8],
 ) -> Result<()> {
-    let now = Utc::now();
+    sign_request_at(request, config, body_bytes, Utc::now())
+}
+
+/// Sign a request as of a given instant.
+///
+/// The only difference from [`sign_request`] is where the clock reading comes from. It exists because a
+/// SigV4 signature is a function of the timestamp -- `x-amz-date` and the credential scope are both derived
+/// from it -- so without a way to supply one, the algorithm cannot be checked against a known-good vector.
+/// The plan for this crate asks for "固定时间的 SigV4 标准向量" and notes that a time-injectable internal
+/// entry point may be introduced for exactly this reason.
+///
+/// Public rather than `pub(crate)` so an integration test can reach it; the alternative would be testing
+/// through the private module, which the crate's layout does not allow.
+pub fn sign_request_at(
+    request: &mut reqwest::Request,
+    config: &AwsConfig,
+    body_bytes: &[u8],
+    now: chrono::DateTime<Utc>,
+) -> Result<()> {
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
     let date_stamp = now.format("%Y%m%d").to_string();
     let service = "bedrock";
@@ -160,13 +178,7 @@ pub fn sign_request(
     );
 
     // 4. Calculate Signature
-    let k_date = hmac_sha256(
-        format!("AWS4{}", config.secret_key).as_bytes(),
-        date_stamp.as_bytes(),
-    )?;
-    let k_region = hmac_sha256(&k_date, config.region.as_bytes())?;
-    let k_service = hmac_sha256(&k_region, service.as_bytes())?;
-    let k_signing = hmac_sha256(&k_service, b"aws4_request")?;
+    let k_signing = signing_key(&config.secret_key, &date_stamp, &config.region, service)?;
     let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes())?);
 
     // 5. Add Authorization Header
@@ -186,6 +198,30 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let mut mac = HmacSha256::new_from_slice(key)?;
     mac.update(data);
     Ok(mac.finalize().into_bytes().to_vec())
+}
+
+/// The AWS4 signing key: the chained HMAC over the secret, the date, the region, the service and
+/// `aws4_request`.
+///
+/// Extracted from [`sign_request_at`] so it can be checked against AWS's published test vectors. The service
+/// is hard-coded to `bedrock` in the signing path, and every published vector uses a different one, so the
+/// derivation was previously unreachable from a test: a test could only copy the same chain and check its own
+/// copy, which is what an earlier version of the vector test did and why a mutation to this chain survived it.
+///
+/// Not public API -- `pub(crate)` keeps it inside the crate while `mod tests` can still reach it.
+pub(crate) fn signing_key(
+    secret_key: &str,
+    date_stamp: &str,
+    region: &str,
+    service: &str,
+) -> Result<Vec<u8>> {
+    let k_date = hmac_sha256(
+        format!("AWS4{secret_key}").as_bytes(),
+        date_stamp.as_bytes(),
+    )?;
+    let k_region = hmac_sha256(&k_date, region.as_bytes())?;
+    let k_service = hmac_sha256(&k_region, service.as_bytes())?;
+    hmac_sha256(&k_service, b"aws4_request")
 }
 
 mod tests;

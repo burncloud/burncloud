@@ -15,7 +15,7 @@ Three states appear below, and they are not the same thing:
 
 ## Current state
 
-The `CI job` column refers to the split introduced in `security-billing-invariants.yml` (five jobs:
+The `CI job` column refers to the split introduced in `ci-tests.yml` (five jobs:
 `formatting`, `node-invariants`, `billing-invariants`, `security-invariants`, `migration-contracts`).
 Values marked *(after #623)* take effect only once that PR is merged.
 
@@ -32,8 +32,8 @@ Values marked *(after #623)* take effect only once that PR is merged.
 | `crates/traffic/router` | `burncloud-router` | 28 unit + 20 integration | **tested** — `billing-invariants`, `node-invariants` |
 | `crates/interfaces/server` | `burncloud-server` | 6 unit + 7 integration | **tested** — `security-invariants`, `node-invariants` |
 | `crates/platform/node` | `burncloud-node-runtime` | 6 unit + 13 integration | **tested** — `node-invariants` |
-| root (`crates/interfaces/cli`) | `burncloud` | none | *compile only* — `client-ui.yml` |
-| `crates/interfaces/client` | `burncloud-client` | 13 unit | *compile only* — `client-ui.yml` (Windows/macOS desktop) |
+| root (`crates/interfaces/cli`) | `burncloud` | none | *compile only* — `ci-client.yml` |
+| `crates/interfaces/client` | `burncloud-client` | 13 unit | *compile only* — `ci-client.yml` (Windows/macOS desktop) |
 | `crates/trust/inference` | `burncloud-service-inference` | 1 integration | **no job** |
 | `crates/identity/service-user` | `burncloud-service-user` | 1 unit | **no job** |
 | `crates/identity/service-token` | `burncloud-service-token` | none | **no job** |
@@ -114,7 +114,7 @@ The following are excluded until their own defects are fixed (see `.github/READM
 
 1. Confirm the tests pass **locally on `main`** with the exact command you intend to add. A job that
    is born red is not coverage.
-2. Add the package to the appropriate job in `security-billing-invariants.yml` (or the relevant
+2. Add the package to the appropriate job in `ci-tests.yml` (or the relevant
    workflow) and add its path to the `paths` filter — a job that never triggers is the failure mode
    this repository has already hit once (`crates/*/Cargo.toml` matching zero manifests).
 3. Update this matrix in the same PR.

@@ -14,7 +14,7 @@ use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub struct VertexAdaptor {
+pub(crate) struct VertexAdaptor {
     pub auth_url: String,
 }
 
@@ -171,7 +171,7 @@ impl VertexAdaptor {
     }
 
     #[allow(dead_code)]
-    pub async fn get_access_token(
+    pub(crate) async fn get_access_token(
         &self,
         client_email: &str,
         private_key: &str,

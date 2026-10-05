@@ -9,10 +9,11 @@ use std::pin::Pin;
 use std::time::Duration;
 
 /// Type alias for boxed error stream
-pub type BoxedErrorStream = Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>;
+pub(crate) type BoxedErrorStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>;
 
 /// Result of peeking the first chunk from a stream.
-pub enum PeekResult {
+pub(crate) enum PeekResult {
     /// First chunk was successfully read.
     /// Contains the first chunk and the remaining stream.
     HasFirstChunk {
@@ -29,7 +30,7 @@ pub enum PeekResult {
 }
 
 /// Peek the first chunk from a stream with timeout.
-pub async fn peek_first_chunk<S>(stream: S, timeout: Duration) -> PeekResult
+pub(crate) async fn peek_first_chunk<S>(stream: S, timeout: Duration) -> PeekResult
 where
     S: Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
 {
@@ -48,7 +49,7 @@ where
 
 /// Check if a chunk contains an SSE error.
 /// Returns Some((error_code, error_message, is_auth_error)) if error found.
-pub fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
+pub(crate) fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
     let text = String::from_utf8_lossy(chunk);
 
     for line in text.lines() {

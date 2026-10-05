@@ -10,21 +10,21 @@
     clippy::to_string_in_format_args,
     clippy::redundant_pattern_matching
 )]
-pub mod aesthetic_acceptance;
-pub mod agent_browser;
-pub mod api_key_flow;
-pub mod auth_flow;
-pub mod channel_flow;
-pub mod console_pages;
-pub mod css_visual_acceptance;
-pub mod design_tokens;
-pub mod guest_pages;
-pub mod login_flow;
-pub mod models_flow;
-pub mod monitor_flow;
-pub mod navigation;
-pub mod settings_interactions;
-pub mod user_flow;
+pub(crate) mod aesthetic_acceptance;
+pub(crate) mod agent_browser;
+pub(crate) mod api_key_flow;
+pub(crate) mod auth_flow;
+pub(crate) mod channel_flow;
+pub(crate) mod console_pages;
+pub(crate) mod css_visual_acceptance;
+pub(crate) mod design_tokens;
+pub(crate) mod guest_pages;
+pub(crate) mod login_flow;
+pub(crate) mod models_flow;
+pub(crate) mod monitor_flow;
+pub(crate) mod navigation;
+pub(crate) mod settings_interactions;
+pub(crate) mod user_flow;
 
 use agent_browser::{is_agent_browser_available, AgentBrowser};
 use reqwest::Client;
@@ -32,7 +32,7 @@ use serde_json::json;
 
 use crate::common;
 
-pub fn setup_browser() -> Option<()> {
+pub(crate) fn setup_browser() -> Option<()> {
     if !is_agent_browser_available() {
         eprintln!("SKIP: agent-browser not installed. Install with: npm install -g agent-browser");
         return None;
@@ -43,7 +43,7 @@ pub fn setup_browser() -> Option<()> {
 /// Click a button in Dioxus LiveView using dispatchEvent.
 /// Dioxus uses custom event handling via data-dioxus-id attributes.
 /// Standard .click() methods don't trigger Dioxus event handlers correctly.
-pub fn dioxus_click(
+pub(crate) fn dioxus_click(
     browser: &mut AgentBrowser,
     selector: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -73,7 +73,7 @@ pub fn dioxus_click(
 }
 
 /// Click the login submit button. Prefers accessibility-tree click (works with LiveView).
-pub fn submit_login_click(browser: &mut AgentBrowser) -> anyhow::Result<()> {
+pub(crate) fn submit_login_click(browser: &mut AgentBrowser) -> anyhow::Result<()> {
     if browser.click_by_name("button:登录", 5_000).is_ok()
         || browser.click_by_name("button:Log in", 3_000).is_ok()
         || browser.click_by_name("button:Login", 3_000).is_ok()
@@ -161,7 +161,7 @@ fn wait_for_console_after_login(
 }
 
 /// Resolve admin credentials for E2E: try known admins, else register testadmin2.
-pub async fn resolve_admin_credentials(base_url: &str) -> (String, String) {
+pub(crate) async fn resolve_admin_credentials(base_url: &str) -> (String, String) {
     let candidates = [
         ("testadmin2", "TestAdmin123!"),
         ("testadmin", "TestAdmin123!"),
@@ -209,10 +209,10 @@ pub async fn resolve_admin_credentials(base_url: &str) -> (String, String) {
 
 /// Ensure testadmin2 exists (register on fresh DB; no-op if already present).
 #[allow(dead_code)]
-pub async fn ensure_test_admin_exists(base_url: &str) {
+pub(crate) async fn ensure_test_admin_exists(base_url: &str) {
     let _ = resolve_admin_credentials(base_url).await;
 }
-pub fn dioxus_click_checkbox(
+pub(crate) fn dioxus_click_checkbox(
     browser: &mut AgentBrowser,
     selector: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -241,7 +241,7 @@ pub fn dioxus_click_checkbox(
     }
 }
 
-pub async fn create_test_user(base_url: &str) -> (String, String) {
+pub(crate) async fn create_test_user(base_url: &str) -> (String, String) {
     let username = format!(
         "e2e_test_{}",
         &uuid::Uuid::new_v4().to_string().replace('-', "")[..8]
@@ -296,7 +296,12 @@ pub async fn create_test_user(base_url: &str) -> (String, String) {
     (username, token)
 }
 
-pub fn test_page_loads(base_url: &str, path: &str, expected_text: &str, screenshot_name: &str) {
+pub(crate) fn test_page_loads(
+    base_url: &str,
+    path: &str,
+    expected_text: &str,
+    screenshot_name: &str,
+) {
     let mut browser = AgentBrowser::new(base_url);
     browser.open(path).expect("Failed to open page");
     browser
@@ -311,7 +316,7 @@ pub fn test_page_loads(base_url: &str, path: &str, expected_text: &str, screensh
     let _ = browser.screenshot(screenshot_name);
 }
 
-pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
+pub(crate) async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
     let (username, _token) = create_test_user(base_url).await;
     let password = "test123456";
     let mut browser = AgentBrowser::new(base_url);
@@ -328,14 +333,17 @@ pub async fn login_browser(base_url: &str) -> (AgentBrowser, String) {
     (browser, username)
 }
 
-pub async fn login_as_admin_in_browser(base_url: &str, browser: &mut AgentBrowser) -> String {
+pub(crate) async fn login_as_admin_in_browser(
+    base_url: &str,
+    browser: &mut AgentBrowser,
+) -> String {
     login_via_api_in_browser(base_url, browser)
         .await
         .expect("API auth seed for browser failed")
 }
 
 /// Seed browser localStorage from API login (reliable for visual/CSS E2E).
-pub async fn login_via_api_in_browser(
+pub(crate) async fn login_via_api_in_browser(
     base_url: &str,
     browser: &mut AgentBrowser,
 ) -> anyhow::Result<String> {
@@ -391,21 +399,21 @@ pub async fn login_via_api_in_browser(
 /// Login as an admin user (testadmin2) for tests requiring admin privileges.
 /// This is needed because create_test_user() creates users with "user" role,
 /// which cannot access admin-only pages like /console/users, /console/dashboard, etc.
-pub async fn login_as_admin(base_url: &str) -> (AgentBrowser, String) {
+pub(crate) async fn login_as_admin(base_url: &str) -> (AgentBrowser, String) {
     let mut browser = AgentBrowser::new(base_url);
     let username = login_as_admin_in_browser(base_url, &mut browser).await;
     (browser, username)
 }
 
 /// When `E2E_USE_PREVIEW=1`, aesthetic/css tests open `/preview/*` routes with baked-in mock data.
-pub fn e2e_preview_enabled() -> bool {
+pub(crate) fn e2e_preview_enabled() -> bool {
     std::env::var("E2E_USE_PREVIEW")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
 
 /// Map production path → preview entry. Production paths pass through when preview is off.
-pub fn e2e_page_path(production_path: &str) -> String {
+pub(crate) fn e2e_page_path(production_path: &str) -> String {
     if !e2e_preview_enabled() {
         return production_path.to_string();
     }

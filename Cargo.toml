@@ -23,6 +23,7 @@ members = [
     "crates/platform/lifecycle/loops",
     "crates/platform/lifecycle/update",
     "crates/platform/node",
+    "crates/platform/code",
     "crates/platform/observability/ip",
     "crates/platform/observability/monitor",
     "crates/platform/storage/database",
@@ -175,6 +176,7 @@ tracing-appender = "0.2"
 tracing-log = "0.2"
 
 # Internal crates
+burncloud-code = { path = "crates/platform/code" }
 burncloud-auto-update = { path = "crates/platform/lifecycle/update" }
 burncloud-client = { path = "crates/interfaces/client", default-features = false }
 burncloud-commerce-contracts = { path = "crates/commerce/contracts" }
@@ -227,6 +229,7 @@ name = "burncloud"
 path = "crates/interfaces/cli/src/main.rs"
 
 [dependencies]
+burncloud-code.workspace = true
 burncloud-commerce-contracts.workspace = true
 burncloud-common.workspace = true
 burncloud-supply-contracts.workspace = true

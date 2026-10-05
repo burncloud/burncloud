@@ -15,7 +15,7 @@ use serde_json::Value;
 
 /// Dynamic adaptor that uses protocol configuration at runtime
 #[allow(dead_code)]
-pub struct DynamicAdaptor {
+pub(crate) struct DynamicAdaptor {
     /// Channel type identifier
     pub channel_type: i32,
     /// API version string
@@ -33,7 +33,7 @@ pub struct DynamicAdaptor {
 #[allow(dead_code)]
 impl DynamicAdaptor {
     /// Create a new dynamic adaptor with the given configuration
-    pub fn new(
+    pub(crate) fn new(
         channel_type: i32,
         api_version: String,
         chat_endpoint: Option<String>,
@@ -52,7 +52,7 @@ impl DynamicAdaptor {
     }
 
     /// Build endpoint URL with placeholder substitution
-    pub fn build_endpoint(&self, base_url: &str, model: &str) -> String {
+    pub(crate) fn build_endpoint(&self, base_url: &str, model: &str) -> String {
         let endpoint = self
             .chat_endpoint
             .as_deref()
@@ -67,12 +67,12 @@ impl DynamicAdaptor {
     }
 
     /// Parse request mapping from JSON string
-    pub fn parse_request_mapping(json: &str) -> Option<RequestMapping> {
+    pub(crate) fn parse_request_mapping(json: &str) -> Option<RequestMapping> {
         serde_json::from_str(json).ok()
     }
 
     /// Parse response mapping from JSON string
-    pub fn parse_response_mapping(json: &str) -> Option<ResponseMapping> {
+    pub(crate) fn parse_response_mapping(json: &str) -> Option<ResponseMapping> {
         serde_json::from_str(json).ok()
     }
 }

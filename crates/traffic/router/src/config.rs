@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AuthType {
+pub(crate) enum AuthType {
     Bearer,         // Authorization: Bearer <key>
     Header(String), // <custom-header>: <key>
     Query(String),  // ?<param>=<key>
@@ -42,7 +42,7 @@ impl From<&str> for AuthType {
 /// Internal representation of an upstream channel for request routing.
 /// Populated from `Channel` objects returned by `ModelRouter`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Upstream {
+pub(crate) struct Upstream {
     pub id: String,
     pub name: String,
     pub base_url: String,

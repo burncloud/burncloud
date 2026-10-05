@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 /// Router log entry
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, FromRow)]
 pub struct RouterLog {
     pub id: i64,
     pub request_id: String,

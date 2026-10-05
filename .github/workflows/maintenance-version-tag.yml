@@ -1,4 +1,4 @@
-name: Version Check and Auto Tag
+name: Maintenance / Version Tag
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       # hit zero, which meant a dependency-version change never triggered this workflow. `**` spans
       # any number of path segments, so this matches all of them.
       - 'crates/**/Cargo.toml'
-      - '.github/workflows/version-check.yml'
+      - '.github/workflows/maintenance-version-tag.yml'
   workflow_dispatch:
 
 permissions:

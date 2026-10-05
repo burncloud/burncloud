@@ -5,13 +5,17 @@ use std::path::PathBuf;
 mod cli;
 
 fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+    // Repository setup must not generate runtime secrets or initialize logging.
+    if args.get(1).map(String::as_str) == Some("code") {
+        return run_async_cli(&args[1..]);
+    }
+
     // Load .env file if present
     dotenvy::dotenv().ok();
 
     // Generate and persist required secrets on first local startup.
     ensure_runtime_secrets();
-
-    let args: Vec<String> = env::args().collect();
 
     // For CLI commands (not server/router), suppress INFO logs on stdout
     let is_server = args.len() >= 2 && matches!(args[1].as_str(), "server" | "router" | "client");

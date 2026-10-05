@@ -107,7 +107,7 @@ mod windows_tray {
         }
     }
 
-    pub fn use_windows_tray(window: DesktopContext) {
+    pub(crate) fn use_windows_tray(window: DesktopContext) {
         let setup_window = window.clone();
         let tray = use_hook(move || match create_tray() {
             Ok(tray) => {
@@ -155,4 +155,4 @@ mod windows_tray {
 }
 
 #[cfg(all(feature = "desktop", target_os = "windows"))]
-pub use windows_tray::use_windows_tray;
+pub(crate) use windows_tray::use_windows_tray;

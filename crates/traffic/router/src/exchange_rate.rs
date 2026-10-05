@@ -36,7 +36,7 @@ pub(crate) struct CachedRate {
 
 impl CachedRate {
     /// Get the rate as f64
-    pub fn rate(&self) -> f64 {
+    pub(crate) fn rate(&self) -> f64 {
         scaled_to_rate(self.rate_nano)
     }
 

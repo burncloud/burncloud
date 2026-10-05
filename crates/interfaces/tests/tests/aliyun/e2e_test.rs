@@ -30,7 +30,7 @@ use std::time::Duration;
 const TEST_ENV_FILE: &str = ".env";
 
 /// Default test server configuration
-pub struct TestServerConfig {
+pub(super) struct TestServerConfig {
     pub region: String,
     pub password: String,
     pub instance_name: String,

@@ -1892,4 +1892,425 @@ mod tests {
             assert!(!actual_args.iter().any(|arg| arg == "-c" || arg == "/C"));
         }
     }
+
+    // ---------------------------------------------------------------------------------------
+    // archive extraction: path traversal, corrupt input, and what comes out
+    // ---------------------------------------------------------------------------------------
+    //
+    // The plan lists "损坏压缩包/路径穿越" for this crate, and none of the existing tests cover either. These
+    // live here rather than in `tests/` because `extract_zip` is private and takes `&self`; the crate's other
+    // tests are inline for the same reason.
+    //
+    // **Nothing here touches a real system directory.** The only directory ever passed to `extract_zip` is a
+    // temporary one created by the test, which the plan requires ("不得安装到开发者真实系统目录").
+
+    /// Build **raw** zip bytes from an explicit list of entry names.
+    ///
+    /// `zip::write::ZipWriter` cannot express what these tests need: it normalises a name on the way in, so
+    /// `../escape.txt` is stored as `escape.txt` and the property under test never reaches the extractor. This
+    /// writes the local file header, the data and the central directory by hand so the stored name is
+    /// byte-for-byte what the test asks for.
+    ///
+    /// Only stored (method 0) entries of known length are produced, which keeps the records small and removes
+    /// any dependency on a compressor.
+    fn raw_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut out: Vec<u8> = Vec::new();
+        let mut central: Vec<u8> = Vec::new();
+
+        for (name, data) in entries {
+            let name_bytes = name.as_bytes();
+            let crc = crc32(data);
+            let offset = out.len() as u32;
+            let size = data.len() as u32;
+
+            // Local file header
+            out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+            out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+            out.extend_from_slice(&0u16.to_le_bytes()); // flags
+            out.extend_from_slice(&0u16.to_le_bytes()); // method: stored
+            out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+            out.extend_from_slice(&0u16.to_le_bytes()); // mod date
+            out.extend_from_slice(&crc.to_le_bytes());
+            out.extend_from_slice(&size.to_le_bytes()); // compressed
+            out.extend_from_slice(&size.to_le_bytes()); // uncompressed
+            out.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+            out.extend_from_slice(&0u16.to_le_bytes()); // extra length
+            out.extend_from_slice(name_bytes);
+            out.extend_from_slice(data);
+
+            // Central directory record
+            central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+            central.extend_from_slice(&20u16.to_le_bytes()); // version made by
+            central.extend_from_slice(&20u16.to_le_bytes()); // version needed
+            central.extend_from_slice(&0u16.to_le_bytes()); // flags
+            central.extend_from_slice(&0u16.to_le_bytes()); // method
+            central.extend_from_slice(&0u16.to_le_bytes()); // mod time
+            central.extend_from_slice(&0u16.to_le_bytes()); // mod date
+            central.extend_from_slice(&crc.to_le_bytes());
+            central.extend_from_slice(&size.to_le_bytes());
+            central.extend_from_slice(&size.to_le_bytes());
+            central.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+            central.extend_from_slice(&0u16.to_le_bytes()); // extra
+            central.extend_from_slice(&0u16.to_le_bytes()); // comment
+            central.extend_from_slice(&0u16.to_le_bytes()); // disk
+            central.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+            central.extend_from_slice(&0u32.to_le_bytes()); // external attrs
+            central.extend_from_slice(&offset.to_le_bytes());
+            central.extend_from_slice(name_bytes);
+        }
+
+        let central_offset = out.len() as u32;
+        let central_size = central.len() as u32;
+        out.extend_from_slice(&central);
+
+        // End of central directory
+        out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes()); // disk
+        out.extend_from_slice(&0u16.to_le_bytes()); // disk with central
+        out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        out.extend_from_slice(&central_size.to_le_bytes());
+        out.extend_from_slice(&central_offset.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes()); // comment length
+        out
+    }
+
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for byte in data {
+            crc ^= *byte as u32;
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        !crc
+    }
+
+    /// A unique temporary directory for one test, removed when the returned guard is dropped.
+    ///
+    /// **The cleanup is a `Drop`, not a line at the end of the test.** An earlier version called
+    /// `std::fs::remove_dir_all` as the last statement, and the first attempt at measuring whether the zip-slip
+    /// guard was load-bearing left a `bc_installer_zip_slip_*` directory behind: removing the guard makes the
+    /// assertion panic, which skips everything after it. That is the same residue pattern seen repeatedly
+    /// elsewhere in this suite, and a guard is the only form of cleanup that survives a panic.
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "bc_installer_{}_{}_{}",
+                tag,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("the clock is after the epoch")
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&path).expect("the temporary directory must be creatable");
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            // Nothing is asserted here: a `Drop` that panics during unwinding aborts the process. A failure to
+            // remove is reported and ignored, so one leftover directory cannot crash the run.
+            if let Err(e) = std::fs::remove_dir_all(&self.0) {
+                if self.0.exists() {
+                    eprintln!("could not remove {}: {e}", self.0.display());
+                }
+            }
+        }
+    }
+
+    /// An installer whose directories all point inside `root`, so nothing can reach a real location.
+    fn installer_in(root: &Path) -> Installer {
+        let config = InstallerConfig::new()
+            .with_download_dir(root.join("downloads"))
+            .with_install_dir(root.join("install"))
+            .with_bundle_dir(None);
+        Installer::new(config)
+    }
+
+    fn write_zip(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).expect("the archive must be writable");
+        path
+    }
+
+    #[test]
+    fn a_traversing_zip_entry_is_skipped_and_never_escapes_the_target() {
+        // **The zip-slip case.** An entry named `../escaped.txt` must not be written outside the target
+        // directory. `extract_zip` reaches this through `file.enclosed_name()`, which returns `None` for a name
+        // that would escape, and the loop `continue`s on `None` -- so the guard is a **library behaviour plus an
+        // explicit skip**, and this test pins both: the file is not created, and the archive still extracts its
+        // legitimate entries rather than failing outright.
+        let root = TempRoot::new("zip_slip");
+        let target = root.path().join("install").join("app");
+        std::fs::create_dir_all(&target).expect("the target directory must be creatable");
+        let installer = installer_in(root.path());
+
+        let bytes = raw_zip(&[
+            ("../escaped.txt", b"should never be written"),
+            ("../../also-escaped.txt", b"nor this"),
+            ("/absolute.txt", b"nor an absolute name"),
+            ("safe.txt", b"this one is fine"),
+            ("nested/deep.txt", b"and this one"),
+        ]);
+        let zip_path = write_zip(root.path(), "hostile.zip", &bytes);
+
+        installer
+            .extract_zip(&zip_path, &target)
+            .expect("a hostile entry is skipped, not fatal -- the archive still extracts");
+
+        // The escape targets, checked by name at every level above the target.
+        let escaped = root.path().join("escaped.txt");
+        let escaped_two = root.path().join("also-escaped.txt");
+        let absolute = PathBuf::from("/absolute.txt");
+        println!(
+            "escaped.txt exists: {}, two levels up: {}, absolute: {}",
+            escaped.exists(),
+            escaped_two.exists(),
+            absolute.exists()
+        );
+        assert!(!escaped.exists(), "`../escaped.txt` must not be written");
+        assert!(
+            !escaped_two.exists(),
+            "`../../also-escaped.txt` must not be written"
+        );
+        assert!(
+            !absolute.exists() || !absolute.starts_with("/absolute.txt"),
+            "an absolute entry name must not be honoured"
+        );
+
+        // And the harmless entries are there, so the skip did not become "extract nothing".
+        assert!(
+            target.join("safe.txt").exists(),
+            "a plain entry is extracted"
+        );
+        assert!(
+            target.join("nested").join("deep.txt").exists(),
+            "and a nested one"
+        );
+    }
+
+    #[test]
+    fn a_traversing_entry_does_not_create_directories_outside_the_target() {
+        // The directory half of the same problem: an entry named `../dir/` must not create `dir` outside the
+        // target. A traversal guard that only covers files would miss this, because the directory branch calls
+        // `create_dir_all` before any file is written.
+        let root = TempRoot::new("zip_slip_dir");
+        let target = root.path().join("install").join("app");
+        std::fs::create_dir_all(&target).expect("the target directory must be creatable");
+        let installer = installer_in(root.path());
+
+        let bytes = raw_zip(&[
+            ("../outside-dir/", b""),
+            (
+                "../outside-dir/inside.txt",
+                b"written through the directory entry",
+            ),
+            ("inside.txt", b"fine"),
+        ]);
+        let zip_path = write_zip(root.path(), "hostile-dir.zip", &bytes);
+
+        installer
+            .extract_zip(&zip_path, &target)
+            .expect("the archive extracts, skipping the escaping entry");
+
+        let outside = root.path().join("outside-dir");
+        println!("outside-dir exists: {}", outside.exists());
+        assert!(
+            !outside.exists(),
+            "a directory entry with `..` must not create a directory outside the target"
+        );
+        assert!(
+            target.join("inside.txt").exists(),
+            "and the safe entry is written"
+        );
+    }
+
+    #[test]
+    fn a_corrupt_archive_is_an_error_rather_than_a_partial_extraction() {
+        // "损坏压缩包". A file that is not a zip at all must be reported, not silently treated as an empty
+        // archive -- a caller that carried on would report a successful install with nothing installed.
+        let root = TempRoot::new("corrupt");
+        let target = root.path().join("install").join("app");
+        let installer = installer_in(root.path());
+
+        for (label, bytes) in [
+            ("empty", Vec::new()),
+            ("plain text", b"this is not a zip file at all".to_vec()),
+            ("truncated header", vec![0x50, 0x4b, 0x03, 0x04]),
+        ] {
+            let zip_path = write_zip(
+                root.path(),
+                &format!("{}.zip", label.replace(' ', "_")),
+                &bytes,
+            );
+            let result = installer.extract_zip(&zip_path, &target);
+            match &result {
+                Ok(()) => panic!("a {label} file was accepted as an archive"),
+                Err(e) => println!("{label} -> {e}"),
+            }
+            assert!(result.is_err(), "a {label} file must be rejected");
+        }
+
+        // A file that does not exist is also an error, and is a different one from a corrupt archive.
+        let missing = installer.extract_zip(&root.path().join("no-such.zip"), &target);
+        assert!(missing.is_err(), "a missing archive must be rejected");
+
+        // Nothing was created by any of the failures, so a failed extraction leaves no partial tree behind.
+        let leftovers: Vec<_> = std::fs::read_dir(&target)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|e| e.file_name())
+                    .collect()
+            })
+            .unwrap_or_default();
+        println!("leftovers in the target after three failures: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "a rejected archive must not leave files in the target directory"
+        );
+    }
+
+    #[test]
+    fn extraction_preserves_file_contents_and_creates_the_target() {
+        // The successful path, which the negative tests above need as a control: without it, "the file is not
+        // there" would pass on an extractor that never writes anything.
+        let root = TempRoot::new("extract_ok");
+        let target = root.path().join("install").join("app");
+        // The target deliberately does not exist yet, so this also covers its creation.
+        assert!(!target.exists(), "the target starts absent");
+
+        let installer = installer_in(root.path());
+        let payload = b"node --version\n";
+        let zip_path = write_zip(root.path(), "ok.zip", &raw_zip(&[("bin/tool.sh", payload)]));
+
+        installer
+            .extract_zip(&zip_path, &target)
+            .expect("a well-formed archive extracts");
+
+        assert!(target.exists(), "the target directory was created");
+        let written =
+            std::fs::read(target.join("bin").join("tool.sh")).expect("the file is readable");
+        assert_eq!(
+            written, payload,
+            "and its contents are byte-for-byte what was stored"
+        );
+    }
+
+    #[tokio::test]
+    async fn installation_status_is_read_from_the_install_directory_alone() {
+        // "已安装版本处理". `check_status` reports `Installed` when `<install_dir>/<id>/.installed` exists and
+        // `NotInstalled` otherwise, so the question is whether the answer follows the configured directory rather
+        // than the real system. This points the installer at a temporary root, which is the property the plan
+        // cares about.
+        let root = TempRoot::new("status");
+        let installer = installer_in(root.path());
+
+        let before = installer
+            .check_status("openclaw")
+            .await
+            .expect("a known software reports a status");
+        println!("before the marker: {before:?}");
+        assert_eq!(
+            before,
+            InstallStatus::NotInstalled,
+            "nothing is installed in a fresh root"
+        );
+
+        // The marker is the whole signal.
+        let marker_dir = root.path().join("install").join("openclaw");
+        std::fs::create_dir_all(&marker_dir).expect("the marker directory must be creatable");
+        std::fs::write(marker_dir.join(".installed"), b"").expect("the marker must be writable");
+
+        let after = installer
+            .check_status("openclaw")
+            .await
+            .expect("the status is readable");
+        println!("after the marker: {after:?}");
+        assert_eq!(
+            after,
+            InstallStatus::Installed,
+            "the marker alone decides, and it is read from the configured directory"
+        );
+
+        // Idempotence: asking again gives the same answer, so the check does not consume or move anything.
+        let again = installer.check_status("openclaw").await.expect("readable");
+        assert_eq!(
+            again,
+            InstallStatus::Installed,
+            "and asking twice changes nothing"
+        );
+
+        // An unknown id is an error rather than a status, which is a different answer from NotInstalled and is
+        // worth pinning because the two would otherwise look alike to a caller.
+        assert!(
+            installer.check_status("no-such-software").await.is_err(),
+            "an unknown software id must be an error, not NotInstalled"
+        );
+    }
+
+    #[test]
+    fn the_nodejs_url_names_the_platform_the_architecture_and_the_version() {
+        // "OS/架构选择" and "版本与路径解析". The URL is assembled from a version and a platform pair, and the
+        // extension differs by OS, so a mistake here downloads a binary for the wrong system -- which fails
+        // later and confusingly.
+        for (os, arch, expected) in [
+            (
+                OS::Windows,
+                Arch::X64,
+                "https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip",
+            ),
+            (
+                OS::Windows,
+                Arch::ARM64,
+                "https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-arm64.zip",
+            ),
+            (
+                OS::MacOS,
+                Arch::ARM64,
+                "https://nodejs.org/dist/v22.14.0/node-v22.14.0-darwin-arm64.tar.gz",
+            ),
+            (
+                OS::Linux,
+                Arch::X64,
+                "https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz",
+            ),
+        ] {
+            let url = crate::bundle::get_nodejs_download_url("22.14.0", os, arch);
+            println!("{os:?}/{arch:?} -> {url:?}");
+            assert_eq!(
+                url.as_deref(),
+                Some(expected),
+                "the URL must name the platform, the architecture and the version"
+            );
+        }
+
+        // The version appears twice -- in the path and in the file name -- so a version that is only
+        // substituted once would produce a URL that 404s.
+        let url = crate::bundle::get_nodejs_download_url("1.2.3", OS::Linux, Arch::X64)
+            .expect("linux/x64 is supported");
+        assert_eq!(
+            url.matches("1.2.3").count(),
+            2,
+            "the version appears in both positions: {url}"
+        );
+
+        // A platform pair the template has no mapping for returns `None` rather than a guessed URL. macOS on
+        // 32-bit x86 is such a pair; the template covers ARM64 and x64 only.
+        assert_eq!(
+            crate::bundle::get_nodejs_download_url("22.14.0", OS::MacOS, Arch::X86),
+            None,
+            "an unmapped platform pair must be None rather than a URL that cannot exist"
+        );
+    }
 }

@@ -13,14 +13,18 @@
 //! Strategy: create a fresh SQLite database via `create_database_with_url`, which
 //! runs all migrations (0001–0010) and the `schema/rename.rs` data-copy logic.
 
-use burncloud_database::{create_database_with_url, sqlx};
+use burncloud_database::{create_database_with_url, sqlite_url, sqlx};
 use sqlx::any::{AnyConnectOptions, AnyPoolOptions};
 use std::str::FromStr;
 use tempfile::NamedTempFile;
 
 async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     let tmp = NamedTempFile::new().unwrap_or_else(|_| panic!("failed to create temp file"));
-    let url = format!("sqlite://{}?mode=rwc", tmp.path().display());
+    let url = sqlite_url(
+        &tmp.path().to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));
@@ -675,7 +679,11 @@ async fn test_all_migrations_recorded() {
 /// Helper: connect directly to a SQLite file with raw sqlx (no migration framework).
 async fn raw_sqlite_pool(path: &std::path::Path) -> sqlx::AnyPool {
     sqlx::any::install_default_drivers();
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let options = AnyConnectOptions::from_str(&url)
         .unwrap_or_else(|e| panic!("parse sqlite url failed: {e}"));
     AnyPoolOptions::new()
@@ -899,7 +907,11 @@ async fn test_data_migration_users_to_user_accounts() {
     }
 
     // Phase 2: run migrations
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -946,7 +958,11 @@ async fn test_data_migration_channels_to_channel_providers() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -986,7 +1002,11 @@ async fn test_data_migration_abilities_to_channel_abilities() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1026,7 +1046,11 @@ async fn test_data_migration_tokens_to_user_api_keys() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1070,7 +1094,11 @@ async fn test_data_migration_prices_to_billing_prices() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1111,7 +1139,11 @@ async fn test_data_migration_protocol_configs_to_channel_protocol_configs() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1151,7 +1183,11 @@ async fn test_data_migration_tiered_pricing_to_billing_tiered_prices() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1193,7 +1229,11 @@ async fn test_data_migration_exchange_rates_to_billing_exchange_rates() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1234,7 +1274,11 @@ async fn test_data_migration_video_tasks_to_router_video_tasks() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1272,7 +1316,11 @@ async fn test_data_migration_setting_to_sys_settings() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1311,7 +1359,11 @@ async fn test_data_migration_downloads_to_sys_downloads() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1351,7 +1403,11 @@ async fn test_data_migration_installations_to_sys_installations() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1394,7 +1450,11 @@ async fn test_data_migration_preserves_multiple_rows() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));
@@ -1463,7 +1523,11 @@ async fn test_data_migration_cross_domain() {
         pool.close().await;
     }
 
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = sqlite_url(
+        &path.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("migration failed: {e}"));

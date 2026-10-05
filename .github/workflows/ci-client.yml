@@ -1,4 +1,4 @@
-name: Client UI Conventions
+name: CI / Client
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
       - 'crates/interfaces/cli/**'
       - 'crates/interfaces/client/**'
       - 'deploy/Dockerfile'
-      - '.github/workflows/client-ui.yml'
+      - '.github/workflows/ci-client.yml'
 
 permissions:
   contents: read

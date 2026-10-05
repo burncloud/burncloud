@@ -1,4 +1,4 @@
-name: Sync to Gitee
+name: Maintenance / Sync to Gitee
 
 on:
   push:

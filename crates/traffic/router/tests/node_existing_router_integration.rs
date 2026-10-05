@@ -34,6 +34,9 @@ use std::sync::Arc;
 #[tokio::test]
 async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     let temp = tempfile::NamedTempFile::new().expect("temp database");
+    // `sqlite_url`, not an inline `format!`: `main` fixed the same defect with `#[cfg(windows)]`, and the two
+    // produce the identical URL on Windows, compared directly. The helper is kept so the three-slash rule has
+    // one definition rather than a copy per call site.
     let url = sqlite_url(&temp.path().to_string_lossy());
     let db = Arc::new(
         create_database_with_url(&url)
@@ -99,6 +102,9 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
 #[tokio::test]
 async fn failed_quarantine_rolls_back_routing_ability() {
     let temp = tempfile::NamedTempFile::new().expect("temp database");
+    // `sqlite_url`, not an inline `format!`: `main` fixed the same defect with `#[cfg(windows)]`, and the two
+    // produce the identical URL on Windows, compared directly. The helper is kept so the three-slash rule has
+    // one definition rather than a copy per call site.
     let url = sqlite_url(&temp.path().to_string_lossy());
     let db = Arc::new(
         create_database_with_url(&url)

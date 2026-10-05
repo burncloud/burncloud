@@ -478,7 +478,7 @@ struct NetworkResources {
 
 // Simple URL encoding module
 mod urlencoding {
-    pub fn encode(s: &str) -> String {
+    pub(super) fn encode(s: &str) -> String {
         let mut encoded = String::new();
         for c in s.chars() {
             match c {

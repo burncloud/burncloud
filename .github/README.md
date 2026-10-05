@@ -7,19 +7,48 @@ Status of this document: it describes **what the workflows actually do today**, 
 files in `workflows/`. Where something is planned but not implemented, it says so explicitly instead
 of describing the intention as if it were the behaviour.
 
+**Which job runs a given crate's tests is not always "one of them".** No workflow runs `cargo test`
+workspace-wide -- `cargo test --workspace` appears zero times under `workflows/`, `arch.yml` runs only `clippy`
+(which compiles tests without running them), and all twelve `cargo test` invocations in the repository live in
+`security-billing-invariants.yml`, which names thirteen crates. **Nineteen crates' tests are therefore executed
+by no CI job**, including `burncloud-database`, which has 86 of them and whose 42 rename tests fail on Windows.
+
+The measurement behind that sentence, per crate -- test counts, and the job that runs each -- is recorded in the
+pull request that added this paragraph rather than in a file, because **`docs/` is not tracked in this
+repository**: `.gitignore` is a default-deny list (`/*` plus explicit exceptions) and `docs/` is not among them,
+so the existing `docs/architecture-*.md` files are untracked too. Putting the matrix under `workflows/` or
+`crates/*/` would work but misplaces it; the durable fix is a `cargo test --workspace` step in the workflows
+themselves, which is what the matrix argues for.
+
 ## Workflows
+
+### Local pre-commit setup
+
+Run `cargo run -- code init` once per checkout to install the local Git hook.
+The hook delegates to `cargo run -- code test --staged`. Rust tooling selects
+changed packages and transitive consumers from Cargo metadata, with a full-workspace
+fallback for shared configuration and unknown paths. It gates selected code on
+formatting, tests, Clippy and the full `cargo deny check`; existing failures are
+not suppressed. `--plan`, `--base REF` and `--all` support manual local verification.
+See the root README and `crates/platform/code/README.md` for the selection contract.
+The `code-init` job in `ci-architecture.yml` runs `cargo test -p burncloud-code` on Windows
+and Linux. Native Rust regression tests verify real Git commits and selection,
+with Cargo check execution stubbed. Their success is not a workspace-health result.
+There is no Python or Shell test harness; Git's hook remains a thin shell wrapper.
 
 | File | Trigger | What it checks |
 | --- | --- | --- |
-| `arch.yml` | changes to `crates/traffic/router/Cargo.toml` or `deny.toml` | Router dependency whitelist (`crates/traffic/router/scripts/check-router-deps.sh --ci`) and `cargo-deny` bans |
-| `client-ui.yml` | root `Cargo.toml`, `crates/interfaces/{cli,client}/**`, `deploy/Dockerfile`, itself | UI convention scripts, LiveView feature check, desktop builds on Windows and macOS |
-| `security-billing-invariants.yml` | see "Trigger coverage" below | Five independent jobs: formatting, Node invariants, Billing invariants, Security invariants, migration contracts |
-| `version-check.yml` | root `Cargo.toml`, any `crates/**/Cargo.toml`, itself; or manual | Tags the root package version when it advances |
-| `release.yml` | tags | Builds release artifacts |
-| `sync-to-gitee.yml` | pushes | Mirrors the repository to Gitee |
-| `workflows/README.md` | — | Superseded by this file; kept only until the rename in "Planned changes" happens |
+| `ci-architecture.yml` | changes to `crates/traffic/router/Cargo.toml` or `deny.toml` | Router dependency whitelist (`crates/traffic/router/scripts/check-router-deps.sh --ci`) and `cargo-deny` bans |
+| `ci-client.yml` | root `Cargo.toml`, `crates/interfaces/{cli,client}/**`, `deploy/Dockerfile`, itself | UI convention scripts, LiveView feature check, desktop builds on Windows and macOS |
+| `ci-tests.yml` | see "Trigger coverage" below | Five independent jobs: Node invariants, Billing invariants, Security invariants, Identity invariants, migration contracts. The formatting check that used to gate them moved to `ci-quality.yml`, so the two workflows report separately |
+| `ci-quality.yml` | the formatting configuration, and itself | `cargo fmt --all -- --check`. Split out of `ci-tests.yml` so a formatting failure cannot suppress five test verdicts |
+| `ci-integration.yml` | see the workflow's own `paths:` | The Identity contract against a real PostgreSQL server. This is the only job that needs a service container |
+| `maintenance-version-tag.yml` | root `Cargo.toml`, any `crates/**/Cargo.toml`, itself; or manual | Tags the root package version when it advances |
+| `cd-release.yml` | tags | Builds release artifacts |
+| `maintenance-sync-gitee.yml` | pushes | Mirrors the repository to Gitee |
+| `workflows/README.md` | — | Not a workflow: the naming scheme for the files in this directory, and two decisions measured there |
 
-### `security-billing-invariants.yml`
+### `ci-tests.yml`
 
 Split into five jobs so that one class of failure cannot hide another. Before the split, a single
 job ran everything in sequence, and the first non-zero exit ended it: the known-failing Node P0
@@ -41,12 +70,12 @@ Only `formatting` gates the rest, and **nothing depends on `node-invariants`**.
 A workflow only runs for a pull request when a changed path matches its `paths` filter. Because the
 crate layout is nested (`crates/<domain>/<name>/`), a single-segment glob is easy to get wrong:
 
-* `crates/*/Cargo.toml` matches **zero** of the 37 tracked manifests. `version-check.yml` used that
+* `crates/*/Cargo.toml` matches **zero** of the 37 tracked manifests. `maintenance-version-tag.yml` used that
   pattern, so a crate manifest change never triggered it. Fixed to `crates/**/Cargo.toml`.
-* `arch.yml` watches only two paths. A dependency change in `crates/traffic/router/Cargo.toml` is
+* `ci-architecture.yml` watches only two paths. A dependency change in `crates/traffic/router/Cargo.toml` is
   covered; a change in a transitive manifest is not.
 
-`security-billing-invariants.yml` covers, in addition to its original paths:
+`ci-tests.yml` covers, in addition to its original paths:
 
 ```
 crates/commerce/contracts/**     crates/supply/contracts/**     crates/traffic/contracts/**
@@ -75,7 +104,7 @@ Areas that still have **no** CI coverage (see `test-plan/coverage-matrix.md` for
 | --- | --- | --- |
 | `node-invariants` | `interfaces/server/src/node_orchestrator.rs:855,911` E0308 (mismatched types against `platform/node/src/preparation/prepared_artifact.rs:16`) | **Fails on `main`.** Kept visible on purpose: it now reports only the Node side, and no longer hides Billing/Security |
 | `security-invariants` | — | passes |
-| `release.yml` action pin | `softprops/action-gh-release@v1` was pinned, which `actionlint` reports as a runner version GitHub no longer supports | **Fixed in this PR** (bumped to `@v2`); needs a release-correctness check before it is relied on. Tracked separately so it is not buried here |
+| `cd-release.yml` action pin | `softprops/action-gh-release@v1` was pinned, which `actionlint` reports as a runner version GitHub no longer supports | **Fixed in this PR** (bumped to `@v2`); needs a release-correctness check before it is relied on. Tracked separately so it is not buried here |
 | `billing-invariants` | — | passes |
 
 Pre-existing compile failures elsewhere in the workspace, which is why no workflow runs
@@ -123,11 +152,11 @@ Plus: a unified `ci.yml` entry point with a `CI Required` aggregation job, `merg
 and `actionlint` on the workflow files themselves. Two behaviours are deliberately **not** changed
 here because getting them wrong would publish releases or break mirrors:
 
-* A tag pushed by `version-check.yml` uses the default `GITHUB_TOKEN`, and events caused by that
+* A tag pushed by `maintenance-version-tag.yml` uses the default `GITHUB_TOKEN`, and events caused by that
   token **do not trigger further workflows** — so a tag created here may not start the release
-  pipeline. The fix (a PAT, or `release.yml` listening on `workflow_run`) needs a release-correctness
+  pipeline. The fix (a PAT, or `cd-release.yml` listening on `workflow_run`) needs a release-correctness
   test before it lands. The workflow summary now states this so a silent no-release is visible.
-* `sync-to-gitee.yml` uses `--all --force`; whether the mirror should be main-only or all refs, and
+* `maintenance-sync-gitee.yml` uses `--all --force`; whether the mirror should be main-only or all refs, and
   how deletions are handled, needs verification against a temporary bare repository rather than
   trial-and-error against the real mirror.
 
