@@ -184,6 +184,28 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     },
 ];
 
+/// Convert a migration file into executable statements.
+///
+/// Full-line SQL comments are removed **before** splitting on semicolons. Doing
+/// this in the opposite order is unsafe: a comment such as
+/// `-- reserved keyword; quoted in PostgreSQL` becomes two segments, and the
+/// second segment no longer starts with `--`, so it is accidentally executed as
+/// SQL. Migration 0001 contains exactly that shape.
+fn migration_statements(sql: &str) -> Vec<String> {
+    let executable_sql = sql
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    executable_sql
+        .split(';')
+        .map(str::trim)
+        .filter(|statement| !statement.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
@@ -204,8 +226,6 @@ impl MigrationRunner {
         let pool = db.get_connection()?.pool();
         let kind = db.kind();
 
-        // Ensure the tracking table exists (idempotent, compatible with both
-        // SQLite and PostgreSQL).
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS _schema_migrations (\
                 version TEXT PRIMARY KEY, \
@@ -238,8 +258,6 @@ impl MigrationRunner {
         Ok(())
     }
 
-    /// Returns `true` when the given version is already recorded in the
-    /// tracking table.
     async fn is_applied(pool: &sqlx::AnyPool, version: &str, kind: &str) -> bool {
         let count: i64 = if kind == "postgres" {
             sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations WHERE version = $1")
@@ -259,23 +277,9 @@ impl MigrationRunner {
 
     /// Execute every SQL statement in the migration file.
     async fn apply_sql(pool: &sqlx::AnyPool, migration: &Migration) -> Result<()> {
-        for raw_stmt in migration.sql.split(';') {
-            // Strip comments and whitespace; skip blank segments.
-            let stmt: String = raw_stmt
-                .lines()
-                .filter(|l| !l.trim_start().starts_with("--"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let stmt = stmt.trim().to_string();
-            if stmt.is_empty() {
-                continue;
-            }
-
+        for stmt in migration_statements(migration.sql) {
             if let Err(e) = sqlx::query(&stmt).execute(pool).await {
                 let msg = e.to_string().to_lowercase();
-                // Idempotency: ignore errors that mean "already done".
-                // These arise when ALTER TABLE is re-run on an existing column
-                // (SQLite path) or when a table/index was already created.
                 if msg.contains("duplicate column")
                     || msg.contains("already has a column named")
                     || msg.contains("already exists")
@@ -310,5 +314,36 @@ impl MigrationRunner {
                 .await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::migration_statements;
+
+    #[test]
+    fn comment_semicolons_never_become_executable_sql() {
+        let statements = migration_statements(
+            "-- group is a reserved keyword; quoted with double-quotes for PostgreSQL.\n\
+             CREATE TABLE example (id BIGINT);\n\
+             -- another comment; still not SQL\n\
+             INSERT INTO example (id) VALUES (1);",
+        );
+
+        assert_eq!(
+            statements,
+            vec![
+                "CREATE TABLE example (id BIGINT)".to_string(),
+                "INSERT INTO example (id) VALUES (1)".to_string()
+            ]
+        );
+        assert!(statements
+            .iter()
+            .all(|statement| !statement.contains("double-quotes")));
+    }
+
+    #[test]
+    fn blank_segments_and_comment_only_files_produce_no_statements() {
+        assert!(migration_statements("-- comment; only\n; ;\n-- another").is_empty());
     }
 }
