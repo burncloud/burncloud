@@ -3,7 +3,9 @@
 //! 模型服务层，提供简洁的增删改查接口
 
 mod resolver;
+mod manifest;
 
+pub use manifest::{ModelManifest, Variant};
 pub use resolver::{
     FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelResolutionError,
     ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,

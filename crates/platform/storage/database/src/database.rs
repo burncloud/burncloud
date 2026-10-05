@@ -49,7 +49,7 @@ fn is_absolute_path(path: &str, is_windows: bool) -> bool {
     if !is_windows {
         return false;
     }
-    // `C:/...` or `C:\...` -- a drive letter, a colon, then a separator.
+    // `C:/...` or `C:\\...` -- a drive letter, a colon, then a separator.
     let bytes: Vec<char> = path.chars().take(3).collect();
     bytes.len() == 3
         && bytes[0].is_ascii_alphabetic()
@@ -141,11 +141,13 @@ impl Database {
         let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection.clone());
 
-        // Enable WAL mode for SQLite performance and concurrency
+        // Enable WAL mode for SQLite performance and concurrency. Initialization is
+        // not complete if SQLite refuses the requested journal mode, so propagate
+        // the database error instead of silently continuing in a different mode.
         if self.kind() == "sqlite" {
-            let _ = sqlx::query("PRAGMA journal_mode=WAL;")
+            sqlx::query("PRAGMA journal_mode=WAL;")
                 .execute(connection.pool())
-                .await;
+                .await?;
         }
 
         // Run versioned DDL migrations first (creates all tables and columns).
@@ -312,12 +314,27 @@ pub fn is_windows() -> bool {
 pub fn get_default_database_path() -> Result<std::path::PathBuf> {
     let db_dir = if is_windows() {
         // Windows: %USERPROFILE%\AppData\Local\BurnCloud
+        // USERPROFILE must be an absolute path. Empty/relative values would make
+        // `AppData/...` relative to the current working directory; during tests that
+        // previously created `crates/platform/storage/database/AppData/` inside the repo.
         let user_profile = std::env::var("USERPROFILE")
             .map_err(|e| DatabaseError::PathResolution(format!("USERPROFILE not found: {}", e)))?;
-        std::path::PathBuf::from(user_profile)
-            .join("AppData")
-            .join("Local")
-            .join("BurnCloud")
+        let user_profile = user_profile.trim();
+        if user_profile.is_empty() {
+            return Err(DatabaseError::PathResolution(
+                "USERPROFILE is empty".to_string(),
+            ));
+        }
+
+        let user_profile = std::path::PathBuf::from(user_profile);
+        if !user_profile.is_absolute() {
+            return Err(DatabaseError::PathResolution(format!(
+                "USERPROFILE must be an absolute path: {}",
+                user_profile.display()
+            )));
+        }
+
+        user_profile.join("AppData").join("Local").join("BurnCloud")
     } else {
         // Linux: ~/.burncloud
         dirs::home_dir()

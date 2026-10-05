@@ -310,23 +310,30 @@ mod tests {
         let manager = HealthProbeManager::with_defaults();
         let channel_id = 1;
 
-        // Initial state
-        assert!(
-            manager
-                .should_probe(channel_id, &SmartCircuitBreaker::with_defaults())
-                .await
-        );
+        // A healthy/Closed circuit is deliberately not probed. This guard makes
+        // the HalfOpen precondition part of the test's oracle rather than merely
+        // a comment on the fixture.
+        let closed_breaker = SmartCircuitBreaker::with_defaults();
+        assert!(!manager.should_probe(channel_id, &closed_breaker).await);
 
-        // Start probe
-        manager.start_probe(channel_id).await;
-
-        // Should not probe while probing
+        // Put one breaker into HalfOpen without sleeping. `trip` records
+        // reset_at = now + duration, so a zero duration deterministically makes
+        // `state()` report HalfOpen immediately while preserving production state
+        // transition semantics.
         let mut breaker = SmartCircuitBreaker::with_defaults();
-        // Force to HalfOpen
-        breaker.trip("test", Duration::from_secs(60));
-        // Need to wait for half-open transition
+        breaker.trip("test", Duration::ZERO);
+        assert_eq!(breaker.state(), CircuitState::HalfOpen);
 
-        // Record success
+        // Initial HalfOpen state is probeable.
+        assert!(manager.should_probe(channel_id, &breaker).await);
+
+        // Once a probe starts, the same HalfOpen channel must not admit another
+        // probe concurrently.
+        manager.start_probe(channel_id).await;
+        assert!(!manager.should_probe(channel_id, &breaker).await);
+
+        // A successful probe reaches the configured threshold and asks the caller
+        // to close the circuit.
         let result = ProbeResult {
             channel_id,
             model: "gpt-3.5-turbo".to_string(),
