@@ -223,21 +223,20 @@ async fn test_concurrent_directory_creation() {
 
 #[test]
 fn test_environment_variable_handling() {
-    // Test behavior with different environment variable states
+    // Test path resolution without mutating process-wide environment variables.
+    // Mutating USERPROFILE in a parallel test process can leak into another test and make
+    // Database::new() resolve an empty profile as a relative `AppData/...` path inside the
+    // repository. Keep the cases pure so database tests never create source-tree AppData files.
 
     #[cfg(target_os = "windows")]
     {
-        // Test with missing USERPROFILE
-        let original_userprofile = std::env::var("USERPROFILE").ok();
-        std::env::remove_var("USERPROFILE");
-
-        let path_result = get_test_default_path();
+        let missing_result = get_test_windows_default_path(None);
         assert!(
-            path_result.is_err(),
+            missing_result.is_err(),
             "Should fail when USERPROFILE is missing"
         );
 
-        if let Err(DatabaseError::PathResolution(msg)) = path_result {
+        if let Err(DatabaseError::PathResolution(msg)) = missing_result {
             assert!(
                 msg.contains("USERPROFILE"),
                 "Error should mention USERPROFILE: {}",
@@ -245,29 +244,24 @@ fn test_environment_variable_handling() {
             );
         }
 
-        // Restore original value
-        if let Some(original) = original_userprofile {
-            std::env::set_var("USERPROFILE", original);
-        }
+        let empty_result = get_test_windows_default_path(Some(""));
+        assert!(
+            empty_result.is_err(),
+            "Empty USERPROFILE must not resolve to a relative AppData path"
+        );
 
-        // Test with empty USERPROFILE
-        std::env::set_var("USERPROFILE", "");
-        let empty_result = get_test_default_path();
+        let relative_result = get_test_windows_default_path(Some("."));
+        assert!(
+            relative_result.is_err(),
+            "Relative USERPROFILE must not resolve inside the repository"
+        );
 
-        // This might succeed with an empty path or fail - both are acceptable
-        match empty_result {
-            Ok(path) => {
-                // If it succeeds, the path should still be valid
-                assert!(!path.to_string_lossy().is_empty());
-            }
-            Err(_) => {
-                // Failing with empty USERPROFILE is also acceptable
-            }
-        }
-
-        // Restore proper USERPROFILE
-        if let Some(original) = std::env::var("USERPROFILE").ok() {
-            std::env::set_var("USERPROFILE", original);
+        if let Ok(original) = std::env::var("USERPROFILE") {
+            let valid_result = get_test_windows_default_path(Some(&original));
+            assert!(
+                valid_result.is_ok(),
+                "A normal absolute USERPROFILE should resolve successfully"
+            );
         }
     }
 
@@ -353,35 +347,47 @@ async fn test_very_long_paths() {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn get_test_windows_default_path(user_profile: Option<&str>) -> Result<PathBuf> {
+    let user_profile = user_profile.ok_or_else(|| {
+        DatabaseError::PathResolution("USERPROFILE not found".to_string())
+    })?;
+
+    if user_profile.trim().is_empty() {
+        return Err(DatabaseError::PathResolution(
+            "USERPROFILE is empty".to_string(),
+        ));
+    }
+
+    let profile_path = PathBuf::from(user_profile);
+    if !profile_path.is_absolute() {
+        return Err(DatabaseError::PathResolution(format!(
+            "USERPROFILE must be absolute: {}",
+            profile_path.display()
+        )));
+    }
+
+    Ok(profile_path
+        .join("AppData")
+        .join("Local")
+        .join("BurnCloud")
+        .join("data.db"))
+}
+
 // Helper function for tests
 fn get_test_default_path() -> Result<PathBuf> {
-    use burncloud_database::DatabaseError;
+    #[cfg(target_os = "windows")]
+    {
+        let user_profile = std::env::var("USERPROFILE").ok();
+        return get_test_windows_default_path(user_profile.as_deref());
+    }
 
-    let db_dir = if cfg!(target_os = "windows") {
-        let user_profile = std::env::var("USERPROFILE")
-            .map_err(|e| DatabaseError::PathResolution(format!("USERPROFILE not found: {}", e)))?;
-        let profile_path = PathBuf::from(user_profile);
-
-        // Convert to absolute path if it's not already
-        let absolute_profile = if profile_path.is_absolute() {
-            profile_path
-        } else {
-            std::env::current_dir()
-                .map_err(|e| {
-                    DatabaseError::PathResolution(format!("Cannot get current directory: {}", e))
-                })?
-                .join(profile_path)
-        };
-
-        absolute_profile
-            .join("AppData")
-            .join("Local")
-            .join("BurnCloud")
-    } else {
-        dirs::home_dir()
+    #[cfg(not(target_os = "windows"))]
+    {
+        let db_dir = dirs::home_dir()
             .ok_or_else(|| DatabaseError::PathResolution("Home directory not found".to_string()))?
-            .join(".burncloud")
-    };
+            .join(".burncloud");
 
-    Ok(db_dir.join("data.db"))
+        Ok(db_dir.join("data.db"))
+    }
 }
