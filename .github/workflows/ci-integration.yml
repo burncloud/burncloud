@@ -1,21 +1,15 @@
 name: CI / Integration
 
+# MANUAL ONLY. The `pull_request` and `push` triggers that used to fire this are gone: the tests in
+# `ci-quality.yml` already run this repository's suites on every commit through the local pre-commit
+# hook, and an automatic trigger here would run them a second time.
+#
+# This workflow is not redundant with the gate, though, and that is why it still exists: it is the
+# **only** job in the repository that needs a service container. It applies the 18 PostgreSQL
+# migrations to a real PostgreSQL 16 server and round-trips the Identity contract against it. The
+# workspace gate runs on SQLite and cannot cover that. Run this before a release that touches
+# `crates/platform/storage/database/migrations/**` or the Identity database adapter.
 on:
-  pull_request:
-    paths:
-      - 'crates/identity/database-user/**'
-      - 'crates/platform/storage/database/src/**'
-      - 'crates/platform/storage/database/migrations/**'
-      - 'Cargo.toml'
-      - '.github/workflows/ci-integration.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'crates/identity/database-user/**'
-      - 'crates/platform/storage/database/src/**'
-      - 'crates/platform/storage/database/migrations/**'
-      - 'Cargo.toml'
-      - '.github/workflows/ci-integration.yml'
   workflow_dispatch:
 
 permissions:

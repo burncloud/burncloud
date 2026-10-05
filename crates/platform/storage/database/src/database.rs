@@ -49,7 +49,7 @@ fn is_absolute_path(path: &str, is_windows: bool) -> bool {
     if !is_windows {
         return false;
     }
-    // `C:/...` or `C:\...` -- a drive letter, a colon, then a separator.
+    // `C:/...` or `C:\\...` -- a drive letter, a colon, then a separator.
     let bytes: Vec<char> = path.chars().take(3).collect();
     bytes.len() == 3
         && bytes[0].is_ascii_alphabetic()
@@ -141,11 +141,13 @@ impl Database {
         let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection.clone());
 
-        // Enable WAL mode for SQLite performance and concurrency
+        // Enable WAL mode for SQLite performance and concurrency. Initialization is
+        // not complete if SQLite refuses the requested journal mode, so propagate
+        // the database error instead of silently continuing in a different mode.
         if self.kind() == "sqlite" {
-            let _ = sqlx::query("PRAGMA journal_mode=WAL;")
+            sqlx::query("PRAGMA journal_mode=WAL;")
                 .execute(connection.pool())
-                .await;
+                .await?;
         }
 
         // Run versioned DDL migrations first (creates all tables and columns).
