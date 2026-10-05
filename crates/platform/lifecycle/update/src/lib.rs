@@ -25,4 +25,4 @@ pub mod updater;
 
 pub use config::UpdateConfig;
 pub use error::{UpdateError, UpdateResult};
-pub use updater::AutoUpdater;
+pub use updater::{is_upgrade_over, AutoUpdater};
