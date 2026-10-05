@@ -24,19 +24,15 @@ pub(super) async fn migrate_prices(pool: &AnyPool, kind: &str) -> Result<()> {
 
 async fn table_exists(pool: &AnyPool, kind: &str, table: &str) -> Result<bool> {
     let count: i64 = if kind == "sqlite" {
-        sqlx::query_scalar(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
-        )
-        .bind(table)
-        .fetch_one(pool)
-        .await?
+        sqlx::query_scalar("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?")
+            .bind(table)
+            .fetch_one(pool)
+            .await?
     } else {
-        sqlx::query_scalar(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = $1",
-        )
-        .bind(table)
-        .fetch_one(pool)
-        .await?
+        sqlx::query_scalar("SELECT count(*) FROM information_schema.tables WHERE table_name = $1")
+            .bind(table)
+            .fetch_one(pool)
+            .await?
     };
     Ok(count > 0)
 }

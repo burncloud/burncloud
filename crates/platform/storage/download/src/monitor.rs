@@ -20,7 +20,8 @@ impl DownloadManager {
                         let total: i64 = status.total_length.parse().unwrap_or(0);
                         let completed: i64 = status.completed_length.parse().unwrap_or(0);
                         let speed: i64 = status.download_speed.parse().unwrap_or(0);
-                        if let Err(error) = db.update_progress(&gid, total, completed, speed).await {
+                        if let Err(error) = db.update_progress(&gid, total, completed, speed).await
+                        {
                             tracing::warn!(gid = %gid, error = %error, "failed to persist download progress");
                         }
 

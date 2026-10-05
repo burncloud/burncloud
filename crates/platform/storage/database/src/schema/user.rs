@@ -19,16 +19,17 @@ pub(super) async fn migrate_users_and_seed(pool: &AnyPool, kind: &str) -> Result
 }
 
 async fn sqlite_table_exists(pool: &AnyPool, table: &str) -> Result<bool> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-    )
-    .bind(table)
-    .fetch_one(pool)
-    .await?;
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?")
+            .bind(table)
+            .fetch_one(pool)
+            .await?;
     Ok(count > 0)
 }
 
-async fn token_table_names(pool: &AnyPool) -> Result<Option<(&'static str, &'static str, &'static str)>> {
+async fn token_table_names(
+    pool: &AnyPool,
+) -> Result<Option<(&'static str, &'static str, &'static str)>> {
     if sqlite_table_exists(pool, "user_api_keys").await? {
         return Ok(Some((
             "user_api_keys",

@@ -1,13 +1,14 @@
 name: CI / Client
 
+# MANUAL ONLY. The `pull_request` trigger is gone; local commits are gated by the pre-commit hook.
+#
+# This workflow is not covered by the workspace gate, which is why it is not folded into it. The gate
+# runs everything with `--no-default-features` because the client crate's default `desktop` feature
+# needs GTK native libraries that a headless Ubuntu runner does not have -- so the desktop build, the
+# console convention scripts and the LiveView feature check would all be silently unverified if this
+# file did not exist. Run it before a release, and after any change to `crates/interfaces/client/**`.
 on:
-  pull_request:
-    paths:
-      - 'Cargo.toml'
-      - 'crates/interfaces/cli/**'
-      - 'crates/interfaces/client/**'
-      - 'deploy/Dockerfile'
-      - '.github/workflows/ci-client.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
