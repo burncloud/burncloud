@@ -1,0 +1,26 @@
+name: PR Router Code Test
+
+on:
+  push:
+    branches:
+      - chore/clippy-router-baseline
+
+permissions:
+  contents: read
+
+jobs:
+  code-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: cargo run -- code test
+        run: cargo run -- code test
