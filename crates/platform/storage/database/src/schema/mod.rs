@@ -22,20 +22,8 @@
     reason = "price migrations are legacy one-shot schema/data compatibility code; #711 made every fallible SQL step explicit, while decomposition is tracked separately from correctness"
 )]
 mod price;
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "legacy rename migration intentionally branches across old table shapes; #711 fixed failure propagation and this expectation keeps only the remaining maintainability debt visible"
-)]
 mod rename;
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "router-log schema migration handles multiple historical layouts; SQL failures now propagate after #711, leaving only decomposition debt"
-)]
 mod router;
-#[expect(
-    clippy::cognitive_complexity,
-    reason = "user/token migration preserves several historical schema variants; SQL failures now propagate after #711, leaving only decomposition debt"
-)]
 mod user;
 
 use crate::{Database, Result};
