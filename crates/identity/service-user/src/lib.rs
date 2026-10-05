@@ -219,7 +219,11 @@ impl UserService {
         match UserDatabase::count_users(db).await {
             Ok(count) => {
                 tracing::info!("First-user-is-admin check: user count = {count}");
-                if count == 0 { "admin" } else { "user" }
+                if count == 0 {
+                    "admin"
+                } else {
+                    "user"
+                }
             }
             Err(error) => {
                 tracing::warn!(%error, "First-user-is-admin check failed");
@@ -619,10 +623,7 @@ mod tests {
         let Err(error) = result else {
             panic!("invalid token validation should fail");
         };
-        assert!(matches!(
-            error,
-            UserServiceError::TokenValidationError(_)
-        ));
+        assert!(matches!(error, UserServiceError::TokenValidationError(_)));
     }
 
     #[test]
@@ -636,9 +637,6 @@ mod tests {
         let Err(error) = result else {
             panic!("wrong-secret validation should fail");
         };
-        assert!(matches!(
-            error,
-            UserServiceError::TokenValidationError(_)
-        ));
+        assert!(matches!(error, UserServiceError::TokenValidationError(_)));
     }
 }

@@ -357,10 +357,11 @@ impl UserDatabase {
 
     pub async fn count_users(db: &Database) -> Result<i64> {
         let conn = db.get_connection()?;
-        let count: i64 = sqlx::query("SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'")
-            .fetch_one(conn.pool())
-            .await?
-            .get(0);
+        let count: i64 =
+            sqlx::query("SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'")
+                .fetch_one(conn.pool())
+                .await?
+                .get(0);
         Ok(count)
     }
 
