@@ -7,6 +7,19 @@ Status of this document: it describes **what the workflows actually do today**, 
 files in `workflows/`. Where something is planned but not implemented, it says so explicitly instead
 of describing the intention as if it were the behaviour.
 
+**Which job runs a given crate's tests is not always "one of them".** No workflow runs `cargo test`
+workspace-wide -- `cargo test --workspace` appears zero times under `workflows/`, `arch.yml` runs only `clippy`
+(which compiles tests without running them), and all twelve `cargo test` invocations in the repository live in
+`security-billing-invariants.yml`, which names thirteen crates. **Nineteen crates' tests are therefore executed
+by no CI job**, including `burncloud-database`, which has 86 of them and whose 42 rename tests fail on Windows.
+
+The measurement behind that sentence, per crate -- test counts, and the job that runs each -- is recorded in the
+pull request that added this paragraph rather than in a file, because **`docs/` is not tracked in this
+repository**: `.gitignore` is a default-deny list (`/*` plus explicit exceptions) and `docs/` is not among them,
+so the existing `docs/architecture-*.md` files are untracked too. Putting the matrix under `workflows/` or
+`crates/*/` would work but misplaces it; the durable fix is a `cargo test --workspace` step in the workflows
+themselves, which is what the matrix argues for.
+
 ## Workflows
 
 ### Local pre-commit setup
