@@ -8,6 +8,7 @@ use crate::domains::supplier::earnings::page::SupplierEarnings as SupplierEarnin
 use crate::domains::supplier::overview::SupplierOverview as SupplierOverviewPage;
 use crate::domains::supplier::reliability::page::SupplierReliability as SupplierReliabilityPage;
 use crate::domains::supplier::resources::page::SupplierResources as SupplierResourcesPage;
+use crate::domains::supplier::settings::page::SupplierSettings as SupplierSettingsPage;
 use crate::domains::supplier::settlements::page::SupplierSettlements as SupplierSettlementsPage;
 use crate::shared::types::Role;
 use dioxus::prelude::*;
@@ -226,7 +227,7 @@ pub fn SupplierReliability() -> Element {
 }
 #[component]
 pub fn SupplierSettings() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Settings".to_string(), role: Role::Supplier } }
+    rsx! { SupplierSettingsPage {} }
 }
 #[component]
 pub fn Admin() -> Element {
