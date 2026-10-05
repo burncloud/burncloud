@@ -22,6 +22,6 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Strict Clippy
-        run: cargo clippy -p burncloud-router --all-targets --no-default-features -- -D warnings
+        run: cargo clippy -p burncloud-router --all-targets --no-default-features --no-deps -- -D warnings
       - name: Tests
         run: cargo test -p burncloud-router --no-default-features
