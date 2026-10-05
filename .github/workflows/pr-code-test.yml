@@ -1,4 +1,4 @@
-name: PR / Code Test
+name: PR Domain Roots / Strict Clippy
 
 on:
   push:
@@ -9,38 +9,19 @@ permissions:
   contents: read
 
 jobs:
-  code-test:
+  domain-roots-strict:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/pull/725/merge
+          ref: chore/clippy-domain-root-baselines
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-deny
-      - name: Configure test environment
-        shell: bash
-        run: |
-          echo "JWT_SECRET=burncloud-ci-test" >> "$GITHUB_ENV"
-          echo "BURNCLOUD_INTERNAL_SECRET=burncloud-ci-test" >> "$GITHUB_ENV"
-          printf 'MASTER_KEY=' >> "$GITHUB_ENV"
-          printf 'a%.0s' {1..64} >> "$GITHUB_ENV"
-          printf '\nSKIP_INITIAL_PRICE_SYNC=1\nRUST_BACKTRACE=1\n' >> "$GITHUB_ENV"
-      - name: Prepare only the real PR code delta
-        shell: bash
-        run: |
-          git reset --mixed HEAD^1
-          rm -f .github/workflows/pr-code-test.yml .github/workflows/pr-format-owned.yml
-      - name: cargo run -- code test
-        shell: bash
-        run: |
-          set +e
-          cargo run -- code test > /tmp/code-test.log 2>&1
-          status=$?
-          tail -n 500 /tmp/code-test.log
-          exit $status
-          # trigger: source-only PR validation
+      - name: Strict Clippy
+        run: cargo clippy -p burncloud-database-user -p burncloud-service-user -p burncloud-database-router --all-targets --no-default-features -- -D warnings
+      - name: Tests
+        run: cargo test -p burncloud-database-user -p burncloud-service-user -p burncloud-database-router --no-default-features
