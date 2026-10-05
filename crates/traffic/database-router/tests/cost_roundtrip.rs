@@ -21,34 +21,16 @@ use burncloud_database::create_database_with_url;
 use burncloud_database_router::{RouterDatabase, RouterLog, RouterLogModel};
 use tempfile::NamedTempFile;
 
-/// An isolated SQLite database plus the router tables, in a temp file that this type tries to delete.
+/// An isolated SQLite database plus the router tables.
 ///
 /// SQLite `:memory:` is not used: each pool connection would get its own empty database, so the schema
 /// written on one connection is invisible to the others. A temp file is shared across the pool.
 ///
-/// Both `Schema::init()` (via `create_database_with_url`) and `RouterDatabase::init()` are required: the
-/// former creates `router_logs` with all its columns, the latter creates `router_tokens`, which the log
-/// writer updates for quota settlement.
-///
-/// **This helper reduces the leak; it does not eliminate it.** Measured on this platform: 20 leftover
-/// files per run of this crate before, 9 after, and still 9 after a ten-second wait -- so the remainder
-/// is not a slow cleanup, it is cleanup that never happens. `tests/temp_file_leak.rs` asserts the current
-/// number so it cannot silently get worse, and #643 records the unfinished work.
-///
-/// The background: dropping a `Database` does not release the SQLite handle and `close().await` releases
-/// it only asynchronously, so a removal attempted from `Drop` loses the race and the file survives.
-///
-/// Two fixes were tried and do not work. They are recorded so they are not retried: calling `block_on` on
-/// a new runtime inside `Drop` panics with "Cannot start a runtime from within a runtime", and so does
-/// reusing `Handle::try_current()`, because the destructor runs inside the test's own runtime.
-///
-/// What this does instead is hand the connection to a **separate thread** with its own runtime, so
-/// nothing blocks the test thread and no runtime is entered from within another. That recovers roughly
-/// half the files. The likely reason it is not all of them is that nothing joins these threads: a test
-/// binary exits when its tests finish, and a detached thread's work is lost. Joining them needs a
-/// process-level hook the standard test harness does not offer, which is why it is left to #643.
-///
-/// Requires a multi-threaded test runtime, which `#[tokio::test]` provides by default.
+/// Cleanup deliberately runs `Database::close()` on a dedicated thread because `Drop` itself may execute
+/// inside Tokio and therefore cannot `block_on` another runtime there. Unlike the old helper, the drop path
+/// joins that thread before returning, so the test binary cannot exit while SQLite/WAL/SHM cleanup is still
+/// pending. Join failures are logged rather than panicked so a test panic cannot turn into a double-panic
+/// abort while unwinding.
 struct TestDb {
     db: Option<burncloud_database::Database>,
     path: std::path::PathBuf,
@@ -71,9 +53,7 @@ impl Drop for TestDb {
         };
         let path = self.path.clone();
 
-        // The thread owns the close. If it cannot be spawned the files are simply left behind, which is
-        // the pre-existing behaviour rather than a new failure, so the test result is unaffected.
-        let _ = std::thread::Builder::new()
+        let cleanup = std::thread::Builder::new()
             .name("bc-testdb-cleanup".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
@@ -89,9 +69,23 @@ impl Drop for TestDb {
                 for suffix in ["", "-wal", "-shm"] {
                     let mut candidate = path.clone().into_os_string();
                     candidate.push(suffix);
-                    let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+                    let candidate = std::path::PathBuf::from(candidate);
+                    if let Err(e) = std::fs::remove_file(&candidate) {
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            eprintln!("failed to remove test database file {}: {e}", candidate.display());
+                        }
+                    }
                 }
             });
+
+        match cleanup {
+            Ok(handle) => {
+                if handle.join().is_err() {
+                    eprintln!("test database cleanup thread panicked");
+                }
+            }
+            Err(e) => eprintln!("failed to spawn test database cleanup thread: {e}"),
+        }
     }
 }
 
