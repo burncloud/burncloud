@@ -84,14 +84,6 @@ pub struct AppState {
     /// Counter for post-settle price-missing hits (PriceNotFound after request completed).
     /// A healthy system should see this remain at 0.
     pub billing_post_settle_price_missing_count: Arc<AtomicU64>,
-    /// Counts quota deductions that did **not** reach the ledger — a failed (`database is
-    /// locked`) or refused (`no active credential row`) settlement.
-    ///
-    /// Separate from the price-missing counters because the failure is different: the
-    /// request was priced and logged as charged, but the balance was never reduced, so
-    /// the system under-bills with no error visible to the client. A healthy system
-    /// should see this remain at 0 (#660 follow-up).
-    pub settlement_failure_count: Arc<AtomicU64>,
     /// AIMD → InMemoryBudget feedback channel (capacity=1, latest-wins debounce).
     pub budget_update_tx: mpsc::Sender<BudgetUpdate>,
     /// Storage policy for request logs: full (complete bodies), summary (metadata only), none.
