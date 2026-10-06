@@ -92,10 +92,13 @@ fn every_candidate_skip_records_a_reason() {
         candidate_continues += 1;
 
         // The reason must be set in the same statement run as the `continue`.
-        // A window of the preceding 900 characters is the smallest unit that
-        // covers the longest path here (a `record_failover_attempt` call plus a
-        // `tracing::warn!`), while still being local to this `continue`.
-        let window_start = before.len().saturating_sub(900);
+        //
+        // A window of the preceding 1600 characters covers the longest path here — a `last_error = format!` with
+        // its arguments, a `tracing::warn!`, and a `record_failover_attempt` call — while still being local to
+        // this `continue`. It was 900 until the quality-check path grew a multi-line `format!`, which is exactly
+        // the kind of drift this window has to absorb without either missing a site or reaching into the
+        // previous iteration.
+        let window_start = before.len().saturating_sub(1600);
         let window = &before[window_start..];
         if !window.contains("last_error =") {
             let line = body[..idx].lines().count();
