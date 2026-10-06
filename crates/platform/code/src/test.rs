@@ -8,7 +8,8 @@ use anyhow::{Context, Result};
 use crate::plan::{self, Metadata};
 use crate::report;
 
-const TARGET_LIMIT_BYTES: u64 = 100 * 1024 * 1024 * 1024;
+const GIB_BYTES: u64 = 1024 * 1024 * 1024;
+const TARGET_LIMIT_BYTES: u64 = 100 * GIB_BYTES;
 
 pub(crate) struct Options {
     pub(crate) all: bool,
@@ -263,22 +264,26 @@ fn cleanup_target_if_oversized(root: &Path, limit: u64) -> Result<()> {
         Err(error) => return Err(error).context("Cannot inspect target directory"),
     };
     anyhow::ensure!(
-        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        metadata.file_type().is_dir(),
         "Refusing to clean non-directory target path: {}",
         target.display()
     );
     let bytes = directory_size(&target)?;
     println!(
         "Target directory size: {:.2} GiB (cleanup threshold: 100 GiB)",
-        bytes as f64 / 1024_f64.powi(3)
+        bytes as f64 / GIB_BYTES as f64
     );
     if bytes > limit {
         println!(
             "Target directory exceeds 100 GiB; removing {}",
             target.display()
         );
-        fs::remove_dir_all(&target)
-            .with_context(|| format!("Cannot remove oversized target directory {}", target.display()))?;
+        fs::remove_dir_all(&target).with_context(|| {
+            format!(
+                "Cannot remove oversized target directory {}",
+                target.display()
+            )
+        })?;
         println!("Oversized target directory removed.");
     }
     Ok(())
@@ -292,8 +297,8 @@ fn directory_size(root: &Path) -> Result<u64> {
             .with_context(|| format!("Cannot read {}", directory.display()))?
         {
             let entry = entry?;
-            let metadata = entry.symlink_metadata()?;
-            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            let metadata = fs::symlink_metadata(entry.path())?;
+            if metadata.file_type().is_dir() {
                 pending.push(entry.path());
             } else {
                 total = total.saturating_add(metadata.len());
