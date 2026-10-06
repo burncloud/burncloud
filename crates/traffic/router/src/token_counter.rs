@@ -126,7 +126,8 @@ impl StreamingTokenCounter {
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "tests use concise fixture assertions and thread joins; production code remains under workspace lint policy"
 )]
 mod tests {
     use super::*;
