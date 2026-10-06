@@ -14,9 +14,15 @@ function Invoke-Checked {
         [string]$WorkingDirectory = (Get-Location).Path
     )
 
-    & $FilePath @ArgumentList
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed ($LASTEXITCODE): $FilePath $($ArgumentList -join ' ')"
+    Push-Location $WorkingDirectory
+    try {
+        & $FilePath @ArgumentList
+        if ($LASTEXITCODE -ne 0) {
+            throw "Command failed ($LASTEXITCODE): $FilePath $($ArgumentList -join ' ')"
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
@@ -43,6 +49,27 @@ function Set-CommitStatus {
     }
 }
 
+function Save-Result {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][int]$PullRequest,
+        [Parameter(Mandatory = $true)][string]$Sha,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$StartedAt,
+        [string]$FinishedAt,
+        [Parameter(Mandatory = $true)][string]$LogPath
+    )
+
+    [ordered]@{
+        pr = $PullRequest
+        sha = $Sha
+        status = $Status
+        started_at = $StartedAt
+        finished_at = $FinishedAt
+        log = $LogPath
+    } | ConvertTo-Json | Set-Content -Encoding UTF8 -Path $Path
+}
+
 $repoRoot = (& git rev-parse --show-toplevel).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
     throw "Run this script from inside a burncloud Git checkout."
@@ -61,9 +88,9 @@ $gitDir = if ([System.IO.Path]::IsPathRooted($gitDirRaw)) {
 $stateDir = Join-Path $gitDir "burncloud/pr-code-test"
 $worktreeRoot = Join-Path $stateDir "worktrees"
 $logsDir = Join-Path $stateDir "logs"
-$statePath = Join-Path $stateDir "state.json"
+$resultsDir = Join-Path $stateDir "results"
 $lockPath = Join-Path $stateDir "runner.lock"
-New-Item -ItemType Directory -Force -Path $worktreeRoot, $logsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $worktreeRoot, $logsDir, $resultsDir | Out-Null
 
 $lockStream = $null
 try {
@@ -84,17 +111,6 @@ try {
     Invoke-Checked -FilePath "gh" -ArgumentList @("auth", "status") -WorkingDirectory $repoRoot
     Invoke-Checked -FilePath "git" -ArgumentList @("fetch", "--prune", "origin", $BaseBranch) -WorkingDirectory $repoRoot
 
-    $state = @{}
-    if (Test-Path $statePath) {
-        $raw = Get-Content -Raw -Path $statePath
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $saved = $raw | ConvertFrom-Json -AsHashtable
-            if ($saved) {
-                $state = $saved
-            }
-        }
-    }
-
     $prJson = & gh pr list --repo $Repository --state open --limit $MaxPullRequests --json number,headRefOid,url,title,isDraft
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to list open pull requests from $Repository."
@@ -111,27 +127,28 @@ try {
             continue
         }
 
-        if ($state.ContainsKey($sha) -and $state[$sha].status -in @("success", "failure")) {
-            Write-Host "PR #$prNumber $sha already tested: $($state[$sha].status)."
-            continue
+        $resultPath = Join-Path $resultsDir "$sha.json"
+        if (Test-Path $resultPath) {
+            try {
+                $previous = Get-Content -Raw -Path $resultPath | ConvertFrom-Json
+                if ($previous.status -in @("success", "failure")) {
+                    Write-Host "PR #$prNumber $sha already tested: $($previous.status)."
+                    continue
+                }
+            }
+            catch {
+                Write-Warning "Ignoring unreadable result file $resultPath."
+            }
         }
 
         $shortSha = $sha.Substring(0, [Math]::Min(12, $sha.Length))
         $worktree = Join-Path $worktreeRoot "pr-$prNumber-$shortSha"
         $logPath = Join-Path $logsDir "pr-$prNumber-$shortSha.log"
+        $startedAt = (Get-Date).ToUniversalTime().ToString("o")
 
         Write-Host "Testing PR #$prNumber at $sha"
         Set-CommitStatus -Sha $sha -State "pending" -Description "cargo run -- code test is running" -TargetUrl $url
-
-        $record = @{
-            pr = $prNumber
-            sha = $sha
-            status = "running"
-            started_at = (Get-Date).ToUniversalTime().ToString("o")
-            log = $logPath
-        }
-        $state[$sha] = $record
-        $state | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path $statePath
+        Save-Result -Path $resultPath -PullRequest $prNumber -Sha $sha -Status "running" -StartedAt $startedAt -LogPath $logPath
 
         $result = "error"
         try {
@@ -179,10 +196,8 @@ try {
             }
             & git -C $repoRoot worktree prune | Out-Null
 
-            $record.status = $result
-            $record.finished_at = (Get-Date).ToUniversalTime().ToString("o")
-            $state[$sha] = $record
-            $state | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -Path $statePath
+            Save-Result -Path $resultPath -PullRequest $prNumber -Sha $sha -Status $result -StartedAt $startedAt `
+                -FinishedAt ((Get-Date).ToUniversalTime().ToString("o")) -LogPath $logPath
         }
     }
 }
