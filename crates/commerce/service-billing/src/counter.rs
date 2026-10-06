@@ -52,9 +52,10 @@ impl UnifiedTokenCounter {
 
     /// Add usage deltas to the existing counters.
     ///
-    /// This is real addition (`fetch_add`), so ten events of 100 output tokens
-    /// leave 1000. Use it for a provider that sends **incremental deltas** —
-    /// i.e. each event reports only what that event produced.
+    /// This is real saturating addition, so ten events of 100 output tokens
+    /// leave 1000 while an overflow caps at `u64::MAX` instead of wrapping back
+    /// to a small value. Use it for a provider that sends **incremental deltas**
+    /// — i.e. each event reports only what that event produced.
     ///
     /// Negative values are ignored field-by-field, because the counters are
     /// `u64` and a negative delta has no representation here. A zero is a
@@ -79,9 +80,14 @@ impl UnifiedTokenCounter {
 
     /// Saturating `+=` for one field, skipping values that cannot be added.
     fn add_field(&self, counter: &AtomicU64, delta: i64) {
-        if delta > 0 {
-            counter.fetch_add(delta as u64, Ordering::Relaxed);
+        if delta <= 0 {
+            return;
         }
+
+        let delta = delta as u64;
+        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            Some(current.saturating_add(delta))
+        });
     }
 
     /// Record a **cumulative total**: the last non-zero value reported for each
@@ -195,6 +201,17 @@ mod tests {
         let result = counter.get_usage();
         assert_eq!(result.input_tokens, 100, "a negative delta is not a sum");
         assert_eq!(result.output_tokens, 50, "a zero delta is a no-op");
+    }
+
+    #[test]
+    fn test_add_field_saturates_instead_of_wrapping() {
+        let counter = AtomicU64::new(u64::MAX - 1);
+        UnifiedTokenCounter::new().add_field(&counter, 10);
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            u64::MAX,
+            "overflow must saturate at u64::MAX rather than wrapping"
+        );
     }
 
     #[test]
