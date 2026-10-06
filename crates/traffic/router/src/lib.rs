@@ -4676,6 +4676,10 @@ fn describe_quality_failure(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "internal quality-check helper carrying the upstream response context; callers pass it positionally"
+)]
 fn check_response_quality(
     state: &AppState,
     upstream: &Upstream,
