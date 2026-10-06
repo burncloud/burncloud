@@ -16,9 +16,9 @@ name: CI / Self-hosted Code Test
 # Until that variable is configured, rustburn is the only trusted user.
 #
 # Keep CI policy in BurnCloud code. A persistent self-hosted runner reuses its Rust
-# installation. Only a truly empty runner gets a one-time minimal stable bootstrap;
-# after Cargo exists, `code test` performs the `code init` environment checks and
-# installs any missing rustfmt/Clippy/cargo-deny before the repository quality gate.
+# installation and native build packages. We bootstrap only what is actually
+# missing; after Cargo exists, `code test` performs the `code init` environment
+# checks and installs any missing rustfmt/Clippy/cargo-deny before the quality gate.
 
 on:
   pull_request_target:
@@ -86,6 +86,26 @@ jobs:
 
           cargo --version
           rustc --version
+
+      - name: Ensure Linux build prerequisites
+        if: env.RUN_CODE_TEST == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          command -v pkg-config >/dev/null 2>&1 || missing+=(pkg-config)
+          dpkg-query -W -f='${Status}' libssl-dev 2>/dev/null | grep -q 'ok installed' || missing+=(libssl-dev)
+          if ! command -v cc >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1; then
+            missing+=(build-essential)
+          fi
+
+          if ((${#missing[@]})); then
+            echo "Installing missing native build prerequisites: ${missing[*]}"
+            sudo apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+          else
+            echo "Native build prerequisites already available."
+          fi
 
       - name: Run BurnCloud code gate
         if: env.RUN_CODE_TEST == 'true'
