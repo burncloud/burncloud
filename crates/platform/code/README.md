@@ -22,6 +22,12 @@ components with `rustup component add` and missing cargo-deny with
 `cargo install --locked cargo-deny`. It verifies each command before activating
 the Git hooks. Repeating `code init` does not reinstall available tools.
 
+Every `code test` invocation reuses the same environment bootstrap before selection
+or execution. Missing rustfmt, Clippy or cargo-deny is installed automatically, so
+local development and self-hosted CI have one source of truth for required Rust
+quality tools. Cargo/rustup themselves must already be available because they are
+needed to start the command.
+
 The lightweight equivalent, useful when application compilation is broken, is
 `cargo run -p burncloud-code -- test` (or `-- init`). Both binaries use the same
 command definition and implementation. Tests are `cargo test -p burncloud-code`.
@@ -62,14 +68,20 @@ For any selected code changes, run in order:
 3. `cargo clippy -p <affected> ... --all-targets --no-default-features`
 4. `cargo deny check` (whole dependency graph, including advisories)
 
-Full selection replaces `-p ...` with `--workspace`. Missing tools and nonzero
-statuses stop immediately and return failure to Git/the caller. Output states
-what was selected and whether checks actually ran. Existing ignores, external
-test prerequisites and feature policies remain in effect; this command does not
-claim to run ignored tests, every feature combination, UI convention scripts or
-other operating systems. Dynamic relationships not represented in Cargo remain
-a reason to run `--all` and retain the existing CI suites. No test-result cache is
-used. Source edits and dependency allowlist changes are never automated here.
+Full selection replaces `-p ...` with `--workspace`. Required Rust quality tools are
+prepared before selection/execution; a failed installation stops immediately and
+returns failure to Git/the caller. Output states what was selected and whether checks
+actually ran. Existing ignores, external test prerequisites and feature policies
+remain in effect; this command does not claim to run ignored tests, every feature
+combination, UI convention scripts or other operating systems. Dynamic relationships
+not represented in Cargo remain a reason to run `--all` and retain the existing CI
+suites. No test-result cache is used. Source edits and dependency allowlist changes
+are never automated here.
+
+After every `code test` invocation, BurnCloud measures the repository `target/`
+directory. If its apparent file size is greater than 100 GiB, the directory is
+removed. Cleanup also runs after a failed quality check. Cleanup errors are reported
+as warnings so housekeeping cannot replace the actual code-test result.
 
 Each executed check writes its full output under `.git/burncloud/checks/<run>/`,
 alongside `summary.json`; `latest.json` tracks the most recent result. The terminal

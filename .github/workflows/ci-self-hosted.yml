@@ -15,10 +15,10 @@ name: CI / Self-hosted Code Test
 # of trusted GitHub usernames, for example: ["rustburn","another-maintainer"].
 # Until that variable is configured, rustburn is the only trusted user.
 #
-# A self-hosted runner is persistent. Rust itself is provisioned once on the
-# machine; this workflow must not force-update/reinstall the stable toolchain on
-# every PR. Repository-specific setup belongs to `code init`, and the quality
-# policy belongs to `code test --all` instead of being duplicated in YAML.
+# Keep CI policy in BurnCloud code. The self-hosted machine only needs a working
+# Cargo/rustup installation on PATH. `code test` reuses the `code init` environment
+# bootstrap on every run, installs missing rustfmt/Clippy/cargo-deny, then executes
+# the repository quality gate. Do not duplicate those tool commands in YAML.
 
 on:
   pull_request_target:
@@ -64,15 +64,6 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
-
-      - name: Initialize BurnCloud code environment
-        if: env.RUN_CODE_TEST == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo --version
-          rustc --version
-          cargo run -- code init
 
       - name: Run BurnCloud code gate
         if: env.RUN_CODE_TEST == 'true'
