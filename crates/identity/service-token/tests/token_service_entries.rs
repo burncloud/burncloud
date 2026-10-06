@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]."
 )]
 //! The service-entry correspondence table, and database-failure propagation (#633, plan item 03).
 //!

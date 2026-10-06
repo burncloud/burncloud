@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -27,7 +28,7 @@ async fn test_access_page_loads() {
     browser
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
-    let _ = browser.screenshot("access-page-load");
+    browser.screenshot("access-page-load").ok();
 }
 
 #[tokio::test]
@@ -49,7 +50,7 @@ async fn test_api_key_list_rendering() {
         snap.text.contains("创建") || snap.text.contains("Key") || snap.text.contains("凭证"),
         "Access page should show key list or create button"
     );
-    let _ = browser.screenshot("api-key-list");
+    browser.screenshot("api-key-list").ok();
 }
 
 // API Key 创建流程
@@ -77,7 +78,7 @@ async fn test_api_key_create_button() {
         .wait_for_text("名称", 10_000)
         .or_else(|_| browser.wait_for_text("Key", 5_000));
     assert!(result.is_ok(), "Create form should appear");
-    let _ = browser.screenshot("api-key-create-button");
+    browser.screenshot("api-key-create-button").ok();
 }
 
 #[tokio::test]
@@ -94,8 +95,8 @@ async fn test_api_key_create_form_validation() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:创建", 5_000);
-    let _ = browser.wait_for_text("名称", 5_000);
+    browser.click_by_name("button:创建", 5_000).ok();
+    browser.wait_for_text("名称", 5_000).ok();
 
     browser
         .click("button[type='submit']")
@@ -107,7 +108,7 @@ async fn test_api_key_create_form_validation() {
         snap.text.contains("名称") || snap.text.contains("创建"),
         "Should show validation error or stay on form"
     );
-    let _ = browser.screenshot("api-key-create-validation");
+    browser.screenshot("api-key-create-validation").ok();
 }
 
 #[tokio::test]
@@ -124,8 +125,8 @@ async fn test_api_key_create_success() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:创建", 5_000);
-    let _ = browser.wait_for_text("名称", 5_000);
+    browser.click_by_name("button:创建", 5_000).ok();
+    browser.wait_for_text("名称", 5_000).ok();
 
     let key_name = format!(
         "test_key_{}",
@@ -145,7 +146,7 @@ async fn test_api_key_create_success() {
         .or_else(|_| browser.wait_for_text("sk-", 5_000))
         .or_else(|_| browser.wait_for_text("访问凭证", 5_000));
     assert!(result.is_ok(), "API Key creation should succeed");
-    let _ = browser.screenshot("api-key-create-success");
+    browser.screenshot("api-key-create-success").ok();
 }
 
 // API Key 状态管理
@@ -167,7 +168,7 @@ async fn test_api_key_status_display() {
     let snap = browser.snapshot().expect("Failed to snapshot");
     let _has_status =
         snap.text.contains("启用") || snap.text.contains("禁用") || snap.text.contains("状态");
-    let _ = browser.screenshot("api-key-status-display");
+    browser.screenshot("api-key-status-display").ok();
 }
 
 #[tokio::test]
@@ -184,9 +185,9 @@ async fn test_api_key_enable_disable() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:启用", 3_000);
-    let _ = browser.click_by_name("button:禁用", 3_000);
-    let _ = browser.screenshot("api-key-enable-disable");
+    browser.click_by_name("button:启用", 3_000).ok();
+    browser.click_by_name("button:禁用", 3_000).ok();
+    browser.screenshot("api-key-enable-disable").ok();
 }
 
 // API Key 轮换流程
@@ -205,9 +206,9 @@ async fn test_api_key_rotate_button() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:轮换", 5_000);
-    let _ = browser.click_by_name("button:Rotate", 3_000);
-    let _ = browser.screenshot("api-key-rotate-button");
+    browser.click_by_name("button:轮换", 5_000).ok();
+    browser.click_by_name("button:Rotate", 3_000).ok();
+    browser.screenshot("api-key-rotate-button").ok();
 }
 
 #[tokio::test]
@@ -224,14 +225,14 @@ async fn test_api_key_rotate_confirmation() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:轮换", 5_000);
-    let _ = browser.wait_for_text("确认", 5_000);
+    browser.click_by_name("button:轮换", 5_000).ok();
+    browser.wait_for_text("确认", 5_000).ok();
 
-    let _ = browser.click_by_name("button:确认", 3_000);
+    browser.click_by_name("button:确认", 3_000).ok();
     let _result = browser
         .wait_for_text("成功", 10_000)
         .or_else(|_| browser.wait_for_text("sk-", 5_000));
-    let _ = browser.screenshot("api-key-rotate-confirm");
+    browser.screenshot("api-key-rotate-confirm").ok();
 }
 
 // API Key 删除
@@ -250,8 +251,8 @@ async fn test_api_key_delete_button() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:删除", 5_000);
-    let _ = browser.screenshot("api-key-delete-button");
+    browser.click_by_name("button:删除", 5_000).ok();
+    browser.screenshot("api-key-delete-button").ok();
 }
 
 #[tokio::test]
@@ -268,13 +269,13 @@ async fn test_api_key_delete_cancel() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:删除", 5_000);
-    let _ = browser.wait_for_text("确认", 3_000);
-    let _ = browser.click_by_name("button:取消", 3_000);
+    browser.click_by_name("button:删除", 5_000).ok();
+    browser.wait_for_text("确认", 3_000).ok();
+    browser.click_by_name("button:取消", 3_000).ok();
 
     let result = browser.wait_for_text("访问凭证", 5_000);
     assert!(result.is_ok(), "Cancel should return to access page");
-    let _ = browser.screenshot("api-key-delete-cancel");
+    browser.screenshot("api-key-delete-cancel").ok();
 }
 
 // IP 白名单功能
@@ -293,7 +294,7 @@ async fn test_api_key_ip_whitelist_button() {
         .wait_for_text("访问凭证", 10_000)
         .expect("Access page did not load");
 
-    let _ = browser.click_by_name("button:白名单", 5_000);
-    let _ = browser.click_by_name("button:IP", 3_000);
-    let _ = browser.screenshot("api-key-ip-whitelist");
+    browser.click_by_name("button:白名单", 5_000).ok();
+    browser.click_by_name("button:IP", 3_000).ok();
+    browser.screenshot("api-key-ip-whitelist").ok();
 }

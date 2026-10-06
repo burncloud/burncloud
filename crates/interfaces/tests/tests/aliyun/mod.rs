@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
 //! Aliyun ECS integration tests
 //!

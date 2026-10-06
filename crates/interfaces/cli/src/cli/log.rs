@@ -10,7 +10,7 @@ use serde::Serialize;
 
 /// Log list item for JSON output
 #[derive(Debug, Clone, Serialize)]
-pub struct LogListItem {
+pub(crate) struct LogListItem {
     pub id: i64,
     pub request_id: String,
     pub user_id: Option<String>,
@@ -73,7 +73,7 @@ fn extract_model_from_path(path: &str) -> String {
 }
 
 /// Handle log list command
-pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
     let user_id = matches.get_one::<String>("user-id").map(|s| s.as_str());
     let channel_id = matches.get_one::<String>("channel-id").map(|s| s.as_str());
     let model = matches.get_one::<String>("model").map(|s| s.as_str());
@@ -149,7 +149,7 @@ pub async fn cmd_log_list(db: &Database, matches: &ArgMatches) -> Result<()> {
 }
 
 /// Route log commands
-pub async fn handle_log_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_log_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list", sub_m)) => {
             cmd_log_list(db, sub_m).await?;
@@ -167,7 +167,7 @@ pub async fn handle_log_command(db: &Database, matches: &ArgMatches) -> Result<(
 }
 
 /// Handle log usage command
-pub async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
     let period = matches
         .get_one::<String>("period")
         .map(|s| s.as_str())
@@ -262,7 +262,7 @@ pub async fn cmd_log_usage(db: &Database, matches: &ArgMatches) -> Result<()> {
 
 /// Output structure for usage command (JSON format)
 #[derive(Debug, Clone, Serialize)]
-pub struct UsageOutput {
+pub(crate) struct UsageOutput {
     pub user_id: String,
     pub period: String,
     pub total_requests: i64,

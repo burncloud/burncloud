@@ -5,7 +5,9 @@
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    clippy::panic_in_result_fn,
+    reason = "integration tests: a failed assertion is the intended failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 
 mod common;
@@ -15,6 +17,10 @@ use reqwest::Client;
 use serde_json::json;
 
 #[tokio::test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "single end-to-end scenario: the mock setup, request, and assertions are one narrative and splitting it would hide the flow being tested"
+)]
 async fn test_vertex_full_flow() -> anyhow::Result<()> {
     let (_db, pool, _db_url) = setup_db().await?;
 

@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 pub(crate) mod aesthetic_acceptance;
 pub(crate) mod agent_browser;
@@ -148,12 +149,12 @@ fn wait_for_console_after_login(
             return Ok(());
         }
         if snapshot.text.contains("登录失败") || snapshot.text.contains("用户不存在") {
-            let _ = browser.screenshot(&format!("{fail_screenshot}-error"));
+            browser.screenshot(&format!("{fail_screenshot}-error")).ok();
             anyhow::bail!("Login failed with error on page");
         }
     }
     let snapshot = browser.snapshot()?;
-    let _ = browser.screenshot(fail_screenshot);
+    browser.screenshot(fail_screenshot).ok();
     anyhow::bail!(
         "Login did not complete within 20 seconds. Page shows: {}",
         snapshot.text
@@ -208,7 +209,10 @@ pub(crate) async fn resolve_admin_credentials(base_url: &str) -> (String, String
 }
 
 /// Ensure testadmin2 exists (register on fresh DB; no-op if already present).
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "seeding helper for flows that need the admin account pre-created; not every flow calls it"
+)]
 pub(crate) async fn ensure_test_admin_exists(base_url: &str) {
     let _ = resolve_admin_credentials(base_url).await;
 }
@@ -307,13 +311,15 @@ pub(crate) fn test_page_loads(
     browser
         .wait_for_text(expected_text, 10_000)
         .unwrap_or_else(|e| {
-            let _ = browser.screenshot(&format!("FAIL-{}", screenshot_name));
+            browser
+                .screenshot(&format!("FAIL-{}", screenshot_name))
+                .ok();
             panic!(
                 "Page {} failed to load expected text '{}': {}",
                 path, expected_text, e
             );
         });
-    let _ = browser.screenshot(screenshot_name);
+    browser.screenshot(screenshot_name).ok();
 }
 
 pub(crate) async fn login_browser(base_url: &str) -> (AgentBrowser, String) {

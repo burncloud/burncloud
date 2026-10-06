@@ -19,7 +19,8 @@
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
     clippy::redundant_pattern_matching,
-    clippy::unused_async
+    clippy::unused_async,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -53,7 +54,7 @@ async fn test_user_list_page_loads() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-list-page");
+    browser.screenshot("user-list-page").ok();
 }
 
 /// Test: User list table structure contains expected columns
@@ -88,7 +89,7 @@ async fn test_user_list_table_structure() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-list-table");
+    browser.screenshot("user-list-table").ok();
 }
 
 /// Test: Topup button is visible in user list
@@ -119,7 +120,7 @@ async fn test_topup_button_visible() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-list-topup-button");
+    browser.screenshot("user-list-topup-button").ok();
 }
 
 /// Test: Topup modal opens when clicking topup button
@@ -158,7 +159,7 @@ async fn test_topup_modal_opens() {
         );
     }
 
-    let _ = browser.screenshot("topup-modal-open");
+    browser.screenshot("topup-modal-open").ok();
 }
 
 /// Test: Topup modal has quick amount buttons
@@ -197,7 +198,7 @@ async fn test_topup_modal_quick_buttons() {
         snap.text
     );
 
-    let _ = browser.screenshot("topup-modal-buttons");
+    browser.screenshot("topup-modal-buttons").ok();
 }
 
 /// Test: User status pill displays correctly
@@ -231,7 +232,7 @@ async fn test_user_status_display() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-status-display");
+    browser.screenshot("user-status-display").ok();
 }
 
 /// Test: User balance is displayed in correct format
@@ -262,7 +263,7 @@ async fn test_user_balance_format() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-balance-format");
+    browser.screenshot("user-balance-format").ok();
 }
 
 /// Test: Invite new user button is visible
@@ -297,7 +298,7 @@ async fn test_invite_user_button() {
         snap.text
     );
 
-    let _ = browser.screenshot("invite-user-button");
+    browser.screenshot("invite-user-button").ok();
 }
 
 /// Test: Invite user modal opens
@@ -343,7 +344,7 @@ async fn test_invite_user_modal() {
         eprintln!("SKIP: No invite button found, user creation may not be implemented");
     }
 
-    let _ = browser.screenshot("invite-user-modal");
+    browser.screenshot("invite-user-modal").ok();
 }
 
 /// Test: KPI stats strip is visible on users page
@@ -377,7 +378,7 @@ async fn test_user_page_kpi_stats() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-page-kpi");
+    browser.screenshot("user-page-kpi").ok();
 }
 
 /// Test: Tab switching between All and VIP users
@@ -409,7 +410,7 @@ async fn test_user_list_tabs() {
         snap.text
     );
 
-    let _ = browser.screenshot("user-list-tabs");
+    browser.screenshot("user-list-tabs").ok();
 }
 
 /// Test: Topup flow end-to-end
@@ -458,8 +459,8 @@ async fn test_topup_flow_e2e() {
     let confirm_result = browser.click_by_name("button:确认", 5_000);
     if confirm_result.is_err() {
         // Try other confirm button text variants
-        let _ = browser.click_by_name("button:确定", 3_000);
-        let _ = browser.click_by_name("button:Confirm", 3_000);
+        browser.click_by_name("button:确定", 3_000).ok();
+        browser.click_by_name("button:Confirm", 3_000).ok();
     }
 
     // Wait for success - either toast message or balance update
@@ -473,5 +474,5 @@ async fn test_topup_flow_e2e() {
         final_snap.text
     );
 
-    let _ = browser.screenshot("topup-flow-e2e");
+    browser.screenshot("topup-flow-e2e").ok();
 }

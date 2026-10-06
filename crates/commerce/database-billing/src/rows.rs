@@ -229,7 +229,11 @@ impl From<ExchangeRate> for ExchangeRateRow {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "unit-test module: unwrap/expect failures are the intended failure signal"
+)]
 mod tests {
     //! Type-level parity between the persistence rows and the Commerce domain types.
     //!
@@ -283,6 +287,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::cognitive_complexity,
+        reason = "test: one assertion per persisted column is clearer than splitting the parity check"
+    )]
     fn price_row_round_trips_without_losing_a_column() {
         let row = full_price_row();
         let domain = Price::from(row.clone());

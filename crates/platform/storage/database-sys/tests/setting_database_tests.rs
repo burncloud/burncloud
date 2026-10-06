@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "Test-only file: the assertions are the test."
+)]
 
 /// Internal tests for `database-setting` — SettingDatabase CRUD operations.
 ///

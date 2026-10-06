@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -64,7 +65,7 @@ async fn test_primary_color_token() {
         color
     );
 
-    let _ = browser.screenshot("design-token-primary");
+    browser.screenshot("design-token-primary").ok();
 }
 
 /// Verify no Fluent blue (#0078d4) remains in the design system.
@@ -94,7 +95,7 @@ async fn test_no_fluent_blue() {
         accent
     );
 
-    let _ = browser.screenshot("design-no-fluent");
+    browser.screenshot("design-no-fluent").ok();
 }
 
 /// Verify card components use the correct design tokens.
@@ -130,7 +131,7 @@ async fn test_card_styles() {
         "--bc-shadow-sm CSS variable not found"
     );
 
-    let _ = browser.screenshot("design-card-styles");
+    browser.screenshot("design-card-styles").ok();
 }
 
 /// Verify button components render with correct variants.
@@ -159,5 +160,5 @@ async fn test_button_styles() {
         "Expected at least one button-like element on the page"
     );
 
-    let _ = browser.screenshot("design-button-styles");
+    browser.screenshot("design-button-styles").ok();
 }

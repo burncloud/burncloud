@@ -45,6 +45,11 @@ impl ChannelHealthManager {
     }
 
     /// Process a response and update health state
+    #[allow(
+        clippy::cognitive_complexity,
+        clippy::too_many_arguments,
+        reason = "sequential detect-record-log pipeline; the signature mirrors the upstream response fields"
+    )]
     pub fn process_response(
         &self,
         channel_id: i32,

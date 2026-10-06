@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 //! CSS / layout visual acceptance for css-optimize-loop.
 //!
@@ -131,7 +132,7 @@ fn eval_layout_ok(browser: &mut AgentBrowser, page: &str) -> anyhow::Result<()> 
     if status == "ok" {
         Ok(())
     } else {
-        let _ = browser.screenshot(&format!("FAIL-layout-{}", page));
+        browser.screenshot(&format!("FAIL-layout-{}", page)).ok();
         anyhow::bail!("Layout check failed on {}: {}", page, status);
     }
 }
@@ -144,7 +145,7 @@ fn write_manifest(screenshots: &[String], status: &str) {
             .to_string_lossy()
             .to_string()
     });
-    let _ = fs::create_dir_all(&dir);
+    fs::create_dir_all(&dir).ok();
     let manifest = json!({
         "status": status,
         "screenshots": screenshots,
@@ -152,7 +153,7 @@ fn write_manifest(screenshots: &[String], status: &str) {
     });
     let path = Path::new(&dir).join("manifest.json");
     if let Ok(body) = serde_json::to_string_pretty(&manifest) {
-        let _ = fs::write(path, body);
+        fs::write(path, body).ok();
     }
 }
 
@@ -226,7 +227,9 @@ async fn css_visual_acceptance() {
             _ => &[page.wait_text],
         };
         wait_page_text(&mut browser, wait_texts, 30_000).unwrap_or_else(|e| {
-            let _ = browser.screenshot(&format!("FAIL-load-{}", page.screenshot));
+            browser
+                .screenshot(&format!("FAIL-load-{}", page.screenshot))
+                .ok();
             panic!(
                 "Page {} did not load (expected {:?}): {}",
                 page.path, wait_texts, e

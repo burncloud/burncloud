@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration test: an unwrap/expect failure is the intended failure signal"
+)]
 //! Contract-purity guard (review feedback on #602, items 1 and 3).
 //!
 //! `burncloud-commerce-contracts` is the Commerce domain contract. A domain contract must not grow

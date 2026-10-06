@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    reason = "golden contract test: unwrap/expect is the intended failure signal and the DTOs intentionally use plain types"
+)]
 //! Golden contract for the Supply channel/ability types (S1-C).
 //!
 //! Two promises are pinned here because they cross version boundaries:
