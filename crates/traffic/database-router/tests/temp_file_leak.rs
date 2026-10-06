@@ -37,34 +37,25 @@ use tempfile::{Builder, NamedTempFile};
 
 const LEAK_GUARD_PREFIX: &str = "bc_router_cleanup_";
 
-/// Serialises the two tests in this file.
+/// A prefix unique to one test **and** one process.
 ///
-/// Both count files matching [`LEAK_GUARD_PREFIX`] in the **shared** system temp directory, so run in parallel
-/// they count each other's artifacts: measured, `the_counter_tracks_its_own_unique_prefix` saw `after=2` for a
-/// `before` of 0 because the other test's database and sidecars appeared between its two readings. That is a
-/// property of the counter, not of the cleanup, so a mutex is the honest fix — the alternative is a counter
-/// that cannot see all guard files, which is what it exists to do.
-/// Synchronous so it can be held by the `#[test]` case as well as the async one; no guard is held across an
-/// await point. See [`TEMP_DIR_GUARD`].
-static TEMP_DIR_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-/// Acquire [`TEMP_DIR_GUARD`], tolerating poisoning: a panic in one test must not cascade into the other.
-fn serialise_temp_dir() -> std::sync::MutexGuard<'static, ()> {
-    TEMP_DIR_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+/// The two tests in this file both count guard files in the shared system temp directory, so with one common
+/// prefix they count each other's live fixtures — measured, the counter test read `after=2` against a `before`
+/// of 0 purely because the other test's database and sidecars existed at that moment (#754). Giving each test
+/// a disjoint prefix removes the interference without serialising them, so both keep running in parallel.
+///
+/// The pid is part of it because a stale file from an earlier crashed run must not be attributed to this one.
+fn unique_guard_prefix(tag: &str) -> String {
+    format!("{LEAK_GUARD_PREFIX}{tag}_{}_", std::process::id())
 }
 
-fn count_guard_files() -> usize {
+fn count_guard_files(prefix: &str) -> usize {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
         return 0;
     };
     entries
         .flatten()
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(LEAK_GUARD_PREFIX)
-        })
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(prefix))
         .count()
 }
 
@@ -166,11 +157,8 @@ impl Drop for TestDb {
     }
 }
 
-async fn create_guard_db() -> TestDb {
-    let tmp = Builder::new()
-        .prefix(LEAK_GUARD_PREFIX)
-        .tempfile()
-        .expect("temp file");
+async fn create_guard_db(prefix: &str) -> TestDb {
+    let tmp = Builder::new().prefix(prefix).tempfile().expect("temp file");
     let path = tmp.into_temp_path().keep().expect("keep temp path");
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{normalized}?mode=rwc");
@@ -183,11 +171,11 @@ async fn create_guard_db() -> TestDb {
 
 #[tokio::test]
 async fn dropping_a_test_database_leaves_zero_temp_files() {
-    let _serial = serialise_temp_dir();
-    let before = count_guard_files();
+    let prefix = unique_guard_prefix("drop");
+    let before = count_guard_files(&prefix);
 
-    let db = create_guard_db().await;
-    let during = count_guard_files();
+    let db = create_guard_db(&prefix).await;
+    let during = count_guard_files(&prefix);
     assert!(
         during > before,
         "the leak guard did not observe the temporary database while it was open; before={before}, during={during}"
@@ -199,7 +187,7 @@ async fn dropping_a_test_database_leaves_zero_temp_files() {
         "closing the database must remove its files; still present: {survivors:?}"
     );
 
-    let after = count_guard_files();
+    let after = count_guard_files(&prefix);
     let delta = after as isize - before as isize;
     println!("#643 temp-file count: before={before}, after={after}, delta={delta}");
 
@@ -211,13 +199,13 @@ async fn dropping_a_test_database_leaves_zero_temp_files() {
 
 #[test]
 fn the_counter_tracks_its_own_unique_prefix() {
-    let _serial = serialise_temp_dir();
-    let before = count_guard_files();
+    let prefix = unique_guard_prefix("counter");
+    let before = count_guard_files(&prefix);
     let tmp: NamedTempFile = Builder::new()
-        .prefix(LEAK_GUARD_PREFIX)
+        .prefix(&prefix)
         .tempfile()
         .expect("temp file");
-    let during = count_guard_files();
+    let during = count_guard_files(&prefix);
 
     assert!(
         during > before,
@@ -225,7 +213,7 @@ fn the_counter_tracks_its_own_unique_prefix() {
     );
 
     drop(tmp);
-    let after = count_guard_files();
+    let after = count_guard_files(&prefix);
     assert_eq!(
         after, before,
         "the counter's own proof file must clean itself up; before={before}, after={after}"
