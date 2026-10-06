@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration tests use unwrap/expect for fixture setup and assertions"
+)]
 //! Regression cover for the Identity database layer (S1-D, #610).
 //!
 //! The Identity domain had no test at all before this file. S1-D removes the three legacy
@@ -27,7 +31,11 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
             .unwrap()
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    if let Err(error) = std::fs::remove_file(&path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            panic!("failed to remove stale test database {}: {error}", path.display());
+        }
+    }
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     let db = create_database_with_url(&url)
@@ -85,33 +93,18 @@ async fn accounts_round_trip_through_the_real_schema() {
         .expect("real SELECT from user_accounts")
         .expect("the account that was just created must be found");
 
-    // Identity fields.
     assert_eq!(stored.id, "u-1");
     assert_eq!(stored.username, "alice");
     assert_eq!(stored.email.as_deref(), Some("alice@example.com"));
     assert_eq!(stored.status, 1);
     assert_eq!(stored.preferred_currency.as_deref(), Some("CNY"));
-
-    // Balance fields still round-trip byte-for-byte. S1-D does NOT move their ownership; the
-    // migration of that responsibility is tracked separately (see #610). This assertion pins the
-    // current behaviour so a later change to the writer is a deliberate, visible act.
     assert_eq!(stored.balance_usd, 5_000_000_000);
     assert_eq!(stored.balance_cny, 36_200_000_000);
-
-    // The password hash is readable in Rust. Its JSON projection is deliberately NOT asserted here:
-    // today `UserAccount` has no `skip_serializing`, so the field does reach JSON, and whether that
-    // is correct is a design question with its own issue -- not something this test should freeze.
-    // Recorded in #610 as out of scope for S1-D.
     assert_eq!(stored.password_hash.as_deref(), Some("$2b$12$notarealhash"));
     let json = serde_json::to_value(&stored).unwrap();
     assert_eq!(json["username"], serde_json::json!("alice"));
-    // Balance is projected into JSON under the same names (Commerce-facing projection).
-    // `json!` is used rather than naming `serde_json::Value`: the workspace's type gate disallows that
-    // type outside protocol boundaries, and the macro produces the right numeric variant from the
-    // value itself, so the nanodollar amount stays an i64 without an explicit constructor.
     assert_eq!(json["balance_usd"], serde_json::json!(stored.balance_usd));
 
-    // Lookup paths share the writer's column list.
     let by_name = UserDatabase::get_user_by_username(&db, "alice")
         .await
         .unwrap()
@@ -123,41 +116,21 @@ async fn accounts_round_trip_through_the_real_schema() {
         .expect("lookup by email");
     assert_eq!(by_email.id, "u-1");
 
-    // `UserDatabase::init` seeds a `demo-user` row (password hash `no-login`) so the console has a
-    // placeholder account. `list_users` returns it, while `count_users`/`has_admin_user` filter it
-    // out because it cannot log in. Both behaviours are asserted so the seed stays visible.
     let all = UserDatabase::list_users(&db).await.unwrap();
-    assert_eq!(
-        all.len(),
-        2,
-        "the demo-user seed plus the account created here"
-    );
+    assert_eq!(all.len(), 2, "the demo-user seed plus the account created here");
     assert!(
         all.iter().any(|u| u.username == "demo-user"),
         "the seeded placeholder account is present"
     );
     let seed = all.iter().find(|u| u.username == "demo-user").unwrap();
-    assert_eq!(
-        seed.password_hash.as_deref(),
-        Some("no-login"),
-        "the seed cannot authenticate"
-    );
-    assert_eq!(
-        UserDatabase::count_users(&db).await.unwrap(),
-        1,
-        "count_users excludes the seed"
-    );
-    // `create_user` only inserts the account row; role assignment is a separate call, so no admin
-    // exists yet. The first-user-is-admin policy lives above this layer.
+    assert_eq!(seed.password_hash.as_deref(), Some("no-login"), "the seed cannot authenticate");
+    assert_eq!(UserDatabase::count_users(&db).await.unwrap(), 1, "count_users excludes the seed");
     assert!(
         !UserDatabase::has_admin_user(&db).await.unwrap(),
         "creating an account does not grant a role"
     );
 
-    // The role path: assign, then observe.
-    UserDatabase::assign_role(&db, "u-1", "admin")
-        .await
-        .unwrap();
+    UserDatabase::assign_role(&db, "u-1", "admin").await.unwrap();
     let roles = UserDatabase::get_user_roles(&db, "u-1").await.unwrap();
     assert!(
         roles.iter().any(|r| r == "admin"),
@@ -173,9 +146,6 @@ async fn accounts_round_trip_through_the_real_schema() {
 
 #[tokio::test]
 async fn balance_writers_are_the_only_mutation_path_and_are_delta_based() {
-    // Records the current ownership of balance mutation: it lives in Identity today and is reached
-    // from the recharge command. The test asserts the *delta* semantics, because a later move to
-    // Commerce must preserve them.
     let (db, path) = fresh_db("balance").await;
     UserDatabase::create_user(&db, &account("u-2", "bob", 1_000_000_000, 0))
         .await
@@ -191,7 +161,6 @@ async fn balance_writers_are_the_only_mutation_path_and_are_delta_based() {
         .unwrap();
     assert_eq!(after_debit, 3_000_000_000, "a negative delta debits");
 
-    // The currency selector routes to the matching column.
     let cny = UserDatabase::update_balance(&db, "u-2", 7_000_000_000, Some("CNY"))
         .await
         .unwrap();
@@ -234,12 +203,8 @@ async fn recharge_rows_round_trip_and_credit_the_balance() {
     assert_eq!(listed[0].amount, 10_000_000_000);
     assert_eq!(listed[0].currency.as_deref(), Some("USD"));
     assert_eq!(listed[0].description.as_deref(), Some("first top-up"));
-    assert!(
-        listed[0].created_at.is_some(),
-        "created_at is stamped by the schema default"
-    );
+    assert!(listed[0].created_at.is_some(), "created_at is stamped by the schema default");
 
-    // The recharge writer credits the balance in the same call (current behaviour, recorded here).
     let credited = UserDatabase::get_user_by_id(&db, "u-3")
         .await
         .unwrap()
@@ -284,7 +249,6 @@ async fn api_keys_round_trip_and_updates_are_partial() {
     assert_eq!(fetched.id, created.id);
     assert_eq!(fetched.remain_quota, 1_000_000);
 
-    // A partial update must leave the untouched fields alone.
     let updated = UserApiKeyModel::update(
         &db,
         &created.key,
@@ -304,20 +268,10 @@ async fn api_keys_round_trip_and_updates_are_partial() {
         .unwrap();
     assert_eq!(after.name.as_deref(), Some("renamed"));
     assert_eq!(after.status, 2);
-    assert_eq!(
-        after.remain_quota, 1_000_000,
-        "remain_quota was not updated"
-    );
+    assert_eq!(after.remain_quota, 1_000_000, "remain_quota was not updated");
     assert_eq!(after.expired_time, -1, "expired_time was not updated");
 
-    // No assertion on how the key is projected into JSON. `UserApiKey.key` is an ordinary
-    // serializable field today, and whether a full key may be returned by create/get/list, or must
-    // be masked, is a design decision with its own issue (#612). A test is the wrong place to
-    // settle it, and asserting the current shape would freeze it as intended behaviour.
-
-    let listed = UserApiKeyModel::list(&db, 10, 0, Some("u-4"))
-        .await
-        .unwrap();
+    let listed = UserApiKeyModel::list(&db, 10, 0, Some("u-4")).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert!(UserApiKeyModel::delete(&db, &created.key).await.unwrap());
     assert!(
