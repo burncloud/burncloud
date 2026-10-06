@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "Test-only file: fail-fast assertions keep database mapping failures local and readable."
+)]
 //! Real database mapping for the channel rows (S1-C), mirroring the Commerce billing test.
 //!
 //! The Supply contract no longer carries `FromRow`: the row structs live in this crate as
