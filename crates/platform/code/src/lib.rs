@@ -4,6 +4,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 
 mod init;
 mod plan;
+mod policy;
 mod report;
 mod test;
 
