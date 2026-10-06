@@ -146,6 +146,10 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/playground/chat", post(playground_chat))
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "HTTP authorization helpers return a complete Axum response to preserve status and body semantics"
+)]
 async fn principal_is_admin(state: &AppState, claims: &Claims) -> Result<bool, Response> {
     is_admin(state, claims)
         .await
@@ -155,6 +159,10 @@ async fn principal_is_admin(state: &AppState, claims: &Claims) -> Result<bool, R
 /// Resolve either the opaque management reference or, for backwards-compatible
 /// authenticated management calls, the exact bearer token. The latter is never
 /// returned by list/get responses.
+#[expect(
+    clippy::result_large_err,
+    reason = "management authorization returns a ready-to-send Axum response for each rejection path"
+)]
 pub(crate) async fn authorized_token(
     state: &AppState,
     claims: &Claims,

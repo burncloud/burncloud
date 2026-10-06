@@ -133,8 +133,20 @@ impl DiskCollector {
             // libc exposes these fields as different unsigned widths across
             // Unix targets (u64 on Linux, u32 for block counts on macOS ARM).
             // Normalize before doing byte arithmetic and building DiskInfo.
+            #[allow(
+                clippy::useless_conversion,
+                reason = "statvfs field widths differ across supported Unix targets"
+            )]
             let block_size = u64::from(statvfs.f_frsize);
+            #[allow(
+                clippy::useless_conversion,
+                reason = "statvfs field widths differ across supported Unix targets"
+            )]
             let total_blocks = u64::from(statvfs.f_blocks);
+            #[allow(
+                clippy::useless_conversion,
+                reason = "statvfs field widths differ across supported Unix targets"
+            )]
             let free_blocks = u64::from(statvfs.f_bavail);
 
             let total = total_blocks * block_size;

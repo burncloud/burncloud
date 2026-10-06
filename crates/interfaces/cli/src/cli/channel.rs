@@ -17,7 +17,7 @@ use std::io::{self, Write};
 /// Parse channel type from string
 ///
 /// Supports: openai, azure, anthropic, gemini, aws, vertexai, deepseek, xunfei
-pub fn parse_channel_type(s: &str) -> Result<ChannelType> {
+pub(crate) fn parse_channel_type(s: &str) -> Result<ChannelType> {
     match s.to_lowercase().as_str() {
         "openai" => Ok(ChannelType::OpenAI),
         "azure" => Ok(ChannelType::Azure),
@@ -38,7 +38,7 @@ pub fn parse_channel_type(s: &str) -> Result<ChannelType> {
 }
 
 /// Get default models for a channel type
-pub fn get_default_models(channel_type: ChannelType) -> Vec<&'static str> {
+pub(crate) fn get_default_models(channel_type: ChannelType) -> Vec<&'static str> {
     match channel_type {
         ChannelType::OpenAI => vec!["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
         ChannelType::Azure => vec!["gpt-4", "gpt-35-turbo"],
@@ -67,7 +67,7 @@ pub fn get_default_models(channel_type: ChannelType) -> Vec<&'static str> {
 /// Get default base URL for a channel type
 ///
 /// Returns None for types that require user-specified URLs (Azure, AWS, VertexAI)
-pub fn get_default_base_url(channel_type: ChannelType) -> Option<&'static str> {
+pub(crate) fn get_default_base_url(channel_type: ChannelType) -> Option<&'static str> {
     match channel_type {
         ChannelType::OpenAI => Some("https://api.openai.com/v1"),
         ChannelType::Anthropic => Some("https://api.anthropic.com/v1"),
@@ -83,7 +83,7 @@ pub fn get_default_base_url(channel_type: ChannelType) -> Option<&'static str> {
 }
 
 /// Get human-readable name for channel type
-pub fn get_channel_type_name(channel_type: ChannelType) -> &'static str {
+pub(crate) fn get_channel_type_name(channel_type: ChannelType) -> &'static str {
     match channel_type {
         ChannelType::OpenAI => "OpenAI",
         ChannelType::Azure => "Azure",
@@ -101,12 +101,12 @@ pub fn get_channel_type_name(channel_type: ChannelType) -> &'static str {
 }
 
 /// Get default channel name based on type
-pub fn get_default_channel_name(channel_type: ChannelType) -> String {
+pub(crate) fn get_default_channel_name(channel_type: ChannelType) -> String {
     format!("{} Channel", get_channel_type_name(channel_type))
 }
 
 /// Handle channel add command
-pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
     // Parse channel type
     let type_str = args
         .get_one::<String>("type")
@@ -229,7 +229,7 @@ pub async fn cmd_channel_add(db: &Database, args: &ArgMatches) -> Result<()> {
 }
 
 /// Handle channel list command
-pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
     let format = args
         .get_one::<String>("format")
         .map(|s| s.as_str())
@@ -284,7 +284,7 @@ pub async fn cmd_channel_list(db: &Database, args: &ArgMatches) -> Result<()> {
 }
 
 /// Handle channel show command
-pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
     let id: i32 = args
         .get_one::<String>("id")
         .ok_or_else(|| anyhow!("Channel ID is required"))?
@@ -328,7 +328,7 @@ pub async fn cmd_channel_show(db: &Database, args: &ArgMatches) -> Result<()> {
 }
 
 /// Handle channel update command
-pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> {
     let id: i32 = args
         .get_one::<String>("id")
         .ok_or_else(|| anyhow!("Channel ID is required"))?
@@ -419,7 +419,7 @@ pub async fn cmd_channel_update(db: &Database, args: &ArgMatches) -> Result<()> 
 }
 
 /// Handle channel delete command
-pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> {
     let id: i32 = args
         .get_one::<String>("id")
         .ok_or_else(|| anyhow!("Channel ID is required"))?
@@ -453,7 +453,7 @@ pub async fn cmd_channel_delete(db: &Database, args: &ArgMatches) -> Result<()> 
 }
 
 /// Handle channel command routing
-pub async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_channel_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("add", sub_m)) => cmd_channel_add(db, sub_m).await,
         Some(("list", sub_m)) => cmd_channel_list(db, sub_m).await,

@@ -1,5 +1,8 @@
 // CLI command output parsing — HTTP response JSON — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "CLI import, export, and HTTP response handling operate on user-supplied dynamic JSON"
+)]
 
 use anyhow::Result;
 use burncloud_common::{
@@ -29,7 +32,12 @@ fn from_nano(price: i64) -> f64 {
     nano_to_dollars(price)
 }
 
-pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "price administration keeps its command dispatch and terminal reporting together for consistent CLI behavior"
+)]
+pub(crate) async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list", sub_m)) => {
             let limit: i32 = sub_m
@@ -1244,7 +1252,11 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 }
 
 /// Handle tiered pricing commands
-pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "tiered-price administration presents all validation and table output branches in one command handler"
+)]
+pub(crate) async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list-tiers", sub_m)) => {
             let model = sub_m

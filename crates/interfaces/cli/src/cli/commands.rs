@@ -15,7 +15,12 @@ use super::protocol::handle_protocol_command;
 use super::token::handle_token_command;
 use super::user::handle_user_command;
 
-pub async fn handle_command(args: &[String]) -> Result<()> {
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "the top-level CLI parser intentionally declares and dispatches the complete command tree in one place"
+)]
+pub(crate) async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
         .version("0.1.0")
         .about("AI model deployment and management platform")
@@ -1183,6 +1188,10 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
 }
 
 /// Handle update command (uses sync version to avoid runtime conflicts)
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "the synchronous updater reports each check, download, and recovery outcome directly to the terminal"
+)]
 fn handle_update_command(check_only: bool) -> Result<()> {
     info!("Initializing auto-updater...");
 
@@ -1230,7 +1239,7 @@ fn handle_update_command(check_only: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn show_help() {
+pub(crate) fn show_help() {
     println!("BurnCloud - AI model deployment and management platform");
     println!();
     println!("Usage:");

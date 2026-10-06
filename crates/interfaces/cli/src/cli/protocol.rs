@@ -3,7 +3,11 @@ use burncloud_database::Database;
 use burncloud_database_channel::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
 use clap::ArgMatches;
 
-pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "protocol administration keeps all related subcommand validation and terminal output in one handler"
+)]
+pub(crate) async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list", sub_m)) => {
             let limit: i32 = sub_m

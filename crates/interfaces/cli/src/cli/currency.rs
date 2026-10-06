@@ -11,7 +11,7 @@ use clap::ArgMatches;
 use std::str::FromStr;
 
 /// Handle currency subcommands
-pub async fn handle_currency_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_currency_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list-rates", _)) => cmd_list_rates(db).await,
         Some(("set-rate", sub_m)) => {

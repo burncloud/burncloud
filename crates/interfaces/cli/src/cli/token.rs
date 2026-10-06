@@ -4,7 +4,11 @@ use burncloud_database_user::{UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdate
 use clap::ArgMatches;
 use std::io::{self, Write};
 
-pub async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+#[expect(
+    clippy::too_many_lines,
+    reason = "token administration keeps all related subcommand validation and terminal output in one handler"
+)]
+pub(crate) async fn handle_token_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list", sub_m)) => {
             let limit: i32 = sub_m

@@ -6,7 +6,7 @@ pub const STORAGE_KEY: &str = "burncloud_supplier_settings";
 
 fn run_script(script: String) {
     dioxus::prelude::spawn(async move {
-        let _ = dioxus::document::eval(&script).await;
+        drop(dioxus::document::eval(&script).await);
     });
 }
 
