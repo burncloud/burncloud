@@ -2,7 +2,9 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::let_and_return,
-    clippy::disallowed_types
+    clippy::disallowed_types,
+    clippy::panic_in_result_fn,
+    reason = "integration test: assertions are the failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 
 use reqwest::Client;

@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration test: an unwrap/expect failure is the intended failure signal"
+)]
 //! Real database mapping for the persistence rows (maintainer review of #602, edit 2).
 //!
 //! The in-crate parity tests prove the Rust-to-Rust conversions are lossless, but they cannot prove
@@ -37,7 +41,7 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
             .unwrap()
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     // Three slashes: absolute Windows paths need `sqlite:///C:/...` (see Database::new).
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);

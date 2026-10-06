@@ -4,7 +4,12 @@
 //! before running. The server must have a mock price for `gpt-4o-mini` inserted
 //! (or `SKIP_INITIAL_PRICE_SYNC=0` with a working price source).
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting"
+)]
 
 mod common;
 
@@ -83,6 +88,10 @@ async fn login_user(username: &str, password: &str) -> (bool, String, Vec<String
 
 #[tokio::test]
 #[ignore = "requires external infrastructure (running server with valid upstream API key)"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "single walkthrough of the 8-step user journey; splitting it would hide the step sequence being verified"
+)]
 async fn e2e_smoke_v04() {
     let mut passed = 0u32;
     let mut failed = 0u32;

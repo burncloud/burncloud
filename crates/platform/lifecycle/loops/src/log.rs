@@ -41,9 +41,9 @@ impl LoopLogger {
 
     pub fn line(&mut self, category: &str, message: &str) {
         let line = format!("{} {}", self.stamp(category, "INFO"), message);
-        let _ = writeln!(io::stdout(), "{line}");
+        writeln!(io::stdout(), "{line}").ok();
         if let Some(file) = self.file.as_mut() {
-            let _ = writeln!(file, "{line}");
+            writeln!(file, "{line}").ok();
         }
     }
 
@@ -59,9 +59,9 @@ impl LoopLogger {
     pub fn gate_output(&mut self, _gate: GateCategory, lines: &[String]) {
         for line in lines {
             let indented = format!("  | {line}");
-            let _ = writeln!(io::stdout(), "{indented}");
+            writeln!(io::stdout(), "{indented}").ok();
             if let Some(file) = self.file.as_mut() {
-                let _ = writeln!(file, "{indented}");
+                writeln!(file, "{indented}").ok();
             }
         }
     }

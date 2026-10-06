@@ -11,7 +11,10 @@ use sqlx::FromRow;
 
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the Valid variant carries the full token row returned by every validation; boxing it would add an allocation on the auth hot path"
+)]
 pub enum RouterTokenValidationResult {
     Valid(RouterToken),
     Invalid,

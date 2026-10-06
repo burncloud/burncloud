@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unnecessary_unwrap,
+    reason = "Test-only file: the assertions and unwraps are the test."
+)]
 use burncloud_database::*;
 
 #[tokio::test]
@@ -15,7 +20,7 @@ async fn test_database_new() {
     if let Ok(db) = db_result {
         // The database should be initialized and have a connection (test via connection method)
         assert!(db.get_connection().is_ok());
-        let _ = db.close().await;
+        db.close().await.ok();
     }
 }
 
@@ -30,7 +35,7 @@ async fn test_create_default_database() {
     // Note: This might fail in some environments due to SQLite configuration,
     // but the path resolution and API structure are correct
     if let Ok(db) = db_result {
-        let _ = db.close().await;
+        db.close().await.ok();
     }
 }
 
@@ -67,6 +72,6 @@ async fn test_api_consistency() {
         assert!(db.get_connection().is_ok());
         // Note: We can't test database_path directly as it's private
         // The API consistency is verified by successful initialization
-        let _ = db.close().await;
+        db.close().await.ok();
     }
 }

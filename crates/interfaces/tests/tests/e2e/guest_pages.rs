@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -59,7 +60,7 @@ async fn test_login_navigation_from_home() {
         .wait_for_text("创建账户", 10_000)
         .expect("Did not navigate to register page");
 
-    let _ = browser.screenshot("home-to-register-nav");
+    browser.screenshot("home-to-register-nav").ok();
 }
 
 #[tokio::test]
@@ -82,5 +83,5 @@ async fn test_register_navigation_from_login() {
         .wait_for_text("创建账户", 10_000)
         .expect("Did not navigate to register page");
 
-    let _ = browser.screenshot("login-to-register-nav");
+    browser.screenshot("login-to-register-nav").ok();
 }

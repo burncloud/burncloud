@@ -29,7 +29,12 @@ fn count_guard_files() -> usize {
     };
     entries
         .flatten()
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with(LEAK_GUARD_PREFIX))
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(LEAK_GUARD_PREFIX)
+        })
         .count()
 }
 
@@ -62,7 +67,10 @@ impl Drop for TestDb {
                     let candidate = std::path::PathBuf::from(candidate);
                     if let Err(e) = std::fs::remove_file(&candidate) {
                         if e.kind() != std::io::ErrorKind::NotFound {
-                            eprintln!("failed to remove test database file {}: {e}", candidate.display());
+                            eprintln!(
+                                "failed to remove test database file {}: {e}",
+                                candidate.display()
+                            );
                         }
                     }
                 }

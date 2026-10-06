@@ -151,7 +151,11 @@ pub fn calculate_cost_safe(tokens: u64, price_per_million_nano: i64) -> i64 {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "unit-test module: unwrap/expect failures are the intended failure signal"
+)]
 mod tests {
     use super::*;
 
@@ -244,8 +248,8 @@ mod tests {
 
     #[test]
     fn finite_float_conversion_preserves_existing_rounding_and_saturation() {
-        assert_eq!(dollars_to_nano(0.000_000_0015), 2);
-        assert_eq!(dollars_to_nano(-0.000_000_0015), -2);
+        assert_eq!(dollars_to_nano(0.000_000_001_5), 2);
+        assert_eq!(dollars_to_nano(-0.000_000_001_5), -2);
         assert_eq!(dollars_to_nano(f64::INFINITY), i64::MAX);
         assert_eq!(dollars_to_nano(f64::NEG_INFINITY), i64::MIN);
         assert_eq!(rate_to_scaled(f64::INFINITY), i64::MAX);
@@ -278,11 +282,17 @@ mod tests {
     fn test_edge_cases() {
         assert_eq!(dollars_to_nano(0.000_000_001), 1);
 
-        #[allow(clippy::inconsistent_digit_grouping)]
+        #[allow(
+            clippy::inconsistent_digit_grouping,
+            reason = "the sub-nanodollar probe value is more readable with its trailing half-unit digit split out"
+        )]
         let val1 = 0.000_000_0015;
         assert_eq!(dollars_to_nano(val1), 2);
 
-        #[allow(clippy::inconsistent_digit_grouping)]
+        #[allow(
+            clippy::inconsistent_digit_grouping,
+            reason = "the sub-nanodollar probe value is more readable with its trailing digit split out"
+        )]
         let val2 = 0.000_000_0014;
         assert_eq!(dollars_to_nano(val2), 1);
     }

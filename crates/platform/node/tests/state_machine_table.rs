@@ -520,21 +520,6 @@ fn the_two_off_rail_states_are_reached_only_by_evidence_and_not_by_transition() 
 // the reconciler
 // -------------------------------------------------------------------------------------------
 
-/// The evidence that advances each stage, paired with the stage it is expected from.
-const ADVANCE: [(ReconcileEvidence, NodeState); 7] = [
-    (ReconcileEvidence::Resolved, NodeState::PreparingArtifact),
-    (
-        ReconcileEvidence::ArtifactPrepared,
-        NodeState::ArtifactReady,
-    ),
-    (ReconcileEvidence::RuntimePrepared, NodeState::Starting),
-    (ReconcileEvidence::ProcessStarted, NodeState::WaitingReady),
-    (ReconcileEvidence::ReadinessVerified, NodeState::Ready),
-    (ReconcileEvidence::RouterAttached, NodeState::Routable),
-    // BecameUnhealthy is handled separately because it has two legal source states.
-    (ReconcileEvidence::Failed, NodeState::Failed),
-];
-
 /// Drive a reconciler to `target` on the forward rail, **using evidence rather than a hand-built route**.
 ///
 /// A route built by listing the states a test wants to pass through does not work with this reconciler:
@@ -739,6 +724,10 @@ fn replaying_the_same_evidence_is_refused_so_a_stage_cannot_advance_twice() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "table-driven test: it walks every stage of the rail and asserts the whole refused-evidence row, so the length is the coverage"
+)]
 fn evidence_from_the_wrong_stage_is_refused_at_every_stage_of_the_rail() {
     // The same property the existing `reconciler.rs` test checks for one pair, here for **every stage** of the
     // rail and every evidence value: only the evidence the current stage is waiting for is accepted, and

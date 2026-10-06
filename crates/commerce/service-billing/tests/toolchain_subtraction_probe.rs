@@ -84,7 +84,7 @@ fn report_whether_signed_subtraction_clamps_on_this_toolchain() {
     let no_underflow = 99i64.checked_sub(10);
 
     let signed_subtraction_is_sound =
-        checked == None && saturating == 0 && overflowing_flag && overflowing_value == i64::MAX;
+        checked.is_none() && saturating == 0 && overflowing_flag && overflowing_value == i64::MAX;
 
     println!("signed subtraction on this toolchain:");
     println!("  checked_sub(10, 99)            = {checked:?}          (sound toolchain: None)");

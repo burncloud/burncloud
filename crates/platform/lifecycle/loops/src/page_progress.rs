@@ -39,7 +39,7 @@ impl PageProgress {
         std::fs::read_to_string(path)
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_else(Self::new)
+            .unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -113,7 +113,7 @@ impl PageProgress {
         let order = self.page_order();
         self.completed_pages
             .retain(|p| order.iter().any(|k| *k == p));
-        if !order.iter().any(|p| *p == self.current_page.as_str()) {
+        if !order.contains(&self.current_page.as_str()) {
             self.current_page = order.first().copied().unwrap_or(PAGE_ORDER[0]).to_string();
         }
         Ok(())

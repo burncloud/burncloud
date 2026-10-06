@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test file: fail-fast setup is the intended behaviour"
+)]
 //! PostgreSQL half of the `database-router` dialect contract (#658).
 //!
 //! The matching SQLite contracts already live in `cost_roundtrip.rs`, `usage_stats_tests.rs`,
@@ -14,7 +18,8 @@
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_database_router::{
-    get_usage_stats, RouterDatabase, RouterLog, RouterLogModel, RouterVideoTask, RouterVideoTaskModel,
+    get_usage_stats, RouterDatabase, RouterLog, RouterLogModel, RouterVideoTask,
+    RouterVideoTaskModel,
 };
 use std::str::FromStr;
 
@@ -57,9 +62,9 @@ async fn create_database(server_url: &str, name: &str) -> String {
         .await
         .unwrap_or_else(|e| panic!("could not connect to {server_url}: {e}"));
 
-    let _ = conn
-        .execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
-        .await;
+    conn.execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
+        .await
+        .ok();
     conn.execute(format!("CREATE DATABASE {name}").as_str())
         .await
         .unwrap_or_else(|e| panic!("CREATE DATABASE {name}: {e}"));
@@ -72,9 +77,9 @@ async fn drop_database(server_url: &str, name: &str) {
         .connect()
         .await
     {
-        let _ = conn
-            .execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
-            .await;
+        conn.execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
+            .await
+            .ok();
     }
 }
 

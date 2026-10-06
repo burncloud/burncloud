@@ -2,6 +2,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::disallowed_types,
+    clippy::panic_in_result_fn,
     reason = "Test-only file: the assertions are the test, and the fixtures are JSON of unknown shape."
 )]
 //! A request for a model with no price must not be served (#633, plan section 5 item 12).

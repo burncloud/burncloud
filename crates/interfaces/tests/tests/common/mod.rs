@@ -9,7 +9,8 @@
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
     clippy::redundant_pattern_matching,
-    dead_code
+    dead_code,
+    reason = "integration-test fixture: panicking when the server or fixtures are unavailable is the intended signal, and some helpers are only used by one test target"
 )]
 pub(crate) mod evidence;
 
@@ -192,17 +193,26 @@ async fn wait_for_server(url: &str) {
     panic!("Server failed to start at {}", url);
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "integration-test fixture helper, not called by every test target"
+)]
 pub(crate) fn get_root_token() -> String {
     "sk-root-token-123456".to_string()
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "integration-test fixture helper, not called by every test target"
+)]
 pub(crate) fn get_demo_token() -> String {
     "sk-burncloud-demo".to_string()
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "integration-test fixture helper, not called by every test target"
+)]
 pub(crate) fn get_openai_config() -> Option<(String, String)> {
     dotenv().ok();
     let key = env::var("TEST_OPENAI_KEY").ok().filter(|k| !k.is_empty())?;
@@ -214,7 +224,10 @@ pub(crate) fn get_openai_config() -> Option<(String, String)> {
 // Removed deprecated functions: get_base_url (sync), get_db_pool, seed_demo_data
 
 /// Insert a price entry for a mock model so the router's preflight check passes.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "integration-test fixture helper, not called by every test target"
+)]
 pub(crate) async fn insert_mock_price(model: &str) {
     let db_url = std::env::var("BURNCLOUD_DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:///tmp/test_burncloud.db?mode=rwc".to_string());
@@ -238,9 +251,10 @@ pub(crate) async fn insert_mock_price(model: &str) {
         .map(|h| h.base_url.clone())
         .unwrap_or_default();
     if !base_url.is_empty() {
-        let _ = reqwest::Client::new()
+        reqwest::Client::new()
             .post(format!("{}/console/internal/prices/sync", base_url))
             .send()
-            .await;
+            .await
+            .ok();
     }
 }

@@ -3,7 +3,7 @@ use burncloud_installer::{BundleCreator, BundleVerifier};
 use clap::ArgMatches;
 use std::path::PathBuf;
 
-pub async fn handle_bundle_command(matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_bundle_command(matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("create", sub_m)) => {
             let software = sub_m

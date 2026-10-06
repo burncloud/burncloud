@@ -2,8 +2,8 @@
 //!
 //! 模型服务层，提供简洁的增删改查接口
 
-mod resolver;
 mod manifest;
+mod resolver;
 
 pub use manifest::{ModelManifest, Variant};
 pub use resolver::{

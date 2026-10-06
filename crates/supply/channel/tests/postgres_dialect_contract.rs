@@ -1,7 +1,7 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "PostgreSQL contract tests are fail-fast diagnostics; explicit unwrap/expect keeps backend setup failures readable."
+    reason = "integration test: an unwrap/expect failure is the intended failure signal"
 )]
 //! PostgreSQL half of the `database-channel` dialect contract (#658).
 //!
@@ -61,9 +61,9 @@ async fn create_database(server_url: &str, name: &str) -> String {
         .await
         .unwrap_or_else(|e| panic!("could not connect to {server_url}: {e}"));
 
-    let _ = conn
-        .execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
-        .await;
+    conn.execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
+        .await
+        .ok();
     conn.execute(format!("CREATE DATABASE {name}").as_str())
         .await
         .unwrap_or_else(|e| panic!("CREATE DATABASE {name}: {e}"));
@@ -76,9 +76,9 @@ async fn drop_database(server_url: &str, name: &str) {
         .connect()
         .await
     {
-        let _ = conn
-            .execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
-            .await;
+        conn.execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
+            .await
+            .ok();
     }
 }
 
@@ -181,7 +181,9 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
 
         let abilities = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
             .await
-            .expect("ability rows created by ChannelProviderModel::create must decode on PostgreSQL");
+            .expect(
+                "ability rows created by ChannelProviderModel::create must decode on PostgreSQL",
+            );
         assert_eq!(abilities.len(), 1);
         assert_eq!(abilities[0].group, "pg-vip");
         assert_eq!(abilities[0].model, "claude-pg-contract");
