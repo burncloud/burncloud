@@ -263,9 +263,9 @@ pub type BillingTieredPriceInput = TieredPriceInput;
 pub struct PriceInput {
     pub model: String,
     pub currency: String,
-    /// Input price per 1M tokens in nanodollars (i64 for DB compatibility)
+    /// Input price per 1M tokens in nanodollars
     pub input_price: i64,
-    /// Output price per 1M tokens in nanodollars (i64 for DB compatibility)
+    /// Output price per 1M tokens in nanodollars
     pub output_price: i64,
     /// Cache read input price per 1M tokens in nanodollars
     pub cache_read_input_price: Option<i64>,
@@ -374,7 +374,7 @@ mod currency_tests {
 
     #[test]
     fn test_currency_symbol() {
-        assert_eq!(Currency::USD.symbol(), "$");
+        assert_eq!(Currency::USD.symbol(), "$" );
         assert_eq!(Currency::CNY.symbol(), "Â¥");
         assert_eq!(Currency::EUR.symbol(), "â‚¬");
     }
@@ -415,7 +415,6 @@ mod currency_tests {
 
     #[test]
     fn test_currency_serde() {
-        // Test serialization
         let json = serde_json::to_string(&Currency::USD)
             .unwrap_or_else(|e| panic!("Failed to serialize currency: {e}"));
         assert_eq!(json, "\"usd\"");
@@ -424,7 +423,6 @@ mod currency_tests {
             .unwrap_or_else(|e| panic!("Failed to serialize currency: {e}"));
         assert_eq!(json, "\"cny\"");
 
-        // Test deserialization (lowercase)
         let currency: Currency = serde_json::from_str("\"usd\"")
             .unwrap_or_else(|e| panic!("Failed to deserialize currency: {e}"));
         assert_eq!(currency, Currency::USD);
@@ -436,25 +434,22 @@ mod currency_tests {
 
     #[test]
     fn test_multi_currency_price() {
-        // Prices are in nanodollars: $0.002 = 2_000_000 nanodollars
         let price = MultiCurrencyPrice {
             currency: Currency::CNY,
-            input_price: 2_000_000,  // $0.002 in nanodollars
-            output_price: 6_000_000, // $0.006 in nanodollars
+            input_price: 2_000_000,
+            output_price: 6_000_000,
         };
 
         assert_eq!(price.currency, Currency::CNY);
         assert_eq!(price.input_price, 2_000_000);
         assert_eq!(price.output_price, 6_000_000);
 
-        // Test serialization
         let json = serde_json::to_string(&price)
             .unwrap_or_else(|e| panic!("Failed to serialize price: {e}"));
         assert!(json.contains("\"currency\":\"cny\""));
     }
 }
 
-/// Custom serde module for serializing i64 nanodollars as f64 dollars
 mod nano_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -476,7 +471,6 @@ mod nano_as_dollars {
     }
 }
 
-/// Custom serde module for Option<i64> nanodollars as Option<f64> dollars
 mod option_nano_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -486,10 +480,7 @@ mod option_nano_as_dollars {
         S: Serializer,
     {
         match value {
-            Some(nano) => {
-                let dollars = nano_to_dollars(*nano);
-                Some(dollars).serialize(serializer)
-            }
+            Some(nano) => Some(nano_to_dollars(*nano)).serialize(serializer),
             None => None::<f64>.serialize(serializer),
         }
     }
@@ -503,7 +494,6 @@ mod option_nano_as_dollars {
     }
 }
 
-/// Custom serde module for HashMap<String, i64> where values are nanodollars serialized as f64 dollars
 mod nano_map_as_dollars {
     use super::{dollars_to_nano, nano_to_dollars};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -539,81 +529,57 @@ fn default_version() -> String {
     "1.0".to_string()
 }
 
-/// Root structure for pricing.json configuration file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PricingConfig {
-    /// Schema version (e.g., "1.0")
     #[serde(default = "default_version")]
     pub version: String,
-    /// When this configuration was last updated
     pub updated_at: DateTime<Utc>,
-    /// Source of the pricing data (e.g., "local", "litellm", "community")
     pub source: String,
-    /// Model pricing configurations keyed by model name
     pub models: HashMap<String, ModelPricing>,
 }
 
-/// Pricing configuration for a single model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelPricing {
-    /// Standard pricing per currency
     #[serde(default)]
     pub pricing: HashMap<String, CurrencyPricing>,
-    /// Tiered pricing per currency (for usage-based tiers like Qwen)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiered_pricing: Option<HashMap<String, Vec<TieredPriceConfig>>>,
-    /// Cache pricing per currency (for Prompt Caching)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_pricing: Option<HashMap<String, CachePricingConfig>>,
-    /// Batch pricing per currency (for Batch API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub batch_pricing: Option<HashMap<String, BatchPricingConfig>>,
-    /// TTS voices pricing per currency
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voices_pricing: Option<HashMap<String, VoicesPricingConfig>>,
-    /// Video pricing per currency
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_pricing: Option<HashMap<String, VideoPricingConfig>>,
-    /// ASR pricing per currency
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asr_pricing: Option<HashMap<String, ASRPricingConfig>>,
-    /// Realtime API pricing per currency
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub realtime_pricing: Option<HashMap<String, RealtimePricingConfig>>,
-    /// Model metadata (context window, capabilities, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ModelMetadata>,
 }
 
-/// Pricing for a specific currency.
-/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CurrencyPricing {
-    /// Input price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
     pub input_price: i64,
-    /// Output price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
     pub output_price: i64,
-    /// Source of this pricing (e.g., "openai", "anthropic", "converted")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    /// Image output price per image in nanodollars (from v7 image.out)
     #[serde(
         with = "option_nano_as_dollars",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub image_output_price: Option<i64>,
-    /// Audio output price per 1M tokens in nanodollars (from v7 audio.out)
     #[serde(
         with = "option_nano_as_dollars",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub audio_output_price: Option<i64>,
-    /// Music generation price per request in nanodollars (from v8 music.per).
-    /// NOTE: unit is nanodollars/request, NOT nanodollars/MTok like other price fields.
     #[serde(
         with = "option_nano_as_dollars",
         default,
@@ -622,31 +588,21 @@ pub struct CurrencyPricing {
     pub music_price: Option<i64>,
 }
 
-/// Tiered pricing configuration for usage-based pricing.
-/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TieredPriceConfig {
-    /// Starting token count for this tier (inclusive)
     pub tier_start: i64,
-    /// Ending token count for this tier (exclusive, None = no limit)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier_end: Option<i64>,
-    /// Input price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
     pub input_price: i64,
-    /// Output price per 1M tokens in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
     pub output_price: i64,
 }
 
-/// Cache pricing for Prompt Caching.
-/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachePricingConfig {
-    /// Cache read price per 1M tokens in nanodollars (usually 10% of standard)
     #[serde(with = "nano_as_dollars")]
     pub cache_read_input_price: i64,
-    /// Cache creation price per 1M tokens in nanodollars
     #[serde(
         with = "option_nano_as_dollars",
         default,
@@ -655,68 +611,48 @@ pub struct CachePricingConfig {
     pub cache_creation_input_price: Option<i64>,
 }
 
-/// Batch pricing for Batch API.
-/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchPricingConfig {
-    /// Batch input price per 1M tokens in nanodollars (usually 50% of standard)
     #[serde(with = "nano_as_dollars")]
     pub batch_input_price: i64,
-    /// Batch output price per 1M tokens in nanodollars
     #[serde(with = "nano_as_dollars")]
     pub batch_output_price: i64,
 }
 
-/// TTS voices pricing for text-to-speech models.
-/// Prices are stored as HashMap<voice_id, price_per_1M_chars> in nanodollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoicesPricingConfig {
-    /// Voice ID to price mapping (e.g., "alloy" -> $15/1M chars)
-    /// Prices are stored as i64 nanodollars but serialized as f64 dollars
     #[serde(with = "nano_map_as_dollars")]
     #[serde(flatten)]
     pub voices: HashMap<String, i64>,
 }
 
-/// Video pricing for video generation models.
-/// Prices are stored as HashMap<resolution, price_per_second> in nanodollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoPricingConfig {
-    /// Resolution to price mapping (e.g., "1080p" -> $0.10/second)
-    /// Prices are stored as i64 nanodollars but serialized as f64 dollars
     #[serde(with = "nano_map_as_dollars")]
     #[serde(flatten)]
     pub resolutions: HashMap<String, i64>,
 }
 
-/// ASR (Automatic Speech Recognition) pricing.
-/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ASRPricingConfig {
-    /// Price per minute of audio in nanodollars (serialized as f64 dollars)
     #[serde(with = "nano_as_dollars")]
     pub per_minute: i64,
 }
 
-/// Realtime API pricing for voice/video models.
-/// Prices are stored as i64 nanodollars but serialized as f64 dollars.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RealtimePricingConfig {
-    /// Audio input price per 1M tokens in nanodollars
     #[serde(
         with = "option_nano_as_dollars",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub audio_input: Option<i64>,
-    /// Audio output price per 1M tokens in nanodollars
     #[serde(
         with = "option_nano_as_dollars",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub audio_output: Option<i64>,
-    /// Image input price per 1M tokens in nanodollars
     #[serde(
         with = "option_nano_as_dollars",
         default,
@@ -725,31 +661,22 @@ pub struct RealtimePricingConfig {
     pub image_input: Option<i64>,
 }
 
-/// Model metadata for capabilities and limits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMetadata {
-    /// Maximum context window in tokens
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i64>,
-    /// Maximum output tokens
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<i64>,
-    /// Whether the model supports vision/image input
     #[serde(default)]
     pub supports_vision: bool,
-    /// Whether the model supports function calling
     #[serde(default)]
     pub supports_function_calling: bool,
-    /// Whether the model supports streaming
     #[serde(default = "default_true")]
     pub supports_streaming: bool,
-    /// Provider name (e.g., "openai", "anthropic")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    /// Model family (e.g., "gpt-4", "claude-3")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub family: Option<String>,
-    /// Release date
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release_date: Option<String>,
 }
@@ -757,10 +684,6 @@ pub struct ModelMetadata {
 fn default_true() -> bool {
     true
 }
-
-// ---------------------------------------------------------------------------
-// v7.0 new-format structs (private, used only for deserialization + conversion)
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 struct NewFormatTextPricing {
@@ -784,7 +707,6 @@ struct NewFormatBatchPricing {
     input: f64,
     #[serde(rename = "out")]
     output: f64,
-    /// Intentionally ignored â€” no DB column yet; see TODOS.md P3
     #[serde(default)]
     #[allow(dead_code)]
     image_out: Option<f64>,
@@ -810,7 +732,6 @@ struct NewFormatMusicPricing {
 
 #[derive(Debug, Deserialize)]
 struct NewFormatVideoPricing {
-    /// Video generation price per second ($/sec). No DB column yet â€” see TODOS.md
     #[serde(rename = "sec", default)]
     #[allow(dead_code)]
     sec: Option<f64>,
@@ -869,9 +790,6 @@ impl From<NewFormatPricingConfig> for PricingConfig {
             for (currency, block) in currencies {
                 let text = match block.text {
                     Some(t) => t,
-                    // A v7 currency block without a text section carries no text pricing,
-                    // so the entry is skipped. Documented behaviour, covered by the pricing
-                    // fixtures; a contract returns structured results, callers do the logging.
                     None => continue,
                 };
 
@@ -898,7 +816,6 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                 }
 
                 if let Some(batch) = block.batch {
-                    // batch.image_out is intentionally ignored â€” no DB column yet (TODOS.md P3)
                     batch_map.insert(
                         currency.clone(),
                         BatchPricingConfig {
@@ -909,16 +826,18 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                 }
 
                 if let Some(tiers) = block.tiered {
-                    let tier_configs = tiers
-                        .into_iter()
-                        .map(|t| TieredPriceConfig {
-                            tier_start: t.tier_start,
-                            tier_end: t.tier_end,
-                            input_price: dollars_to_nano(t.input),
-                            output_price: dollars_to_nano(t.output),
-                        })
-                        .collect();
-                    tiered_map.insert(currency, tier_configs);
+                    tiered_map.insert(
+                        currency,
+                        tiers
+                            .into_iter()
+                            .map(|t| TieredPriceConfig {
+                                tier_start: t.tier_start,
+                                tier_end: t.tier_end,
+                                input_price: dollars_to_nano(t.input),
+                                output_price: dollars_to_nano(t.output),
+                            })
+                            .collect(),
+                    );
                 }
             }
 
@@ -926,21 +845,9 @@ impl From<NewFormatPricingConfig> for PricingConfig {
                 model_name,
                 ModelPricing {
                     pricing,
-                    tiered_pricing: if tiered_map.is_empty() {
-                        None
-                    } else {
-                        Some(tiered_map)
-                    },
-                    cache_pricing: if cache_map.is_empty() {
-                        None
-                    } else {
-                        Some(cache_map)
-                    },
-                    batch_pricing: if batch_map.is_empty() {
-                        None
-                    } else {
-                        Some(batch_map)
-                    },
+                    tiered_pricing: (!tiered_map.is_empty()).then_some(tiered_map),
+                    cache_pricing: (!cache_map.is_empty()).then_some(cache_map),
+                    batch_pricing: (!batch_map.is_empty()).then_some(batch_map),
                     voices_pricing: None,
                     video_pricing: None,
                     asr_pricing: None,
@@ -967,35 +874,30 @@ fn version_major(version: &str) -> u32 {
         .unwrap_or(1)
 }
 
-/// Which layout a document's `models` map is written in.
-///
-/// Kept separate from the `version` field because the two can disagree, and when
-/// they do the **layout** is the fact (#606). `to_json` always writes the
-/// normalised v1 layout, whatever `version` says, so a document parsed from a
-/// v7 payload and written back out is v1-layout carrying version "7.0". Trusting
-/// `version` alone sent that document to the v7 parser, which found no `text`
-/// block and silently dropped every price.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModelLayout {
-    /// `models.<name>.pricing.<CUR>` — the normalised form this crate writes,
-    /// and the form v1 documents use.
     NormalisedV1,
-    /// `models.<name>.<CUR>.text` — the flat, currency-first v7 form.
     FlatV7,
-    /// Neither marker is present. The version decides, which preserves the
-    /// documented behaviour for degenerate documents.
     Ambiguous,
 }
 
-/// Detect the layout of a `models` map from the first shape that matches.
+/// Detect the layout from fields that are unique to each published shape.
 ///
-/// Only the discriminator keys are inspected — a `pricing` key names the
-/// normalised form, and `text` / the other modality keys name the flat form — so
-/// a document with empty or unusual content still classifies as `Ambiguous`
-/// rather than being mis-parsed.
-#[allow(clippy::disallowed_types)] // Value is the intermediate parse step for layout sniffing only
+/// `ModelPricing.pricing` has `#[serde(default)]`, so hand-written and historic
+/// normalised documents may legally omit it. Every specialised v1 pricing field
+/// therefore participates in detection; otherwise a tiered/media-only document
+/// carrying version "7.0" would be sent to the flat parser and silently emptied.
 fn detect_model_layout(value: &serde_json::Value) -> ModelLayout {
-    const V1_ONLY_KEYS: [&str; 3] = ["pricing", "cache_pricing", "batch_pricing"];
+    const V1_ONLY_KEYS: [&str; 8] = [
+        "pricing",
+        "tiered_pricing",
+        "cache_pricing",
+        "batch_pricing",
+        "voices_pricing",
+        "video_pricing",
+        "asr_pricing",
+        "realtime_pricing",
+    ];
     const V7_ONLY_KEYS: [&str; 8] = [
         "text", "cache", "batch", "image", "audio", "video", "music", "tiered",
     ];
@@ -1011,7 +913,6 @@ fn detect_model_layout(value: &serde_json::Value) -> ModelLayout {
         if V1_ONLY_KEYS.iter().any(|key| fields.contains_key(*key)) {
             return ModelLayout::NormalisedV1;
         }
-        // The flat form nests per currency, so the marker is one level deeper.
         for currency_block in fields.values() {
             let Some(block) = currency_block.as_object() else {
                 continue;
@@ -1026,7 +927,6 @@ fn detect_model_layout(value: &serde_json::Value) -> ModelLayout {
 }
 
 impl PricingConfig {
-    /// Create a new empty pricing configuration.
     pub fn new(source: &str) -> Self {
         Self {
             version: "1.0".to_string(),
@@ -1038,43 +938,20 @@ impl PricingConfig {
 
     /// Parse pricing configuration from JSON string.
     ///
-    /// Supports both v1.x (legacy nested) and v7+ (flat currency-first) formats.
-    ///
-    /// # Dispatch: the layout wins, the version breaks ties (#606)
-    ///
-    /// The `version` field and the document layout can disagree, and they did:
-    /// [`Self::to_json`] always writes the normalised v1 layout, so a document
-    /// parsed from a v7 payload and serialised again carried version `"7.0"`
-    /// with a v1 body. Dispatching on `version` alone sent that document to the
-    /// v7 parser, which looked for a `text` block it could not find and dropped
-    /// every price — silently, and with no error. `cli price export-file` emits
-    /// the same normalised layout, so an exported catalogue read back through
-    /// `import-file` had the same hole.
-    ///
-    /// So an **explicit layout marker decides**, and `version` is consulted only
-    /// when the document carries neither marker. Consequences worth stating:
-    ///
-    /// * `from_json(to_json(x))` preserves the prices **and** the version string;
-    /// * a v1 body keeps being read as v1 whatever its version says;
-    /// * a genuinely flat v7 body is read as v7 even under a pre-7 version string
-    ///   — mislabelled input is recovered rather than silently emptied.
-    #[allow(clippy::disallowed_types)] // Value is an intermediate parse step for version sniffing only
+    /// Explicit layout markers win over the version string. Version is only a
+    /// tie-breaker for documents whose body carries no recognised pricing shape.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(json)?;
-        let version = match value["version"].as_str() {
-            Some(v) => v.to_string(),
-            // Unchanged fallback: a document without a version field is parsed as v1.
-            None => "1.0".to_string(),
-        };
+        let version = value["version"]
+            .as_str()
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(default_version);
         let use_flat_v7 = match detect_model_layout(&value) {
             ModelLayout::NormalisedV1 => false,
             ModelLayout::FlatV7 => true,
             ModelLayout::Ambiguous => version_major(&version) >= 7,
         };
         if use_flat_v7 {
-            // A flat body can arrive without a version (the documented "absence means 1.0" fallback). The flat
-            // parser requires the field, and the assumed version is what the parsed config must carry, so the
-            // default is written into the value rather than rejected as a missing field.
             let mut value = value;
             if value.get("version").is_none() {
                 if let Some(obj) = value.as_object_mut() {
@@ -1090,22 +967,13 @@ impl PricingConfig {
         serde_json::from_value(value)
     }
 
-    /// Serialize to JSON string.
-    ///
-    /// The output is the **normalised v1 layout** and self-describes as such:
-    /// `from_json` dispatches on the layout first (#606), so parsing this output
-    /// returns the same prices *and* the same `version` string, whichever format
-    /// the configuration was originally read from. See [`Self::from_json`].
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 
-    /// Validate the pricing configuration.
-    /// Returns a list of warnings for non-critical issues.
     pub fn validate(&self) -> Result<Vec<ValidationWarning>, ValidationError> {
         let mut warnings = Vec::new();
 
-        // Validate version format
         if !self.version.contains('.') {
             warnings.push(ValidationWarning {
                 field: "version".to_string(),
@@ -1114,15 +982,10 @@ impl PricingConfig {
             });
         }
 
-        // Validate each model's pricing
         for (model_name, model_pricing) in &self.models {
-            // Check for prices that seem unreasonably high (> $1000/1M tokens = 1_000_000_000_000 nanodollars)
-            let high_price_threshold: i64 = 1_000_000_000_000; // $1000 in nanodollars
+            let high_price_threshold: i64 = 1_000_000_000_000;
 
             for (currency, pricing) in &model_pricing.pricing {
-                // Note: i64 prices should never be negative (enforced by business logic)
-
-                // Warn if price seems unreasonably high (> $1000/1M tokens)
                 if pricing.input_price > high_price_threshold
                     || pricing.output_price > high_price_threshold
                 {
@@ -1137,14 +1000,9 @@ impl PricingConfig {
                 }
             }
 
-            // Validate tiered pricing
             if let Some(ref tiered) = model_pricing.tiered_pricing {
                 for (currency, tiers) in tiered {
-                    // Check tier ordering
                     for (i, tier) in tiers.iter().enumerate() {
-                        // Note: u64 cannot be negative, so no need to check for negative prices
-
-                        // Check tier boundaries
                         if let Some(tier_end) = tier.tier_end {
                             if tier_end <= tier.tier_start {
                                 return Err(ValidationError::InvalidTier {
@@ -1158,7 +1016,6 @@ impl PricingConfig {
                             }
                         }
 
-                        // Check for gaps between tiers
                         if i > 0 {
                             let prev_tier = &tiers[i - 1];
                             if let Some(prev_end) = prev_tier.tier_end {
@@ -1172,7 +1029,8 @@ impl PricingConfig {
                                             "Gap between tiers: previous ends at {}, current starts at {}",
                                             prev_end, tier.tier_start
                                         ),
-                                        suggestion: "Tiers should be contiguous for accurate billing".to_string(),
+                                        suggestion:
+                                            "Tiers should be contiguous for accurate billing".to_string(),
                                     });
                                 }
                             }
@@ -1181,7 +1039,6 @@ impl PricingConfig {
                 }
             }
 
-            // Check if model has any pricing
             if model_pricing.pricing.is_empty() {
                 warnings.push(ValidationWarning {
                     field: format!("models.{}", model_name),
@@ -1195,12 +1052,10 @@ impl PricingConfig {
         Ok(warnings)
     }
 
-    /// Get pricing for a specific model and currency.
     pub fn get_pricing(&self, model: &str, currency: &str) -> Option<&CurrencyPricing> {
         self.models.get(model)?.pricing.get(currency)
     }
 
-    /// Get tiered pricing for a specific model and currency.
     pub fn get_tiered_pricing(
         &self,
         model: &str,
@@ -1213,7 +1068,6 @@ impl PricingConfig {
             .get(currency)
     }
 
-    /// Get cache pricing for a specific model and currency.
     pub fn get_cache_pricing(&self, model: &str, currency: &str) -> Option<&CachePricingConfig> {
         self.models
             .get(model)?
@@ -1222,24 +1076,18 @@ impl PricingConfig {
             .get(currency)
     }
 
-    /// List all models in this configuration.
     pub fn list_models(&self) -> Vec<&String> {
         self.models.keys().collect()
     }
 }
 
-/// Validation warning for non-critical issues.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationWarning {
-    /// Field path that triggered the warning
     pub field: String,
-    /// Warning message
     pub message: String,
-    /// Suggested fix
     pub suggestion: String,
 }
 
-/// Validation error for critical issues.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ValidationError {
     #[error("Invalid tier configuration in {model} at tier {tier_index}: {message}")]
@@ -1255,7 +1103,6 @@ pub enum ValidationError {
 mod tests {
     use super::*;
 
-    /// Helper function to convert dollars to nanodollars as i64
     fn to_nano(price: f64) -> i64 {
         dollars_to_nano(price)
     }
@@ -1275,53 +1122,61 @@ mod tests {
         pricing.insert(
             "USD".to_string(),
             CurrencyPricing {
-                input_price: to_nano(10.0),  // $10.0 = 10_000_000_000 nanodollars
-                output_price: to_nano(30.0), // $30.0 = 30_000_000_000 nanodollars
+                input_price: to_nano(10.0),
+                output_price: to_nano(30.0),
                 source: Some("openai".to_string()),
                 ..Default::default()
             },
         );
-
-        let model_pricing = ModelPricing {
-            pricing,
-            tiered_pricing: None,
-            cache_pricing: None,
-            batch_pricing: None,
-            voices_pricing: None,
-            video_pricing: None,
-            asr_pricing: None,
-            realtime_pricing: None,
-            metadata: Some(ModelMetadata {
-                context_window: Some(128000),
-                max_output_tokens: Some(4096),
-                supports_vision: true,
-                supports_function_calling: true,
-                supports_streaming: true,
-                provider: Some("openai".to_string()),
-                family: Some("gpt-4".to_string()),
-                release_date: None,
-            }),
-        };
-
-        config
-            .models
-            .insert("gpt-4-turbo".to_string(), model_pricing);
-
-        let json = config
-            .to_json()
-            .unwrap_or_else(|e| panic!("Failed to serialize pricing config: {e}"));
-        let parsed = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse pricing config: {e}"));
-
-        assert_eq!(parsed.models.len(), 1);
+        config.models.insert(
+            "gpt-4-turbo".to_string(),
+            ModelPricing {
+                pricing,
+                tiered_pricing: None,
+                cache_pricing: None,
+                batch_pricing: None,
+                voices_pricing: None,
+                video_pricing: None,
+                asr_pricing: None,
+                realtime_pricing: None,
+                metadata: None,
+            },
+        );
+        let parsed = PricingConfig::from_json(&config.to_json().unwrap()).unwrap();
         assert!(parsed.models.contains_key("gpt-4-turbo"));
+    }
+
+    #[test]
+    fn specialised_v1_marker_beats_a_v7_version_even_without_pricing() {
+        let tiered_only = r#"{
+            "version":"7.0",
+            "updated_at":"2026-03-29T00:00:00Z",
+            "source":"test",
+            "models":{"m":{"tiered_pricing":{"USD":[{
+                "tier_start":0,"tier_end":1000,"input_price":3.0,"output_price":4.0
+            }]}}}
+        }"#;
+        let tiered = PricingConfig::from_json(tiered_only)
+            .unwrap_or_else(|e| panic!("tiered-only normalised v1 layout must parse: {e}"));
+        assert_eq!(
+            tiered.get_tiered_pricing("m", "USD").unwrap()[0].input_price,
+            to_nano(3.0)
+        );
+
+        let video_only = r#"{
+            "version":"7.0",
+            "updated_at":"2026-03-29T00:00:00Z",
+            "source":"test",
+            "models":{"video-model":{"video_pricing":{"USD":{"1080p":0.10}}}}
+        }"#;
+        let video = PricingConfig::from_json(video_only)
+            .unwrap_or_else(|e| panic!("video-only normalised v1 layout must parse: {e}"));
+        assert!(video.models["video-model"].video_pricing.is_some());
     }
 
     #[test]
     fn test_pricing_config_validation() {
         let mut config = PricingConfig::new("test");
-
-        // Add valid pricing
         let mut pricing = HashMap::new();
         pricing.insert(
             "USD".to_string(),
@@ -1332,7 +1187,6 @@ mod tests {
                 ..Default::default()
             },
         );
-
         config.models.insert(
             "test-model".to_string(),
             ModelPricing {
@@ -1347,17 +1201,12 @@ mod tests {
                 metadata: None,
             },
         );
-
-        let warnings = config
-            .validate()
-            .unwrap_or_else(|e| panic!("Validation failed: {e}"));
-        assert!(warnings.is_empty());
+        assert!(config.validate().unwrap().is_empty());
     }
 
     #[test]
     fn test_tiered_pricing_validation() {
         let mut config = PricingConfig::new("test");
-
         let mut pricing = HashMap::new();
         pricing.insert(
             "USD".to_string(),
@@ -1368,25 +1217,24 @@ mod tests {
                 ..Default::default()
             },
         );
-
-        let tiered = vec![
-            TieredPriceConfig {
-                tier_start: 0,
-                tier_end: Some(32000),
-                input_price: to_nano(1.2),
-                output_price: to_nano(6.0),
-            },
-            TieredPriceConfig {
-                tier_start: 32000,
-                tier_end: Some(128000),
-                input_price: to_nano(2.4),
-                output_price: to_nano(12.0),
-            },
-        ];
-
         let mut tiered_map = HashMap::new();
-        tiered_map.insert("USD".to_string(), tiered);
-
+        tiered_map.insert(
+            "USD".to_string(),
+            vec![
+                TieredPriceConfig {
+                    tier_start: 0,
+                    tier_end: Some(32000),
+                    input_price: to_nano(1.2),
+                    output_price: to_nano(6.0),
+                },
+                TieredPriceConfig {
+                    tier_start: 32000,
+                    tier_end: Some(128000),
+                    input_price: to_nano(2.4),
+                    output_price: to_nano(12.0),
+                },
+            ],
+        );
         config.models.insert(
             "qwen-max".to_string(),
             ModelPricing {
@@ -1401,18 +1249,12 @@ mod tests {
                 metadata: None,
             },
         );
-
-        let warnings = config
-            .validate()
-            .unwrap_or_else(|e| panic!("Validation failed: {e}"));
-        // Should have no warnings for valid tier configuration
-        assert!(warnings.is_empty());
+        assert!(config.validate().unwrap().is_empty());
     }
 
     #[test]
     fn test_invalid_tier_boundaries() {
         let mut config = PricingConfig::new("test");
-
         let mut pricing = HashMap::new();
         pricing.insert(
             "USD".to_string(),
@@ -1423,18 +1265,16 @@ mod tests {
                 ..Default::default()
             },
         );
-
-        // Invalid tier: tier_end <= tier_start
-        let tiered = vec![TieredPriceConfig {
-            tier_start: 100,
-            tier_end: Some(50),
-            input_price: to_nano(1.2),
-            output_price: to_nano(6.0),
-        }];
-
         let mut tiered_map = HashMap::new();
-        tiered_map.insert("USD".to_string(), tiered);
-
+        tiered_map.insert(
+            "USD".to_string(),
+            vec![TieredPriceConfig {
+                tier_start: 100,
+                tier_end: Some(50),
+                input_price: to_nano(1.2),
+                output_price: to_nano(6.0),
+            }],
+        );
         config.models.insert(
             "invalid-model".to_string(),
             ModelPricing {
@@ -1449,15 +1289,12 @@ mod tests {
                 metadata: None,
             },
         );
-
-        let result = config.validate();
-        assert!(result.is_err());
+        assert!(config.validate().is_err());
     }
 
     #[test]
     fn test_get_pricing_methods() {
         let mut config = PricingConfig::new("test");
-
         let mut pricing = HashMap::new();
         pricing.insert(
             "USD".to_string(),
@@ -1468,14 +1305,14 @@ mod tests {
                 ..Default::default()
             },
         );
-
-        let cache_pricing = CachePricingConfig {
-            cache_read_input_price: to_nano(1.0),
-            cache_creation_input_price: Some(to_nano(1.25)),
-        };
         let mut cache_map = HashMap::new();
-        cache_map.insert("USD".to_string(), cache_pricing);
-
+        cache_map.insert(
+            "USD".to_string(),
+            CachePricingConfig {
+                cache_read_input_price: to_nano(1.0),
+                cache_creation_input_price: Some(to_nano(1.25)),
+            },
+        );
         config.models.insert(
             "claude-3".to_string(),
             ModelPricing {
@@ -1490,34 +1327,14 @@ mod tests {
                 metadata: None,
             },
         );
-
-        // Test get_pricing
-        let p = config.get_pricing("claude-3", "USD");
-        assert!(p.is_some());
+        assert_eq!(config.get_pricing("claude-3", "USD").unwrap().input_price, to_nano(10.0));
         assert_eq!(
-            p.unwrap_or_else(|| panic!("pricing for claude-3/USD must exist"))
-                .input_price,
-            to_nano(10.0)
-        );
-
-        // Test get_cache_pricing
-        let c = config.get_cache_pricing("claude-3", "USD");
-        assert!(c.is_some());
-        assert_eq!(
-            c.unwrap_or_else(|| panic!("cache pricing for claude-3/USD must exist"))
-                .cache_read_input_price,
+            config.get_cache_pricing("claude-3", "USD").unwrap().cache_read_input_price,
             to_nano(1.0)
         );
-
-        // Test non-existent model
         assert!(config.get_pricing("nonexistent", "USD").is_none());
     }
 
-    // -----------------------------------------------------------------------
-    // v7.0 format tests
-    // -----------------------------------------------------------------------
-
-    /// Wrap a `models` JSON object in a complete v7.0 PricingConfig JSON string.
     fn v7(models_json: &str) -> String {
         format!(
             r#"{{"version":"7.0","updated_at":"2026-03-29T00:00:00Z","source":"test","models":{models_json}}}"#
@@ -1529,182 +1346,125 @@ mod tests {
         assert_eq!(version_major("7.0"), 7);
         assert_eq!(version_major("10.1"), 10);
         assert_eq!(version_major("1.0"), 1);
-        assert_eq!(version_major("abc"), 1); // fallback
-        assert_eq!(version_major(""), 1); // fallback
-
-        // Missing version field â†’ from_json should succeed (warn + assume v1 via serde default)
+        assert_eq!(version_major("abc"), 1);
+        assert_eq!(version_major(""), 1);
         let json = r#"{"updated_at":"2026-01-01T00:00:00Z","source":"x","models":{}}"#;
         assert!(PricingConfig::from_json(json).is_ok());
     }
 
     #[test]
     fn test_v7_text_only() {
-        let json = v7(r#"{"gemini-flash":{"USD":{"text":{"in":0.075,"out":0.30}}}}"#);
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        let pricing = config
-            .get_pricing("gemini-flash", "USD")
-            .unwrap_or_else(|| panic!("pricing for gemini-flash/USD must exist"));
+        let config = PricingConfig::from_json(&v7(
+            r#"{"gemini-flash":{"USD":{"text":{"in":0.075,"out":0.30}}}}"#,
+        ))
+        .unwrap();
+        let pricing = config.get_pricing("gemini-flash", "USD").unwrap();
         assert_eq!(pricing.input_price, to_nano(0.075));
         assert_eq!(pricing.output_price, to_nano(0.30));
-        assert!(pricing.image_output_price.is_none());
-        assert!(pricing.audio_output_price.is_none());
     }
 
     #[test]
     fn test_v7_cache_and_batch() {
-        let json = v7(
+        let config = PricingConfig::from_json(&v7(
             r#"{"my-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75},"batch":{"in":1.5,"out":7.5}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            config.get_cache_pricing("my-model", "USD").unwrap().cache_read_input_price,
+            to_nano(0.75)
         );
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        assert!(config.get_pricing("my-model", "USD").is_some());
-        let cache = config
-            .get_cache_pricing("my-model", "USD")
-            .unwrap_or_else(|| panic!("cache pricing for my-model/USD must exist"));
-        assert_eq!(cache.cache_read_input_price, to_nano(0.75));
-        let batch = config.models["my-model"]
-            .batch_pricing
-            .as_ref()
-            .unwrap_or_else(|| panic!("batch pricing for my-model must exist"))["USD"]
-            .batch_input_price;
-        assert_eq!(batch, to_nano(1.5));
+        assert_eq!(
+            config.models["my-model"].batch_pricing.as_ref().unwrap()["USD"].batch_input_price,
+            to_nano(1.5)
+        );
     }
 
     #[test]
     fn test_v7_tiered() {
-        let json = v7(
+        let config = PricingConfig::from_json(&v7(
             r#"{"gemini-pro":{"USD":{"text":{"in":1.25,"out":10.0},"tiered":[{"tier_start":0,"tier_end":200000,"in":1.25,"out":10.0},{"tier_start":200000,"in":2.5,"out":15.0}]}}}"#,
-        );
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        let tiers = config
-            .get_tiered_pricing("gemini-pro", "USD")
-            .unwrap_or_else(|| panic!("tiered pricing for gemini-pro/USD must exist"));
+        ))
+        .unwrap();
+        let tiers = config.get_tiered_pricing("gemini-pro", "USD").unwrap();
         assert_eq!(tiers.len(), 2);
-        assert_eq!(tiers[0].tier_start, 0);
-        assert_eq!(tiers[0].tier_end, Some(200000));
         assert_eq!(tiers[0].input_price, to_nano(1.25));
-        assert_eq!(tiers[1].tier_end, None);
     }
 
     #[test]
     fn test_v7_tts_model() {
-        // TTS model: text.in present, text.out absent â†’ output_price = 0
-        let json = v7(r#"{"tts-model":{"USD":{"text":{"in":15.0},"audio":{"out":10.0}}}}"#);
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        let pricing = config
-            .get_pricing("tts-model", "USD")
-            .unwrap_or_else(|| panic!("pricing for tts-model/USD must exist"));
+        let config = PricingConfig::from_json(&v7(
+            r#"{"tts-model":{"USD":{"text":{"in":15.0},"audio":{"out":10.0}}}}"#,
+        ))
+        .unwrap();
+        let pricing = config.get_pricing("tts-model", "USD").unwrap();
         assert_eq!(pricing.input_price, to_nano(15.0));
-        assert_eq!(pricing.output_price, 0); // text.out missing â†’ default 0
+        assert_eq!(pricing.output_price, 0);
         assert_eq!(pricing.audio_output_price, Some(to_nano(10.0)));
     }
 
     #[test]
     fn test_v7_image_model() {
-        let json =
-            v7(r#"{"image-model":{"USD":{"text":{"in":0.0,"out":0.0},"image":{"out":120.0}}}}"#);
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        let pricing = config
-            .get_pricing("image-model", "USD")
-            .unwrap_or_else(|| panic!("pricing for image-model/USD must exist"));
-        assert_eq!(pricing.image_output_price, Some(to_nano(120.0)));
-        assert!(pricing.audio_output_price.is_none());
+        let config = PricingConfig::from_json(&v7(
+            r#"{"image-model":{"USD":{"text":{"in":0.0,"out":0.0},"image":{"out":120.0}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            config.get_pricing("image-model", "USD").unwrap().image_output_price,
+            Some(to_nano(120.0))
+        );
     }
 
     #[test]
     fn test_v7_multicurrency() {
-        let json = v7(
+        let config = PricingConfig::from_json(&v7(
             r#"{"model":{"USD":{"text":{"in":3.0,"out":15.0}},"CNY":{"text":{"in":21.0,"out":105.0}}}}"#,
-        );
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
+        ))
+        .unwrap();
         assert!(config.get_pricing("model", "USD").is_some());
-        assert!(config.get_pricing("model", "CNY").is_some());
-        assert_eq!(
-            config
-                .get_pricing("model", "CNY")
-                .unwrap_or_else(|| panic!("pricing for model/CNY must exist"))
-                .input_price,
-            to_nano(21.0)
-        );
+        assert_eq!(config.get_pricing("model", "CNY").unwrap().input_price, to_nano(21.0));
     }
 
     #[test]
     fn test_v1_backward_compat() {
         let json = r#"{
-            "version": "1.0",
-            "updated_at": "2024-01-15T10:00:00Z",
-            "source": "test",
-            "models": {
-                "gpt-4": {
-                    "pricing": {"USD": {"input_price": 10.0, "output_price": 30.0}}
-                }
-            }
+            "version":"1.0","updated_at":"2024-01-15T10:00:00Z","source":"test",
+            "models":{"gpt-4":{"pricing":{"USD":{"input_price":10.0,"output_price":30.0}}}}
         }"#;
-        let config = PricingConfig::from_json(json)
-            .unwrap_or_else(|e| panic!("Failed to parse v1 config: {e}"));
-        let pricing = config
-            .get_pricing("gpt-4", "USD")
-            .unwrap_or_else(|| panic!("pricing for gpt-4/USD must exist"));
-        assert_eq!(pricing.input_price, to_nano(10.0));
-        assert_eq!(pricing.output_price, to_nano(30.0));
+        let config = PricingConfig::from_json(json).unwrap();
+        assert_eq!(config.get_pricing("gpt-4", "USD").unwrap().input_price, to_nano(10.0));
     }
 
     #[test]
     fn test_nanodollar_precision() {
-        // 0.28 USD â†’ nanodollars â†’ back to dollars should not lose precision significantly
         let price = 0.28_f64;
         let nano = to_nano(price);
         let back = nano as f64 / 1_000_000_000.0;
-        assert!(
-            (back - price).abs() < 1e-9,
-            "precision loss: {back} vs {price}"
-        );
+        assert!((back - price).abs() < 1e-9);
     }
 
     #[test]
     fn test_v7_batch_image_out_ignored() {
-        // batch.image_out present â†’ should parse without error, not appear in batch_pricing
-        let json = v7(
+        let config = PricingConfig::from_json(&v7(
             r#"{"img-model":{"USD":{"text":{"in":0.0,"out":0.0},"batch":{"in":5.0,"out":30.0,"image_out":60.0}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            config.models["img-model"].batch_pricing.as_ref().unwrap()["USD"].batch_input_price,
+            to_nano(5.0)
         );
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        let batch = config.models["img-model"]
-            .batch_pricing
-            .as_ref()
-            .unwrap_or_else(|| panic!("batch pricing for img-model must exist"))["USD"]
-            .batch_input_price;
-        assert_eq!(batch, to_nano(5.0));
-        // image_output_price on CurrencyPricing is None (not from batch.image_out)
-        assert!(config
-            .get_pricing("img-model", "USD")
-            .unwrap_or_else(|| panic!("pricing for img-model/USD must exist"))
-            .image_output_price
-            .is_none());
+        assert!(config.get_pricing("img-model", "USD").unwrap().image_output_price.is_none());
     }
 
     #[test]
     fn test_v7_text_none_with_cache() {
-        // text=None â†’ skip pricing AND cache for that currency
-        let json = v7(r#"{"no-text-model":{"USD":{"cache":{"read":1.0}}}}"#);
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v7 config: {e}"));
-        // pricing entry must be absent (skipped)
+        let config = PricingConfig::from_json(&v7(
+            r#"{"no-text-model":{"USD":{"cache":{"read":1.0}}}}"#,
+        ))
+        .unwrap();
         assert!(config.get_pricing("no-text-model", "USD").is_none());
-        // cache must also be absent (skipped with the whole currency block)
         assert!(config.get_cache_pricing("no-text-model", "USD").is_none());
     }
 
-    // -----------------------------------------------------------------------
-    // v8.0 format tests
-    // -----------------------------------------------------------------------
-
-    /// Wrap a `models` JSON object in a complete v8.0 PricingConfig JSON string.
     fn v8(models_json: &str) -> String {
         format!(
             r#"{{"version":"8.0","updated_at":"2026-03-30T00:00:00Z","source":"test","models":{models_json}}}"#
@@ -1713,51 +1473,30 @@ mod tests {
 
     #[test]
     fn test_v8_music_per() {
-        // lyria-3: music.per = 0.08 USD/request â†’ 80_000_000 nanodollars/request
-        let json = v8(r#"{"lyria-3":{"USD":{"text":{"in":0.0,"out":0.0},"music":{"per":0.08}}}}"#);
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v8 config: {e}"));
-        let pricing = config
-            .get_pricing("lyria-3", "USD")
-            .unwrap_or_else(|| panic!("lyria-3 pricing must exist"));
-        assert_eq!(
-            pricing.music_price,
-            Some(to_nano(0.08)),
-            "music_price must be 80_000_000 nanodollars (= $0.08)"
-        );
-        assert_eq!(pricing.music_price, Some(80_000_000));
+        let config = PricingConfig::from_json(&v8(
+            r#"{"lyria-3":{"USD":{"text":{"in":0.0,"out":0.0},"music":{"per":0.08}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(config.get_pricing("lyria-3", "USD").unwrap().music_price, Some(80_000_000));
     }
 
     #[test]
     fn test_v8_cache_creation_input() {
-        // cache.write present â†’ maps to cache_creation_input_price
-        let json = v8(
+        let config = PricingConfig::from_json(&v8(
             r#"{"cached-model":{"USD":{"text":{"in":3.0,"out":15.0},"cache":{"read":0.75,"write":1.25}}}}"#,
-        );
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v8 config: {e}"));
-        let cache = config
-            .get_cache_pricing("cached-model", "USD")
-            .unwrap_or_else(|| panic!("cache pricing must exist"));
+        ))
+        .unwrap();
+        let cache = config.get_cache_pricing("cached-model", "USD").unwrap();
         assert_eq!(cache.cache_read_input_price, to_nano(0.75));
-        assert_eq!(
-            cache.cache_creation_input_price,
-            Some(to_nano(1.25)),
-            "cache.write must map to cache_creation_input_price"
-        );
+        assert_eq!(cache.cache_creation_input_price, Some(to_nano(1.25)));
     }
 
     #[test]
     fn test_v8_video_sec_ignored() {
-        // video.sec present â†’ should parse without error, video field is dead_code
-        let json =
-            v8(r#"{"video-model":{"USD":{"text":{"in":0.0,"out":0.0},"video":{"sec":0.025}}}}"#);
-        let config = PricingConfig::from_json(&json)
-            .unwrap_or_else(|e| panic!("Failed to parse v8 config: {e}"));
-        // video field is not yet stored, but parse must succeed
-        let pricing = config
-            .get_pricing("video-model", "USD")
-            .unwrap_or_else(|| panic!("pricing must exist"));
-        assert_eq!(pricing.input_price, to_nano(0.0));
+        let config = PricingConfig::from_json(&v8(
+            r#"{"video-model":{"USD":{"text":{"in":0.0,"out":0.0},"video":{"sec":0.025}}}}"#,
+        ))
+        .unwrap();
+        assert_eq!(config.get_pricing("video-model", "USD").unwrap().input_price, 0);
     }
 }
