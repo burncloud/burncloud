@@ -1,16 +1,26 @@
 name: CI / Self-hosted Code Test
 
-# Pull requests are allowed to consume self-hosted runner capacity only when the
-# PR author is a member or owner of the burncloud organization. External pull
-# requests still create a workflow run, but this job is skipped before any
-# self-hosted runner is selected.
+# Security model:
+# - PRs from this repository authored by an allowlisted user run automatically.
+# - Every other PR gets a real (failed) Code Test check instead of a skipped job.
+# - A trusted maintainer can manually release that PR to the self-hosted runner by
+#   submitting an APPROVE review. The approval creates a new Code Test run on the
+#   same PR instead of trying to re-run an immutable skipped job.
+#
+# The workflow is driven from the base repository via pull_request_target/review,
+# so an untrusted PR cannot edit this file to remove the gate before execution.
+# No repository secrets are exposed and the GITHUB_TOKEN is read-only.
+#
+# SELF_HOSTED_CI_USERS is an optional repository variable containing a JSON array
+# of trusted GitHub usernames, for example: ["rustburn","another-maintainer"].
+# Until that variable is configured, rustburn is the only trusted user.
 #
 # Keep the test policy in one place: this workflow delegates the repository
 # quality gate to `cargo run -- code test --all` instead of restating fmt/test/
 # clippy/deny commands in YAML.
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - main
     types:
@@ -18,34 +28,50 @@ on:
       - synchronize
       - reopened
       - ready_for_review
-  workflow_dispatch:
+  pull_request_review:
+    types:
+      - submitted
 
 permissions:
   contents: read
 
 concurrency:
-  group: self-hosted-code-test-${{ github.event.pull_request.number || github.run_id }}
+  group: self-hosted-code-test-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   code-test:
     name: Code Test
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(fromJSON('["MEMBER","OWNER"]'), github.event.pull_request.author_association) }}
-    runs-on: [self-hosted, linux]
+    env:
+      RUN_CODE_TEST: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 90
 
     steps:
-      - name: Checkout
+      - name: Manual approval required
+        if: env.RUN_CODE_TEST != 'true'
+        shell: bash
+        run: |
+          echo "::error::Self-hosted Code Test requires manual approval for this PR."
+          echo "A trusted maintainer must open the PR review UI and submit an APPROVE review."
+          echo "That approval will trigger a fresh Code Test run for the current PR commit."
+          exit 1
+
+      - name: Checkout PR merge commit
+        if: env.RUN_CODE_TEST == 'true'
         uses: actions/checkout@v4
         with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
 
       - name: Install Rust toolchain
+        if: env.RUN_CODE_TEST == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - name: Verify required local CI tools
+        if: env.RUN_CODE_TEST == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -53,4 +79,5 @@ jobs:
           cargo deny --version
 
       - name: Run BurnCloud code gate
+        if: env.RUN_CODE_TEST == 'true'
         run: cargo run -- code test --all
