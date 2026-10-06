@@ -267,7 +267,10 @@ mod tests {
             .iter()
             .position(|arg| arg == "--")
             .expect("known test baseline must add libtest arguments");
-        assert_eq!(&test[..separator], ["test", "--workspace", "--no-default-features"]);
+        assert_eq!(
+            &test[..separator],
+            ["test", "--workspace", "--no-default-features"]
+        );
         let skip_names: Vec<_> = test[separator + 1..]
             .chunks_exact(2)
             .map(|chunk| {
