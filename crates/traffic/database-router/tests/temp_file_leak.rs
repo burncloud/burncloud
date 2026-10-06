@@ -23,18 +23,17 @@ use tempfile::{Builder, NamedTempFile};
 
 const LEAK_GUARD_PREFIX: &str = "bc_router_cleanup_";
 
-fn count_guard_files() -> usize {
+fn unique_guard_prefix(tag: &str) -> String {
+    format!("{LEAK_GUARD_PREFIX}{tag}_{}_", std::process::id())
+}
+
+fn count_guard_files(prefix: &str) -> usize {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
         return 0;
     };
     entries
         .flatten()
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(LEAK_GUARD_PREFIX)
-        })
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(prefix))
         .count()
 }
 
@@ -87,11 +86,8 @@ impl Drop for TestDb {
     }
 }
 
-async fn create_guard_db() -> TestDb {
-    let tmp = Builder::new()
-        .prefix(LEAK_GUARD_PREFIX)
-        .tempfile()
-        .expect("temp file");
+async fn create_guard_db(prefix: &str) -> TestDb {
+    let tmp = Builder::new().prefix(prefix).tempfile().expect("temp file");
     let path = tmp.into_temp_path().keep().expect("keep temp path");
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{normalized}?mode=rwc");
@@ -104,18 +100,19 @@ async fn create_guard_db() -> TestDb {
 
 #[tokio::test]
 async fn dropping_a_test_database_leaves_zero_temp_files() {
-    let before = count_guard_files();
+    let prefix = unique_guard_prefix("drop");
+    let before = count_guard_files(&prefix);
 
     {
-        let _db = create_guard_db().await;
-        let during = count_guard_files();
+        let _db = create_guard_db(&prefix).await;
+        let during = count_guard_files(&prefix);
         assert!(
             during > before,
             "the leak guard did not observe the temporary database while it was open"
         );
     }
 
-    let after = count_guard_files();
+    let after = count_guard_files(&prefix);
     let delta = after as isize - before as isize;
     println!("#643 temp-file count: before={before}, after={after}, delta={delta}");
 
@@ -127,12 +124,13 @@ async fn dropping_a_test_database_leaves_zero_temp_files() {
 
 #[test]
 fn the_counter_tracks_its_own_unique_prefix() {
-    let before = count_guard_files();
+    let prefix = unique_guard_prefix("counter");
+    let before = count_guard_files(&prefix);
     let tmp: NamedTempFile = Builder::new()
-        .prefix(LEAK_GUARD_PREFIX)
+        .prefix(&prefix)
         .tempfile()
         .expect("temp file");
-    let during = count_guard_files();
+    let during = count_guard_files(&prefix);
 
     assert!(
         during > before,
@@ -140,7 +138,7 @@ fn the_counter_tracks_its_own_unique_prefix() {
     );
 
     drop(tmp);
-    let after = count_guard_files();
+    let after = count_guard_files(&prefix);
     assert_eq!(
         after, before,
         "the counter's own proof file must clean itself up"
