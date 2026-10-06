@@ -4122,6 +4122,12 @@ async fn proxy_logic(
                         token_counter.set_from_usage(&resp_usage);
                     }
 
+                    // Quality detection must inspect the provider-native payload.  Once an
+                    // Anthropic/Gemini response is converted to OpenAI shape, parsing that
+                    // converted body with the upstream protocol misclassifies valid output.
+                    let upstream_response_body =
+                        serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string());
+
                     let response_body = if let Some(converted) =
                         adaptor.convert_response(resp_json.clone(), &upstream.name)
                     {
@@ -4137,7 +4143,7 @@ async fn proxy_logic(
                         serde_json::to_string(&converted).unwrap_or_else(|_| "{}".to_string())
                     } else {
                         // No conversion needed (e.g. OpenAI), return original body
-                        serde_json::to_string(&resp_json).unwrap_or_else(|_| "{}".to_string())
+                        upstream_response_body.clone()
                     };
 
                     // L2 Shaper success — non-OpenAI non-streaming (actual_tpm available).
@@ -4158,7 +4164,7 @@ async fn proxy_logic(
                         upstream,
                         model_name,
                         &session_id,
-                        &response_body,
+                        &upstream_response_body,
                         status,
                         &resp_headers,
                     );
