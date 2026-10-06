@@ -53,23 +53,67 @@ Non-UTF-8 paths fail explicitly rather than silently disappearing from the plan.
 Other documentation (including architecture contracts and test plans) is not
 excluded: unknown shared documentation forces the whole workspace.
 
+## Repository lint policy
+
+Lint policy has one source of truth: the workspace root. Any crate `Cargo.toml`
+that is added or changed must inherit it exactly through:
+
+```toml
+[lints]
+workspace = true
+```
+
+Changed crate manifests may not define local `[lints.rust]` or `[lints.clippy]`
+overrides. A crate is therefore not allowed to make a repository lint weaker in
+order to pass its own check.
+
+Changed Rust source may not contain a crate/module-level Clippy suppression such
+as:
+
+```rust,ignore
+#![allow(clippy::disallowed_types)]
+```
+
+The required flow is:
+
+```text
+Clippy reports a lint
+        |
+        v
+fix the source code
+        |
+        v
+run Clippy again
+        |
+        v
+0 warnings
+```
+
+The policy check is a ratchet over selected changed files. Historical suppressions
+outside the current change do not block unrelated work, but once a Rust source or
+crate manifest is touched it must satisfy this policy before any Cargo quality
+checks run. This prevents new lint debt while existing debt is removed by the PRs
+that own those files.
+
 ## Execution contract
 
 For any selected code changes, run in order:
 
+0. Enforce the repository lint policy on selected changed Rust sources and Cargo manifests.
 1. `cargo fmt --all -- --check`
 2. `cargo test -p <affected> ... --no-default-features` (includes package integration/doc tests)
-3. `cargo clippy -p <affected> ... --all-targets --no-default-features`
+3. `cargo clippy -p <affected> ... --all-targets --no-default-features -- -D warnings`
 4. `cargo deny check` (whole dependency graph, including advisories)
 
-Full selection replaces `-p ...` with `--workspace`. Missing tools and nonzero
-statuses stop immediately and return failure to Git/the caller. Output states
-what was selected and whether checks actually ran. Existing ignores, external
-test prerequisites and feature policies remain in effect; this command does not
-claim to run ignored tests, every feature combination, UI convention scripts or
-other operating systems. Dynamic relationships not represented in Cargo remain
-a reason to run `--all` and retain the existing CI suites. No test-result cache is
-used. Source edits and dependency allowlist changes are never automated here.
+Full selection replaces `-p ...` with `--workspace`. Missing tools, policy
+violations and nonzero statuses stop immediately and return failure to Git/the
+caller. Output states what was selected and whether checks actually ran. Existing
+ignores, external test prerequisites and feature policies remain in effect; this
+command does not claim to run ignored tests, every feature combination, UI
+convention scripts or other operating systems. Dynamic relationships not
+represented in Cargo remain a reason to run `--all` and retain the existing CI
+suites. No test-result cache is used. Source edits and dependency allowlist changes
+are never automated here.
 
 Each executed check writes its full output under `.git/burncloud/checks/<run>/`,
 alongside `summary.json`; `latest.json` tracks the most recent result. The terminal
