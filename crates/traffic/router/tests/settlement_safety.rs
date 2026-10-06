@@ -44,6 +44,39 @@ fn settlement_logging_never_prints_the_full_credential() {
 }
 
 #[test]
+fn a_failed_single_settlement_is_observable_without_logging_the_credential() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let database_router = read(&format!(
+        "{manifest}/../database-router/src/lib.rs"
+    ));
+
+    assert!(
+        database_router.contains("quota settlement failed"),
+        "the single non-idempotent debit may not be replayed, so an Err must at least be observable"
+    );
+
+    let marker = database_router
+        .find("quota settlement failed")
+        .expect("logging marker must exist");
+    let start = marker.saturating_sub(600);
+    let end = (marker + 100).min(database_router.len());
+    let logging_block = &database_router[start..end];
+
+    assert!(
+        logging_block.contains("user_id"),
+        "settlement error log needs a non-secret account identifier"
+    );
+    assert!(
+        logging_block.contains("cost"),
+        "settlement error log needs the attempted charge amount"
+    );
+    assert!(
+        !logging_block.contains("token =") && !logging_block.contains("token_for_quota"),
+        "settlement error log must never contain the credential"
+    );
+}
+
+#[test]
 fn sqlite_writer_contention_is_handled_before_the_debit_fails() {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let database_source = read(&format!(
