@@ -995,7 +995,16 @@ enum ModelLayout {
 /// rather than being mis-parsed.
 #[allow(clippy::disallowed_types)] // Value is the intermediate parse step for layout sniffing only
 fn detect_model_layout(value: &serde_json::Value) -> ModelLayout {
-    const V1_ONLY_KEYS: [&str; 3] = ["pricing", "cache_pricing", "batch_pricing"];
+    const V1_ONLY_KEYS: [&str; 8] = [
+        "pricing",
+        "tiered_pricing",
+        "cache_pricing",
+        "batch_pricing",
+        "voices_pricing",
+        "video_pricing",
+        "asr_pricing",
+        "realtime_pricing",
+    ];
     const V7_ONLY_KEYS: [&str; 8] = [
         "text", "cache", "batch", "image", "audio", "video", "music", "tiered",
     ];
