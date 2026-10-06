@@ -30,10 +30,7 @@ concurrency:
 jobs:
   code-test:
     name: Code Test
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.author_association == 'MEMBER' ||
-      github.event.pull_request.author_association == 'OWNER'
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(fromJSON('["MEMBER","OWNER"]'), github.event.pull_request.author_association) }}
     runs-on: [self-hosted, linux]
     timeout-minutes: 90
 
