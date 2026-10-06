@@ -196,7 +196,8 @@ mod migration_invariants {
     /// The service facade must preserve the production invariant that create/update themselves
     /// synchronize abilities. The test deliberately never calls `sync_abilities` directly.
     #[tokio::test]
-    async fn service_lifecycle_keeps_abilities_synchronized_without_manual_sync() -> TestResult<()> {
+    async fn service_lifecycle_keeps_abilities_synchronized_without_manual_sync(
+    ) -> TestResult<()> {
         let (db, path) = fresh_db("service_lifecycle").await?;
         let mut channel = sample_channel("service", "m1,m2", "default", 1);
 
@@ -215,10 +216,9 @@ mod migration_invariants {
         channel.group = "premium".to_owned();
         channel.status = 0;
         ChannelService::update(&db, &channel).await?;
+        let disabled_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
         assert!(
-            ChannelAbilityModel::list_by_channel(&db, id)
-                .await?
-                .is_empty(),
+            disabled_abilities.is_empty(),
             "disabling through update must remove abilities without a second sync call"
         );
 
@@ -226,9 +226,10 @@ mod migration_invariants {
         ChannelService::update(&db, &channel).await?;
         let reenabled = ChannelAbilityModel::list_by_channel(&db, id).await?;
         assert_eq!(reenabled.len(), 2);
-        assert!(reenabled
+        let all_premium = reenabled
             .iter()
-            .all(|ability| ability.group == "premium"));
+            .all(|ability| ability.group == "premium");
+        assert!(all_premium);
         let mut models: Vec<_> = reenabled
             .iter()
             .map(|ability| ability.model.as_str())
@@ -241,16 +242,13 @@ mod migration_invariants {
             fetched.as_ref().map(|item| item.name.as_str()),
             Some("service")
         );
-        assert!(ChannelService::list(&db, 100, 0)
-            .await?
-            .iter()
-            .any(|item| item.id == id));
+        let listed = ChannelService::list(&db, 100, 0).await?;
+        assert!(listed.iter().any(|item| item.id == id));
 
         ChannelService::delete(&db, id).await?;
         assert!(ChannelService::get_by_id(&db, id).await?.is_none());
-        assert!(ChannelAbilityModel::list_by_channel(&db, id)
-            .await?
-            .is_empty());
+        let remaining_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
+        assert!(remaining_abilities.is_empty());
 
         cleanup(db, &path).await
     }
