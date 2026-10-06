@@ -72,11 +72,39 @@ impl UnifiedUsage {
 
 /// Per-token-type cost breakdown, all in nanodollars.
 /// Formula: cost_nano = tokens * price_per_million / 1_000_000
+///
+/// # Cache costs are split (#618)
+///
+/// `cache_cost` used to be the only cache field, and it held read **plus** write
+/// cost merged. Anything that wanted to attribute cache spend read that single
+/// number and could not tell the two apart — and the router's
+/// `router_logs.cache_read_cost` column was filled with the merged value while
+/// `cache_write_cost` stayed 0, so cache *writes* (the more expensive side) were
+/// invisible in every per-column report.
+///
+/// The breakdown now carries [`Self::cache_read_cost`] and
+/// [`Self::cache_write_cost`] separately, with [`Self::cache_cost`] retained as
+/// their sum. That keeps the total and every existing consumer unchanged:
+///
+/// ```text
+/// cache_cost == cache_read_cost + cache_write_cost
+/// ```
+///
+/// [`Self::total`] sums the two split fields rather than `cache_cost`, so a
+/// breakdown is never double-counted even if the redundant sum is stale.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CostBreakdown {
     pub input_cost: i64,
     pub output_cost: i64,
+    /// Sum of [`Self::cache_read_cost`] and [`Self::cache_write_cost`].
+    ///
+    /// Retained because it is part of the published Commerce shape; prefer the
+    /// two split fields when attributing cache spend.
     pub cache_cost: i64,
+    /// Cost of `usage.cache_read_tokens` at the cache-read rate.
+    pub cache_read_cost: i64,
+    /// Cost of `usage.cache_write_tokens` at the cache-write rate.
+    pub cache_write_cost: i64,
     pub audio_cost: i64,
     pub voice_cost: i64,
     pub image_cost: i64,
@@ -87,11 +115,23 @@ pub struct CostBreakdown {
 }
 
 impl CostBreakdown {
+    /// Recompute the derived [`Self::cache_cost`] sum from the split fields.
+    ///
+    /// Call after mutating `cache_read_cost` / `cache_write_cost` so the
+    /// published field stays consistent. Saturates rather than wrapping.
+    pub fn recompute_cache_cost(&mut self) {
+        self.cache_cost = self.cache_read_cost.saturating_add(self.cache_write_cost);
+    }
+
     /// Sum all components into a total, capping at i64::MAX on overflow.
+    ///
+    /// Cache spend is taken from the split fields, not from `cache_cost`, so the
+    /// total counts each cache token exactly once.
     pub fn total(&self) -> i64 {
         let total = self.input_cost as i128
             + self.output_cost as i128
-            + self.cache_cost as i128
+            + self.cache_read_cost as i128
+            + self.cache_write_cost as i128
             + self.audio_cost as i128
             + self.voice_cost as i128
             + self.image_cost as i128

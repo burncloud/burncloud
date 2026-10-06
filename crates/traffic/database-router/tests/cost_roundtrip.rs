@@ -10,8 +10,10 @@
 ///   - This test uses SQLite (8-byte INTEGER natively) but verifies the i64 bindings
 ///     are wired correctly end-to-end. The Postgres path requires a live instance.
 ///
-/// FM-10 (partial): cache_write_cost is currently always 0 (known limitation, P1 backlog)
-///   - We assert cache_write_cost == 0 explicitly so a future fix is visible in test output.
+/// FM-10 (fixed in #618): the router used to write `cache_read_cost = cache_cost`
+///   (read + write merged) and `cache_write_cost = 0`, so cache-write spend was
+///   invisible in every per-column report. The breakdown now carries the two split
+///   and each column round-trips its own value.
 ///
 /// Note on get_filtered: the function generates `WHERE user_id = ?NNN` (numbered) mixed
 /// with plain `?` for LIMIT/OFFSET, which triggers SQLITE_MISMATCH (code 20) in some
@@ -156,7 +158,7 @@ fn make_log(request_id: &str) -> RouterLog {
         input_cost: 5_000_000,
         output_cost: 7_500_000,
         cache_read_cost: 500_000,
-        cache_write_cost: 0, // FM-10: currently always 0 (merged into cache_read_cost above)
+        cache_write_cost: 1_250_000, // #618: written to its own column, not merged into read
         audio_cost: 2_000_000,
         image_cost: 1_000_000,
         video_cost: 500_000,
@@ -211,8 +213,8 @@ async fn test_cost_breakdown_roundtrip() {
     assert_eq!(row.output_cost, log.output_cost, "output_cost");
     assert_eq!(row.cache_read_cost, log.cache_read_cost, "cache_read_cost");
     assert_eq!(
-        row.cache_write_cost, 0,
-        "cache_write_cost (FM-10: expected 0 until P1 split)"
+        row.cache_write_cost, log.cache_write_cost,
+        "cache_write_cost (the split #618 restored: a non-zero write cost must survive)"
     );
     assert_eq!(row.audio_cost, log.audio_cost, "audio_cost");
     assert_eq!(row.image_cost, log.image_cost, "image_cost");

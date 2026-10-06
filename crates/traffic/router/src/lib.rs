@@ -1912,10 +1912,10 @@ async fn proxy_handler(
         embedding_tokens: usage.embedding_tokens as i32,
         input_cost: cost_breakdown.input_cost,
         output_cost: cost_breakdown.output_cost,
-        // TODO: promote cache_read_cost/cache_write_cost to separate CostBreakdown fields
-        // (calculator.rs already computes them separately before merging; see compute_breakdown)
-        cache_read_cost: cost_breakdown.cache_cost, // currently stores read+write merged
-        cache_write_cost: 0,
+        // #618: the calculator splits read from write; write each to its own
+        // column so cache-write spend is not reported as 0 / merged into read.
+        cache_read_cost: cost_breakdown.cache_read_cost,
+        cache_write_cost: cost_breakdown.cache_write_cost,
         audio_cost: cost_breakdown.audio_cost,
         image_cost: cost_breakdown.image_cost,
         video_cost: cost_breakdown.video_cost,
@@ -3527,7 +3527,7 @@ async fn proxy_logic(
                                             seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                                         }
                                         match parser.provider_name() {
-                                            "anthropic" => counter_clone.accumulate(&u),
+                                            "anthropic" => counter_clone.record_cumulative(&u),
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }
@@ -3817,7 +3817,7 @@ async fn proxy_logic(
                                             seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                                         }
                                         match parser.provider_name() {
-                                            "anthropic" => counter_clone.accumulate(&u),
+                                            "anthropic" => counter_clone.record_cumulative(&u),
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }
