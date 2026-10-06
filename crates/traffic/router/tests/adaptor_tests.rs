@@ -104,13 +104,11 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
-    let mock_port = 3014;
+    let mock_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+    let mock_port = mock_listener.local_addr()?.port();
     tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
-            .await
-            .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
         axum::serve(
-            listener,
+            mock_listener,
             axum::Router::new().route(
                 "/anything",
                 axum::routing::post(|body: String| async move {
