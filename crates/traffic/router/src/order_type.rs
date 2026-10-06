@@ -181,7 +181,10 @@ impl OrderType {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "tests unwrap deterministic fixture results only after constructing valid inputs"
+)]
 mod tests {
     use super::*;
     use crate::scheduler::tests::make_channel;
