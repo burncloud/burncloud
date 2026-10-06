@@ -1,7 +1,4 @@
-#![allow(
-    clippy::expect_used,
-    reason = "Test-only source-contract checks."
-)]
+#![allow(clippy::expect_used, reason = "Test-only source-contract checks.")]
 
 fn read(path: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"))
@@ -46,9 +43,7 @@ fn settlement_logging_never_prints_the_full_credential() {
 #[test]
 fn a_failed_single_settlement_is_observable_without_logging_the_credential() {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let database_router = read(&format!(
-        "{manifest}/../database-router/src/lib.rs"
-    ));
+    let database_router = read(&format!("{manifest}/../database-router/src/lib.rs"));
 
     assert!(
         database_router.contains("quota settlement failed"),

@@ -65,7 +65,10 @@ async fn grant_quota(
     .execute(pool)
     .await?
     .rows_affected();
-    assert_eq!(updated, 1, "the test credential must exist in user_api_keys");
+    assert_eq!(
+        updated, 1,
+        "the test credential must exist in user_api_keys"
+    );
 
     burncloud_database::sqlx::query(
         "INSERT OR REPLACE INTO router_tokens \
@@ -189,16 +192,21 @@ async fn a_served_request_is_debited_once_and_matches_the_billing_log() -> anyho
     );
     let parsed: serde_json::Value = serde_json::from_str(&body)?;
     assert_eq!(
-        parsed["choices"][0]["message"]["content"],
-        "mock answer",
+        parsed["choices"][0]["message"]["content"], "mock answer",
         "success must be the upstream completion, not a local synthetic response"
     );
 
     let after = wait_for_positive_stable_quota(&pool, token).await;
-    assert!(after > before, "served request must debit a non-zero amount");
+    assert!(
+        after > before,
+        "served request must debit a non-zero amount"
+    );
 
     let logged_cost = wait_for_log_cost(&pool, user_id).await;
-    assert!(logged_cost > 0, "served request must produce a priced router log");
+    assert!(
+        logged_cost > 0,
+        "served request must produce a priced router log"
+    );
     assert_eq!(
         after - before,
         logged_cost,
@@ -221,7 +229,10 @@ async fn a_served_request_is_debited_once_and_matches_the_billing_log() -> anyho
     .bind(MODEL)
     .fetch_one(&pool)
     .await?;
-    assert_eq!(log_count, 1, "one request must create exactly one billing log row");
+    assert_eq!(
+        log_count, 1,
+        "one request must create exactly one billing log row"
+    );
 
     Ok(())
 }
