@@ -11,9 +11,8 @@ use sqlx::FromRow;
 
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
 pub enum RouterTokenValidationResult {
-    Valid(RouterToken),
+    Valid(Box<RouterToken>),
     Invalid,
     Expired,
 }
@@ -191,8 +190,6 @@ impl RouterTokenModel {
     ) -> Result<TokenRotationResult> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
-
-        // Get current token info
         let current = Self::find_by_token(db, token)
             .await?
             .ok_or_else(|| DatabaseError::Query("Token not found".to_string()))?;
@@ -201,31 +198,21 @@ impl RouterTokenModel {
         let prefix = current.key_prefix.clone();
         let old_version = current.key_version;
         let new_version = old_version + 1;
-
-        // Generate new token
         let new_token = Self::generate_token(&prefix);
-
-        // Calculate transition end time
         let transition_ends_at = if revoke_old {
-            0 // Immediate invalidation
+            0
         } else if transition_period_hours > 0 {
             now + (transition_period_hours as i64 * 3600)
         } else {
-            // Default 24 hours
             now + (24 * 3600)
         };
-
-        // Hash the old token for transition period validation
         let old_key_hash = if revoke_old {
             None
         } else {
             Some(format!("{:x}", md5::compute(token.as_bytes())))
         };
 
-        // Update the token record
         let mut tx = conn.pool().begin().await?;
-
-        // Update with new token value and rotation info
         let update_sql = adapt_sql(
             is_postgres,
             "UPDATE router_tokens SET \
@@ -246,7 +233,6 @@ impl RouterTokenModel {
             .bind(token)
             .execute(&mut *tx)
             .await?;
-
         tx.commit().await?;
 
         Ok(TokenRotationResult {
@@ -262,8 +248,6 @@ impl RouterTokenModel {
     pub async fn validate(db: &Database, token: &str) -> Result<Option<RouterToken>> {
         let conn = db.get_connection()?;
         let now = Self::current_timestamp();
-
-        // First, try to find the token directly
         let sql = adapt_sql(
             db.kind() == "postgres",
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time, \
@@ -282,9 +266,7 @@ impl RouterTokenModel {
             return Ok(Some(t));
         }
 
-        // Token not found directly - check if it's an old key during transition period
         let token_hash = format!("{:x}", md5::compute(token.as_bytes()));
-
         let old_key_sql = adapt_sql(
             db.kind() == "postgres",
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time, \
@@ -314,7 +296,6 @@ impl RouterTokenModel {
     ) -> Result<RouterTokenValidationResult> {
         let conn = db.get_connection()?;
         let now = Self::current_timestamp();
-
         let sql = adapt_sql(
             db.kind() == "postgres",
             "SELECT token, user_id, status, quota_limit, used_quota, expired_time, accessed_time, \
@@ -330,7 +311,7 @@ impl RouterTokenModel {
             if t.expired_time > 0 && now > t.expired_time {
                 return Ok(RouterTokenValidationResult::Expired);
             }
-            return Ok(RouterTokenValidationResult::Valid(t));
+            return Ok(RouterTokenValidationResult::Valid(Box::new(t)));
         }
 
         let token_hash = format!("{:x}", md5::compute(token.as_bytes()));
@@ -350,7 +331,7 @@ impl RouterTokenModel {
             if t.expired_time > 0 && now > t.expired_time {
                 return Ok(RouterTokenValidationResult::Expired);
             }
-            return Ok(RouterTokenValidationResult::Valid(t));
+            return Ok(RouterTokenValidationResult::Valid(Box::new(t)));
         }
 
         Ok(RouterTokenValidationResult::Invalid)
@@ -360,12 +341,10 @@ impl RouterTokenModel {
     pub async fn update_accessed_time(db: &Database, token: &str) -> Result<()> {
         let conn = db.get_connection()?;
         let now = Self::current_timestamp();
-
         let sql = adapt_sql(
             db.kind() == "postgres",
             "UPDATE router_tokens SET accessed_time = ? WHERE token = ?",
         );
-
         sqlx::query(&sql)
             .bind(now)
             .bind(token)
@@ -375,10 +354,6 @@ impl RouterTokenModel {
     }
 
     /// Check whether a credential has enough spend quota for `cost`.
-    ///
-    /// `quota_limit` / `remain_quota` and `used_quota` are nanodollars.
-    /// Missing or inactive credentials fail closed. Router-token rotation aliases
-    /// are resolved to the canonical current token before checking quota.
     pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         if cost <= 0 {
             return Ok(true);
@@ -428,12 +403,6 @@ impl RouterTokenModel {
     }
 
     /// Settle actual request cost against exactly the credential that was used.
-    ///
-    /// The write is durable even when the new total crosses a configured cap;
-    /// the return value then becomes `false` so the caller knows the credential
-    /// is exhausted. This prevents the final over-cap request from becoming free.
-    /// Missing/inactive credentials fail closed and never report a successful
-    /// settlement.
     pub async fn deduct_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
         if cost <= 0 {
             return Ok(true);
@@ -486,9 +455,6 @@ impl RouterTokenModel {
             return Ok(within_limit);
         }
 
-        // `user_api_keys` is the primary credential table for normal API keys.
-        // `remain_quota = -1` represents unlimited quota, including keys created
-        // with `unlimited_quota=true`.
         let legacy_sql = adapt_sql(
             is_postgres,
             "SELECT remain_quota, used_quota FROM user_api_keys WHERE key = ? AND status = 1",
@@ -550,15 +516,6 @@ impl RouterTokenModel {
     }
 
     /// Check if IP is allowed for token
-    ///
-    /// An absent credential, a credential with no allowlist configured and an allowlist that is empty
-    /// all permit the address: "no restriction configured" is the documented meaning in every case.
-    ///
-    /// The column is nullable, so the row's value is decoded as `Option<Option<String>>`. Decoding it
-    /// as a single `Option<String>` conflates "the query returned no row" with "the row's value is
-    /// NULL", and sqlx reports the second case as `ColumnDecode { expected TEXT, got Null(Text) }`
-    /// instead of yielding `None`. That made `set_ip_whitelist(token, NULL)` -- and any credential
-    /// inserted with a NULL allowlist -- fail at the IP check rather than pass it.
     pub async fn is_ip_allowed(db: &Database, token: &str, client_ip: &str) -> Result<bool> {
         let conn = db.get_connection()?;
         let sql = adapt_sql(
@@ -572,9 +529,7 @@ impl RouterTokenModel {
             .await?;
 
         match row {
-            // No such credential, or an inactive one: nothing is configured, so nothing is restricted.
             None => Ok(true),
-            // The credential exists and its allowlist is NULL or empty: no restriction.
             Some(None) => Ok(true),
             Some(Some(list)) if list.is_empty() => Ok(true),
             Some(Some(list)) => {
@@ -583,7 +538,6 @@ impl RouterTokenModel {
                     if entry.is_empty() {
                         continue;
                     }
-                    // Simple exact match for now (CIDR matching would require ipnet crate)
                     if entry == client_ip {
                         return Ok(true);
                     }
@@ -595,10 +549,6 @@ impl RouterTokenModel {
 }
 
 /// Repository wrapper that implements the standard [`CrudRepository`] contract for tokens.
-///
-/// The token string itself serves as the record ID.
-/// `update` replaces the full token record: delete + re-insert with the caller-provided
-/// `id` as the token value, keeping the rest of `input` intact.
 pub struct RouterTokenRepository<'a>(pub &'a Database);
 
 #[async_trait::async_trait]
@@ -623,7 +573,6 @@ impl<'a> CrudRepository<RouterToken, String, DatabaseError> for RouterTokenRepos
         if !exists {
             return Ok(false);
         }
-        // Delete old token, then insert the new record with the canonical id.
         RouterTokenModel::delete(self.0, id).await?;
         let mut record = input.clone();
         record.token = id.clone();
