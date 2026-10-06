@@ -84,14 +84,16 @@ impl UnifiedUsage {
 ///
 /// The breakdown now carries [`Self::cache_read_cost`] and
 /// [`Self::cache_write_cost`] separately, with [`Self::cache_cost`] retained as
-/// their sum. That keeps the total and every existing consumer unchanged:
+/// their sum. New values satisfy:
 ///
 /// ```text
 /// cache_cost == cache_read_cost + cache_write_cost
 /// ```
 ///
-/// [`Self::total`] sums the two split fields rather than `cache_cost`, so a
-/// breakdown is never double-counted even if the redundant sum is stale.
+/// Old serialized values only contain `cache_cost`. The split fields therefore
+/// deserialize with zero defaults, and [`Self::total`] falls back to the legacy
+/// merged field only when **both** split fields are absent/zero. This keeps old
+/// stored JSON billable while making new values count each cache component once.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CostBreakdown {
     pub input_cost: i64,
@@ -102,8 +104,10 @@ pub struct CostBreakdown {
     /// two split fields when attributing cache spend.
     pub cache_cost: i64,
     /// Cost of `usage.cache_read_tokens` at the cache-read rate.
+    #[serde(default)]
     pub cache_read_cost: i64,
     /// Cost of `usage.cache_write_tokens` at the cache-write rate.
+    #[serde(default)]
     pub cache_write_cost: i64,
     pub audio_cost: i64,
     pub voice_cost: i64,
@@ -123,15 +127,27 @@ impl CostBreakdown {
         self.cache_cost = self.cache_read_cost.saturating_add(self.cache_write_cost);
     }
 
+    /// Cache spend used by [`Self::total`].
+    ///
+    /// New values use the split fields. Legacy deserialized values have both
+    /// split fields at zero and keep their historical merged `cache_cost`, so
+    /// they remain compatible instead of silently dropping cache spend.
+    fn effective_cache_cost(&self) -> i64 {
+        if self.cache_read_cost == 0 && self.cache_write_cost == 0 {
+            self.cache_cost
+        } else {
+            self.cache_read_cost.saturating_add(self.cache_write_cost)
+        }
+    }
+
     /// Sum all components into a total, capping at i64::MAX on overflow.
     ///
-    /// Cache spend is taken from the split fields, not from `cache_cost`, so the
-    /// total counts each cache token exactly once.
+    /// New values take cache spend from the split fields. Legacy serialized
+    /// values without those fields fall back to the old merged `cache_cost`.
     pub fn total(&self) -> i64 {
         let total = self.input_cost as i128
             + self.output_cost as i128
-            + self.cache_read_cost as i128
-            + self.cache_write_cost as i128
+            + self.effective_cache_cost() as i128
             + self.audio_cost as i128
             + self.voice_cost as i128
             + self.image_cost as i128
@@ -188,5 +204,54 @@ fn currency_symbol(code: &str) -> &'static str {
         "CNY" => "¥",
         "EUR" => "€",
         _ => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_cost_breakdown_json_keeps_merged_cache_cost() {
+        let json = r#"{
+            "input_cost": 10,
+            "output_cost": 20,
+            "cache_cost": 30,
+            "audio_cost": 0,
+            "voice_cost": 0,
+            "image_cost": 0,
+            "video_cost": 0,
+            "music_cost": 0,
+            "reasoning_cost": 0,
+            "embedding_cost": 0
+        }"#;
+
+        let breakdown: CostBreakdown =
+            serde_json::from_str(json).unwrap_or_else(|e| panic!("legacy JSON must parse: {e}"));
+        assert_eq!(breakdown.cache_read_cost, 0);
+        assert_eq!(breakdown.cache_write_cost, 0);
+        assert_eq!(
+            breakdown.total(),
+            60,
+            "legacy cache_cost must remain part of the total"
+        );
+    }
+
+    #[test]
+    fn new_cost_breakdown_prefers_split_cache_fields_without_double_counting() {
+        let breakdown = CostBreakdown {
+            input_cost: 10,
+            output_cost: 20,
+            cache_cost: 999,
+            cache_read_cost: 12,
+            cache_write_cost: 18,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            breakdown.total(),
+            60,
+            "new split fields are authoritative and the redundant cache_cost is not counted twice"
+        );
     }
 }
