@@ -87,10 +87,7 @@ impl Drop for TestDb {
 }
 
 async fn create_guard_db(prefix: &str) -> TestDb {
-    let tmp = Builder::new()
-        .prefix(prefix)
-        .tempfile()
-        .expect("temp file");
+    let tmp = Builder::new().prefix(prefix).tempfile().expect("temp file");
     let path = tmp.into_temp_path().keep().expect("keep temp path");
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{normalized}?mode=rwc");
