@@ -164,7 +164,13 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    let port = 3013;
+    // PR gates can run concurrently on the same self-hosted machine, so a
+    // fixed port can send this request to another test server and produce a
+    // misleading 404. Let the OS select a currently free port instead.
+    let port = {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
+        listener.local_addr()?.port()
+    };
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
