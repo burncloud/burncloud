@@ -381,6 +381,19 @@ pub(crate) async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
 
 #[allow(dead_code)]
 pub(crate) async fn start_test_server(port: u16, db_url: &str) {
+    // Turn on the router's own `tracing` output when a run asks for it.
+    //
+    // A test that can only observe side effects cannot tell "the code took the wrong branch" from "the side
+    // effect has not landed yet" — which is exactly how the served-request settlement defect stayed hidden.
+    // `RUST_LOG` keeps this off by default so existing runs are unchanged.
+    // `try_init` because several servers start in one test binary.
+    if std::env::var("RUST_LOG").is_ok() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
+    }
+
     // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
     // Use a fixed 64-hex-char test key; does not affect production.
     if std::env::var("MASTER_KEY").is_err() {

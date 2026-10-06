@@ -47,6 +47,10 @@ mockito.workspace = true
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile.workspace = true
+# Lets a test turn on the router's own `tracing` output. Without it a test can only observe a path's side
+# effects, so a path that fails before its side effect is invisible — which is what made the settlement defect
+# look like a fixture problem. Off unless a run sets `RUST_LOG`.
+tracing-subscriber.workspace = true
 
 [[example]]
 name = "configure_apikey_test"

@@ -973,6 +973,7 @@ pub async fn create_router_app_with_route_miss(
         billing_strict,
         billing_preflight_rejected_count,
         billing_post_settle_price_missing_count,
+        settlement_failure_count: Arc::new(AtomicU64::new(0)),
         budget_update_tx,
         request_log_storage_policy,
         empty_response_counter: Arc::new(EmptyResponseCounter::new()),
@@ -1385,6 +1386,9 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
         "billing_strict": state.billing_strict,
         "billing_preflight_rejected_count": state.billing_preflight_rejected_count.load(std::sync::atomic::Ordering::Relaxed),
         "billing_post_settle_price_missing_count": state.billing_post_settle_price_missing_count.load(std::sync::atomic::Ordering::Relaxed),
+        // Non-zero means served requests were priced and logged but their balance was never reduced, so the
+        // system is under-billing. Alertable rather than discovered by reconciliation.
+        "settlement_failure_count": state.settlement_failure_count.load(std::sync::atomic::Ordering::Relaxed),
     });
 
     let json = serde_json::to_string(&health_report).unwrap_or_else(|_| "{}".to_string());
@@ -1984,16 +1988,34 @@ async fn proxy_handler(
         let _ = state.request_log_tx.try_send(request_log);
     }
 
-    // Deduct quota (non-blocking)
-    // Use cost > 0 (not total_tokens > 0) so video/audio/music requests are also deducted.
-    // total_tokens only counts text tokens; multi-modal costs flow through cost (nanodollars).
+    // Deduct quota (#660 follow-up).
+    //
+    // This is fire-and-forget so the client is not made to wait for the ledger, but the result must not be
+    // discarded. Measured before this change: a served request logged `router_logs.cost = 200_000` with
+    // `cost_status = "ok"` while `router_tokens.used_quota` stayed 0, because the deduction failed with
+    // SQLite `database is locked` (code 5) and the error went nowhere. That is silent under-billing — the
+    // ledger says nothing was charged and nothing anywhere says the charge was attempted.
+    //
+    // A transient failure is retried, because a lost deduction is lost revenue, and a failure that survives
+    // the retries is logged at `error` and counted in `settlement_failure_count` so it is alertable rather
+    // than discovered by reconciliation.
+    //
+    // `cost > 0` (not `total_tokens > 0`) so video/audio/music requests are also deducted: `total_tokens` only
+    // counts text tokens, while multi-modal cost flows through `cost` (nanodollars).
     if cost > 0 {
         let db = state.db.clone();
         let token_for_quota = user_token.to_string();
         let user_id_for_quota = user_id.clone();
+        let settle_failures = state.settlement_failure_count.clone();
         tokio::spawn(async move {
-            let _ =
-                RouterDatabase::deduct_quota(&db, &user_id_for_quota, &token_for_quota, cost).await;
+            settle_quota_with_retry(
+                &db,
+                &user_id_for_quota,
+                &token_for_quota,
+                cost,
+                &settle_failures,
+            )
+            .await;
         });
     }
 
@@ -4625,6 +4647,93 @@ pub mod smart_circuit_breaker;
 /// - Upstream errors
 ///
 /// Returns the response quality and whether the response should be treated as a failure.
+/// How many times a quota deduction is attempted before it is reported as lost.
+///
+/// Three, because the failure this exists for is transient: SQLite answers `database is locked` (code 5)
+/// immediately rather than waiting, so a concurrent writer is enough to lose a deduction. Three attempts
+/// separated by [`SETTLE_RETRY_BACKOFF`] cover a writer that is finishing rather than wedged.
+const SETTLE_ATTEMPTS: u32 = 3;
+
+/// Backoff between settlement attempts, multiplied by the attempt number.
+const SETTLE_RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Deduct `cost` from the credential's quota, retrying a transient failure.
+///
+/// The result is never discarded: a refusal (`Ok(false)`) and a failure that survives every attempt are both
+/// logged at `error` and counted, because in either case the request was served and logged as charged while
+/// the balance was not reduced — unbilled usage that nothing else in the system can detect.
+///
+/// Takes `&Database` so the caller can keep it in a spawned task without cloning the handle per attempt.
+#[allow(
+    clippy::cognitive_complexity,
+    reason = "The three outcomes (settled, refused, failed) must stay distinguishable in one place: collapsing \
+              them is what let a failed deduction look like a successful one. The branch count is the point, \
+              not an accident."
+)]
+async fn settle_quota_with_retry(
+    db: &Database,
+    user_id: &str,
+    token: &str,
+    cost: i64,
+    failure_count: &AtomicU64,
+) {
+    let mut last_error: Option<String> = None;
+
+    for attempt in 1..=SETTLE_ATTEMPTS {
+        match RouterDatabase::deduct_quota(db, user_id, token, cost).await {
+            Ok(true) => {
+                if attempt > 1 {
+                    tracing::info!(
+                        token = %token,
+                        cost,
+                        attempt,
+                        "quota deduction succeeded after a retry"
+                    );
+                }
+                return;
+            }
+            Ok(false) => {
+                // The ledger looked and refused: no matching active credential row, or the charge would
+                // exceed the quota. Retrying cannot change either, so this is reported immediately.
+                failure_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                tracing::error!(
+                    token = %token,
+                    user_id = %user_id,
+                    cost,
+                    "quota deduction refused: no active ledger row for this credential, or the charge \
+                     exceeds its quota. The request was served and its cost logged, but the balance was NOT \
+                     reduced"
+                );
+                return;
+            }
+            Err(e) => {
+                last_error = Some(e.to_string());
+                if attempt < SETTLE_ATTEMPTS {
+                    tracing::warn!(
+                        token = %token,
+                        cost,
+                        attempt,
+                        error = %e,
+                        "quota deduction failed, retrying"
+                    );
+                    tokio::time::sleep(SETTLE_RETRY_BACKOFF * attempt).await;
+                }
+            }
+        }
+    }
+
+    failure_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    tracing::error!(
+        token = %token,
+        user_id = %user_id,
+        cost,
+        attempts = SETTLE_ATTEMPTS,
+        error = last_error.as_deref().unwrap_or("unknown error"),
+        "quota deduction failed on every attempt. The request was served and its cost logged, but the \
+         balance was NOT reduced — this is unbilled usage"
+    );
+}
+
 /// One-line reason for a response that reached an upstream but was rejected as
 /// unusable, for the failover loop's `last_error` (#662).
 ///
