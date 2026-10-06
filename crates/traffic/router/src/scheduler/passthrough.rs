@@ -31,7 +31,10 @@ impl ChannelScheduler for PassthroughScheduler {
     }
 }
 
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "tests unwrap scheduler scores after constructing deterministic valid fixtures"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
