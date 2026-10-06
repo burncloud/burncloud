@@ -1,68 +1,53 @@
 //! Request-class-scoped retry budget for the failover loop (#680).
 //!
-//! # The defect this exists to close
+//! The old effective policy was five ranked candidates multiplied by one shared
+//! ten-hour HTTP timeout, with no overall deadline. This module makes the policy
+//! explicit, keeps long-running media requests viable, and lets operators tune
+//! the bounds without recompiling the router.
 //!
-//! The failover loop attempts each candidate once, and the candidate list was
-//! capped by a literal `take(5)` in the router while every attempt ran under one
-//! shared HTTP client timeout of `HTTP_REQUEST_TIMEOUT_SECS = 36000` — ten
-//! hours, which is deliberate for long-running media generation. Nothing bounded
-//! the **total**, and nothing compared elapsed time against a deadline
-//! (`elapsed()` was only ever read to record a latency).
+//! Production configuration is read from these environment variables:
 //!
-//! So one client request could occupy a connection for up to `5 × 10 h = 50 h`,
-//! and for that whole time its [`crate::rate_budget::BudgetGuard`] held the
-//! channel's TPM reservation — a hung upstream could pin a channel's budget for
-//! two days.
+//! - `BURNCLOUD_RETRY_INTERACTIVE_MAX_ATTEMPTS`
+//! - `BURNCLOUD_RETRY_INTERACTIVE_ATTEMPT_TIMEOUT_SECS`
+//! - `BURNCLOUD_RETRY_INTERACTIVE_TOTAL_DEADLINE_SECS`
+//! - `BURNCLOUD_RETRY_LONG_TASK_MAX_ATTEMPTS`
+//! - `BURNCLOUD_RETRY_LONG_TASK_ATTEMPT_TIMEOUT_SECS`
+//! - `BURNCLOUD_RETRY_LONG_TASK_TOTAL_DEADLINE_SECS`
+//! - `BURNCLOUD_RETRY_CANDIDATE_LIMIT`
 //!
-//! # Why it is per class, not one number
-//!
-//! The ten-hour timeout is *load-bearing* for video, audio and music generation:
-//! those are legitimately long tasks, and replacing it with an interactive
-//! deadline would kill them — a worse outcome than the defect. So the policy is
-//! chosen per request class:
-//!
-//! | class | attempts | per attempt | total deadline |
-//! | --- | --- | --- | --- |
-//! | [`RequestClass::Interactive`] | 3 | 120 s | 300 s |
-//! | [`RequestClass::LongTask`] | 2 | 10 h (unchanged) | 20 h |
-//!
-//! The long-task deadline is therefore **still bounded** — it exists and is
-//! configurable, which is what the issue asks for — while its per-attempt
-//! timeout is untouched.
-//!
-//! # Reading the budget
-//!
-//! Everything the loop needs is named: `max_attempts`, `attempt_timeout`,
-//! `total_deadline`, and [`RetryBudget::candidate_limit`]. A reader looking for
-//! "retry budget" finds this module instead of inferring a budget from a
-//! `take(5)` in the candidate list.
+//! Defaults remain 3 × 120 s with a 300 s interactive deadline, and 2 × 10 h
+//! with a 20 h long-task deadline.
 
 use std::time::Duration;
 
+const DEFAULT_INTERACTIVE_MAX_ATTEMPTS: usize = 3;
+const DEFAULT_INTERACTIVE_ATTEMPT_TIMEOUT_SECS: u64 = 120;
+const DEFAULT_INTERACTIVE_TOTAL_DEADLINE_SECS: u64 = 300;
+const DEFAULT_LONG_TASK_MAX_ATTEMPTS: usize = 2;
+const DEFAULT_LONG_TASK_ATTEMPT_TIMEOUT_SECS: u64 = 36_000;
+const DEFAULT_LONG_TASK_TOTAL_DEADLINE_SECS: u64 = 72_000;
+pub const DEFAULT_CANDIDATE_LIMIT: usize = 5;
+
+const ENV_INTERACTIVE_MAX_ATTEMPTS: &str = "BURNCLOUD_RETRY_INTERACTIVE_MAX_ATTEMPTS";
+const ENV_INTERACTIVE_ATTEMPT_TIMEOUT_SECS: &str =
+    "BURNCLOUD_RETRY_INTERACTIVE_ATTEMPT_TIMEOUT_SECS";
+const ENV_INTERACTIVE_TOTAL_DEADLINE_SECS: &str =
+    "BURNCLOUD_RETRY_INTERACTIVE_TOTAL_DEADLINE_SECS";
+const ENV_LONG_TASK_MAX_ATTEMPTS: &str = "BURNCLOUD_RETRY_LONG_TASK_MAX_ATTEMPTS";
+const ENV_LONG_TASK_ATTEMPT_TIMEOUT_SECS: &str = "BURNCLOUD_RETRY_LONG_TASK_ATTEMPT_TIMEOUT_SECS";
+const ENV_LONG_TASK_TOTAL_DEADLINE_SECS: &str = "BURNCLOUD_RETRY_LONG_TASK_TOTAL_DEADLINE_SECS";
+const ENV_CANDIDATE_LIMIT: &str = "BURNCLOUD_RETRY_CANDIDATE_LIMIT";
+
 /// Which retry policy a request gets.
-///
-/// The split is the whole point: one global deadline cannot serve both a chat
-/// completion (seconds) and a video generation (hours).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestClass {
-    /// Chat completions, embeddings, rerank — a user is waiting, so both the
-    /// per-attempt timeout and the total are short.
+    /// Chat completions, embeddings, rerank and similar interactive requests.
     Interactive,
-    /// Video / audio / music / speech generation — a long task by nature. The
-    /// per-attempt timeout stays at the ten-hour value the code documents as
-    /// deliberate; only the *total* is newly bounded.
+    /// Video/audio/music/speech generation and other deliberately long tasks.
     LongTask,
 }
 
 impl RequestClass {
-    /// Classify a request from its path.
-    ///
-    /// Matched on path prefixes rather than on the model name because the path
-    /// is what the upstream protocol defines as a long-running operation, and it
-    /// is available before routing.
-    ///
-    /// A `GET /v1/videos/{task_id}` poll is also a long task: it waits on work
-    /// already started, so it must not be cut off by the interactive deadline.
     pub fn for_path(path: &str) -> Self {
         const LONG_TASK_PREFIXES: [&str; 7] = [
             "/v1/video",
@@ -83,7 +68,6 @@ impl RequestClass {
         }
     }
 
-    /// Static label for logs and `router_logs.layer_decision` context.
     pub fn as_label(&self) -> &'static str {
         match self {
             Self::Interactive => "interactive",
@@ -92,86 +76,38 @@ impl RequestClass {
     }
 }
 
-/// One class's policy.
+/// One request class's retry policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
-    /// Hard cap on attempts for one client request.
-    ///
-    /// This is the retry budget proper: how many upstreams may be tried before
-    /// the request fails. It is deliberately **smaller** than the candidate list
-    /// the router produces, so a request has ranked fallbacks in reserve rather
-    /// than spending its whole budget on the worst-ranked channels.
+    /// Maximum number of real upstream HTTP attempts.
     pub max_attempts: usize,
-    /// Timeout applied to each individual upstream attempt.
+    /// Timeout applied to one upstream HTTP attempt.
     pub attempt_timeout: Duration,
-    /// Total time one client request may spend in the failover loop, across all
-    /// attempts. `None` would mean unbounded, which is the state this module
-    /// exists to remove, so no built-in policy uses it.
+    /// Total time allowed for the whole failover loop.
     pub total_deadline: Duration,
 }
 
 impl RetryPolicy {
-    /// The per-attempt timeout is never larger than the total: a single attempt
-    /// that cannot finish inside the deadline would otherwise hold the request
-    /// (and its TPM reservation) past the budget.
-    ///
-    /// The total is *not* divided evenly across attempts, because an attempt
-    /// that succeeds on the first try should be allowed the full remaining
-    /// budget — only the deadline itself bounds it.
     pub fn attempt_timeout_within(&self, remaining: Duration) -> Duration {
         self.attempt_timeout.min(remaining)
     }
 }
 
-/// The retry budget for every request class.
+/// Retry policy for all request classes.
 #[derive(Debug, Clone, Copy)]
 pub struct RetryBudget {
     interactive: RetryPolicy,
     long_task: RetryPolicy,
-    /// How many ranked candidates the router should produce.
-    ///
-    /// Deliberately larger than any class's `max_attempts`: the candidate list is
-    /// the *reserve* of ranked fallbacks, while the attempt cap is what the
-    /// request may spend. Keeping them separate means the router's existing
-    /// "top-5 ranked fallbacks" contract survives (L3 affinity and the scorer
-    /// both assume it) while the number of attempts becomes a real constraint.
     candidate_limit: usize,
 }
 
-/// The number of ranked fallback candidates the router produces per request.
-///
-/// Unchanged from the literal `take(5)` this replaced — now named, so a reader
-/// finds the candidate contract instead of inferring it.
-pub const DEFAULT_CANDIDATE_LIMIT: usize = 5;
-
 impl Default for RetryBudget {
     fn default() -> Self {
-        Self {
-            // A user is waiting on a chat completion. Three attempts inside five
-            // minutes is generous for an interactive path; the previous effective
-            // policy was five attempts inside fifty hours.
-            interactive: RetryPolicy {
-                max_attempts: 3,
-                attempt_timeout: Duration::from_secs(120),
-                total_deadline: Duration::from_secs(300),
-            },
-            // Video/audio/music generation, where a single upstream call may
-            // legitimately run for the ten hours `HTTP_REQUEST_TIMEOUT_SECS`
-            // documents. Two attempts, so the total is bounded at twenty hours
-            // rather than fifty, and the interactive deadline can never reach it.
-            long_task: RetryPolicy {
-                max_attempts: 2,
-                attempt_timeout: Duration::from_secs(36_000),
-                total_deadline: Duration::from_secs(72_000),
-            },
-            candidate_limit: DEFAULT_CANDIDATE_LIMIT,
-        }
+        Self::from_env()
     }
 }
 
 impl RetryBudget {
-    /// Build a budget from explicit policies, keeping the default candidate
-    /// limit. Used by tests and by any caller that wants to configure the bounds.
     pub fn new(interactive: RetryPolicy, long_task: RetryPolicy) -> Self {
         Self {
             interactive,
@@ -180,13 +116,67 @@ impl RetryBudget {
         }
     }
 
-    /// Override how many ranked candidates the router produces.
+    /// Read the production retry policy from environment variables, with safe
+    /// built-in defaults when a value is missing or malformed.
+    pub fn from_env() -> Self {
+        Self::from_lookup(|name| std::env::var(name).ok())
+    }
+
+    fn from_lookup<F>(mut lookup: F) -> Self
+    where
+        F: FnMut(&str) -> Option<String>,
+    {
+        let interactive = RetryPolicy {
+            max_attempts: lookup_usize(
+                &mut lookup,
+                ENV_INTERACTIVE_MAX_ATTEMPTS,
+                DEFAULT_INTERACTIVE_MAX_ATTEMPTS,
+            ),
+            attempt_timeout: Duration::from_secs(lookup_u64(
+                &mut lookup,
+                ENV_INTERACTIVE_ATTEMPT_TIMEOUT_SECS,
+                DEFAULT_INTERACTIVE_ATTEMPT_TIMEOUT_SECS,
+            )),
+            total_deadline: Duration::from_secs(lookup_u64(
+                &mut lookup,
+                ENV_INTERACTIVE_TOTAL_DEADLINE_SECS,
+                DEFAULT_INTERACTIVE_TOTAL_DEADLINE_SECS,
+            )),
+        };
+        let long_task = RetryPolicy {
+            max_attempts: lookup_usize(
+                &mut lookup,
+                ENV_LONG_TASK_MAX_ATTEMPTS,
+                DEFAULT_LONG_TASK_MAX_ATTEMPTS,
+            ),
+            attempt_timeout: Duration::from_secs(lookup_u64(
+                &mut lookup,
+                ENV_LONG_TASK_ATTEMPT_TIMEOUT_SECS,
+                DEFAULT_LONG_TASK_ATTEMPT_TIMEOUT_SECS,
+            )),
+            total_deadline: Duration::from_secs(lookup_u64(
+                &mut lookup,
+                ENV_LONG_TASK_TOTAL_DEADLINE_SECS,
+                DEFAULT_LONG_TASK_TOTAL_DEADLINE_SECS,
+            )),
+        };
+        let candidate_limit = lookup_usize(
+            &mut lookup,
+            ENV_CANDIDATE_LIMIT,
+            DEFAULT_CANDIDATE_LIMIT,
+        );
+        Self {
+            interactive,
+            long_task,
+            candidate_limit,
+        }
+    }
+
     pub fn with_candidate_limit(mut self, candidate_limit: usize) -> Self {
         self.candidate_limit = candidate_limit.max(1);
         self
     }
 
-    /// The policy for a class.
     pub fn policy(&self, class: RequestClass) -> RetryPolicy {
         match class {
             RequestClass::Interactive => self.interactive,
@@ -194,15 +184,10 @@ impl RetryBudget {
         }
     }
 
-    /// The policy for a request path — the entry point the failover loop uses.
     pub fn policy_for_path(&self, path: &str) -> RetryPolicy {
         self.policy(RequestClass::for_path(path))
     }
 
-    /// How many candidates the router should produce.
-    ///
-    /// At least the largest attempt cap, so the budget can always be spent even
-    /// if a caller sets a generous `max_attempts`.
     pub fn candidate_limit(&self) -> usize {
         self.candidate_limit
             .max(self.interactive.max_attempts)
@@ -210,16 +195,33 @@ impl RetryBudget {
     }
 }
 
+fn lookup_usize<F>(lookup: &mut F, name: &str, default: usize) -> usize
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    lookup(name)
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn lookup_u64<F>(lookup: &mut F, name: &str, default: u64) -> u64
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    lookup(name)
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
 /// Why the failover loop stopped trying candidates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BudgetExhaustion {
-    /// The attempt cap was reached (`max_attempts` candidates were tried).
     AttemptsExhausted {
         attempts: usize,
         max_attempts: usize,
     },
-    /// The total deadline passed. `elapsed_ms` is what makes the message useful
-    /// in a report; `over_by_ms` says how far past the deadline the check ran.
     DeadlineExceeded {
         elapsed_ms: u128,
         deadline_ms: u128,
@@ -228,9 +230,6 @@ pub enum BudgetExhaustion {
 }
 
 impl BudgetExhaustion {
-    /// One line for the client-visible `last_error` (#662). Not a log line: a
-    /// budget exhaustion must be distinguishable from an upstream failure in the
-    /// 502 body, because the operator response is completely different.
     pub fn reason(&self) -> String {
         match self {
             Self::AttemptsExhausted {
@@ -249,29 +248,33 @@ impl BudgetExhaustion {
     }
 }
 
-/// Evaluates a request's retry budget as the failover loop consumes it.
+/// Tracks the retry budget for one client request.
 ///
-/// Constructed once per client request, before the loop, from the request path.
+/// `try_consume_attempt` is intentionally called at the top of each candidate
+/// loop by the router, before local Shaper/circuit-breaker checks. It therefore
+/// performs only an admission check. The attempt counter is incremented later by
+/// `per_attempt_timeout`, exactly when the router is preparing the upstream HTTP
+/// request. Local-only skips do not spend an attempt.
 #[derive(Debug, Clone)]
 pub struct RetryBudgetGuard {
     class: RequestClass,
     policy: RetryPolicy,
     attempts: usize,
+    candidate_permitted: bool,
     started: std::time::Instant,
 }
 
 impl RetryBudgetGuard {
-    /// Start tracking a request of the given class.
     pub fn start(class: RequestClass, policy: RetryPolicy) -> Self {
         Self {
             class,
             policy,
             attempts: 0,
+            candidate_permitted: false,
             started: std::time::Instant::now(),
         }
     }
 
-    /// Start tracking a request from its path.
     pub fn for_path(path: &str, budget: &RetryBudget) -> Self {
         let class = RequestClass::for_path(path);
         Self::start(class, budget.policy(class))
@@ -289,25 +292,33 @@ impl RetryBudgetGuard {
         self.attempts
     }
 
-    /// Time left before the deadline; zero once it has passed.
     pub fn remaining(&self) -> Duration {
         self.policy
             .total_deadline
             .saturating_sub(self.started.elapsed())
     }
 
-    /// The timeout to apply to the attempt about to be sent.
-    pub fn per_attempt_timeout(&self) -> Duration {
+    /// Return the timeout for the real upstream request and spend one attempt.
+    /// This is called only after local candidate checks have admitted the
+    /// candidate, so Shaper/CB skips never decrement the retry budget.
+    pub fn per_attempt_timeout(&mut self) -> Duration {
+        if self.candidate_permitted && self.attempts < self.policy.max_attempts {
+            self.attempts += 1;
+        }
+        self.candidate_permitted = false;
         self.policy.attempt_timeout_within(self.remaining())
     }
 
-    /// Consume one attempt slot, or report why the budget is spent.
+    /// Check whether another candidate may be considered.
     ///
-    /// Called immediately before each candidate is tried. Checking the deadline
-    /// first means a request that has no time left does not start an attempt it
-    /// would have to abandon, so the connection and the TPM reservation are
-    /// released at the loop's top rather than hours later.
+    /// This does not increment the attempt counter. A candidate becomes a real
+    /// attempt only when `per_attempt_timeout` is requested immediately before
+    /// the HTTP request is built.
     pub fn try_consume_attempt(&mut self) -> Result<(), BudgetExhaustion> {
+        // If the previous candidate was skipped locally, discard its pending
+        // permission without spending an upstream attempt.
+        self.candidate_permitted = false;
+
         let elapsed = self.started.elapsed();
         if elapsed >= self.policy.total_deadline {
             return Err(BudgetExhaustion::DeadlineExceeded {
@@ -324,7 +335,8 @@ impl RetryBudgetGuard {
                 max_attempts: self.policy.max_attempts,
             });
         }
-        self.attempts += 1;
+
+        self.candidate_permitted = true;
         Ok(())
     }
 }
@@ -336,6 +348,7 @@ impl RetryBudgetGuard {
 )]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn chat_and_embeddings_are_interactive() {
@@ -345,11 +358,7 @@ mod tests {
             "/v1/rerank",
             "/v1/messages",
         ] {
-            assert_eq!(
-                RequestClass::for_path(path),
-                RequestClass::Interactive,
-                "{path} is a request a user is waiting on"
-            );
+            assert_eq!(RequestClass::for_path(path), RequestClass::Interactive);
         }
     }
 
@@ -363,45 +372,87 @@ mod tests {
             "/v1/speech",
             "/v1/images/generations",
         ] {
-            assert_eq!(
-                RequestClass::for_path(path),
-                RequestClass::LongTask,
-                "{path} is a long-running operation and must keep its long timeout"
-            );
+            assert_eq!(RequestClass::for_path(path), RequestClass::LongTask);
         }
     }
 
     #[test]
-    fn the_interactive_deadline_is_seconds_and_the_long_task_one_is_hours() {
-        // The two policies must not be the same number: collapsing them would
-        // either kill video generation or leave chat requests unbounded.
-        let interactive = RetryBudget::default().policy(RequestClass::Interactive);
-        let long_task = RetryBudget::default().policy(RequestClass::LongTask);
+    fn defaults_keep_interactive_short_and_long_tasks_long() {
+        let budget = RetryBudget::from_lookup(|_| None);
+        let interactive = budget.policy(RequestClass::Interactive);
+        let long_task = budget.policy(RequestClass::LongTask);
+        assert_eq!(interactive.max_attempts, 3);
+        assert_eq!(interactive.attempt_timeout, Duration::from_secs(120));
+        assert_eq!(interactive.total_deadline, Duration::from_secs(300));
+        assert_eq!(long_task.max_attempts, 2);
+        assert_eq!(long_task.attempt_timeout, Duration::from_secs(36_000));
+        assert_eq!(long_task.total_deadline, Duration::from_secs(72_000));
+    }
 
-        assert!(
-            interactive.total_deadline <= Duration::from_secs(600),
-            "an interactive request must have a bounded deadline in the minutes, not hours"
-        );
-        assert!(
-            long_task.total_deadline >= Duration::from_secs(36_000),
-            "a long task must still be allowed the ten-hour per-attempt window"
-        );
-        assert!(
-            long_task.total_deadline > interactive.total_deadline * 100,
-            "the classes must be orders of magnitude apart, not merely different"
+    #[test]
+    fn environment_lookup_overrides_the_production_defaults() {
+        let values = HashMap::from([
+            (ENV_INTERACTIVE_MAX_ATTEMPTS, "7"),
+            (ENV_INTERACTIVE_ATTEMPT_TIMEOUT_SECS, "11"),
+            (ENV_INTERACTIVE_TOTAL_DEADLINE_SECS, "44"),
+            (ENV_LONG_TASK_MAX_ATTEMPTS, "4"),
+            (ENV_LONG_TASK_ATTEMPT_TIMEOUT_SECS, "40000"),
+            (ENV_LONG_TASK_TOTAL_DEADLINE_SECS, "90000"),
+            (ENV_CANDIDATE_LIMIT, "12"),
+        ]);
+        let budget = RetryBudget::from_lookup(|name| values.get(name).map(|v| (*v).to_string()));
+        let interactive = budget.policy(RequestClass::Interactive);
+        let long_task = budget.policy(RequestClass::LongTask);
+        assert_eq!(interactive.max_attempts, 7);
+        assert_eq!(interactive.attempt_timeout, Duration::from_secs(11));
+        assert_eq!(interactive.total_deadline, Duration::from_secs(44));
+        assert_eq!(long_task.max_attempts, 4);
+        assert_eq!(long_task.attempt_timeout, Duration::from_secs(40_000));
+        assert_eq!(long_task.total_deadline, Duration::from_secs(90_000));
+        assert_eq!(budget.candidate_limit(), 12);
+    }
+
+    #[test]
+    fn malformed_or_zero_environment_values_fall_back_safely() {
+        let values = HashMap::from([
+            (ENV_INTERACTIVE_MAX_ATTEMPTS, "0"),
+            (ENV_INTERACTIVE_ATTEMPT_TIMEOUT_SECS, "not-a-number"),
+        ]);
+        let budget = RetryBudget::from_lookup(|name| values.get(name).map(|v| (*v).to_string()));
+        let interactive = budget.policy(RequestClass::Interactive);
+        assert_eq!(interactive.max_attempts, DEFAULT_INTERACTIVE_MAX_ATTEMPTS);
+        assert_eq!(
+            interactive.attempt_timeout,
+            Duration::from_secs(DEFAULT_INTERACTIVE_ATTEMPT_TIMEOUT_SECS)
         );
     }
 
     #[test]
-    fn the_long_task_attempt_timeout_is_unchanged_from_the_shared_client() {
-        // The ten-hour value is deliberate; this pins that the long-task class
-        // still gets it. If this fails, video generation was shortened.
-        let policy = RetryBudget::default().policy(RequestClass::LongTask);
-        assert_eq!(
-            policy.attempt_timeout,
-            Duration::from_secs(36_000),
-            "the long-task per-attempt timeout must remain the value HTTP_REQUEST_TIMEOUT_SECS documents"
+    fn locally_skipped_candidates_do_not_spend_attempt_budget() {
+        let mut guard = RetryBudgetGuard::start(
+            RequestClass::Interactive,
+            RetryPolicy {
+                max_attempts: 2,
+                attempt_timeout: Duration::from_secs(1),
+                total_deadline: Duration::from_secs(3600),
+            },
         );
+
+        // Candidate 1: Shaper/CB skip — top-of-loop check only.
+        assert!(guard.try_consume_attempt().is_ok());
+        assert_eq!(guard.attempts(), 0);
+        // Candidate 2: another local skip.
+        assert!(guard.try_consume_attempt().is_ok());
+        assert_eq!(guard.attempts(), 0);
+        // Candidate 3 actually reaches HTTP.
+        assert!(guard.try_consume_attempt().is_ok());
+        let _ = guard.per_attempt_timeout();
+        assert_eq!(guard.attempts(), 1);
+        // One real attempt remains.
+        assert!(guard.try_consume_attempt().is_ok());
+        let _ = guard.per_attempt_timeout();
+        assert_eq!(guard.attempts(), 2);
+        assert!(guard.try_consume_attempt().is_err());
     }
 
     #[test]
@@ -414,12 +465,11 @@ mod tests {
                 total_deadline: Duration::from_secs(3600),
             },
         );
-
-        assert!(guard.try_consume_attempt().is_ok());
-        assert!(guard.try_consume_attempt().is_ok());
-        let exhausted = guard
-            .try_consume_attempt()
-            .expect_err("a third attempt must be refused");
+        for _ in 0..2 {
+            assert!(guard.try_consume_attempt().is_ok());
+            let _ = guard.per_attempt_timeout();
+        }
+        let exhausted = guard.try_consume_attempt().expect_err("third is refused");
         assert_eq!(
             exhausted,
             BudgetExhaustion::AttemptsExhausted {
@@ -427,17 +477,11 @@ mod tests {
                 max_attempts: 2
             }
         );
-        assert!(
-            exhausted.reason().contains("2 of 2 attempts"),
-            "the reason must name the cap: {}",
-            exhausted.reason()
-        );
+        assert!(exhausted.reason().contains("2 of 2 attempts"));
     }
 
     #[test]
     fn an_expired_deadline_stops_the_request_even_with_attempts_left() {
-        // The property the defect was about: attempts remaining is not enough if
-        // the total time is gone.
         let mut guard = RetryBudgetGuard::start(
             RequestClass::Interactive,
             RetryPolicy {
@@ -446,31 +490,16 @@ mod tests {
                 total_deadline: Duration::ZERO,
             },
         );
-
-        let exhausted = guard
-            .try_consume_attempt()
-            .expect_err("a zero deadline must refuse the first attempt");
-        match exhausted {
-            BudgetExhaustion::DeadlineExceeded {
-                deadline_ms,
-                over_by_ms,
-                ..
-            } => {
-                assert_eq!(deadline_ms, 0);
-                assert!(over_by_ms > 0 || deadline_ms == 0);
-            }
-            other => panic!("expected a deadline exhaustion, got {other:?}"),
-        }
-        assert_eq!(
-            guard.attempts(),
-            0,
-            "a refused attempt must not be counted as used"
-        );
+        assert!(matches!(
+            guard.try_consume_attempt(),
+            Err(BudgetExhaustion::DeadlineExceeded { .. })
+        ));
+        assert_eq!(guard.attempts(), 0);
     }
 
     #[test]
     fn the_per_attempt_timeout_shrinks_to_fit_the_remaining_budget() {
-        let guard = RetryBudgetGuard::start(
+        let mut guard = RetryBudgetGuard::start(
             RequestClass::Interactive,
             RetryPolicy {
                 max_attempts: 3,
@@ -478,80 +507,36 @@ mod tests {
                 total_deadline: Duration::from_secs(10),
             },
         );
-
+        guard.try_consume_attempt().expect("candidate is permitted");
         let timeout = guard.per_attempt_timeout();
-        assert!(
-            timeout <= Duration::from_secs(10),
-            "one attempt must not be allowed to outlive the total deadline, got {timeout:?}"
-        );
+        assert!(timeout <= Duration::from_secs(10));
+        assert_eq!(guard.attempts(), 1);
     }
 
     #[test]
     fn the_candidate_limit_covers_every_attempt_cap() {
-        // The router's candidate list is the reserve of ranked fallbacks; it must
-        // never be shorter than what the budget is allowed to spend, or a request
-        // would run out of candidates before it ran out of budget.
-        let budget = RetryBudget::default();
+        let budget = RetryBudget::from_lookup(|_| None);
         for class in [RequestClass::Interactive, RequestClass::LongTask] {
-            assert!(
-                budget.candidate_limit() >= budget.policy(class).max_attempts,
-                "{} allows {} attempts but only {} candidates exist",
-                class.as_label(),
-                budget.policy(class).max_attempts,
-                budget.candidate_limit()
-            );
+            assert!(budget.candidate_limit() >= budget.policy(class).max_attempts);
         }
-
-        // A caller that asks for a very generous attempt cap still gets enough
-        // candidates, rather than a silent truncation.
         let generous = RetryBudget::new(
             RetryPolicy {
                 max_attempts: 9,
                 attempt_timeout: Duration::from_secs(1),
                 total_deadline: Duration::from_secs(10),
             },
-            RetryBudget::default().policy(RequestClass::LongTask),
+            budget.policy(RequestClass::LongTask),
         );
         assert_eq!(generous.candidate_limit(), 9);
     }
 
     #[test]
-    fn the_default_candidate_limit_keeps_the_ranked_fallback_contract() {
-        // The literal `take(5)` was a routing detail, not a budget — but it is a
-        // contract other layers assume, so it is preserved by name.
-        assert_eq!(RetryBudget::default().candidate_limit(), 5);
-        assert_eq!(DEFAULT_CANDIDATE_LIMIT, 5);
-    }
-
-    #[test]
-    fn the_old_worst_case_is_no_longer_reachable() {
-        // The measured baseline in `retry_budget.rs` was 5 × 36_000 s = 50 h with
-        // no overall deadline. Both classes are now bounded well inside that.
+    fn the_old_worst_case_is_no_longer_reachable_by_default() {
         const OLD_WORST_CASE_SECS: u64 = 36_000 * 5;
-        let budget = RetryBudget::default();
+        let budget = RetryBudget::from_lookup(|_| None);
         for class in [RequestClass::Interactive, RequestClass::LongTask] {
             let policy = budget.policy(class);
-            let worst_case = policy.attempt_timeout.as_secs() * policy.max_attempts as u64;
-            assert!(
-                policy.total_deadline.as_secs() <= OLD_WORST_CASE_SECS,
-                "{} must be bounded at or below the old worst case",
-                class.as_label()
-            );
-            println!(
-                "{}: {} attempts x {} s = {} s worst case, deadline {} s",
-                class.as_label(),
-                policy.max_attempts,
-                policy.attempt_timeout.as_secs(),
-                worst_case,
-                policy.total_deadline.as_secs()
-            );
+            assert!(policy.total_deadline.as_secs() < OLD_WORST_CASE_SECS);
         }
-
-        let interactive = budget.policy(RequestClass::Interactive);
-        let worst = interactive.attempt_timeout.as_secs() * interactive.max_attempts as u64;
-        assert_eq!(
-            worst, 360,
-            "the interactive worst case is six minutes, not fifty hours"
-        );
     }
 }
