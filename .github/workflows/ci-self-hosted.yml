@@ -1,0 +1,56 @@
+name: CI / Self-hosted Code Test
+
+# Pull requests are allowed to consume self-hosted runner capacity only when the
+# PR author is a member or owner of the burncloud organization. External pull
+# requests still create a workflow run, but this job is skipped before any
+# self-hosted runner is selected.
+#
+# Keep the test policy in one place: this workflow delegates the repository
+# quality gate to `cargo run -- code test --all` instead of restating fmt/test/
+# clippy/deny commands in YAML.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-code-test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  code-test:
+    name: Code Test
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(fromJSON('["MEMBER","OWNER"]'), github.event.pull_request.author_association) }}
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify required local CI tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --version
+          cargo deny --version
+
+      - name: Run BurnCloud code gate
+        run: cargo run -- code test --all
