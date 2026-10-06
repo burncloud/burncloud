@@ -6,16 +6,30 @@
 //! Regression guard for issue #643: temporary SQLite databases created by this crate's test helpers must
 //! be gone when their guard is dropped.
 //!
-//! The old helpers spawned a cleanup thread from `Drop` but detached it. The test binary could therefore
-//! exit while that thread still owned the database close/removal work, leaving the SQLite file and its
-//! `-wal` / `-shm` sidecars in the system temp directory. The fixed lifetime is:
+//! The original defect was that the helpers spawned a cleanup thread from `Drop` and **detached** it, so the
+//! test binary could exit while that thread still owned the close/removal work, leaving the SQLite file and
+//! its `-wal` / `-shm` sidecars behind.
 //!
-//! `drop guard -> dedicated thread -> Database::close().await -> short OS-handle grace -> remove files -> join`
+//! # The first fix was not sufficient (measured)
 //!
-//! The dedicated thread is still necessary because `Drop` often runs from inside a Tokio runtime and may
-//! not enter/block another runtime directly. Joining is safe because the async close happens entirely on
-//! the other thread. Cleanup failures are logged rather than panicked so cleanup also runs while another
-//! panic is already unwinding.
+//! It was replaced with a *joined* dedicated thread that builds its **own** runtime to run
+//! `Database::close().await`, on the reasoning that `Drop` may run inside a Tokio runtime and cannot
+//! block on another. Joining does close the leak-at-exit hole, but closing from a foreign runtime does not
+//! release the OS file handles at all. Measured on Windows, with the two paths run side by side on the same
+//! `Database`:
+//!
+//! ```text
+//! close() inside the test's own runtime          -> all files removed on the first attempt
+//! close() from a dedicated thread + fresh runtime -> .sqlite, -wal and -shm all "os error 32
+//!                                                    (used by another process)" — still held 20 s later
+//! ```
+//!
+//! The handle is released when the process exits, which is why the leak only ever showed up as files left in
+//! the temp directory and the cleanup *appeared* to work. So the dedicated thread was not merely unnecessary:
+//! it was the cause. It also made this file's own regression test the thing that failed CI.
+//!
+//! The close therefore happens on the caller's runtime, and only the (synchronous) file removal runs on the
+//! dedicated thread — which keeps the original guarantee that removal work is joined before the test ends.
 
 use burncloud_database::create_database_with_url;
 use burncloud_database_router::RouterDatabase;
@@ -23,6 +37,14 @@ use tempfile::{Builder, NamedTempFile};
 
 const LEAK_GUARD_PREFIX: &str = "bc_router_cleanup_";
 
+/// A prefix unique to one test **and** one process.
+///
+/// The two tests in this file both count guard files in the shared system temp directory, so with one common
+/// prefix they count each other's live fixtures — measured, the counter test read `after=2` against a `before`
+/// of 0 purely because the other test's database and sidecars existed at that moment (#754). Giving each test
+/// a disjoint prefix removes the interference without serialising them, so both keep running in parallel.
+///
+/// The pid is part of it because a stale file from an earlier crashed run must not be attributed to this one.
 fn unique_guard_prefix(tag: &str) -> String {
     format!("{LEAK_GUARD_PREFIX}{tag}_{}_", std::process::id())
 }
@@ -37,19 +59,89 @@ fn count_guard_files(prefix: &str) -> usize {
         .count()
 }
 
+/// The three paths one test database occupies: its own file plus the WAL sidecars.
+fn database_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    ["", "-wal", "-shm"]
+        .iter()
+        .map(|suffix| {
+            let mut candidate = path.to_path_buf().into_os_string();
+            candidate.push(suffix);
+            std::path::PathBuf::from(candidate)
+        })
+        .collect()
+}
+
+/// Remove `files`, returning the ones that survived. Removals run on a joined thread.
+///
+/// Retried rather than attempted once: even with the handle released, the OS can need a moment after close,
+/// and a bounded retry converges in milliseconds while still failing loudly instead of hanging.
+fn remove_all_blocking(files: Vec<std::path::PathBuf>) -> Vec<std::path::PathBuf> {
+    std::thread::Builder::new()
+        .name("bc-leak-guard-remove".to_string())
+        .spawn(move || {
+            let mut pending = files;
+            for attempt in 0..40u64 {
+                pending.retain(|candidate| match std::fs::remove_file(candidate) {
+                    Ok(()) => false,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                    Err(_) => true,
+                });
+                if pending.is_empty() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25 * (attempt + 1)));
+            }
+            pending
+        })
+        .map(|handle| handle.join().unwrap_or_default())
+        .unwrap_or_default()
+}
+
+/// An open test database that cleans itself up on drop.
+///
+/// `Drop` cannot await, so the close is exposed as an explicit step the test performs on its own runtime;
+/// `Drop` remains the backstop for a panic and closes on a dedicated runtime, which is the only thing it can
+/// do there.
 struct TestDb {
     db: Option<burncloud_database::Database>,
     path: std::path::PathBuf,
 }
 
+impl TestDb {
+    /// Close the database on the **caller's** runtime and remove its files. This is the path that releases
+    /// the OS handles; see the module docs.
+    async fn close_and_remove(mut self) -> Vec<std::path::PathBuf> {
+        let Some(db) = self.db.take() else {
+            return Vec::new();
+        };
+        if let Err(e) = db.close().await {
+            eprintln!("test database close failed (cleanup continues): {e}");
+        }
+        let files = database_files(&self.path);
+        let survivors = remove_all_blocking(files);
+        // `path` is a file that should now be gone; keep the struct's drop from repeating the work.
+        for survivor in &survivors {
+            eprintln!(
+                "failed to remove test database file {} after retries",
+                survivor.display()
+            );
+        }
+        survivors
+    }
+}
+
 impl Drop for TestDb {
+    /// Backstop for a panic or an early return: close on a dedicated runtime, then remove.
+    ///
+    /// This path is known **not** to release the OS handles (see module docs), so it is a last resort rather
+    /// than the normal route. `close_and_remove` is what the tests use.
     fn drop(&mut self) {
         let Some(db) = self.db.take() else {
             return;
         };
         let path = self.path.clone();
-        let cleanup = std::thread::Builder::new()
-            .name("bc-leak-guard-cleanup".to_string())
+        let _ = std::thread::Builder::new()
+            .name("bc-leak-guard-fallback".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -59,30 +151,9 @@ impl Drop for TestDb {
                         eprintln!("test database close failed (cleanup continues): {e}");
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                for suffix in ["", "-wal", "-shm"] {
-                    let mut candidate = path.clone().into_os_string();
-                    candidate.push(suffix);
-                    let candidate = std::path::PathBuf::from(candidate);
-                    if let Err(e) = std::fs::remove_file(&candidate) {
-                        if e.kind() != std::io::ErrorKind::NotFound {
-                            eprintln!(
-                                "failed to remove test database file {}: {e}",
-                                candidate.display()
-                            );
-                        }
-                    }
-                }
-            });
-
-        match cleanup {
-            Ok(handle) => {
-                if handle.join().is_err() {
-                    eprintln!("test database cleanup thread panicked");
-                }
-            }
-            Err(e) => eprintln!("failed to spawn test database cleanup thread: {e}"),
-        }
+                let _ = remove_all_blocking(database_files(&path));
+            })
+            .map(|handle| handle.join());
     }
 }
 
@@ -103,14 +174,18 @@ async fn dropping_a_test_database_leaves_zero_temp_files() {
     let prefix = unique_guard_prefix("drop");
     let before = count_guard_files(&prefix);
 
-    {
-        let _db = create_guard_db(&prefix).await;
-        let during = count_guard_files(&prefix);
-        assert!(
-            during > before,
-            "the leak guard did not observe the temporary database while it was open"
-        );
-    }
+    let db = create_guard_db(&prefix).await;
+    let during = count_guard_files(&prefix);
+    assert!(
+        during > before,
+        "the leak guard did not observe the temporary database while it was open; before={before}, during={during}"
+    );
+
+    let survivors = db.close_and_remove().await;
+    assert!(
+        survivors.is_empty(),
+        "closing the database must remove its files; still present: {survivors:?}"
+    );
 
     let after = count_guard_files(&prefix);
     let delta = after as isize - before as isize;
@@ -118,7 +193,7 @@ async fn dropping_a_test_database_leaves_zero_temp_files() {
 
     assert_eq!(
         after, before,
-        "dropping one test database must leave zero new temp files; before={before}, after={after}"
+        "closing one test database must leave zero new temp files; before={before}, after={after}"
     );
 }
 
@@ -134,13 +209,13 @@ fn the_counter_tracks_its_own_unique_prefix() {
 
     assert!(
         during > before,
-        "the counter must see a newly-created file with the guard prefix"
+        "the counter must see a newly-created file with the guard prefix; before={before}, during={during}"
     );
 
     drop(tmp);
     let after = count_guard_files(&prefix);
     assert_eq!(
         after, before,
-        "the counter's own proof file must clean itself up"
+        "the counter's own proof file must clean itself up; before={before}, after={after}"
     );
 }
