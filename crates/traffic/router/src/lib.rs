@@ -2279,7 +2279,13 @@ async fn proxy_logic(
 
                         // Skip channel if path format does not match channel type
                         if is_openai_path
-                            && !matches!(channel_type, ChannelType::OpenAI | ChannelType::Zai)
+                            && !matches!(
+                                channel_type,
+                                ChannelType::OpenAI
+                                    | ChannelType::DeepSeek
+                                    | ChannelType::Ali
+                                    | ChannelType::Zai
+                            )
                         {
                             tracing::debug!(
                                 "Skipping {:?} channel for OpenAI format path: {}",
@@ -2299,6 +2305,10 @@ async fn proxy_logic(
 
                         let (auth_type, protocol) = match channel_type {
                             ChannelType::OpenAI => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
+                            ChannelType::DeepSeek => {
+                                (AuthType::DeepSeek, PROTOCOL_OPENAI.to_string())
+                            }
+                            ChannelType::Ali => (AuthType::Qwen, PROTOCOL_OPENAI.to_string()),
                             ChannelType::Anthropic => {
                                 (AuthType::Claude, PROTOCOL_CLAUDE.to_string())
                             }
