@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 use anyhow::{Context, Result};
 
 use crate::plan::{self, Metadata};
-use crate::report;
+use crate::{policy, report};
 
 pub(crate) struct Options {
     pub(crate) all: bool,
@@ -204,7 +204,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
         files.iter().cloned().collect(),
         plan.affected.iter().cloned().collect(),
     )?;
-    let result = run_checks(&root, &commands, &mut summary);
+    let result = policy::enforce(&root, &files).and_then(|()| run_checks(&root, &commands, &mut summary));
     report::finish(
         &root,
         &mut summary,
