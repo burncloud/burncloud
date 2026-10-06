@@ -62,6 +62,12 @@ pub struct DatabaseConnection {
     pool: AnyPool,
 }
 
+/// How long SQLite waits for a competing writer before reporting `database is locked`, in milliseconds.
+///
+/// Five seconds is long enough for any write this codebase performs (all are single-row or short transactions)
+/// and short enough that a genuinely wedged writer still surfaces as an error rather than a hang.
+const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
+
 impl DatabaseConnection {
     pub async fn new(database_url: &str) -> Result<Self> {
         // Handle SQLite specific options via URL string modification if needed.
@@ -71,8 +77,35 @@ impl DatabaseConnection {
         let options =
             AnyConnectOptions::from_str(database_url).map_err(DatabaseError::Connection)?;
 
+        // SQLite: wait for a competing writer instead of losing the write.
+        //
+        // SQLite's default busy handler gives up immediately, so any concurrent writer gets
+        // `SqliteError { code: 5, message: "database is locked" }` (SQLITE_BUSY). WAL mode — enabled during
+        // initialization — lets one writer coexist with readers, but two writers still contend and the loser
+        // was losing its write outright.
+        //
+        // Measured consequence: a served request logged `router_logs.cost = 200_000` while the quota
+        // deduction that should have followed it failed with exactly that error, leaving the balance
+        // unreduced (#660). The deduction is fire-and-forget, so a bounded wait costs no request latency.
+        //
+        // Set as a `PRAGMA` on every connection via `after_connect`, because this is the only mechanism
+        // available: `AnyConnectOptions` is opaque (no SQLite setters), and the opposite approach — a
+        // `busy_timeout` query parameter in the URL — is rejected by this sqlx version with
+        // "unknown query parameter `busy_timeout` while parsing connection URL". The `PRAGMA` is
+        // connection-scoped, so it must not be run once on a single pooled connection.
+        let is_sqlite = database_url.starts_with("sqlite");
         let pool = AnyPoolOptions::new()
             .max_connections(10)
+            .after_connect(move |conn, _meta| {
+                Box::pin(async move {
+                    if is_sqlite {
+                        sqlx::query(&format!("PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS};"))
+                            .execute(conn)
+                            .await?;
+                    }
+                    Ok(())
+                })
+            })
             .connect_with(options)
             .await?;
 
