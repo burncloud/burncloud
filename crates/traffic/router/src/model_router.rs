@@ -71,6 +71,14 @@ pub struct RouteInputs<'a> {
     pub scheduler_kind: Option<&'a SchedulerKind>,
     pub request: &'a SchedulingRequest,
     pub affinity_cache: Option<&'a AffinityCache>,
+    /// How many candidates to return at most.
+    ///
+    /// Comes from the retry budget's attempt cap (#680) so the candidate list
+    /// and the number of attempts the failover loop will actually make cannot
+    /// drift apart. Previously this was a literal `take(5)` here while the
+    /// budget was nowhere: a reader looking for "retry budget" found a routing
+    /// detail instead.
+    pub candidate_limit: usize,
 }
 
 pub struct ModelRouter {
@@ -173,7 +181,7 @@ impl ModelRouter {
     ///
     /// ```text
     ///   get_candidates → availability filter → OrderType filter → Affinity (HRW + cache)
-    ///     → Scorer (CombinedScheduler) → top-5 failover list
+    ///     → Scorer (CombinedScheduler) → failover list capped by the retry budget
     /// ```
     ///
     /// The OrderType filter runs **before** Affinity so a Budget client never
@@ -198,6 +206,7 @@ impl ModelRouter {
             scheduler_kind,
             request,
             affinity_cache,
+            candidate_limit,
         } = inputs;
 
         let candidates =
@@ -323,8 +332,14 @@ impl ModelRouter {
             }
         }
 
-        // Limit to top-5 candidates
-        let channels: Vec<Channel> = ranked.into_iter().take(5).map(|(ch, _)| ch).collect();
+        // Limit to the caller's retry budget (#680). The failover loop makes one
+        // attempt per candidate, so producing more than the budget can try would
+        // be wasted work and would misrepresent the budget.
+        let channels: Vec<Channel> = ranked
+            .into_iter()
+            .take(candidate_limit)
+            .map(|(ch, _)| ch)
+            .collect();
 
         // Determine which layer made the final decision for rank-0.
         // Decision D8: do NOT split AffinityHit into CacheHit / HrwPick.

@@ -18,6 +18,7 @@ pub mod price_sync;
 pub mod rate_budget;
 pub mod response_parser;
 pub mod response_quality;
+pub mod retry;
 mod scheduler;
 mod state;
 pub mod stream_parser;
@@ -832,6 +833,11 @@ pub async fn create_router_app_with_route_miss(
     // configured lazily via channel_providers reload (rpm_cap / tpm_cap /
     // reservation columns added in migration 0011).
     let rate_budget = Arc::new(rate_budget::InMemoryBudget::new());
+    // Retry budget for the failover loop (#680): how many attempts, how long
+    // each may take, and how long the whole request may spend retrying — per
+    // request class, so an interactive chat completion is bounded in seconds
+    // while a video generation keeps its ten-hour attempt window.
+    let retry_budget = retry::RetryBudget::default();
     // Eager-load every channel's cap from DB at startup. DB failures here
     // are logged and ignored — router must boot even if shaper config is
     // unavailable. Channels with rpm_cap = NULL stay unconfigured (fail-open).
@@ -962,6 +968,7 @@ pub async fn create_router_app_with_route_miss(
         scheduler_policies,
         affinity_cache,
         rate_budget,
+        retry_budget,
         fail_open_count,
         billing_strict,
         billing_preflight_rejected_count,
@@ -2098,6 +2105,26 @@ async fn proxy_logic(
     // the L1 Classifier (issue #150) resolves a real color from the user.
     let mut shaper_color: TrafficColor = TrafficColor::Yellow;
 
+    // Retry budget for this request (#680). One guard per client request, from
+    // the path, so the interactive and long-task classes get different attempts,
+    // per-attempt timeouts and total deadlines. Before this, the effective policy
+    // was "up to 5 candidates x one shared 10-hour client timeout", with nothing
+    // bounding the total.
+    let request_class = retry::RequestClass::for_path(path);
+    let mut retry_guard =
+        retry::RetryBudgetGuard::start(request_class, state.retry_budget.policy(request_class));
+    // Set when the budget — not an upstream — ends the loop, so the 502 can say
+    // which of the two happened (#662).
+    let mut budget_exhaustion: Option<retry::BudgetExhaustion> = None;
+    tracing::debug!(
+        class = request_class.as_label(),
+        max_attempts = retry_guard.policy().max_attempts,
+        attempt_timeout_secs = retry_guard.policy().attempt_timeout.as_secs(),
+        deadline_secs = retry_guard.policy().total_deadline.as_secs(),
+        path,
+        "retry budget for this request"
+    );
+
     // Extract session_id from conversation_id in request body (P0 affinity wiring).
     // Falls back to user_id so affinity still works when no conversation_id is set.
     let session_id: String = serde_json::from_slice::<serde_json::Value>(&body_bytes)
@@ -2171,6 +2198,9 @@ async fn proxy_logic(
                     scheduler_kind: scheduler_kind.as_ref(),
                     request: &sched_request,
                     affinity_cache: Some(state.affinity_cache.as_ref()),
+                    // The router must not produce more candidates than the retry
+                    // budget may spend (#680).
+                    candidate_limit: state.retry_budget.candidate_limit(),
                 })
                 .await
             {
@@ -2427,6 +2457,24 @@ async fn proxy_logic(
     }
 
     for (attempt, upstream) in candidates.iter().enumerate() {
+        // Retry budget check (#680) — before any work for this candidate, so a
+        // request with no time left releases the connection and the TPM
+        // reservation immediately instead of starting an attempt it would have
+        // to abandon. This is also the only place an overall deadline is
+        // compared against elapsed time; previously `elapsed()` was read only to
+        // record latencies.
+        if let Err(exhausted) = retry_guard.try_consume_attempt() {
+            tracing::warn!(
+                class = request_class.as_label(),
+                attempt,
+                reason = %exhausted.reason(),
+                "retry budget exhausted, stopping failover"
+            );
+            last_error = exhausted.reason();
+            budget_exhaustion = Some(exhausted);
+            break;
+        }
+
         // L5 Failover: override routing decision when attempt > 0.
         if attempt > 0 {
             sched_routing_decision = Some(model_router::RoutingDecision::Failover {
@@ -2459,6 +2507,11 @@ async fn proxy_logic(
                     .try_consume(channel_id_i32, shaper_ctx.color, shaper_ctx.est_tpm);
             if outcome == ConsumeOutcome::Rejected {
                 shaper_ctx.rejected_count += 1;
+                // Record the reason before skipping (#662). Its sibling path — the
+                // circuit-breaker skip below — always set `last_error`; leaving this
+                // one empty is what let "All upstreams failed. Last error: " end up
+                // with nothing after the colon.
+                last_error = format!("L2 Shaper rejected: {}", upstream.name);
                 tracing::debug!(
                     channel_id = channel_id_i32,
                     color = ?shaper_ctx.color,
@@ -2470,7 +2523,7 @@ async fn proxy_logic(
                     &mut request_log_data,
                     attempt as u32,
                     upstream,
-                    Some("L2 Shaper rejected"),
+                    Some(&last_error),
                     0,
                 );
                 continue;
@@ -2618,6 +2671,13 @@ async fn proxy_logic(
             // Apply header_override
             let req_builder =
                 apply_header_override(req_builder, upstream.header_override.as_deref());
+
+            // Per-attempt timeout from the retry budget (#680). The shared client
+            // carries the long-task value; this narrows it for interactive
+            // requests and never lets one attempt outlive the total deadline. The
+            // `budget_guard` is dropped on the way out of this iteration, so the
+            // TPM reservation is released within the deadline.
+            let req_builder = req_builder.timeout(retry_guard.per_attempt_timeout());
 
             let req_builder = req_builder.json(&passthrough_body);
 
@@ -2994,11 +3054,26 @@ async fn proxy_logic(
                             );
 
                             if is_failure {
+                                // Record the reason before skipping (#662): this path
+                                // reached an upstream and rejected its response, which is
+                                // exactly the case a bare "Last error: " hides.
+                                last_error = format!(
+                                    "{}: {}",
+                                    upstream.name,
+                                    describe_quality_failure(&quality, status)
+                                );
                                 tracing::warn!(
                                     channel_id = %upstream.id,
                                     model = ?model_name,
                                     quality = ?quality,
                                     "Response quality check failed for passthrough"
+                                );
+                                record_failover_attempt(
+                                    &mut request_log_data,
+                                    attempt as u32,
+                                    upstream,
+                                    Some(&last_error),
+                                    0,
                                 );
                                 continue; // Try next candidate
                             }
@@ -3249,6 +3324,10 @@ async fn proxy_logic(
 
         // Apply header_override
         let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
+
+        // Per-attempt timeout from the retry budget (#680), never larger than the
+        // total deadline remaining.
+        let req_builder = req_builder.timeout(retry_guard.per_attempt_timeout());
 
         let req_builder = adaptor
             .build_request(
@@ -4085,11 +4164,24 @@ async fn proxy_logic(
                     );
 
                     if is_failure {
+                        // Record the reason before skipping (#662).
+                        last_error = format!(
+                            "{}: {}",
+                            upstream.name,
+                            describe_quality_failure(&quality, status)
+                        );
                         tracing::warn!(
                             channel_id = %upstream.id,
                             model = ?model_name,
                             quality = ?quality,
                             "Response quality check failed for non-streaming main path"
+                        );
+                        record_failover_attempt(
+                            &mut request_log_data,
+                            attempt as u32,
+                            upstream,
+                            Some(&last_error),
+                            0,
                         );
                         continue; // Try next candidate
                     }
@@ -4175,6 +4267,13 @@ async fn proxy_logic(
 
                     // 429: try next ranked candidate (scheduler provides alternatives)
                     if status == StatusCode::TOO_MANY_REQUESTS {
+                        // Unreachable today — the block below always returns the upstream's own status — but the
+                        // reason is recorded here too so that making the return conditional later cannot
+                        // reintroduce an empty `last_error` (#662).
+                        last_error = format!(
+                            "{}: upstream returned 429 rate limited: {}",
+                            upstream.name, error_message
+                        );
                         tracing::warn!(
                             "Upstream {} rate limited, trying next candidate",
                             upstream.name
@@ -4280,6 +4379,23 @@ async fn proxy_logic(
                 continue;
             }
         }
+    }
+
+    // After-loop branch: the retry budget ended the loop rather than an upstream
+    // failure (#680). The 502 below carries `last_error`, which is the budget
+    // reason, so a client can tell "we ran out of budget" from "the upstream
+    // failed" — the two need different operator responses. Logged at warn
+    // because a request whose budget ran out is an availability signal, not a
+    // routine upstream error.
+    if let Some(ref exhausted) = budget_exhaustion {
+        tracing::warn!(
+            class = request_class.as_label(),
+            attempts = retry_guard.attempts(),
+            elapsed_ms = retry_guard.policy().total_deadline.as_millis() as u64
+                - retry_guard.remaining().as_millis() as u64,
+            reason = %exhausted.reason(),
+            "failover stopped by the retry budget"
+        );
     }
 
     // After-loop branch: every candidate was rejected by the L2 Shaper
@@ -4509,6 +4625,57 @@ pub mod smart_circuit_breaker;
 /// - Upstream errors
 ///
 /// Returns the response quality and whether the response should be treated as a failure.
+/// One-line reason for a response that reached an upstream but was rejected as
+/// unusable, for the failover loop's `last_error` (#662).
+///
+/// The failover loop used to `continue` past a quality rejection without
+/// recording anything, so when every candidate failed that way the client got
+/// `All upstreams failed. Last error: ` with nothing after the colon — no
+/// category, no channel, no clue. The response *status* was 2xx in that case,
+/// which is precisely why the reason has to be carried here: the status alone
+/// cannot distinguish it from a success.
+fn describe_quality_failure(
+    quality: &crate::response_quality::ResponseQuality,
+    status: axum::http::StatusCode,
+) -> String {
+    use crate::response_quality::ResponseQuality;
+    match quality {
+        ResponseQuality::Healthy { .. } => {
+            format!(
+                "upstream returned HTTP {} but failed the quality check",
+                status.as_u16()
+            )
+        }
+        ResponseQuality::Partial {
+            received_tokens,
+            expected_tokens,
+            interruption_reason,
+        } => format!(
+            "upstream stream was cut short after {received_tokens} tokens (expected {}): {}",
+            expected_tokens.map_or_else(|| "unknown".to_string(), |e| e.to_string()),
+            interruption_reason
+                .as_deref()
+                .unwrap_or("no reason reported")
+        ),
+        ResponseQuality::Empty {
+            http_status,
+            content_type,
+            ..
+        } => format!(
+            "upstream returned an empty response (HTTP {http_status}, content-type {})",
+            content_type.as_deref().unwrap_or("absent")
+        ),
+        ResponseQuality::Malformed {
+            error, http_status, ..
+        } => format!("upstream returned a malformed response (HTTP {http_status}): {error}"),
+        ResponseQuality::UpstreamError {
+            code,
+            message,
+            error_type,
+        } => format!("upstream error HTTP {code} ({error_type:?}): {message}"),
+    }
+}
+
 fn check_response_quality(
     state: &AppState,
     upstream: &Upstream,

@@ -11,6 +11,7 @@ use crate::limiter::RateLimiter;
 use crate::model_router::ModelRouter;
 use crate::price_sync::SyncResult;
 use crate::rate_budget::InMemoryBudget;
+use crate::retry::RetryBudget;
 use crate::scheduler::SchedulerPolicyMap;
 use crate::EmptyResponseCounter;
 use axum::{body::Body, response::Response};
@@ -65,6 +66,11 @@ pub struct AppState {
     /// L2 Shaper budget backend. MVP: in-memory, single-instance.
     /// Phase 4 swaps in a Redis-backed impl behind the same `BudgetBackend` trait.
     pub rate_budget: Arc<InMemoryBudget>,
+    /// Retry budget for the failover loop (#680): attempts, per-attempt timeout
+    /// and total deadline, per request class. Replaces the previous emergent
+    /// policy of "5 candidates x a shared 10-hour client timeout, unbounded in
+    /// total".
+    pub retry_budget: RetryBudget,
     /// L2 Shaper fail-open counter — incremented every time the failover loop
     /// admits a request through an *unconfigured* channel (rpm_cap = NULL).
     /// Exposed via `/router/status` so admins can spot silently-permissive

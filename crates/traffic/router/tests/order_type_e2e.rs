@@ -427,6 +427,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         scheduler_kind: None,
         request: &sched_req,
         affinity_cache: Some(&affinity_cache),
+        candidate_limit: 5,
     };
     let (channels1, decision1) = model_router.route_with_scheduler(inputs1).await?;
     assert!(!channels1.is_empty(), "first call should return candidates");
@@ -449,6 +450,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         scheduler_kind: None,
         request: &sched_req,
         affinity_cache: Some(&affinity_cache),
+        candidate_limit: 5,
     };
     let (channels2, decision2) = model_router.route_with_scheduler(inputs2).await?;
     assert!(
