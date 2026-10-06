@@ -16,7 +16,7 @@ mod common;
 use burncloud_commerce_contracts::price_u64::dollars_to_nano;
 use burncloud_database::sqlx;
 use burncloud_database_billing::{BillingPriceModel, PriceInput};
-use common::{setup_db, start_test_server};
+use common::{insert_test_channel, setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
@@ -134,33 +134,27 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
-    let id = "claude-adaptor-test";
+    let channel_id = 1401;
     let name = "claude-3-opus";
-    let base_url = format!("http://localhost:{}", mock_port);
-    let match_path = "/anything";
-    let auth_type = "Claude";
+    let base_url = format!("http://localhost:{mock_port}");
     let api_key = "sk-ant-mock-key";
 
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            protocol = excluded.protocol
-        "#,
+    insert_test_channel(
+        &pool,
+        channel_id,
+        name,
+        &base_url,
+        api_key,
+        name,
+        "default",
     )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .bind("claude") // Force protocol to claude
-    .execute(&pool)
     .await?;
+    // The shared fixture defaults to OpenAI. This test exercises the Claude
+    // adaptor, so select the production Anthropic channel type explicitly.
+    sqlx::query("UPDATE channel_providers SET type = 14 WHERE id = ?")
+        .bind(channel_id)
+        .execute(&pool)
+        .await?;
 
     // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(
