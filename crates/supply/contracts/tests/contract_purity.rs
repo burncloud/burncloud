@@ -2,8 +2,8 @@
 //! Contract-purity guard for the Supply contract (S1-C), same rule as the Commerce contract.
 //!
 //! A Supply domain contract must not grow a database framework, a web server, an HTTP client, a UI
-//! toolkit or a logging implementation. If one is genuinely needed it belongs in the adapter crate
-//! (`burncloud-database-channel`) rather than here.
+//! toolkit or a logging implementation. If one is genuinely needed it belongs in the owning
+//! implementation crate (`burncloud-supply-channel`) rather than here.
 
 use std::fs;
 use std::path::PathBuf;

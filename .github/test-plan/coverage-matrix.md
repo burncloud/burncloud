@@ -1,6 +1,6 @@
 # CI coverage matrix
 
-Scope: the 34 packages in this workspace (`cargo metadata --no-deps`), plus the root package's CLI.
+Scope: the 33 packages in this workspace (`cargo metadata --no-deps`), plus the root package's CLI.
 This matrix is **documentation**; the executable grouping lives in the workflow YAML, so there is no
 second copy of the commands to keep in sync.
 
@@ -21,7 +21,7 @@ It answers one question per crate: *if I change this, does the gate run its test
 ## Current state
 
 `cargo check --workspace --all-targets --no-default-features` exits 0 on `main`, and the workspace run
-executes **147 test executables**. The three compile failures this file used to record under
+executes the workspace test executables. The three compile failures this file used to record under
 "Deliberately not in CI" no longer reproduce; they are listed at the bottom with that correction.
 
 Every row below is a workspace member unless the row says otherwise, so every row is **tested**.
@@ -34,7 +34,7 @@ Every row below is a workspace member unless the row says otherwise, so every ro
 | `crates/interfaces/common` | `burncloud-common` | 3 integration | **tested** — workspace run |
 | `crates/commerce/database-billing` | `burncloud-database-billing` | 1 unit + 1 integration | **tested** — workspace run |
 | `crates/commerce/service-billing` | `burncloud-service-billing` | 8 unit | **tested** — workspace run |
-| `crates/supply/database-channel` | `burncloud-database-channel` | 1 integration | **tested** — workspace run |
+| `crates/supply/channel` | `burncloud-supply-channel` | 5 integration | **tested** — workspace run |
 | `crates/identity/database-user` | `burncloud-database-user` | 1 integration | **tested** — workspace run |
 | `crates/traffic/router` | `burncloud-router` | 28 unit + 20 integration | **tested** — workspace run |
 | `crates/interfaces/server` | `burncloud-server` | 6 unit + 7 integration | **tested** — workspace run |
@@ -45,7 +45,6 @@ Every row below is a workspace member unless the row says otherwise, so every ro
 | `crates/identity/service-user` | `burncloud-service-user` | 1 unit | **tested** — workspace run, with a discovery floor |
 | `crates/identity/service-token` | `burncloud-service-token` | none | **tested** — workspace run, with a discovery floor |
 | `crates/supply/database-model` | `burncloud-database-model` | none | **tested** — workspace run |
-| `crates/supply/service-channel` | `burncloud-service-channel` | none | **tested** — workspace run |
 | `crates/supply/service-models` | `burncloud-service-models` | 1 unit + 1 integration | **tested** — workspace run |
 | `crates/traffic/database-router` | `burncloud-database-router` | 2 integration | **tested** — workspace run |
 | `crates/traffic/service-router-log` | `burncloud-service-router-log` | none | **tested** — workspace run |
@@ -63,7 +62,7 @@ Every row below is a workspace member unless the row says otherwise, so every ro
 | `crates/interfaces/service` | `burncloud-service` | none | **tested** — workspace run |
 | `crates/interfaces/tests` | `burncloud-tests` | 10 integration | **tested** — workspace run |
 
-Totals: **32 tested**, **2 compile only**, **0 with no job**.
+Totals: **31 tested**, **2 compile only**, **0 with no job**.
 
 The test column is a static count of files containing `#[test]` and of `tests/*.rs`. It says nothing
 about whether those assertions are meaningful — the planning document's warning about
@@ -94,7 +93,7 @@ suites run, and the suites are empty or near-empty:
 ### P0 crates with no tests at all
 
 `burncloud-service-token` (none in-crate; its tests live in `tests/`), `burncloud-service-router-log`,
-`burncloud-service-channel`, `burncloud-service-setting`.
+`burncloud-service-setting`.
 
 `crates/supply/database-model` deserves a separate line: its `ModelDatabase` methods return
 `Ok(())` / `Ok(None)` / `Ok(vec![])`, so it is a placeholder, not an implementation. Writing tests

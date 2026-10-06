@@ -149,15 +149,16 @@ wrappers = [
 ]
 reason = "Billing DB access must go through burncloud-service-billing"
 
-# burncloud-database-channel — channel_ domain (providers, abilities, protocol configs)
+# burncloud-supply-channel — Supply-owned Channel implementation.
 [[bans.deny]]
-crate = "burncloud-database-channel"
+crate = "burncloud-supply-channel"
 wrappers = [
-    "burncloud-service-channel",
     "burncloud",
     "burncloud-router",
+    "burncloud-server",
+    "burncloud-service-inference",
 ]
-reason = "Channel DB access must go through burncloud-service-channel"
+reason = "Supply Channel is the implementation Owner; new consumers require architecture review and should prefer burncloud-supply-contracts when only domain types are needed"
 
 # burncloud-database-sys — sys_ domain (settings, installations, downloads)
 [[bans.deny]]

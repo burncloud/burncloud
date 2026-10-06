@@ -22,7 +22,7 @@ log = { workspace = true }
 burncloud-database = { workspace = true }
 burncloud-database-router = { workspace = true }
 burncloud-database-billing = { workspace = true }
-burncloud-database-channel = { workspace = true }
+burncloud-supply-channel = { workspace = true }
 burncloud-commerce-contracts = { workspace = true }
 burncloud-supply-contracts = { workspace = true }
 burncloud-traffic-contracts = { workspace = true }
