@@ -34,7 +34,7 @@ Every row below is a workspace member unless the row says otherwise, so every ro
 | `crates/interfaces/common` | `burncloud-common` | 3 integration | **tested** — workspace run |
 | `crates/commerce/database-billing` | `burncloud-database-billing` | 1 unit + 1 integration | **tested** — workspace run |
 | `crates/commerce/service-billing` | `burncloud-service-billing` | 8 unit | **tested** — workspace run |
-| `crates/supply/channel` | `burncloud-supply-channel` | 5 integration | **tested** — workspace run |
+| `crates/supply/channel` | `burncloud-supply-channel` | 2 unit + 5 integration | **tested** — workspace run |
 | `crates/identity/database-user` | `burncloud-database-user` | 1 integration | **tested** — workspace run |
 | `crates/traffic/router` | `burncloud-router` | 28 unit + 20 integration | **tested** — workspace run |
 | `crates/interfaces/server` | `burncloud-server` | 6 unit + 7 integration | **tested** — workspace run |
