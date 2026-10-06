@@ -132,6 +132,12 @@ async fn grant_quota(
 /// The model this file routes. Named once so a failure message and the seeded price cannot drift apart.
 const MODEL: &str = "no-double-bill-model";
 
+/// One `router_logs` row as this file reads it back: `(cost, prompt, completion, status, cost_status)`.
+///
+/// Named rather than inlined as a five-element tuple, both because the diagnostic prints it and because the
+/// column order is the only thing tying it to the SELECT.
+type SettledLogRow = (i64, i32, i32, i64, Option<String>);
+
 /// Seed a price through the same model the production code reads.
 ///
 /// A raw `INSERT INTO billing_prices` is **not** what the router reads: with one written by hand the router
@@ -190,14 +196,27 @@ async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::R
     Ok(())
 }
 
+/// Derive a distinct router/upstream port pair from a tag.
+///
+/// `tag.len() % 20` mapped five different tags onto the same port, so two tests running in parallel raced for
+/// one socket: whichever bound second failed to bind and its server never came up, which surfaced as `502` or
+/// `401` in an unrelated test. Hashing the whole tag makes collisions require equal tags, and equal tags are
+/// the same fixture by definition.
+fn ports_for(tag: &str) -> (u16, u16) {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tag.hash(&mut hasher);
+    let slot = (hasher.finish() % 40) as u16;
+    (21_000 + slot * 10, 25_000 + slot * 10)
+}
+
 /// Bring up a router with a database and one channel serving one model.
 async fn routed_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::Database)> {
     let (db, pool, db_url) = setup_db().await?;
-    let router_port = 21_000 + (tag.len() as u16 % 20) * 100;
+    let (router_port, upstream_port) = ports_for(tag);
 
     seed_price(&db, MODEL).await?;
 
-    let upstream_port = 21_500 + (tag.len() as u16 % 20) * 100;
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{upstream_port}")).await?;
     tokio::spawn(common::start_mock_upstream(listener));
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -222,18 +241,24 @@ async fn routed_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::D
 /// Bring up a router with a database, without needing the upstream or channel fixtures.
 async fn router_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::Database)> {
     let (db, _pool, db_url) = setup_db().await?;
-    let router_port = 21_000 + (tag.len() as u16 % 20) * 100;
+    let (router_port, _) = ports_for(tag);
     common::start_test_server(router_port, &db_url).await;
     Ok((router_port, db))
 }
 
-/// Read the settled amount, retrying until it stops changing.
+/// Read the settled amount, polling until it moves and then until it stops changing.
 ///
-/// `deduct_quota` runs in a spawned task, so the first read after a response can legitimately be 0. Two
-/// consecutive equal readings are taken as settled; the bound keeps a failure a failure rather than a hang.
+/// `deduct_quota` runs in a **spawned** task (`lib.rs:1990-1998`), so the row is not necessarily updated by the
+/// time the response reaches the client — the old version of this helper treated two consecutive equal readings
+/// as "settled", which returned 0 immediately and reported "settled nothing" for a request that settled a moment
+/// later. It now waits for the value to move first, and only then requires it to be stable.
+///
+/// The bound keeps a genuine failure a failure rather than a hang.
 async fn settled_amount(pool: &burncloud_database::sqlx::AnyPool, token: &str) -> i64 {
     let mut last = i64::MIN;
-    for _ in 0..40 {
+    let mut stable_reads = 0;
+    // 200 x 50 ms = 10 s, which is far longer than the spawn needs and short enough to fail a run.
+    for _ in 0..200 {
         let current: i64 = burncloud_database::sqlx::query_scalar(
             "SELECT used_quota FROM router_tokens WHERE token = ?",
         )
@@ -244,12 +269,19 @@ async fn settled_amount(pool: &burncloud_database::sqlx::AnyPool, token: &str) -
         .flatten()
         .unwrap_or(0);
         if current == last {
-            return current;
+            stable_reads += 1;
+            // Only trust "unchanged" once it has been observed unchanged from a non-zero reading: a request
+            // that never settled must not be able to satisfy the stability check.
+            if stable_reads >= 3 && current != 0 {
+                return current;
+            }
+        } else {
+            stable_reads = 0;
+            last = current;
         }
-        last = current;
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    last
+    last.max(0)
 }
 
 #[tokio::test]
@@ -348,16 +380,176 @@ async fn a_request_with_an_unknown_credential_settles_nothing() -> anyhow::Resul
     Ok(())
 }
 
-/// Diagnostic probe for the routing fixture blocker (#660). Not an assertion about behaviour yet: it prints
-/// what the routing path sees and what the router answers, so the failing condition is named rather than
-/// inferred from a 404.
+/// The drain path the fixture reaches: the router serves the request and **logs the cost**, but the spawned
+/// settlement does not debit the ledger.
 ///
-/// **Ignored, not deleted.** It fails today, on purpose: the fixture does not produce a served request. It is
-/// kept so the blocker is reproducible with one command rather than a paragraph --
-/// `cargo test -p burncloud-router --test settlement_once -- --ignored --nocapture` prints the tables, the
-/// candidate count at each pipeline stage, and the router's answer. Remove the `ignore` when #660 is fixed;
-/// the test then asserts the served request and becomes the end-to-end half of this file.
-#[ignore = "blocked on #660: the routing fixture does not produce a served request"]
+/// **Ignored, not deleted**, because it is a finding about production code rather than about the fixture, and
+/// fixing it is a separate change (#660 named the fixture; this is what the repaired fixture then exposed).
+///
+/// Measured, three observations from one run:
+///
+/// ```text
+/// response                       200 OK, the upstream's own completion
+/// router_logs row                cost = 200_000, prompt 100, completion 100, status 200, cost_status "ok"
+/// router_tokens.used_quota       0      (and user_api_keys.used_quota 0)
+/// RouterDatabase::deduct_quota   called directly with the same token: Ok(true), balance becomes 200_000
+/// ```
+///
+/// So the ledger and the credential are both reachable and the deduction works; the spawned call at
+/// `lib.rs:1990-1998` is what does not happen. That is a silent under-bill: the cost is recorded as charged and
+/// the balance is never reduced. The production call discards its error (`let _ = ...deduct_quota(...)`), so a
+/// failure there is invisible by construction.
+///
+/// Kept as an executable record with the diagnostics printed, so the next attempt starts from the measurement
+/// rather than from the 502 that used to hide it.
+#[ignore = "the served-request settlement does not debit the ledger; a production defect found via #660"]
+#[tokio::test]
+async fn a_served_request_settles_exactly_once() -> anyhow::Result<()> {
+    let (router_port, db) = routed_fixture("settled").await?;
+    let conn = db.get_connection()?;
+    let pool = conn.pool().clone();
+
+    let token = "sk-settled-once";
+    insert_router_token(&db, token, "settled-user", "default", Some("value"), None).await?;
+    grant_quota(&db, token, "settled-user").await?;
+
+    let before = settled_amount(&pool, token).await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!(
+            "http://127.0.0.1:{router_port}/v1/chat/completions"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "model": "no-double-bill-model",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    println!("settled-e2e status: {status}");
+    println!("settled-e2e body: {}", &body[..body.len().min(300)]);
+
+    assert!(
+        status.is_success(),
+        "the request must be served end to end; the fixture produced {status}: {}",
+        &body[..body.len().min(300)]
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .unwrap_or_else(|e| panic!("the body must be the upstream's JSON: {e}: {body}"));
+    assert_eq!(
+        parsed["choices"][0]["message"]["content"], "mock answer",
+        "the client must receive the upstream's completion, so this is not a locally-generated success"
+    );
+
+    let after = settled_amount(&pool, token).await;
+    let settled = after - before;
+    println!("settled-e2e used_quota before={before} after={after} delta={settled}");
+
+    let logs_seen: Vec<SettledLogRow> = burncloud_database::sqlx::query_as(
+        "SELECT cost, prompt_tokens, completion_tokens, status_code, cost_status FROM router_logs \
+         WHERE model = 'no-double-bill-model'",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+    println!(
+        "settled-e2e router_logs(cost, prompt, completion, status, cost_status) = {logs_seen:?}"
+    );
+
+    assert!(
+        settled > 0,
+        "a served request must settle a non-zero amount; before={before} after={after}. Asserting only that the \
+         amount 'does not change' would let a request that never settled pass, which is how this hid"
+    );
+
+    let after_settle = settled_amount(&pool, token).await;
+    assert_eq!(
+        after_settle, after,
+        "the amount must not move after the request has finished; a second settlement is a double bill"
+    );
+
+    let logs: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT COUNT(*) FROM router_logs WHERE user_id = ? AND model = 'no-double-bill-model'",
+    )
+    .bind("settled-user")
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(0);
+    assert_eq!(
+        logs, 1,
+        "exactly one router_logs row must exist for the request, found {logs}"
+    );
+
+    Ok(())
+}
+
+/// The other side of the `cost > 0` guard: a model that has no price settles nothing, and does not fail the
+/// request either. Without this, "settled" and "settles everything" are indistinguishable.
+#[tokio::test]
+async fn a_served_request_for_an_unpriced_model_settles_nothing() -> anyhow::Result<()> {
+    let (db, pool, db_url) = setup_db().await?;
+    // Distinct from every `routed_fixture` port, so this test does not race the others for a socket.
+    let (router_port, upstream_port) = ports_for("unpriced-model-fixture");
+
+    // No `seed_price` call: the model is deliberately absent from `billing_prices`.
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{upstream_port}")).await?;
+    tokio::spawn(common::start_mock_upstream(listener));
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    insert_test_channel(
+        &pool,
+        1,
+        "unpriced-channel",
+        &format!("http://127.0.0.1:{upstream_port}"),
+        "sk-upstream",
+        "unpriced-model",
+        "default",
+    )
+    .await?;
+
+    common::start_test_server(router_port, &db_url).await;
+
+    let token = "sk-unpriced";
+    insert_router_token(&db, token, "unpriced-user", "default", Some("value"), None).await?;
+    grant_quota(&db, token, "unpriced-user").await?;
+
+    let before = settled_amount(&pool, token).await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!(
+            "http://127.0.0.1:{router_port}/v1/chat/completions"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&serde_json::json!({
+            "model": "unpriced-model",
+            "messages": [{ "role": "user", "content": "hello" }]
+        }))
+        .send()
+        .await?;
+    println!("unpriced status: {}", response.status());
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let after = settled_amount(&pool, token).await;
+    println!("unpriced used_quota before={before} after={after}");
+    assert_eq!(
+        after, before,
+        "an unpriced model must settle nothing rather than settling a guess"
+    );
+
+    Ok(())
+}
+
+/// What the routing path sees, kept as a diagnostic. It asserts only that the fixture produces a served
+/// request, so a future failure names the stage (the `PROBE` lines print the candidate counts) instead of
+/// surfacing as a 404 three assertions later.
+///
+/// Runs as a normal test since #660 was fixed: `cargo test -p burncloud-router --test settlement_once
+/// -- --nocapture` prints the tables, the candidate count at each pipeline stage, and the router's answer.
 #[tokio::test]
 async fn probe_what_the_routing_path_sees() -> anyhow::Result<()> {
     let (router_port, db) = routed_fixture("probe").await?;
@@ -390,9 +582,13 @@ async fn probe_what_the_routing_path_sees() -> anyhow::Result<()> {
     println!("PROBE settled: {settled}");
     assert!(
         status.is_success(),
-        "the routing fixture still does not produce a served request; the PROBE lines above name which \
-         condition is unmet"
+        "the routing fixture must produce a served request; the PROBE lines above name which condition is \
+         unmet"
     );
+    // The settlement assertion is deliberately **not** here: the served request currently logs its cost but
+    // does not debit the ledger, which is a production defect recorded by
+    // `a_served_request_settles_exactly_once` above rather than a fixture problem. This probe stays a probe so
+    // the fixture blocker and the settlement defect remain distinguishable.
 
     Ok(())
 }

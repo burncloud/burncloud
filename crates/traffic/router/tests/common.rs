@@ -436,6 +436,43 @@ pub(crate) async fn start_mock_upstream(listener: TcpListener) {
             }
         }
 
+        // For a chat-completion path, answer with a **real** OpenAI completion rather than the echo.
+        //
+        // The echo below is what several tests inspect, so it stays the default. But the router runs every
+        // successful response through `check_response_quality`, which rejects a body carrying no choices and no
+        // usage — so a chat request answered by the echo never reached settlement and every end-to-end billing
+        // assertion was blocked on it (#660). The echo is still available in the `echo` field of this response,
+        // so a caller that needs to inspect the forwarded request does not lose it.
+        if uri.path().contains("/chat/completions") {
+            let echo = serde_json::json!({
+                "method": method.to_string(),
+                "url": uri.to_string(),
+                "headers": header_map,
+                "data": body,
+                "json": serde_json::from_str::<serde_json::Value>(&body).ok()
+            })
+            .to_string();
+            return serde_json::json!({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "no-double-bill-model",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "mock answer"},
+                    "finish_reason": "stop"
+                }],
+                // Non-zero usage so a settled amount is distinguishable from "never settled".
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 100,
+                    "total_tokens": 200
+                },
+                "echo": echo
+            })
+            .to_string();
+        }
+
         serde_json::json!({
             "method": method.to_string(),
             "url": uri.to_string(),

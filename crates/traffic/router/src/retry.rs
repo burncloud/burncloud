@@ -330,7 +330,10 @@ impl RetryBudgetGuard {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "Test-only module: the assertions are the test."
+)]
 mod tests {
     use super::*;
 
