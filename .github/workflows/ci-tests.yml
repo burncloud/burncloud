@@ -71,12 +71,9 @@ jobs:
           # directory or an empty filter would report as a pass. Update the number when tests are
           # added; see the "Known-failing checks" table in `.github/README.md`.
           MIN_EXECUTED_TESTS: "300"
-          # The same named skips `ci-quality.yml` applies, with the reasons recorded there: six
-          # `burncloud-router` HTTP integration tests that deterministically receive the router's 404
-          # "No matching channel found", and one `service-user` test whose own cleanup races the
-          # Windows file handle. Kept in step deliberately: a run from this file must be able to reach
-          # the same verdict as the gate.
-          SKIP_TESTS: "test_claude_adaptor test_deepseek_proxy test_qwen_proxy test_round_robin_balancer test_failover test_vertex_full_flow test_login_user_success"
+          # The executable skip list is repository data, shared with `burncloud-code` and
+          # `ci-quality.yml`. Every non-comment line must be test_name|issue_number|reason.
+          KNOWN_TEST_BASELINE: ".github/test-plan/known-test-baseline.txt"
           DEFAULT_FEATURES: ${{ inputs.default-features }}
         run: |
           set -o pipefail
@@ -87,6 +84,7 @@ jobs:
             echo "Running with default features: this needs GTK and will fail on a runner without it."
           fi
 
+          SKIP_TESTS=$(awk -F'|' '/^[[:space:]]*[^#[:space:]]/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1 }' "$KNOWN_TEST_BASELINE" | xargs)
           skips=""
           for name in $SKIP_TESTS; do
             skips="$skips --skip $name"
