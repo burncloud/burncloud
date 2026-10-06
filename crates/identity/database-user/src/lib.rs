@@ -168,6 +168,20 @@ async fn seed_default_roles(db: &Database) -> Result<()> {
     Ok(())
 }
 
+fn orphan_user_role(
+    username: &str,
+    password_hash: Option<&str>,
+    first_real: &mut bool,
+) -> &'static str {
+    let is_seed = username == "demo-user" || password_hash == Some("no-login");
+    if is_seed || !*first_real {
+        return "user";
+    }
+
+    *first_real = false;
+    "admin"
+}
+
 async fn assign_roles_to_orphan_users(db: &Database) -> Result<()> {
     let conn = db.get_connection()?;
     let orphan_sql = if db.kind() == "postgres" {
@@ -189,13 +203,7 @@ async fn assign_roles_to_orphan_users(db: &Database) -> Result<()> {
         let user_id: String = row.get(0);
         let username: String = row.get(1);
         let password_hash: Option<String> = row.get(2);
-        let is_seed = username == "demo-user" || password_hash.as_deref() == Some("no-login");
-        let role = if !is_seed && first_real {
-            first_real = false;
-            "admin"
-        } else {
-            "user"
-        };
+        let role = orphan_user_role(&username, password_hash.as_deref(), &mut first_real);
         if let Err(error) = UserDatabase::assign_role(db, &user_id, role).await {
             tracing::warn!(role, user_id, %error, "failed to assign role to orphan user");
         }
