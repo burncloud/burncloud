@@ -216,17 +216,46 @@ impl UserService {
         password: &str,
         email: Option<String>,
     ) -> Result<String> {
-        // Check if user already exists
+        Self::ensure_username_available(db, username).await?;
+
+        let user = Self::build_new_user(username, password, email)?;
+
+        // First-user-is-admin: check BEFORE creating the user so that
+        // count_users() == 0 means this is truly the first real user.
+        // Uses count_users (excludes demo-user seed) instead of
+        // has_admin_user so the check is based on user count, not on
+        // whether a stale admin from a prior run still exists.
+        let default_role = if Self::is_first_real_user(db).await {
+            "admin"
+        } else {
+            "user"
+        };
+
+        UserDatabase::create_user(db, &user).await?;
+
+        Self::assign_default_role(db, &user.id, default_role).await;
+
+        Ok(user.id)
+    }
+
+    /// Reject registration when the username is already taken.
+    async fn ensure_username_available(db: &Database, username: &str) -> Result<()> {
         if let Ok(Some(_)) = UserDatabase::get_user_by_username(db, username).await {
             return Err(UserServiceError::UserAlreadyExists);
         }
+        Ok(())
+    }
 
-        // Hash the password
+    /// Hash the plain-text password and assemble the account record to insert.
+    fn build_new_user(
+        username: &str,
+        password: &str,
+        email: Option<String>,
+    ) -> Result<UserAccount> {
         let password_hash =
             hash(password, DEFAULT_COST).map_err(|e| UserServiceError::HashError(e.to_string()))?;
 
-        // Create user
-        let user = UserAccount {
+        Ok(UserAccount {
             id: Uuid::new_v4().to_string(),
             username: username.to_string(),
             email,
@@ -236,14 +265,13 @@ impl UserService {
             balance_usd: SIGNUP_BONUS_NANO,
             balance_cny: 0,
             preferred_currency: Some("USD".to_string()),
-        };
+        })
+    }
 
-        // First-user-is-admin: check BEFORE creating the user so that
-        // count_users() == 0 means this is truly the first real user.
-        // Uses count_users (excludes demo-user seed) instead of
-        // has_admin_user so the check is based on user count, not on
-        // whether a stale admin from a prior run still exists.
-        let is_first_admin = match UserDatabase::count_users(db).await {
+    /// Whether no real user exists yet, in which case the next registrant is
+    /// promoted to admin.
+    async fn is_first_real_user(db: &Database) -> bool {
+        match UserDatabase::count_users(db).await {
             Ok(count) => {
                 tracing::info!("First-user-is-admin check: user count = {count}");
                 count == 0
@@ -252,21 +280,19 @@ impl UserService {
                 tracing::warn!("First-user-is-admin check failed: {}", e);
                 false
             }
-        };
-        let default_role = if is_first_admin { "admin" } else { "user" };
+        }
+    }
 
-        UserDatabase::create_user(db, &user).await?;
-
-        if let Err(e) = UserDatabase::assign_role(db, &user.id, default_role).await {
+    /// Bind the default role; a failure is logged but never fails registration.
+    async fn assign_default_role(db: &Database, user_id: &str, role: &str) {
+        if let Err(e) = UserDatabase::assign_role(db, user_id, role).await {
             tracing::warn!(
                 "Warning: Failed to assign {} role to user {}: {}",
-                default_role,
-                user.id,
+                role,
+                user_id,
                 e
             );
         }
-
-        Ok(user.id)
     }
 
     /// Login user and return authentication token
@@ -486,7 +512,11 @@ impl UserService {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic_in_result_fn,
+    reason = "test code asserts on fixture data, so a panic on failure is the intended behaviour; clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
+)]
 mod tests {
     use super::*;
     use burncloud_database::create_database_with_url;
@@ -516,7 +546,7 @@ mod tests {
                     .unwrap_or_default()
                     .as_nanos()
             ));
-            let _ = std::fs::remove_file(&path);
+            std::fs::remove_file(&path).ok();
             let normalized = path.to_string_lossy().replace('\\', "/");
             // Three slashes: `sqlite:///C:/...` is an absolute path on Windows.
             let url = format!("sqlite:///{}?mode=rwc", normalized);
@@ -589,7 +619,7 @@ mod tests {
 
         let user_id = service
             .register_user(
-                &db,
+                db,
                 &username,
                 "password123",
                 Some("test@example.com".to_string()),
@@ -599,7 +629,7 @@ mod tests {
         assert!(!user_id.is_empty());
 
         // Verify user exists
-        let user = UserDatabase::get_user_by_username(&db, &username).await?;
+        let user = UserDatabase::get_user_by_username(db, &username).await?;
         assert!(user.is_some());
         assert_eq!(
             user.unwrap_or_else(|| panic!("user should exist for {username}"))
@@ -622,12 +652,12 @@ mod tests {
 
         // First registration should succeed
         service
-            .register_user(&db, &username, "password123", None)
+            .register_user(db, &username, "password123", None)
             .await?;
 
         // Second registration should fail
         let result = service
-            .register_user(&db, &username, "password123", None)
+            .register_user(db, &username, "password123", None)
             .await;
 
         let Err(e) = result else {
@@ -650,12 +680,10 @@ mod tests {
         let password = "password123";
 
         // Register user
-        service
-            .register_user(&db, &username, password, None)
-            .await?;
+        service.register_user(db, &username, password, None).await?;
 
         // Login should succeed
-        let token = service.login_user(&db, &username, password).await?;
+        let token = service.login_user(db, &username, password).await?;
 
         assert!(!token.token.is_empty());
         assert_eq!(token.username, username);
@@ -676,11 +704,11 @@ mod tests {
 
         // Register user
         service
-            .register_user(&db, &username, "password123", None)
+            .register_user(db, &username, "password123", None)
             .await?;
 
         // Login with wrong password should fail
-        let result = service.login_user(&db, &username, "wrongpassword").await;
+        let result = service.login_user(db, &username, "wrongpassword").await;
 
         let Err(e) = result else {
             panic!("wrong password login should fail");
@@ -700,7 +728,7 @@ mod tests {
         let service = test_service();
 
         // Login non-existent user should fail
-        let result = service.login_user(&db, "nonexistent", "password").await;
+        let result = service.login_user(db, "nonexistent", "password").await;
 
         let Err(e) = result else {
             panic!("nonexistent user login should fail");

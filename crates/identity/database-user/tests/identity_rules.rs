@@ -33,7 +33,7 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
             .unwrap()
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     let db = create_database_with_url(&url)
@@ -49,11 +49,11 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
 async fn cleanup(db: Database, path: &std::path::Path) {
     db.close().await.ok();
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    let _ = std::fs::remove_file(path);
+    std::fs::remove_file(path).ok();
     for suffix in ["-wal", "-shm"] {
         let mut candidate = path.as_os_str().to_os_string();
         candidate.push(suffix);
-        let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+        std::fs::remove_file(std::path::PathBuf::from(candidate)).ok();
     }
 }
 
@@ -285,7 +285,7 @@ async fn the_admin_policy_ignores_the_seed_accounts() {
         "with a real admin present the policy must stop promoting, or every registrant becomes an admin"
     );
     assert!(
-        !(!UserDatabase::has_admin_user(&db).await.expect("queryable")),
+        UserDatabase::has_admin_user(&db).await.expect("queryable"),
         "the promotion branch is now closed"
     );
 
@@ -630,7 +630,7 @@ async fn a_new_key_gets_the_documented_defaults() {
         finite.key
     );
     assert_eq!(finite.key.len(), 51, "`sk-` plus 48 characters");
-    assert_eq!(finite.id > 0, true, "the row has an id");
+    assert!(finite.id > 0, "the row has an id");
 
     // Unlimited: the quota field is forced to the sentinel.
     let unlimited = UserApiKeyModel::create(
@@ -670,6 +670,10 @@ async fn a_new_key_gets_the_documented_defaults() {
 }
 
 #[tokio::test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scenario walks every partial-update combination in order; splitting it would hide which combination regressed"
+)]
 async fn updating_one_field_leaves_the_others_alone() {
     // **The dynamic `UPDATE`.** `update` builds its `SET` clause from whichever fields are `Some`, numbers the
     // placeholders as it goes, and binds the parameters **in a fixed order that skips the absent ones**. Every

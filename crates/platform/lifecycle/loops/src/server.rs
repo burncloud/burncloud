@@ -63,8 +63,9 @@ impl E2eServer {
 impl Drop for E2eServer {
     fn drop(&mut self) {
         eprintln!("Stopping loop E2E server (pid {})...", self.child.id());
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // Process teardown is best effort; the OS reclaims the child either way.
+        self.child.kill().ok();
+        self.child.wait().ok();
         std::env::remove_var("JOBS_LOOP_E2E_URL");
     }
 }

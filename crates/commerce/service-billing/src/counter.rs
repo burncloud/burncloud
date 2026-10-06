@@ -143,7 +143,11 @@ impl UnifiedTokenCounter {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "unit-test module: unwrap/expect failures are the intended failure signal"
+)]
 mod tests {
     use super::*;
 

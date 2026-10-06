@@ -50,6 +50,18 @@ pub(crate) fn init() -> io::Result<()> {
     Ok(())
 }
 
+pub(crate) fn ensure_environment(root: &Path) -> io::Result<()> {
+    ensure_tool(root, "fmt", "rustup", &["component", "add", "rustfmt"])?;
+    ensure_tool(root, "clippy", "rustup", &["component", "add", "clippy"])?;
+    ensure_tool(
+        root,
+        "deny",
+        "cargo",
+        &["install", "--locked", "cargo-deny"],
+    )?;
+    Ok(())
+}
+
 fn install(directory: &Path) -> io::Result<PathBuf> {
     let root = PathBuf::from(git(directory, &["rev-parse", "--show-toplevel"])?);
     if !root.join(".github/hooks/pre-commit").is_file()
@@ -89,14 +101,7 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     }
     // Install tools before activating either hook. A failed installation leaves
     // the existing Git hooks unchanged, and a later code init can retry.
-    ensure_tool(&root, "fmt", "rustup", &["component", "add", "rustfmt"])?;
-    ensure_tool(&root, "clippy", "rustup", &["component", "add", "clippy"])?;
-    ensure_tool(
-        &root,
-        "deny",
-        "cargo",
-        &["install", "--locked", "cargo-deny"],
-    )?;
+    ensure_environment(&root)?;
     install_hook(&hooks, "pre-commit", HOOK, Some(LEGACY_HOOK))?;
     install_hook(&hooks, "commit-msg", MESSAGE_HOOK, None)?;
     Ok(hooks)

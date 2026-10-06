@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
 use std::sync::OnceLock;
 
@@ -17,7 +18,7 @@ static LOG_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
 fn ensure_logging() -> &'static std::path::Path {
     LOG_DIR.get_or_init(|| {
         let dir = std::env::temp_dir().join("burncloud_logging_test");
-        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).expect("failed to create test log dir");
         std::env::set_var("LOG_DIR", &dir);
         std::env::set_var("RUST_LOG", "info");
@@ -70,6 +71,10 @@ fn test_log_bridge_output() {
 }
 
 #[test]
+#[allow(
+    clippy::cognitive_complexity,
+    reason = "log-file fixture: a poll loop over four logger targets; extracting it would obscure the setup being verified"
+)]
 fn test_log_file_creation() {
     let dir = ensure_logging();
     tracing::info!(target: "burncloud_server", "file_creation_server");

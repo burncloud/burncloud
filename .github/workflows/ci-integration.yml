@@ -86,6 +86,32 @@ jobs:
             exit 1
           fi
 
+      # #658 extends the same real-server contract to the two crates whose PostgreSQL SQL branches had
+      # never been executed. These files mirror existing SQLite assertions and each creates/drops its own
+      # database, so a green result means the dialect branch itself ran rather than a shared fixture did.
+      - name: Router and channel PostgreSQL dialect contracts
+        shell: bash
+        run: |
+          set -o pipefail
+          : > /tmp/postgres-dialect-contract.log
+
+          cargo test -p burncloud-database-router --test postgres_dialect_contract -- --nocapture 2>&1 \
+            | tee -a /tmp/postgres-dialect-contract.log
+          cargo test -p burncloud-database-channel --test postgres_dialect_contract -- --nocapture 2>&1 \
+            | tee -a /tmp/postgres-dialect-contract.log
+
+          if grep -q "SKIPPED: BURNCLOUD_TEST_POSTGRES_URL is not set" /tmp/postgres-dialect-contract.log; then
+            echo "::error::the router/channel tests skipped because BURNCLOUD_TEST_POSTGRES_URL was not visible."
+            exit 1
+          fi
+
+          executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/postgres-dialect-contract.log)
+          echo "executed $executed router/channel dialect test(s) against PostgreSQL"
+          if [ "${executed:-0}" -lt 5 ]; then
+            echo "::error::expected all 5 #658 PostgreSQL dialect tests, found ${executed:-0}."
+            exit 1
+          fi
+
       # The migrations must not merely apply: the same suite has to pass on a database built by them.
       # This asserts the schema the test depends on actually exists, so a migration that silently
       # no-ops on PostgreSQL is caught here rather than by an empty SELECT.
@@ -115,5 +141,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: postgres-contract-log
-          path: /tmp/postgres-contract.log
+          path: |
+            /tmp/postgres-contract.log
+            /tmp/postgres-dialect-contract.log
           if-no-files-found: ignore

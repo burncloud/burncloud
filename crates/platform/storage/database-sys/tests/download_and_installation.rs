@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 //! Download and installation records, settings upsert, and the isolation between task ids (#633, plan item 27).
 //!
@@ -27,9 +28,7 @@
 //! below uses it with a temporary file; **nothing here touches the default path**.
 
 use burncloud_database::sqlite_url;
-use burncloud_database_sys::{
-    DownloadDB, InstallerDB, SettingDatabase, SysDownload, SysInstallation,
-};
+use burncloud_database_sys::{DownloadDB, InstallerDB, SettingDatabase, SysInstallation};
 
 /// A database in a temporary file, created with the real migrations, removed when the guard is dropped.
 ///
@@ -50,7 +49,7 @@ impl TempDb {
                 .expect("the clock is after the epoch")
                 .as_nanos()
         ));
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         Self { path }
     }
 
@@ -88,7 +87,7 @@ impl Drop for TempDb {
             candidate.push(suffix);
             let candidate = std::path::PathBuf::from(candidate);
             if candidate.exists() {
-                let _ = std::fs::remove_file(&candidate);
+                std::fs::remove_file(&candidate).ok();
             }
         }
     }

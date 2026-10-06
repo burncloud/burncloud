@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "Test-only file: the declaration guard asserts on parsed source and on known-good fixtures, and fails fast."
+)]
 //! Domain-declaration guard for `burncloud_common` (S1-D, extended by S1-E and S1-F).
 //!
 //! ## What this checks, precisely

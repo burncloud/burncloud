@@ -1,5 +1,8 @@
 // LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "protocol/adaptor boundary must preserve arbitrary upstream JSON"
+)]
 
 use super::{current_unix_timestamp, generate_chat_id};
 use burncloud_traffic_contracts::OpenAIChatRequest;
@@ -234,7 +237,8 @@ impl GeminiAdaptor {
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
     use super::*;

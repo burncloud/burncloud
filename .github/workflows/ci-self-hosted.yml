@@ -1,0 +1,108 @@
+name: CI / Self-hosted Code Test
+
+# Security model:
+# - PRs from this repository authored by an allowlisted user run automatically.
+# - Every other PR gets a real (failed) Code Test check instead of a skipped job.
+# - A trusted maintainer can manually release that PR to the self-hosted runner by
+#   submitting an APPROVE review. The approval creates a new Code Test run on the
+#   same PR instead of trying to re-run an immutable skipped job.
+#
+# The workflow is driven from the base repository via pull_request_target/review,
+# so an untrusted PR cannot edit this file to remove the gate before execution.
+# No repository secrets are exposed and the GITHUB_TOKEN is read-only.
+#
+# SELF_HOSTED_CI_USERS is an optional repository variable containing a JSON array
+# of trusted GitHub usernames, for example: ["rustburn","another-maintainer"].
+# Until that variable is configured, rustburn is the only trusted user.
+#
+# Keep CI policy in BurnCloud code. A persistent self-hosted runner reuses its Rust
+# installation. Only a truly empty runner gets a one-time minimal stable bootstrap.
+# The quality gate itself runs through the dedicated `burncloud-code` binary so CI
+# does not need to compile the full application merely to discover which checks to
+# run. `code test` then performs `code init`, fmt, tests, Clippy and cargo-deny.
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  pull_request_review:
+    types:
+      - submitted
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-code-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  code-test:
+    name: Code Test
+    env:
+      RUN_CODE_TEST: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Manual approval required
+        if: env.RUN_CODE_TEST != 'true'
+        shell: bash
+        run: |
+          echo "::error::Self-hosted Code Test requires manual approval for this PR."
+          echo "A trusted maintainer must open the PR review UI and submit an APPROVE review."
+          echo "That approval will trigger a fresh Code Test run for the current PR commit."
+          exit 1
+
+      - name: Checkout PR merge commit
+        if: env.RUN_CODE_TEST == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Ensure base Rust toolchain
+        if: env.RUN_CODE_TEST == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+          if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+            echo "Rust is missing for the runner user; bootstrapping minimal stable once."
+            if command -v rustup >/dev/null 2>&1; then
+              rustup toolchain install stable --profile minimal --no-self-update
+              rustup default stable
+            else
+              curl --proto '=https' --tlsv1.2 --retry 5 --retry-connrefused --fail --show-error --location https://sh.rustup.rs \
+                | sh -s -- -y --profile minimal --default-toolchain stable
+            fi
+          fi
+
+          cargo --version
+          rustc --version
+
+      - name: Run BurnCloud code gate
+        if: env.RUN_CODE_TEST == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Debian/Ubuntu may have libssl-dev installed without the pkg-config
+          # executable. Point openssl-sys at the installed headers/libs directly
+          # so the gate itself does not require root access to the runner.
+          if [[ -f /usr/include/openssl/ssl.h ]]; then
+            export OPENSSL_INCLUDE_DIR=/usr/include
+            ssl_lib="$(ldconfig -p 2>/dev/null | awk '/libssl\.so/{print $NF; exit}')"
+            if [[ -n "$ssl_lib" ]]; then
+              export OPENSSL_LIB_DIR="$(dirname "$ssl_lib")"
+            fi
+          fi
+
+          cargo run -p burncloud-code -- test --all

@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration test: an unwrap/expect failure is the intended failure signal"
+)]
 //! Contract-purity guard for the Traffic contract (S1-E), same rule as the Commerce and Supply
 //! contracts.
 //!

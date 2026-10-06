@@ -397,18 +397,19 @@ fn each_failed_gate_stops_and_blocks_commit() -> Result<()> {
 }
 
 #[test]
-fn missing_tools_fail_before_any_check() -> Result<()> {
+fn test_installs_missing_tools_before_checks() -> Result<()> {
     let f = Fixture::new()?;
-    for tool in ["fmt", "clippy", "deny"] {
-        failed(
-            f.command(BIN)
-                .args(["test", "--staged"])
-                .env("MISSING_TOOL", tool)
-                .output()?,
-            "Missing or broken",
-        );
-        assert!(!f.base.join("checks.log").exists());
-    }
+    success(
+        f.command(BIN)
+            .args(["test", "--staged"])
+            .env("MISSING_TOOLS", "fmt,clippy,deny")
+            .output()?,
+    )?;
+    assert_eq!(
+        fs::read_to_string(f.base.join("install.log"))?,
+        "rustup component add rustfmt\nrustup component add clippy\ncargo install --locked cargo-deny\n"
+    );
+    assert_eq!(f.log()?, FULL);
     Ok(())
 }
 
