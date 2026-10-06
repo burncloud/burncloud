@@ -83,7 +83,7 @@ fn nan_to_dollar_conversion_is_exact_at_both_limits() {
 #[test]
 fn scaled_rate_conversion_matches_the_dollar_scale() {
     assert_eq!(NANO_PER_DOLLAR, RATE_SCALE);
-    for rate in [0.0_f64, 1.0, 7.24, 0.000_001, 1234.567_891] {
+    for rate in [0.0_f64, 1.0, 7.24, 0.000_001, 1_234.567_891] {
         let scaled = rate_to_scaled(rate);
         let back = scaled_to_rate(scaled);
         assert!(

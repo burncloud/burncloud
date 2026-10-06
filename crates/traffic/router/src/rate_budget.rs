@@ -424,7 +424,10 @@ fn borrow_chain(color: TrafficColor) -> &'static [usize] {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "unit-test module: the fixtures cannot fail, so an unwrap failure is the intended failure signal"
+)]
 mod tests {
     use super::*;
 

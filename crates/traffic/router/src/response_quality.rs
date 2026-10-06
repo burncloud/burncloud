@@ -165,6 +165,10 @@ impl ResponseQualityDetector {
     ///
     /// # Returns
     /// Classified ResponseQuality enum
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "public detector API mirroring the upstream response fields; callers pass them positionally"
+    )]
     pub fn detect(
         &self,
         http_status: u16,
@@ -193,8 +197,7 @@ impl ResponseQualityDetector {
 
         // 2.5. Check for SSE streaming error (HTTP 200 with error in data: {...})
         // Some providers (e.g., Xunfei) return errors via SSE format with HTTP 200
-        if body.starts_with("data: ") {
-            let json_str = &body[6..];
+        if let Some(json_str) = body.strip_prefix("data: ") {
             if json_str.trim() != "[DONE]" {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
                     if let Some(error) = json.get("error") {
@@ -311,7 +314,7 @@ impl ResponseQualityDetector {
             402 => UpstreamErrorType::PaymentRequired,
             404 => UpstreamErrorType::ModelNotFound,
             500 => UpstreamErrorType::ServerError,
-            502 | 503 | 504 => UpstreamErrorType::GatewayError,
+            502..=504 => UpstreamErrorType::GatewayError,
             code if code >= 500 => UpstreamErrorType::ServerError,
             _ => UpstreamErrorType::ServerError, // Default for unknown errors
         };
@@ -559,11 +562,7 @@ impl ResponseQualityDetector {
     /// Parse error from streaming chunk.
     fn parse_stream_error(&self, chunk: &str, channel_type: &str) -> Option<UpstreamErrorType> {
         // Try to parse JSON from SSE data line
-        let json_str = if chunk.starts_with("data: ") {
-            &chunk[6..]
-        } else {
-            chunk
-        };
+        let json_str = chunk.strip_prefix("data: ").unwrap_or(chunk);
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Check for error type
@@ -700,6 +699,43 @@ impl Default for ResponseQualityDetector {
     }
 }
 
+/// Check if a raw SSE chunk contains an error.
+/// Returns Some((error_code, error_message, is_auth_error)) if an error is found.
+pub fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
+    let text = String::from_utf8_lossy(chunk);
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.starts_with("data: ") {
+            continue;
+        }
+        let data = &line[6..];
+        if data.trim() == "[DONE]" {
+            continue;
+        }
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+            if let Some(error) = json.get("error") {
+                let error_msg = error
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown SSE error")
+                    .to_string();
+                let error_code = error.get("code").and_then(|c| c.as_u64()).unwrap_or(400) as u16;
+
+                // Check if this is an auth error
+                let msg_lower = error_msg.to_lowercase();
+                let is_auth_error = msg_lower.contains("auth")
+                    || msg_lower.contains("appid")
+                    || msg_lower.contains("unauthorized")
+                    || msg_lower.contains("invalid key")
+                    || error_code == 401;
+
+                return Some((error_code, error_msg, is_auth_error));
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -809,41 +845,4 @@ mod tests {
             0.3
         );
     }
-}
-
-/// Check if a raw SSE chunk contains an error.
-/// Returns Some((error_code, error_message, is_auth_error)) if an error is found.
-pub fn check_sse_error_in_chunk(chunk: &[u8]) -> Option<(u16, String, bool)> {
-    let text = String::from_utf8_lossy(chunk);
-    for line in text.lines() {
-        let line = line.trim();
-        if !line.starts_with("data: ") {
-            continue;
-        }
-        let data = &line[6..];
-        if data.trim() == "[DONE]" {
-            continue;
-        }
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-            if let Some(error) = json.get("error") {
-                let error_msg = error
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Unknown SSE error")
-                    .to_string();
-                let error_code = error.get("code").and_then(|c| c.as_u64()).unwrap_or(400) as u16;
-
-                // Check if this is an auth error
-                let msg_lower = error_msg.to_lowercase();
-                let is_auth_error = msg_lower.contains("auth")
-                    || msg_lower.contains("appid")
-                    || msg_lower.contains("unauthorized")
-                    || msg_lower.contains("invalid key")
-                    || error_code == 401;
-
-                return Some((error_code, error_msg, is_auth_error));
-            }
-        }
-    }
-    None
 }

@@ -1,4 +1,4 @@
-use burncloud_download_aria2::*;
+use burncloud_download_aria2::{quick_start, Aria2Result, Aria2RpcClient, DownloadOptions};
 use std::time::Duration;
 
 #[tokio::main]

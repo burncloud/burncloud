@@ -288,39 +288,16 @@ impl InferenceService {
             .map_err(|e| InferenceError::ProcessSpawnFailed(format!("HTTP client error: {}", e)))?;
 
         // 最多等待 60 秒，每秒检查一次
-        let max_attempts = 60;
-        let mut attempts = 0;
+        let max_attempts: u32 = 60;
 
-        while attempts < max_attempts {
-            attempts += 1;
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    tracing::info!(
-                        "Health check passed for {} after {} attempts",
-                        model_id,
-                        attempts
-                    );
-                    return Ok(());
-                }
-                Ok(resp) => {
-                    // 服务器响应了但返回非成功状态码，可能还在初始化
-                    tracing::debug!(
-                        "Health check attempt {} for {}: status {}",
-                        attempts,
-                        model_id,
-                        resp.status()
-                    );
-                }
-                Err(e) => {
-                    // 连接失败，服务可能还没启动
-                    tracing::trace!(
-                        "Health check attempt {} for {}: connection error: {}",
-                        attempts,
-                        model_id,
-                        e
-                    );
-                }
+        for attempt in 1..=max_attempts {
+            if probe_health(&client, &url, model_id, attempt).await {
+                tracing::info!(
+                    "Health check passed for {} after {} attempts",
+                    model_id,
+                    attempt
+                );
+                return Ok(());
             }
 
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -330,5 +307,33 @@ impl InferenceService {
             "Health check timeout for {} after {} seconds",
             model_id, max_attempts
         )))
+    }
+}
+
+/// Probes `/v1/models` once: `true` when the service answers with a success status,
+/// otherwise the reason is logged and `false` is returned so the caller can retry.
+async fn probe_health(client: &reqwest::Client, url: &str, model_id: &str, attempt: u32) -> bool {
+    match client.get(url).send().await {
+        Ok(resp) if resp.status().is_success() => true,
+        Ok(resp) => {
+            // 服务器响应了但返回非成功状态码，可能还在初始化
+            tracing::debug!(
+                "Health check attempt {} for {}: status {}",
+                attempt,
+                model_id,
+                resp.status()
+            );
+            false
+        }
+        Err(e) => {
+            // 连接失败，服务可能还没启动
+            tracing::trace!(
+                "Health check attempt {} for {}: connection error: {}",
+                attempt,
+                model_id,
+                e
+            );
+            false
+        }
     }
 }

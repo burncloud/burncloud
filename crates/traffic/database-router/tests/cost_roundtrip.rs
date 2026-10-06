@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test file: fail-fast setup is the intended behaviour"
+)]
 
 /// Integration tests for RouterLog per-type cost and token round-trip.
 ///
@@ -72,7 +76,10 @@ impl Drop for TestDb {
                     let candidate = std::path::PathBuf::from(candidate);
                     if let Err(e) = std::fs::remove_file(&candidate) {
                         if e.kind() != std::io::ErrorKind::NotFound {
-                            eprintln!("failed to remove test database file {}: {e}", candidate.display());
+                            eprintln!(
+                                "failed to remove test database file {}: {e}",
+                                candidate.display()
+                            );
                         }
                     }
                 }

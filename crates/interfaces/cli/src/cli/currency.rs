@@ -11,7 +11,7 @@ use clap::ArgMatches;
 use std::str::FromStr;
 
 /// Handle currency subcommands
-pub async fn handle_currency_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_currency_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list-rates", _)) => cmd_list_rates(db).await,
         Some(("set-rate", sub_m)) => {
@@ -243,7 +243,11 @@ async fn cmd_convert(db: &Database, amount: f64, from: &str, to: &str) -> Result
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "unit tests assert on parsed currency values and fail loudly on unexpected input"
+)]
 mod tests {
     #[test]
     fn test_currency_parsing() {

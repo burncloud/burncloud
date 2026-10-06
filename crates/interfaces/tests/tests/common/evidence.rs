@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
 //! Evidence chain helper for black-box test suites.
 //!
@@ -24,7 +25,10 @@ use std::path::Path;
 ///
 /// The directory is created if it does not exist.
 /// Any I/O failure is logged with `eprintln!` but does NOT panic.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "evidence helper, not called by every suite that includes this module"
+)]
 pub(crate) fn write_evidence(test_name: &str, payload: &Value) {
     let dir = Path::new("evidence");
     if let Err(e) = std::fs::create_dir_all(dir) {
@@ -45,7 +49,10 @@ pub(crate) fn write_evidence(test_name: &str, payload: &Value) {
 }
 
 /// Build the base evidence object every test starts with.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "evidence helper, not called by every suite that includes this module"
+)]
 pub(crate) fn base_evidence(test_name: &str, model: &str) -> Value {
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
@@ -65,7 +72,10 @@ pub(crate) fn base_evidence(test_name: &str, model: &str) -> Value {
 }
 
 /// Append a named assertion result to an evidence object's `assertions` array.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "evidence helper, not called by every suite that includes this module"
+)]
 pub(crate) fn add_assertion(evidence: &mut Value, name: &str, expected: i64, actual: i64) {
     let result = if (actual - expected).abs() <= 1 {
         "PASS"
@@ -92,7 +102,10 @@ pub(crate) fn add_assertion(evidence: &mut Value, name: &str, expected: i64, act
 }
 
 /// Set the top-level verdict based on whether all assertions passed.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "evidence helper, not called by every suite that includes this module"
+)]
 pub(crate) fn finalize_verdict(evidence: &mut Value) {
     let all_pass = evidence
         .get("assertions")

@@ -280,6 +280,10 @@ impl RouterLogModel {
     }
 }
 
+/// Row shape of the aggregate usage query in [`get_usage_stats`].
+/// Aliased so the row type does not trip `clippy::type_complexity`.
+type UsageTotalsRow = (Option<i64>, Option<i64>, Option<i64>, Option<i64>);
+
 /// Get aggregated usage statistics for a user over a time period
 /// Period can be: "day", "week", "month"
 pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Result<UsageStats> {
@@ -324,7 +328,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
         time_filter
     );
 
-    let row: (Option<i64>, Option<i64>, Option<i64>, Option<i64>) = sqlx::query_as(&sql)
+    let row: UsageTotalsRow = sqlx::query_as(&sql)
         .bind(user_id)
         .bind(threshold)
         .fetch_one(conn.pool())
@@ -337,6 +341,10 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
         total_cost_nano: row.3.unwrap_or(0),
     })
 }
+
+/// Row shape of the per-model usage aggregation in [`get_usage_stats_by_model`].
+/// Aliased so the row type does not trip `clippy::type_complexity`.
+type ModelUsageRow = (String, i64, i64, i64, i64, i64, i64);
 
 /// Get usage statistics grouped by model for a user over a time period
 /// Period can be: "day", "week", "month"
@@ -388,7 +396,7 @@ pub async fn get_usage_stats_by_model(
         time_filter
     );
 
-    let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(&sql)
+    let rows: Vec<ModelUsageRow> = sqlx::query_as(&sql)
         .bind(user_id)
         .bind(threshold.to_string())
         .fetch_all(conn.pool())
@@ -442,6 +450,115 @@ pub struct BillingSummary {
     pub total_cost_usd: f64,
 }
 
+/// Row shape of the per-model billing aggregation shared by
+/// [`get_billing_summary`] and [`get_billing_summary_for_user`].
+/// Aliased so the row type does not trip `clippy::type_complexity`.
+type BillingModelRow = (String, i64, i64, i64, i64, i64, i64);
+
+/// Build the `created_at` date-range filter used by the billing summary queries.
+///
+/// SQLite stores `created_at` as TEXT (`CURRENT_TIMESTAMP` →
+/// "YYYY-MM-DD HH:MM:SS"), so `strftime` extracts the date portion; PostgreSQL
+/// stores it as TIMESTAMP and casts it to `date`.
+///
+/// `first_placeholder` is the 1-based index of the first bound date parameter,
+/// because the per-user query binds `user_id` before the dates. The two boolean
+/// flags report whether the start / end date is bound in the filter, so callers
+/// bind the same parameters in the same order.
+fn billing_date_filter(
+    is_postgres: bool,
+    start: Option<&str>,
+    end: Option<&str>,
+    first_placeholder: usize,
+) -> (String, bool, bool) {
+    match (start, end) {
+        (Some(_), Some(_)) if is_postgres => (
+            format!(
+                "AND created_at::date >= {}::date AND created_at::date <= {}::date",
+                ph(is_postgres, first_placeholder),
+                ph(is_postgres, first_placeholder + 1)
+            ),
+            true,
+            true,
+        ),
+        (Some(_), None) if is_postgres => (
+            format!(
+                "AND created_at::date >= {}::date",
+                ph(is_postgres, first_placeholder)
+            ),
+            true,
+            false,
+        ),
+        (None, Some(_)) if is_postgres => (
+            format!(
+                "AND created_at::date <= {}::date",
+                ph(is_postgres, first_placeholder)
+            ),
+            false,
+            true,
+        ),
+        (Some(_), Some(_)) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) >= {} AND strftime('%Y-%m-%d', created_at) <= {}",
+                ph(is_postgres, first_placeholder),
+                ph(is_postgres, first_placeholder + 1)
+            ),
+            true,
+            true,
+        ),
+        (Some(_), None) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) >= {}",
+                ph(is_postgres, first_placeholder)
+            ),
+            true,
+            false,
+        ),
+        (None, Some(_)) => (
+            format!(
+                "AND strftime('%Y-%m-%d', created_at) <= {}",
+                ph(is_postgres, first_placeholder)
+            ),
+            false,
+            true,
+        ),
+        (None, None) => (String::new(), false, false),
+    }
+}
+
+/// Fold per-model billing rows into the per-model summaries and the total
+/// cost in nanodollars.
+fn summarize_billing_rows(rows: Vec<BillingModelRow>) -> (Vec<BillingModelSummary>, i64) {
+    let mut total_cost_nano: i64 = 0;
+    let models: Vec<BillingModelSummary> = rows
+        .into_iter()
+        .map(
+            |(
+                model,
+                requests,
+                prompt_tokens,
+                cache_read_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cost_nano,
+            )| {
+                total_cost_nano = total_cost_nano.saturating_add(cost_nano);
+                BillingModelSummary {
+                    model,
+                    requests,
+                    prompt_tokens,
+                    cache_read_tokens,
+                    completion_tokens,
+                    reasoning_tokens,
+                    cost_usd: cost_nano as f64 / 1_000_000_000.0,
+                }
+            },
+        )
+        .collect();
+
+    (models, total_cost_nano)
+}
+
 /// Get aggregate billing summary grouped by model for internal reconciliation.
 ///
 /// start/end are optional YYYY-MM-DD date strings.
@@ -454,57 +571,8 @@ pub async fn get_billing_summary(
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    // Build date filter clause
-    // SQLite: created_at is TEXT (CURRENT_TIMESTAMP → "YYYY-MM-DD HH:MM:SS")
-    //         use strftime to extract date portion for correct comparison
-    // PostgreSQL: created_at is TIMESTAMP, cast to date
-    let (date_filter, date_cast_start, date_cast_end) = match (start, end) {
-        (Some(_), Some(_)) if is_postgres => (
-            format!(
-                "AND created_at::date >= {}::date AND created_at::date <= {}::date",
-                ph(is_postgres, 1),
-                ph(is_postgres, 2)
-            ),
-            true,
-            true,
-        ),
-        (Some(_), None) if is_postgres => (
-            format!("AND created_at::date >= {}::date", ph(is_postgres, 1)),
-            true,
-            false,
-        ),
-        (None, Some(_)) if is_postgres => (
-            format!("AND created_at::date <= {}::date", ph(is_postgres, 1)),
-            false,
-            true,
-        ),
-        (Some(_), Some(_)) => (
-            format!(
-                "AND strftime('%Y-%m-%d', created_at) >= {} AND strftime('%Y-%m-%d', created_at) <= {}",
-                ph(is_postgres, 1),
-                ph(is_postgres, 2)
-            ),
-            true,
-            true,
-        ),
-        (Some(_), None) => (
-            format!(
-                "AND strftime('%Y-%m-%d', created_at) >= {}",
-                ph(is_postgres, 1)
-            ),
-            true,
-            false,
-        ),
-        (None, Some(_)) => (
-            format!(
-                "AND strftime('%Y-%m-%d', created_at) <= {}",
-                ph(is_postgres, 1)
-            ),
-            false,
-            true,
-        ),
-        (None, None) => (String::new(), false, false),
-    };
+    let (date_filter, date_cast_start, date_cast_end) =
+        billing_date_filter(is_postgres, start, end, 1);
 
     // Count pre-migration (NULL model) rows
     let null_model_sql = format!(
@@ -539,7 +607,7 @@ pub async fn get_billing_summary(
         date_filter
     );
 
-    let mut main_query = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(&main_sql);
+    let mut main_query = sqlx::query_as::<_, BillingModelRow>(&main_sql);
     if date_cast_start {
         main_query = main_query.bind(start.unwrap_or(""));
     }
@@ -548,32 +616,7 @@ pub async fn get_billing_summary(
     }
     let rows = main_query.fetch_all(conn.pool()).await?;
 
-    let mut total_cost_nano: i64 = 0;
-    let models: Vec<BillingModelSummary> = rows
-        .into_iter()
-        .map(
-            |(
-                model,
-                requests,
-                prompt_tokens,
-                cache_read_tokens,
-                completion_tokens,
-                reasoning_tokens,
-                cost_nano,
-            )| {
-                total_cost_nano = total_cost_nano.saturating_add(cost_nano);
-                BillingModelSummary {
-                    model,
-                    requests,
-                    prompt_tokens,
-                    cache_read_tokens,
-                    completion_tokens,
-                    reasoning_tokens,
-                    cost_usd: cost_nano as f64 / 1_000_000_000.0,
-                }
-            },
-        )
-        .collect();
+    let (models, total_cost_nano) = summarize_billing_rows(rows);
 
     Ok(BillingSummary {
         period_start: start.map(|s| s.to_string()),
@@ -595,54 +638,9 @@ pub async fn get_billing_summary_for_user(
     let conn = db.get_connection()?;
     let is_postgres = db.kind() == "postgres";
 
-    // Build date filter clause (same pattern as get_billing_summary)
-    let (date_filter, date_cast_start, date_cast_end) = match (start, end) {
-        (Some(_), Some(_)) if is_postgres => (
-            format!(
-                "AND created_at::date >= {}::date AND created_at::date <= {}::date",
-                ph(is_postgres, 2),
-                ph(is_postgres, 3)
-            ),
-            true,
-            true,
-        ),
-        (Some(_), None) if is_postgres => (
-            format!("AND created_at::date >= {}::date", ph(is_postgres, 2)),
-            true,
-            false,
-        ),
-        (None, Some(_)) if is_postgres => (
-            format!("AND created_at::date <= {}::date", ph(is_postgres, 2)),
-            false,
-            true,
-        ),
-        (Some(_), Some(_)) => (
-            format!(
-                "AND strftime('%Y-%m-%d', created_at) >= {} AND strftime('%Y-%m-%d', created_at) <= {}",
-                ph(is_postgres, 2),
-                ph(is_postgres, 3)
-            ),
-            true,
-            true,
-        ),
-        (Some(_), None) => (
-            format!(
-                "AND strftime('%Y-%m-%d', created_at) >= {}",
-                ph(is_postgres, 2)
-            ),
-            true,
-            false,
-        ),
-        (None, Some(_)) => (
-            format!(
-                "AND strftime('%Y-%m-%d', created_at) <= {}",
-                ph(is_postgres, 2)
-            ),
-            false,
-            true,
-        ),
-        (None, None) => (String::new(), false, false),
-    };
+    // `user_id` is bound first, so the date parameters start at placeholder 2.
+    let (date_filter, date_cast_start, date_cast_end) =
+        billing_date_filter(is_postgres, start, end, 2);
 
     // Count pre-migration (NULL model) rows for this user
     let null_model_sql = format!(
@@ -678,8 +676,7 @@ pub async fn get_billing_summary_for_user(
         ph(is_postgres, 1),
         date_filter
     );
-    let mut model_query =
-        sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(&model_sql).bind(user_id);
+    let mut model_query = sqlx::query_as::<_, BillingModelRow>(&model_sql).bind(user_id);
     if date_cast_start {
         model_query = model_query.bind(start.unwrap_or(""));
     }
@@ -688,32 +685,7 @@ pub async fn get_billing_summary_for_user(
     }
     let rows = model_query.fetch_all(conn.pool()).await?;
 
-    let mut total_cost_nano: i64 = 0;
-    let models: Vec<BillingModelSummary> = rows
-        .into_iter()
-        .map(
-            |(
-                model,
-                requests,
-                prompt_tokens,
-                cache_read_tokens,
-                completion_tokens,
-                reasoning_tokens,
-                cost_nano,
-            )| {
-                total_cost_nano = total_cost_nano.saturating_add(cost_nano);
-                BillingModelSummary {
-                    model,
-                    requests,
-                    prompt_tokens,
-                    cache_read_tokens,
-                    completion_tokens,
-                    reasoning_tokens,
-                    cost_usd: cost_nano as f64 / 1_000_000_000.0,
-                }
-            },
-        )
-        .collect();
+    let (models, total_cost_nano) = summarize_billing_rows(rows);
 
     Ok(BillingSummary {
         period_start: start.map(|s| s.to_string()),
@@ -744,14 +716,20 @@ impl StoragePolicy {
             Self::None => "none",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl std::str::FromStr for StoragePolicy {
+    /// Any input maps to a policy, so parsing cannot fail.
+    type Err = std::convert::Infallible;
+
+    /// Parses a policy name; unknown values fall back to [`Self::Summary`].
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s {
             "full" => Self::Full,
             "summary" => Self::Summary,
             "none" => Self::None,
             _ => Self::Summary, // Default to summary for unknown values
-        }
+        })
     }
 }
 

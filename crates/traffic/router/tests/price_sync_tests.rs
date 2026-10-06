@@ -4,7 +4,9 @@
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    clippy::panic_in_result_fn,
+    reason = "integration tests: a failed assertion is the intended failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 
 mod common;
@@ -490,7 +492,7 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
         .join("burncloud_cold_start_test.db")
         .to_string_lossy()
         .to_string();
-    let _ = std::fs::remove_file(&tmp_path); // clean up from any previous run
+    std::fs::remove_file(&tmp_path).ok(); // clean up from any previous run
     let url = sqlite_url(&tmp_path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
@@ -509,7 +511,7 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
 
     // DB is empty, remote unreachable → must return Err (fatal)
     let result = service.sync_all(false).await;
-    let _ = std::fs::remove_file(&tmp_path); // cleanup
+    std::fs::remove_file(&tmp_path).ok(); // cleanup
     assert!(
         result.is_err(),
         "Cold start with empty DB and unreachable remote must return Err"
@@ -527,7 +529,7 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
         .join("burncloud_fast_path_test.db")
         .to_string_lossy()
         .to_string();
-    let _ = std::fs::remove_file(&tmp_path);
+    std::fs::remove_file(&tmp_path).ok();
     let url = sqlite_url(&tmp_path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
@@ -555,7 +557,7 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
     let mut service = PriceSyncService::with_config(db.clone(), config);
 
     let result = service.sync_all(false).await;
-    let _ = std::fs::remove_file(&tmp_path); // cleanup
+    std::fs::remove_file(&tmp_path).ok(); // cleanup
     let result = result?;
     assert_eq!(
         result.source, "db_cache",

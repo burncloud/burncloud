@@ -15,7 +15,12 @@ use super::protocol::handle_protocol_command;
 use super::token::handle_token_command;
 use super::user::handle_user_command;
 
-pub async fn handle_command(args: &[String]) -> Result<()> {
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "flat subcommand dispatch table over the whole CLI surface; splitting it is a dedicated refactor"
+)]
+pub(crate) async fn handle_command(args: &[String]) -> Result<()> {
     let app = Command::new("burncloud")
         .version("0.1.0")
         .about("AI model deployment and management platform")
@@ -1182,6 +1187,55 @@ pub async fn handle_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Print the manual download fallback links shown after a failed check or update.
+fn print_manual_download_links(updater: &AutoUpdater) {
+    let (github_url, gitee_url) = updater.get_download_links();
+    println!("You can manually download the latest version from:");
+    println!("  GitHub: {}", github_url);
+    println!("  Gitee:  {}", gitee_url);
+}
+
+/// Run the read-only update check and report the result to the user.
+fn run_update_check(updater: &AutoUpdater) -> Result<()> {
+    println!("Checking for updates...");
+    match updater.sync_check_for_updates() {
+        Ok(true) => {
+            println!("✅ New version available!");
+            println!("Run 'burncloud update' to update to the latest version");
+        }
+        Ok(false) => {
+            println!("✅ Already up to date");
+        }
+        Err(e) => {
+            error!("Update check failed: {}", e);
+            println!("❌ Update check failed: {}", e);
+            print_manual_download_links(updater);
+            return Err(anyhow::anyhow!("Update check failed: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Download and install the latest release, reporting the result to the user.
+fn run_update(updater: &AutoUpdater) -> Result<()> {
+    println!("Updating BurnCloud...");
+    match updater.sync_update() {
+        Ok(_) => {
+            println!("✅ Update successful!");
+            println!("Please restart the application to use the new version");
+        }
+        Err(e) => {
+            error!("Update failed: {}", e);
+            println!("❌ Update failed: {}", e);
+            print_manual_download_links(updater);
+            return Err(anyhow::anyhow!("Update failed: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle update command (uses sync version to avoid runtime conflicts)
 fn handle_update_command(check_only: bool) -> Result<()> {
     info!("Initializing auto-updater...");
@@ -1189,48 +1243,15 @@ fn handle_update_command(check_only: bool) -> Result<()> {
     let updater = AutoUpdater::with_default_config();
 
     if check_only {
-        println!("Checking for updates...");
-        match updater.sync_check_for_updates() {
-            Ok(true) => {
-                println!("✅ New version available!");
-                println!("Run 'burncloud update' to update to the latest version");
-            }
-            Ok(false) => {
-                println!("✅ Already up to date");
-            }
-            Err(e) => {
-                error!("Update check failed: {}", e);
-                println!("❌ Update check failed: {}", e);
-                let (github_url, gitee_url) = updater.get_download_links();
-                println!("You can manually download the latest version from:");
-                println!("  GitHub: {}", github_url);
-                println!("  Gitee:  {}", gitee_url);
-                return Err(anyhow::anyhow!("Update check failed: {}", e));
-            }
-        }
+        run_update_check(&updater)?;
     } else {
-        println!("Updating BurnCloud...");
-        match updater.sync_update() {
-            Ok(_) => {
-                println!("✅ Update successful!");
-                println!("Please restart the application to use the new version");
-            }
-            Err(e) => {
-                error!("Update failed: {}", e);
-                println!("❌ Update failed: {}", e);
-                let (github_url, gitee_url) = updater.get_download_links();
-                println!("You can manually download the latest version from:");
-                println!("  GitHub: {}", github_url);
-                println!("  Gitee:  {}", gitee_url);
-                return Err(anyhow::anyhow!("Update failed: {}", e));
-            }
-        }
+        run_update(&updater)?;
     }
 
     Ok(())
 }
 
-pub fn show_help() {
+pub(crate) fn show_help() {
     println!("BurnCloud - AI model deployment and management platform");
     println!();
     println!("Usage:");

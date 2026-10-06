@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test file: fail-fast setup is the intended behaviour"
+)]
 //! Regression cover for the Identity database layer (S1-D, #610).
 //!
 //! The Identity domain had no test at all before this file. S1-D removes the three legacy
@@ -27,7 +31,7 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
             .unwrap()
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     let db = create_database_with_url(&url)

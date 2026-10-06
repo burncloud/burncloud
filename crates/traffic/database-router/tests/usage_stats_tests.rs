@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test file: fail-fast setup is the intended behaviour"
+)]
 
 /// Regression tests for issue #156 fixes in log.rs:
 /// - B4: time filter CAST failure (strftime/EXTRACT EPOCH)
@@ -58,7 +62,10 @@ impl Drop for TestDb {
                     let candidate = std::path::PathBuf::from(candidate);
                     if let Err(e) = std::fs::remove_file(&candidate) {
                         if e.kind() != std::io::ErrorKind::NotFound {
-                            eprintln!("failed to remove test database file {}: {e}", candidate.display());
+                            eprintln!(
+                                "failed to remove test database file {}: {e}",
+                                candidate.display()
+                            );
                         }
                     }
                 }

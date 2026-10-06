@@ -16,8 +16,8 @@
 
 use burncloud_database::create_database_with_url;
 use burncloud_node_runtime::{
-    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
-    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
+    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
 };
 use burncloud_router::local_attachment::{
     ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentId,
@@ -151,7 +151,8 @@ async fn prepared_route(
 #[tokio::test]
 async fn node_start_makes_route_visible_and_stop_detach_removes_it() {
     let model = "issue-649-lifecycle-model";
-    let (_temp, db, attacher, router, mut orchestrator, attachment_id) = prepared_route(model).await;
+    let (_temp, db, attacher, router, mut orchestrator, attachment_id) =
+        prepared_route(model).await;
 
     // Start oracle: READY is not enough by itself; Traffic must be able to discover the published route.
     assert_visible(&router, model, attachment_id).await;
@@ -194,8 +195,19 @@ async fn node_start_makes_route_visible_and_stop_detach_removes_it() {
 
     assert_not_visible(&router, model).await;
     assert_eq!(orchestrator.workload_attachment_id(model), None);
-    assert_eq!(orchestrator.workload_state(model), Some(NodeState::Unhealthy));
+    assert_eq!(
+        orchestrator.workload_state(model),
+        Some(NodeState::Unhealthy)
+    );
 
+    // `Database::close` consumes the handle, so the router/attacher clones of this `Arc` must be released
+    // first and the last `Arc` unwrapped before the database can take ownership of itself. `Arc::try_unwrap`'s
+    // error type is `Arc<Database>`, which is not `Debug`, so the failure is reported by hand.
+    drop(attacher);
+    drop(router);
+    drop(orchestrator);
+    let db = Arc::try_unwrap(db)
+        .unwrap_or_else(|_| panic!("sole owner after the router and attacher are dropped"));
     db.close().await.expect("close lifecycle test database");
 }
 

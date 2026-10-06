@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test-only file: the assertions are the test"
+)]
 //! Regression guard for #633: the service-user tests must never open the shared default database.
 //!
 //! Why this is a test and not a comment: the previous version of the suite called

@@ -118,7 +118,7 @@ async fn test_path_edge_cases() {
 
             // Restore original working directory
             if let Some(original) = original_cwd {
-                let _ = std::env::set_current_dir(original);
+                std::env::set_current_dir(original).ok();
             }
         }
     }
@@ -156,7 +156,7 @@ async fn test_file_system_permissions() {
                 }
             }
 
-            let _ = db.close().await;
+            db.close().await.ok();
         }
         Err(DatabaseError::DirectoryCreation(msg)) => {
             println!("Directory creation failed due to permissions: {}", msg);
@@ -217,7 +217,7 @@ async fn test_concurrent_directory_creation() {
 
     // Clean up all databases
     for db in databases {
-        let _ = db.close().await;
+        db.close().await.ok();
     }
 }
 
@@ -295,7 +295,7 @@ async fn test_database_file_corruption_recovery() {
 
         // Create the parent directory if needed
         if let Some(parent) = test_db_path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).ok();
         }
 
         // Create a corrupted database file
@@ -308,7 +308,7 @@ async fn test_database_file_corruption_recovery() {
             match db_result {
                 Ok(db) => {
                     println!("✓ Default database creation succeeded and should be functional");
-                    let _ = db.close().await;
+                    db.close().await.ok();
                 }
                 Err(DatabaseError::Connection(_)) => {
                     println!("✓ Database creation correctly failed due to connection issues");
@@ -378,7 +378,7 @@ fn get_test_default_path() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let user_profile = std::env::var("USERPROFILE").ok();
-        return get_test_windows_default_path(user_profile.as_deref());
+        get_test_windows_default_path(user_profile.as_deref())
     }
 
     #[cfg(not(target_os = "windows"))]

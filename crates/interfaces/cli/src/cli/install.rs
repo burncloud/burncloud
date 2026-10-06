@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tracing::error;
 
 /// Handle install subcommand
-pub async fn handle_install_command(matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_install_command(matches: &ArgMatches) -> Result<()> {
     let list = matches.get_flag("list");
     let status = matches.get_flag("status");
     let auto_deps = matches.get_flag("auto-deps");

@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration test: an unwrap/expect failure is the intended failure signal"
+)]
 //! Real database mapping for the channel rows (S1-C), mirroring the Commerce billing test.
 //!
 //! The Supply contract no longer carries `FromRow`: the row structs live in this crate as
@@ -26,7 +30,7 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
             .unwrap()
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     let db = create_database_with_url(&url)

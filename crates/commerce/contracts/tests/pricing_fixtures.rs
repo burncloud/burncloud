@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    reason = "integration test over golden fixtures: unwrap/expect is the intended failure signal and the fixtures deliberately use plain types"
+)]
 //! Golden-fixture acceptance for the Commerce pricing contract.
 //!
 //! These fixtures are the **independent** record of the pricing contract: they assert the

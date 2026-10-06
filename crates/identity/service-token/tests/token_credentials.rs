@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test file: fail-fast setup is the intended behaviour"
+)]
 //! Credential validation, quota settlement and rotation for `service-token` (#633, plan section 5
 //! item 03).
 //!
