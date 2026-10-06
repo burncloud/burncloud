@@ -716,20 +716,24 @@ impl StoragePolicy {
             Self::None => "none",
         }
     }
-}
 
-impl std::str::FromStr for StoragePolicy {
-    /// Any input maps to a policy, so parsing cannot fail.
-    type Err = std::convert::Infallible;
-
-    /// Parses a policy name; unknown values fall back to [`Self::Summary`].
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(match s {
+    /// Parses a stored policy name; unknown values fall back to [`StoragePolicy::Summary`].
+    ///
+    /// This stays an inherent, infallible accessor: `StoragePolicy` is re-exported by
+    /// `burncloud-database-router`, so `StoragePolicy::from_str` is public API, and
+    /// replacing it with a `FromStr` implementation would change both the return type
+    /// and every call site.
+    #[allow(
+        clippy::should_implement_trait,
+        reason = "public API re-exported by burncloud-database-router: StoragePolicy::from_str(s) -> StoragePolicy is kept as-is for compatibility; implementing FromStr would change the return type to Result and the call shape to s.parse()"
+    )]
+    pub fn from_str(s: &str) -> Self {
+        match s {
             "full" => Self::Full,
             "summary" => Self::Summary,
             "none" => Self::None,
             _ => Self::Summary, // Default to summary for unknown values
-        })
+        }
     }
 }
 
