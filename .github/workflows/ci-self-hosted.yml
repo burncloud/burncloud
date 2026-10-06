@@ -120,4 +120,24 @@ jobs:
             fi
           fi
 
-          cargo run -p burncloud-code -- test --all
+          # Only the changed packages and their transitive workspace consumers are checked, rather than the
+          # whole workspace.
+          #
+          # `--all` was used because a CI checkout is a single throwaway merge commit with no comparison point,
+          # so `code test` had nothing to diff against and the full workspace was the only correct answer. That
+          # changed no package's outcome, but it did mean a one-line test fix compiled and tested all 34
+          # packages. Once the base branch is fetched, the merge ref has it as a real ancestor, so the change
+          # set is computable here after all.
+          #
+          # `--base` is used rather than `HEAD^1`: the parents of a `refs/pull/N/merge` commit are not a
+          # contract, and `code test` already resolves the merge base itself (`git merge-base <ref> HEAD`),
+          # which is the robust comparison. The fallback keeps a gate run meaningful if the base ref cannot be
+          # resolved, instead of silently checking nothing.
+          base_ref="origin/${GITHUB_BASE_REF:-}"
+          if [[ -n "${GITHUB_BASE_REF:-}" ]] && git rev-parse --verify --quiet "$base_ref" >/dev/null; then
+            echo "Checking changed packages against $base_ref"
+            cargo run -p burncloud-code -- test --base "$base_ref"
+          else
+            echo "::warning::base ref not resolvable; falling back to the full workspace"
+            cargo run -p burncloud-code -- test --all
+          fi
