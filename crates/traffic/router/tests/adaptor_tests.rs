@@ -79,13 +79,7 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    let status = resp.status();
-    let response_body = resp.text().await?;
-    assert_eq!(
-        status,
-        reqwest::StatusCode::OK,
-        "router returned {status}: {response_body}"
-    );
+    assert_eq!(resp.status(), 200);
 
     let resp_json: serde_json::Value = resp.json().await?;
     println!("Adaptor Response: {}", resp_json);
@@ -185,7 +179,13 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "router returned {status}: {response_body}"
+    );
 
     // 2. Inspect what HttpBin received (The Converted Claude Request)
     // Note: Since HttpBin echoes the request, and Router logic for `Claude` adaptor
