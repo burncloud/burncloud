@@ -119,6 +119,8 @@ mod migration_invariants {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
     static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
     fn sample_channel(name: &str, models: &str, group: &str, status: i32) -> Channel {
@@ -155,7 +157,7 @@ mod migration_invariants {
         }
     }
 
-    async fn fresh_db(tag: &str) -> std::result::Result<(Database, PathBuf), Box<dyn std::error::Error>> {
+    async fn fresh_db(tag: &str) -> TestResult<(Database, PathBuf)> {
         let serial = NEXT_DB.fetch_add(1, Ordering::SeqCst);
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = std::env::temp_dir().join(format!(
@@ -175,10 +177,7 @@ mod migration_invariants {
         Ok((db, path))
     }
 
-    async fn cleanup(
-        db: Database,
-        path: &Path,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn cleanup(db: Database, path: &Path) -> TestResult<()> {
         db.close().await?;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         for suffix in ["", "-wal", "-shm"] {
@@ -197,8 +196,7 @@ mod migration_invariants {
     /// The service facade must preserve the production invariant that create/update themselves
     /// synchronize abilities. The test deliberately never calls `sync_abilities` directly.
     #[tokio::test]
-    async fn service_lifecycle_keeps_abilities_synchronized_without_manual_sync(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn service_lifecycle_keeps_abilities_synchronized_without_manual_sync() -> TestResult<()> {
         let (db, path) = fresh_db("service_lifecycle").await?;
         let mut channel = sample_channel("service", "m1,m2", "default", 1);
 
@@ -207,14 +205,20 @@ mod migration_invariants {
         assert_eq!(channel.id, id);
 
         let created_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
-        assert_eq!(created_abilities.len(), 2, "create must synchronize abilities itself");
+        assert_eq!(
+            created_abilities.len(),
+            2,
+            "create must synchronize abilities itself"
+        );
 
         channel.models = "m2,m3".to_owned();
         channel.group = "premium".to_owned();
         channel.status = 0;
         ChannelService::update(&db, &channel).await?;
         assert!(
-            ChannelAbilityModel::list_by_channel(&db, id).await?.is_empty(),
+            ChannelAbilityModel::list_by_channel(&db, id)
+                .await?
+                .is_empty(),
             "disabling through update must remove abilities without a second sync call"
         );
 
@@ -222,18 +226,31 @@ mod migration_invariants {
         ChannelService::update(&db, &channel).await?;
         let reenabled = ChannelAbilityModel::list_by_channel(&db, id).await?;
         assert_eq!(reenabled.len(), 2);
-        assert!(reenabled.iter().all(|ability| ability.group == "premium"));
-        let mut models: Vec<_> = reenabled.iter().map(|ability| ability.model.as_str()).collect();
+        assert!(reenabled
+            .iter()
+            .all(|ability| ability.group == "premium"));
+        let mut models: Vec<_> = reenabled
+            .iter()
+            .map(|ability| ability.model.as_str())
+            .collect();
         models.sort_unstable();
         assert_eq!(models, vec!["m2", "m3"]);
 
         let fetched = ChannelService::get_by_id(&db, id).await?;
-        assert_eq!(fetched.as_ref().map(|item| item.name.as_str()), Some("service"));
-        assert!(ChannelService::list(&db, 100, 0).await?.iter().any(|item| item.id == id));
+        assert_eq!(
+            fetched.as_ref().map(|item| item.name.as_str()),
+            Some("service")
+        );
+        assert!(ChannelService::list(&db, 100, 0)
+            .await?
+            .iter()
+            .any(|item| item.id == id));
 
         ChannelService::delete(&db, id).await?;
         assert!(ChannelService::get_by_id(&db, id).await?.is_none());
-        assert!(ChannelAbilityModel::list_by_channel(&db, id).await?.is_empty());
+        assert!(ChannelAbilityModel::list_by_channel(&db, id)
+            .await?
+            .is_empty());
 
         cleanup(db, &path).await
     }
@@ -242,8 +259,7 @@ mod migration_invariants {
     /// plain INSERT used by automatic synchronization rejects a repeated model with a uniqueness
     /// error. A future behavior fix may deliberately change this test in its own issue.
     #[tokio::test]
-    async fn duplicate_model_behavior_remains_an_error(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn duplicate_model_behavior_remains_an_error() -> TestResult<()> {
         let (db, path) = fresh_db("duplicate_model").await?;
         let mut channel = sample_channel("duplicate", "same,same", "default", 1);
 
