@@ -49,19 +49,12 @@ jobs:
         with:
           components: rustfmt
 
-      # The whole workspace, not a diff range. The previous version of this job picked the files to
-      # check out of `git diff base head`, which needed a `pull_request` or `push` event to have a
-      # range at all; a `workflow_dispatch` run has neither, so it would have silently checked zero
-      # files. `--all` is also what the local gate runs, and it is the stricter of the two: a file
-      # that is unformatted but untouched by the current change is still caught.
       - name: rustfmt across the workspace
         run: cargo fmt --all -- --check
 
   tests:
     name: Workspace tests
     runs-on: ubuntu-latest
-    # Deliberately generous: this is one job for all 34 packages and the whole graph is compiled from
-    # a cold cache. It replaces five per-suite jobs, so it is the longest job in the repository.
     timeout-minutes: 60
     env:
       JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
@@ -81,83 +74,29 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      # One command for every package, rather than a list of `-p` flags that has to be maintained by
-      # hand. The hand-maintained list is what this replaces: it named thirteen crates, so **nineteen
-      # crates' tests were executed by no job at all** -- including `burncloud-database`, whose 86
-      # tests nobody had run in CI. `--workspace` cannot drift out of date the way a crate list can.
-      #
-      # The suite is asserted to have discovered tests rather than merely exited 0. `cargo test`
-      # returns success for a suite that ran nothing, so a renamed package, a deleted `tests/`
-      # directory or an empty filter would otherwise be reported as a pass. `--no-default-features`
-      # is required here: without it the client crate's `desktop` default feature pulls GTK and the
-      # workspace does not build on a headless runner.
       - name: cargo test --workspace
         shell: bash
         env:
-          # Measured on a green run, not guessed: the suite reports 147 test executables. The floor is
-          # deliberately well below that -- it exists to catch a suite that was never discovered, not
-          # to fail whenever a test is removed. See the "Known-failing checks" table in
-          # `.github/README.md` for how the number moves when tests are added.
           MIN_EXECUTED_TESTS: "300"
-          # Six tests in `burncloud-router`'s HTTP integration suite that cannot pass in this
-          # repository's current state, plus one in `service-user`. They are skipped **by name** so the
-          # rest of their suites still run -- `adaptor_tests` alone contributes 19 passing tests. This
-          # is a deliberate, visible hole in the gate rather than a silent one, and every entry is a
-          # defect to fix rather than expected behaviour.
-          #
-          # All six router failures are the same fault: the test posts to a stub upstream and receives
-          # the router's own 404 "No matching channel found" (`lib.rs:2333`), which is the error
-          # returned when channel selection finds nothing.
-          #
-          #   test_claude_adaptor        tests/adaptor_tests.rs:191
-          #   test_deepseek_proxy        tests/auth_tests.rs:167
-          #   test_qwen_proxy            tests/auth_tests.rs:240
-          #   test_round_robin_balancer  tests/balancer_tests.rs:113
-          #   test_failover              tests/failover_tests.rs
-          #   test_vertex_full_flow      tests/vertex_full_test.rs
-          #
-          # Evidence that this is the tests and not the environment: `test_deepseek_proxy` and
-          # `test_qwen_proxy` fail on their own (0 passed, 1 failed, 2 filtered out), 5/5 and 3/3
-          # repeat runs fail, and their neighbours in the same files and with the same helpers
-          # **pass** -- `test_bedrock_proxy` in `auth_tests`, and 19 of 20 in `adaptor_tests`. The
-          # three that insert a `router_upstreams` row without the `protocol` column are all in this
-          # list, which is the thread to pull first.
-          #
-          # Deciding which side is wrong is a change to routing behaviour, not to triggers: asserting
-          # the 404 would freeze a defect as the contract, which this repository forbids. Each skip
-          # keeps that signal visible in a local `cargo test`, which still runs all of them and fails.
-          #
-          #   test_login_user_success    `crates/identity/service-user/src/lib.rs` removes a temporary
-          #                              SQLite file 200 ms after closing the pool and Windows has not
-          #                              always released the handle (`os error 32`). Intermittent, seen
-          #                              only in a full-suite run, never in isolation (4/4 passed).
-          #
-          # Latent, not yet observed: `boundary_tests.rs` and `token_expiry_tests.rs` both bind ports
-          # 3030-3033, so they collide if cargo ever runs those two binaries at once. They are
-          # sequential today and neither has failed. Named here so the next person sees it before
-          # spending an afternoon on "flaky router tests".
-          #
-          # When any of these is fixed, delete its name here and in `ci-tests.yml`.
-          SKIP_TESTS: "test_claude_adaptor test_deepseek_proxy test_qwen_proxy test_round_robin_balancer test_failover test_vertex_full_flow test_login_user_success"
+          # Single executable source of truth shared with `burncloud-code` and `ci-tests.yml`.
+          # Every non-comment line is `test_name|issue_number|reason`; new failures may not be
+          # appended here merely to make a gate green.
+          KNOWN_TEST_BASELINE: ".github/test-plan/known-test-baseline.txt"
         run: |
           set -o pipefail
 
+          SKIP_TESTS=$(awk -F'|' '/^[[:space:]]*[^#[:space:]]/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1 }' "$KNOWN_TEST_BASELINE" | xargs)
           skips=""
           for name in $SKIP_TESTS; do
             skips="$skips --skip $name"
           done
 
           # `--skip` is a libtest argument, not a cargo one: it has to come after `--` or cargo rejects
-          # the invocation (`unexpected argument '--skip' found`). Everything after `--` is passed to
-          # every test binary cargo runs, which is what makes one list cover the whole workspace.
+          # the invocation. Everything after `--` is passed to every test binary cargo runs.
           cargo test --workspace --no-default-features -- $skips 2>&1 | tee /tmp/workspace-tests.log
 
-          # awk rather than `grep | paste | bc`: bc is not installed on the runner, so a pipeline
-          # through it would fail with "command not found" instead of reporting the discovery problem
-          # it exists to catch. Sums the passed count across every `test result: ok.` line -- the
-          # per-package unit, integration and doc summaries -- and prints 0 for an empty log.
           executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/workspace-tests.log)
-          echo "executed $executed test(s) across the workspace (skipped by name: ${SKIP_TESTS:-none})"
+          echo "executed $executed test(s) across the workspace (known baseline skips: ${SKIP_TESTS:-none})"
           if [ "${executed:-0}" -lt "${MIN_EXECUTED_TESTS}" ]; then
             echo "::error::expected at least ${MIN_EXECUTED_TESTS} tests across the workspace, found ${executed:-0}."
             echo "A zero count means the tests were not discovered at all; check that the workspace"
@@ -191,11 +130,6 @@ jobs:
         run: |
           set -o pipefail
 
-          # Floors measured on a green run of this exact command, with a small margin. `service-token`
-          # currently reports 22 across `token_credentials.rs` (18) and `token_service_entries.rs` (4);
-          # `service-user` reports 14 across its unit tests (10) and `user_rules.rs` (4). The margin is
-          # deliberate: the point is to catch a suite that was never discovered, not to fail whenever
-          # a single test is temporarily removed.
           check_floor() {
             package="$1"; floor="$2"
             log="/tmp/discovery-$package.log"
@@ -229,25 +163,9 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      # Moved here from `ci-architecture.yml` so that the four commands are named in exactly one
-      # place. `--all-targets` covers tests, examples and benches, which `cargo test` alone does not
-      # type-check for the targets it does not run.
-      #
-      # No `-- -D warnings`, deliberately, and this is the one place the gate differs from the local
-      # hook. `crates/platform/code/src/plan.rs` passes `-D warnings` (added by #719) but lints only the
-      # packages a change affects; across `--workspace` the same flag fails on pre-existing warnings:
-      #
-      #   $ cargo clippy --workspace --all-targets --no-default-features -- -D warnings
-      #   error: could not compile `burncloud-code` (lib) due to 3 previous errors
-      #   error: could not compile `burncloud-loops` (lib) due to 20 previous errors
-      #   exit code 101
-      #
-      # Adding it here before that baseline is cleared would be a gate that is red on `main`. Recorded
-      # so the divergence is a known state rather than a surprise; `.github/README.md` carries it too.
+      # This workflow keeps its existing workspace Clippy policy. `burncloud-code` may be stricter
+      # for selected packages; #759 changes only the known-test baseline and does not alter lint policy.
       - name: Check workspace Clippy policy
-        # The UI client's default `desktop` feature pulls GTK native libraries.
-        # Linux architecture CI checks every target with defaults disabled; the
-        # desktop feature remains the responsibility of platform-specific UI CI.
         run: cargo clippy --workspace --all-targets --no-default-features
 
   cargo-deny:
@@ -261,9 +179,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      # The action rather than `cargo install cargo-deny && cargo deny check`, so the version is
-      # pinned by the action tag instead of resolving to whatever is newest on the runner. The local
-      # gate runs `deny check`, which is the same default check set this passes explicitly.
       - name: Check dependency bans, licenses, advisories and sources
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
