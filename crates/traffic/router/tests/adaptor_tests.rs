@@ -139,16 +139,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     let base_url = format!("http://localhost:{mock_port}");
     let api_key = "sk-ant-mock-key";
 
-    insert_test_channel(
-        &pool,
-        channel_id,
-        name,
-        &base_url,
-        api_key,
-        name,
-        "default",
-    )
-    .await?;
+    insert_test_channel(&pool, channel_id, name, &base_url, api_key, name, "default").await?;
     // The shared fixture defaults to OpenAI. This test exercises the Claude
     // adaptor, so select the production Anthropic channel type explicitly.
     sqlx::query("UPDATE channel_providers SET type = 14 WHERE id = ?")
