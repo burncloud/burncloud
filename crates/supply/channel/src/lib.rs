@@ -178,7 +178,7 @@ mod migration_invariants {
     }
 
     async fn cleanup(db: Database, path: &Path) -> TestResult<()> {
-        db.close().await?;
+        db.close().await;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         for suffix in ["", "-wal", "-shm"] {
             let mut candidate = path.as_os_str().to_os_string();
