@@ -93,6 +93,12 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
             return Err("code test clippy must end with `-- -D warnings`".into());
         }
         &args[..args.len() - 3]
+    } else if kind == "test" {
+        // These integration regressions verify gate ordering, stop-on-failure, and hook behavior.
+        // Keep their phase log at the Cargo argument layer; the exact libtest baseline arguments
+        // after `--` are pinned separately by plan::tests::test_command_applies_known_baseline_as_libtest_arguments.
+        let cargo_end = args.iter().position(|arg| arg == "--").unwrap_or(args.len());
+        &args[..cargo_end]
     } else {
         &args[..]
     };
