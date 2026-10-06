@@ -136,7 +136,10 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     let base_url = format!("http://127.0.0.1:{mock_port}");
     let api_key = "sk-deepseek-mock-key";
     let match_path = "/v1/chat/completions/test-deepseek";
-    insert_test_channel(&pool, channel_id, name, &base_url, api_key, model, "default").await?;
+    insert_test_channel(
+        &pool, channel_id, name, &base_url, api_key, model, "default",
+    )
+    .await?;
     sqlx::query("UPDATE channel_providers SET type = 43 WHERE id = ?")
         .bind(channel_id)
         .execute(&pool)
@@ -197,7 +200,10 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     let base_url = format!("http://127.0.0.1:{mock_port}");
     let api_key = "sk-qwen-mock-key";
     let match_path = "/api/v1/services/aigc/text-generation/generation/test-qwen";
-    insert_test_channel(&pool, channel_id, name, &base_url, api_key, model, "default").await?;
+    insert_test_channel(
+        &pool, channel_id, name, &base_url, api_key, model, "default",
+    )
+    .await?;
     sqlx::query("UPDATE channel_providers SET type = 17 WHERE id = ?")
         .bind(channel_id)
         .execute(&pool)
