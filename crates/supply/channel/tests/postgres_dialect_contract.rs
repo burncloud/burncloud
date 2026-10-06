@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "PostgreSQL contract tests are fail-fast diagnostics; explicit unwrap/expect keeps backend setup failures readable."
+)]
 //! PostgreSQL half of the `database-channel` dialect contract (#658).
 //!
 //! `sqlite_row_mapping.rs` and `protocol_config.rs` already pin the same contracts on SQLite. This
