@@ -37,7 +37,13 @@ pub enum ConsumeOutcome {
     /// Tokens taken from the request's own color bucket.
     OwnBucket,
     /// Tokens taken from a higher-priority color's idle reservation.
-    Borrowed { from: TrafficColor },
+    ///
+    /// `tpm` is how much of the estimate the lender actually supplied: the
+    /// whole estimate, because a borrow either takes all of it or is not
+    /// attempted. It is carried explicitly so the matching
+    /// [`BudgetGuard`] can return the tokens to *that* bucket — see
+    /// `BudgetGuard::with_source`.
+    Borrowed { from: TrafficColor, tpm: u64 },
     /// All buckets that this color may draw from are empty.
     /// Caller should reject the request with 503 + `X-Rejected-By: shaper`.
     Rejected,
@@ -49,6 +55,22 @@ impl ConsumeOutcome {
         !matches!(self, ConsumeOutcome::Rejected)
     }
 
+    /// Where this admission actually took its TPM from.
+    ///
+    /// `None` for [`ConsumeOutcome::Rejected`] — nothing was consumed, so
+    /// there is nothing to build a [`BudgetGuard`] for. Callers should pair
+    /// this with [`BudgetGuard::with_source`] instead of assuming the
+    /// request's own color supplied the tokens.
+    pub fn sourced(&self) -> Option<ReservationSource> {
+        match *self {
+            ConsumeOutcome::OwnBucket => Some(ReservationSource::Own),
+            ConsumeOutcome::Borrowed { from, tpm } => {
+                Some(ReservationSource::Borrowed { from, tpm })
+            }
+            ConsumeOutcome::Rejected => None,
+        }
+    }
+
     /// Static label for `router_logs.layer_decision`.
     pub fn as_label(&self) -> &'static str {
         match self {
@@ -57,6 +79,19 @@ impl ConsumeOutcome {
             ConsumeOutcome::Rejected => "shaper_reject",
         }
     }
+}
+
+/// Which bucket actually supplied the TPM a [`BudgetGuard`] is holding.
+///
+/// Recorded at admission time and used at release time, so that a refund
+/// follows the borrow chain instead of always landing in the requester's own
+/// color (#675).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReservationSource {
+    /// The requester's own color bucket supplied everything.
+    Own,
+    /// Another color's idle reservation supplied `tpm` tokens.
+    Borrowed { from: TrafficColor, tpm: u64 },
 }
 
 /// Per-channel reservation policy. Three values must sum to 1.0 (±epsilon).
@@ -121,6 +156,12 @@ pub trait BudgetBackend: Send + Sync {
     /// Refund (return tokens to the bucket). Used after the response when the
     /// estimated TPM was higher than the actual usage — read `router_logs.cost`
     /// or token counters and call `refund(channel, color, est - actual)`.
+    ///
+    /// The credited bucket is always `color` and the credit is capped at that
+    /// bucket's own reservation. That is correct for tokens the bucket itself
+    /// supplied; a **borrowed** reservation must be returned to its lender
+    /// instead, which is what [`BudgetGuard::with_source`] does (it issues one
+    /// capped `refund` per bucket involved). See #675.
     fn refund(&self, channel_id: i32, color: TrafficColor, tpm_to_return: u64);
 
     /// Read-only snapshot of remaining capacity per color (for `/router/status`).
@@ -132,8 +173,9 @@ pub trait BudgetBackend: Send + Sync {
 /// cancellation, upstream timeout, or panic during the proxy `.await`.
 ///
 /// **Lifecycle:**
-/// - `BudgetGuard::new(...)` records the `(channel_id, color, est_tpm)` triple
-///   right after a successful `try_consume` (caller already holds the bucket).
+/// - `BudgetGuard::with_source(...)` records the `(channel_id, color, est_tpm)`
+///   triple right after a successful `try_consume` (caller already holds the
+///   bucket), plus which bucket supplied the tokens.
 /// - On the happy path, the caller calls `guard.commit(actual_tpm)`. If the
 ///   actual TPM was less than the estimate, the over-estimate
 ///   (`est - actual`) is refunded. The `committed=true` flag stops `Drop`
@@ -154,39 +196,92 @@ pub struct BudgetGuard<'a> {
     channel_id: i32,
     color: TrafficColor,
     est_tpm: u64,
+    /// Where the estimate was taken from. `Borrowed` refunds to the lender
+    /// first, so the reservation split the Shaper exists to enforce is
+    /// restored rather than shifted (#675).
+    source: ReservationSource,
     committed: bool,
 }
 
 impl<'a> BudgetGuard<'a> {
-    /// Wrap a freshly-consumed reservation. Call after `try_consume` returned
-    /// `OwnBucket` or `Borrowed` (do NOT call after `Rejected`).
+    /// Wrap a freshly-consumed reservation, assuming the requester's own
+    /// bucket supplied it.
+    ///
+    /// Prefer [`BudgetGuard::with_source`] at real call sites: it takes the
+    /// [`ConsumeOutcome`]'s own account of where the tokens came from, so a
+    /// borrowed admission refunds to the lender. This constructor stays for
+    /// callers that consumed from their own bucket and for the guard's
+    /// unit-level tests.
+    ///
+    /// Call after `try_consume` returned `OwnBucket` or `Borrowed` (do NOT
+    /// call after `Rejected`).
     pub fn new(
         backend: &'a (dyn BudgetBackend + Send + Sync),
         channel_id: i32,
         color: TrafficColor,
         est_tpm: u64,
     ) -> Self {
+        Self::with_source(backend, channel_id, color, est_tpm, ReservationSource::Own)
+    }
+
+    /// Wrap a freshly-consumed reservation together with the bucket it came
+    /// from — the pairing the failover loop performs after `try_consume`.
+    pub fn with_source(
+        backend: &'a (dyn BudgetBackend + Send + Sync),
+        channel_id: i32,
+        color: TrafficColor,
+        est_tpm: u64,
+        source: ReservationSource,
+    ) -> Self {
         Self {
             backend,
             channel_id,
             color,
             est_tpm,
+            source,
             committed: false,
         }
     }
 
     /// Commit the reservation with the actual TPM consumed. If the actual was
-    /// smaller than the estimate, refund the difference. Marks the guard as
-    /// committed so `Drop` is a no-op.
+    /// smaller than the estimate, refund the difference along the borrow
+    /// chain (lender first, then the requester's own bucket). Marks the guard
+    /// as committed so `Drop` is a no-op.
     ///
     /// Takes `self` by value — the guard is consumed and cannot be reused.
     pub fn commit(mut self, actual_tpm: u64) {
         let to_refund = self.est_tpm.saturating_sub(actual_tpm);
         if to_refund > 0 {
-            self.backend.refund(self.channel_id, self.color, to_refund);
+            self.refund_along_source(to_refund);
         }
         self.committed = true;
         // self drops here — Drop sees `committed = true` and skips full refund.
+    }
+
+    /// Return `tpm_to_return` to the buckets that actually supplied it.
+    ///
+    /// A borrowed reservation goes back to the lender first, capped by what
+    /// the lender lent; only an excess the lender cannot absorb (it would
+    /// exceed its own reservation because another request refilled it
+    /// meanwhile) falls through to the requester's own bucket. Own-bucket
+    /// admissions keep the original behaviour exactly.
+    fn refund_along_source(&self, tpm_to_return: u64) {
+        match self.source {
+            ReservationSource::Borrowed { from, tpm } => {
+                let back_to_lender = tpm_to_return.min(tpm);
+                if back_to_lender > 0 {
+                    self.backend.refund(self.channel_id, from, back_to_lender);
+                }
+                let remainder = tpm_to_return.saturating_sub(back_to_lender);
+                if remainder > 0 {
+                    self.backend.refund(self.channel_id, self.color, remainder);
+                }
+            }
+            ReservationSource::Own => {
+                self.backend
+                    .refund(self.channel_id, self.color, tpm_to_return);
+            }
+        }
     }
 }
 
@@ -194,10 +289,11 @@ impl<'a> Drop for BudgetGuard<'a> {
     fn drop(&mut self) {
         if !self.committed && self.est_tpm > 0 {
             // Cancel / panic / early-return path: nothing was committed by the
-            // caller, so refund the full estimate. Otherwise `est_tpm` would
-            // be permanently held by a request the upstream never finished.
-            self.backend
-                .refund(self.channel_id, self.color, self.est_tpm);
+            // caller, so refund the full estimate — to the lender first when
+            // the tokens were borrowed. Otherwise `est_tpm` would be
+            // permanently held by a request the upstream never finished, and
+            // the split between colours would be silently shifted (#675).
+            self.refund_along_source(self.est_tpm);
         }
     }
 }
@@ -388,6 +484,9 @@ impl ChannelBuckets {
             if self.try_take_from(borrowed_idx, est_tpm) {
                 return ConsumeOutcome::Borrowed {
                     from: idx_color(borrowed_idx),
+                    // A borrow takes the whole estimate from one bucket, so
+                    // the lender's exposure is exactly `est_tpm`.
+                    tpm: est_tpm,
                 };
             }
         }
@@ -464,7 +563,8 @@ mod tests {
         assert_eq!(
             r,
             ConsumeOutcome::Borrowed {
-                from: TrafficColor::Green
+                from: TrafficColor::Green,
+                tpm: 50,
             }
         );
     }
@@ -487,7 +587,8 @@ mod tests {
         assert_eq!(
             r,
             ConsumeOutcome::Borrowed {
-                from: TrafficColor::Yellow
+                from: TrafficColor::Yellow,
+                tpm: 50,
             }
         );
     }
@@ -564,9 +665,168 @@ mod tests {
     fn outcome_admitted_flag() {
         assert!(ConsumeOutcome::OwnBucket.admitted());
         assert!(ConsumeOutcome::Borrowed {
-            from: TrafficColor::Green
+            from: TrafficColor::Green,
+            tpm: 1,
         }
         .admitted());
         assert!(!ConsumeOutcome::Rejected.admitted());
+    }
+
+    #[test]
+    fn sourced_names_where_the_tokens_came_from() {
+        assert_eq!(
+            ConsumeOutcome::OwnBucket.sourced(),
+            Some(ReservationSource::Own)
+        );
+        assert_eq!(
+            ConsumeOutcome::Borrowed {
+                from: TrafficColor::Green,
+                tpm: 123,
+            }
+            .sourced(),
+            Some(ReservationSource::Borrowed {
+                from: TrafficColor::Green,
+                tpm: 123,
+            })
+        );
+        assert_eq!(
+            ConsumeOutcome::Rejected.sourced(),
+            None,
+            "a rejected request consumed nothing, so it has no source to refund to"
+        );
+    }
+
+    /// The lender is made whole and the borrower is not credited with tokens it
+    /// never had — on the `Drop` (cancel) path, which refunds the full estimate.
+    #[test]
+    fn a_cancelled_borrow_returns_the_tokens_to_the_lender() {
+        let b = InMemoryBudget::new();
+        b.configure(1, 100, 100_000, ChannelReservation::default());
+
+        // Drain Yellow (40_000 of 100_000) so the next Yellow request borrows.
+        let outcome = b.try_consume(1, TrafficColor::Yellow, 40_000);
+        assert_eq!(outcome, ConsumeOutcome::OwnBucket);
+        BudgetGuard::with_source(
+            &b,
+            1,
+            TrafficColor::Yellow,
+            40_000,
+            outcome.sourced().unwrap_or(ReservationSource::Own),
+        )
+        .commit(40_000);
+
+        let before = b.snapshot(1).unwrap();
+        assert_eq!(before.tpm_remaining_yellow, 0);
+        let green_before = before.tpm_remaining_green;
+
+        let outcome = b.try_consume(1, TrafficColor::Yellow, 10_000);
+        assert_eq!(
+            outcome,
+            ConsumeOutcome::Borrowed {
+                from: TrafficColor::Green,
+                tpm: 10_000,
+            }
+        );
+        drop(BudgetGuard::with_source(
+            &b,
+            1,
+            TrafficColor::Yellow,
+            10_000,
+            outcome.sourced().unwrap_or(ReservationSource::Own),
+        ));
+
+        let after = b.snapshot(1).unwrap();
+        assert_eq!(
+            after.tpm_remaining_green, green_before,
+            "green lent 10_000 to a cancelled request, so green must be whole again"
+        );
+        assert_eq!(
+            after.tpm_remaining_yellow, 0,
+            "yellow was empty and lent nothing, so it must not be credited"
+        );
+    }
+
+    /// The same property on the `commit` (over-estimate) path, which refunds
+    /// only the difference.
+    #[test]
+    fn a_committed_overestimate_returns_the_unused_part_to_the_lender() {
+        let b = InMemoryBudget::new();
+        b.configure(1, 100, 100_000, ChannelReservation::default());
+
+        let outcome = b.try_consume(1, TrafficColor::Yellow, 40_000);
+        BudgetGuard::with_source(
+            &b,
+            1,
+            TrafficColor::Yellow,
+            40_000,
+            outcome.sourced().unwrap_or(ReservationSource::Own),
+        )
+        .commit(40_000);
+
+        let green_before = b.snapshot(1).unwrap().tpm_remaining_green;
+
+        let outcome = b.try_consume(1, TrafficColor::Yellow, 10_000);
+        assert!(matches!(outcome, ConsumeOutcome::Borrowed { .. }));
+        BudgetGuard::with_source(
+            &b,
+            1,
+            TrafficColor::Yellow,
+            10_000,
+            outcome.sourced().unwrap_or(ReservationSource::Own),
+        )
+        .commit(4_000);
+
+        let after = b.snapshot(1).unwrap();
+        assert_eq!(
+            after.tpm_remaining_green,
+            green_before - 4_000,
+            "green lent 10_000 and 6_000 came back; only the 4_000 really used stays spent"
+        );
+        assert_eq!(
+            after.tpm_remaining_yellow, 0,
+            "yellow supplied nothing, so the refund must not land in yellow"
+        );
+    }
+
+    /// The cap still holds: a refund can never push a bucket past its own
+    /// reservation, so no capacity is invented.
+    #[test]
+    fn a_borrow_refund_never_exceeds_the_lenders_reservation() {
+        let b = InMemoryBudget::new();
+        b.configure(1, 100, 100_000, ChannelReservation::default());
+
+        let outcome = b.try_consume(1, TrafficColor::Yellow, 40_000);
+        BudgetGuard::with_source(
+            &b,
+            1,
+            TrafficColor::Yellow,
+            40_000,
+            outcome.sourced().unwrap_or(ReservationSource::Own),
+        )
+        .commit(40_000);
+
+        // Borrow from green, then release far more than was ever borrowed.
+        let outcome = b.try_consume(1, TrafficColor::Yellow, 10_000);
+        assert!(matches!(outcome, ConsumeOutcome::Borrowed { .. }));
+        BudgetGuard::with_source(
+            &b,
+            1,
+            TrafficColor::Yellow,
+            10_000,
+            outcome.sourced().unwrap_or(ReservationSource::Own),
+        )
+        .commit(0);
+
+        let after = b.snapshot(1).unwrap();
+        assert!(
+            after.tpm_remaining_green <= 40_000,
+            "green must not exceed its 40_000 reservation, got {}",
+            after.tpm_remaining_green
+        );
+        assert!(
+            after.tpm_remaining_yellow <= 40_000,
+            "yellow must not exceed its 40_000 reservation, got {}",
+            after.tpm_remaining_yellow
+        );
     }
 }

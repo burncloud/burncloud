@@ -426,7 +426,8 @@ mod tests {
 
         let admitted = handles
             .into_iter()
-            .filter(|handle| handle.join().unwrap_or(false))
+            .filter_map(|handle| handle.join().ok())
+            .filter(|admitted| *admitted)
             .count();
         assert_eq!(admitted, 1, "Half-Open must expose exactly one probe slot");
     }

@@ -2475,12 +2475,15 @@ async fn proxy_logic(
                 );
                 continue;
             }
-            budget_guard = Some(BudgetGuard::new(
-                state.rate_budget.as_ref(),
-                channel_id_i32,
-                shaper_ctx.color,
-                shaper_ctx.est_tpm,
-            ));
+            budget_guard = outcome.sourced().map(|source| {
+                BudgetGuard::with_source(
+                    state.rate_budget.as_ref(),
+                    channel_id_i32,
+                    shaper_ctx.color,
+                    shaper_ctx.est_tpm,
+                    source,
+                )
+            });
             outcome.as_label()
         };
         shaper_ctx.outcome = Some(iter_label);
