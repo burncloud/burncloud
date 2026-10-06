@@ -1,5 +1,8 @@
 // Router passthrough — raw LLM API proxying — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 
 //! Gemini Passthrough Detection Module
 //!

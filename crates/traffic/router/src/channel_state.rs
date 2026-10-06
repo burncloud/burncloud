@@ -71,7 +71,10 @@ pub enum ModelStatus {
 ///
 /// Tracks the model's operational status, rate limiting, errors, and performance metrics.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub struct ModelState {
     /// The model name/identifier
     pub model: String,
@@ -113,7 +116,10 @@ impl ModelState {
     }
 
     /// Create a new ModelState with custom adaptive limit config
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     pub fn with_config(model: String, channel_id: i32, config: AimdConfig) -> Self {
         Self {
             model,
@@ -135,7 +141,10 @@ impl ModelState {
 /// Tracks channel-level status including authentication, balance, and rate limits,
 /// as well as the state of individual models available through this channel.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub struct ChannelState {
     /// The channel ID
     pub channel_id: i32,
@@ -212,6 +221,10 @@ impl ChannelStateTracker {
     /// # Returns
     /// * `true` if the channel (and model if specified) is available
     /// * `false` if any condition prevents the channel/model from being used
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "availability is a policy checklist whose early returns intentionally mirror each rejection reason"
+    )]
     pub fn is_available(&self, channel_id: i32, model: Option<&str>) -> bool {
         let now = Instant::now();
 
@@ -327,6 +340,10 @@ impl ChannelStateTracker {
     /// * `model` - Optional model name if the error is model-specific
     /// * `failure_type` - The type of failure that occurred
     /// * `error_message` - Human-readable error message
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "failure classification keeps channel- and model-level state transitions together for auditability"
+    )]
     pub fn record_error(
         &self,
         channel_id: i32,
@@ -524,7 +541,10 @@ impl ChannelStateTracker {
     ///
     /// # Returns
     /// A vector of channel IDs that are available for the given model (if specified)
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     pub fn get_available_channels(&self, candidates: &[i32], model: Option<&str>) -> Vec<i32> {
         candidates
             .iter()

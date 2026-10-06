@@ -30,7 +30,10 @@ pub(crate) use passthrough::PassthroughScheduler;
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ScheduleError {
     #[error("scheduling failed: {0}")]
-    #[allow(dead_code)] // Used by trait implementors; compiler can't see across dyn dispatch
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )] // Used by trait implementors; compiler can't see across dyn dispatch
     Internal(String),
 }
 
@@ -162,6 +165,10 @@ const RPM_FACTOR_COOLDOWN: f64 = 0.1;
 /// ```
 ///
 /// Falls back to all-groups-passthrough if env var is missing or invalid.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "configuration parsing deliberately reports each invalid policy field and falls back per group"
+)]
 pub(crate) fn load_scheduler_config() -> SchedulerPolicyMap {
     let json_str = match std::env::var("SCHEDULER_POLICIES") {
         Ok(v) => v,
@@ -304,6 +311,10 @@ pub(crate) fn rank_passthrough(mut candidates: Vec<(Channel, i32)>) -> Vec<(Chan
 ///
 /// Pre-computes all scheduling factors (health, cost, rpm) per candidate
 /// in a single pass over channel state.
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "context assembly computes health, price, currency, and limiter factors in one candidate pass"
+)]
 pub(crate) async fn build_context(
     model: &str,
     candidates: &[(Channel, i32)],
@@ -509,6 +520,10 @@ pub(crate) mod tests {
         fn name(&self) -> &'static str {
             "panicking"
         }
+        #[allow(
+            clippy::panic_in_result_fn,
+            reason = "this test double must panic to verify the scheduler catch-unwind fallback"
+        )]
         fn score(
             &self,
             _candidates: &[(Channel, i32)],

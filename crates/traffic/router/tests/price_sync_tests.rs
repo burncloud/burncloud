@@ -4,7 +4,9 @@
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    clippy::panic_in_result_fn,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
 )]
 
 mod common;
@@ -14,6 +16,14 @@ use burncloud_commerce_contracts::pricing::{
     CurrencyPricing, ModelMetadata, ModelPricing, PricingConfig,
 };
 use burncloud_database::create_database_with_url;
+
+fn remove_file_if_present(path: &str) -> anyhow::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
 
 /// Build a SQLite connection URL for a filesystem path.
 ///
@@ -490,7 +500,7 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
         .join("burncloud_cold_start_test.db")
         .to_string_lossy()
         .to_string();
-    let _ = std::fs::remove_file(&tmp_path); // clean up from any previous run
+    remove_file_if_present(&tmp_path)?;
     let url = sqlite_url(&tmp_path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
@@ -509,7 +519,7 @@ async fn test_cold_start_db_empty_network_fail() -> anyhow::Result<()> {
 
     // DB is empty, remote unreachable → must return Err (fatal)
     let result = service.sync_all(false).await;
-    let _ = std::fs::remove_file(&tmp_path); // cleanup
+    remove_file_if_present(&tmp_path)?;
     assert!(
         result.is_err(),
         "Cold start with empty DB and unreachable remote must return Err"
@@ -527,7 +537,7 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
         .join("burncloud_fast_path_test.db")
         .to_string_lossy()
         .to_string();
-    let _ = std::fs::remove_file(&tmp_path);
+    remove_file_if_present(&tmp_path)?;
     let url = sqlite_url(&tmp_path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
@@ -555,7 +565,7 @@ async fn test_startup_fast_path_uses_db() -> anyhow::Result<()> {
     let mut service = PriceSyncService::with_config(db.clone(), config);
 
     let result = service.sync_all(false).await;
-    let _ = std::fs::remove_file(&tmp_path); // cleanup
+    remove_file_if_present(&tmp_path)?;
     let result = result?;
     assert_eq!(
         result.source, "db_cache",

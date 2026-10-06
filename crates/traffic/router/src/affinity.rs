@@ -172,7 +172,10 @@ fn mix_hash(key: &str, channel_id: i32) -> u64 {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 mod tests {
     use super::*;
     use crate::scheduler::tests::make_channel;

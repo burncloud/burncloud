@@ -1,5 +1,8 @@
 // LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 
 use async_trait::async_trait;
 use burncloud_database::Database;
@@ -16,7 +19,10 @@ use std::sync::Arc;
 #[async_trait]
 pub trait ChannelAdaptor: Send + Sync {
     /// Returns the name of the adaptor (e.g., "OpenAI", "Claude").
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     fn name(&self) -> &'static str;
 
     /// Converts an OpenAI-compatible request to the vendor-specific request body.
@@ -42,7 +48,10 @@ pub trait ChannelAdaptor: Send + Sync {
     ) -> RequestBuilder;
 
     /// Checks if the adaptor supports streaming for the given model/request.
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     fn supports_stream(&self) -> bool {
         true
     }
@@ -329,7 +338,10 @@ impl DynamicAdaptorFactory {
     }
 
     /// Get an adaptor using the default API version for the channel type
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     pub async fn get_default_adaptor(&self, channel_type: ChannelType) -> Arc<dyn ChannelAdaptor> {
         let channel_type_id = channel_type as i32;
 
@@ -367,7 +379,10 @@ impl DynamicAdaptorFactory {
     }
 
     /// Load the default dynamic adaptor for a channel type
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     async fn load_default_adaptor(
         &self,
         channel_type: i32,
@@ -417,7 +432,10 @@ impl DynamicAdaptorFactory {
     }
 
     /// Remove a specific adaptor from the cache
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+    )]
     pub fn invalidate(&self, channel_type: i32, api_version: &str) {
         let key = AdaptorCacheKey {
             channel_type,

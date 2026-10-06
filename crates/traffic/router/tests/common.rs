@@ -3,6 +3,7 @@
     clippy::expect_used,
     clippy::disallowed_types,
     dead_code,
+    clippy::panic_in_result_fn,
     reason = "Shared test helper. Each file in `tests/` is its own crate, so this one is also built as a \
               standalone test binary in which none of these helpers is used; the binaries that do use them \
               are the `*_tests.rs` files beside it. The helpers stay `pub` within the crate for that reason, \
@@ -100,13 +101,16 @@ async fn ensure_l1_classifier_tables(pool: &AnyPool) -> anyhow::Result<()> {
     )
     .execute(pool)
     .await?;
-    let _ =
-        sqlx::query("ALTER TABLE router_tokens ADD COLUMN order_type VARCHAR(16) DEFAULT 'value'")
-            .execute(pool)
-            .await; // ignore duplicate-column error from older test DBs
-    let _ = sqlx::query("ALTER TABLE router_tokens ADD COLUMN price_cap_nanodollars BIGINT")
-        .execute(pool)
-        .await; // ignore duplicate-column error from older test DBs
+    for statement in [
+        "ALTER TABLE router_tokens ADD COLUMN order_type VARCHAR(16) DEFAULT 'value'",
+        "ALTER TABLE router_tokens ADD COLUMN price_cap_nanodollars BIGINT",
+    ] {
+        if let Err(error) = sqlx::query(statement).execute(pool).await {
+            if !error.to_string().contains("duplicate column") {
+                return Err(error.into());
+            }
+        }
+    }
 
     Ok(())
 }
@@ -128,7 +132,10 @@ async fn ensure_l1_classifier_tables(pool: &AnyPool) -> anyhow::Result<()> {
 ///
 /// SQLite-only DDL (`INSERT OR REPLACE`); intended for the in-process
 /// fixtures used by integration tests that share [`setup_db`].
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) async fn insert_router_token(
     db: &Database,
     key: &str,
@@ -191,14 +198,21 @@ pub(crate) async fn insert_router_token(
 /// so tests that INSERT/SELECT with layer_decision/traffic_color must
 /// call this first. SQLite `ALTER TABLE ADD COLUMN` is idempotent if
 /// we swallow "duplicate column name" errors.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) async fn ensure_l6_observability_columns(pool: &AnyPool) -> anyhow::Result<()> {
-    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN layer_decision VARCHAR(32)")
-        .execute(pool)
-        .await; // ignore duplicate-column error
-    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN traffic_color CHAR(1)")
-        .execute(pool)
-        .await; // ignore duplicate-column error
+    for statement in [
+        "ALTER TABLE router_logs ADD COLUMN layer_decision VARCHAR(32)",
+        "ALTER TABLE router_logs ADD COLUMN traffic_color CHAR(1)",
+    ] {
+        if let Err(error) = sqlx::query(statement).execute(pool).await {
+            if !error.to_string().contains("duplicate column") {
+                return Err(error.into());
+            }
+        }
+    }
     Ok(())
 }
 
@@ -207,28 +221,49 @@ pub(crate) async fn ensure_l6_observability_columns(pool: &AnyPool) -> anyhow::R
 /// this column, so tests that INSERT/SELECT with cost_status must call this
 /// first. SQLite `ALTER TABLE ADD COLUMN` is idempotent if we swallow
 /// "duplicate column name" errors.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) async fn ensure_cost_status_column(pool: &AnyPool) -> anyhow::Result<()> {
-    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost_status TEXT DEFAULT NULL")
-        .execute(pool)
-        .await; // ignore duplicate-column error
+    if let Err(error) =
+        sqlx::query("ALTER TABLE router_logs ADD COLUMN cost_status TEXT DEFAULT NULL")
+            .execute(pool)
+            .await
+    {
+        if !error.to_string().contains("duplicate column") {
+            return Err(error.into());
+        }
+    }
     Ok(())
 }
 
 /// Ensure the `router_logs` table has the `error_type` column added by
 /// migration 0014. Same pattern as `ensure_cost_status_column`.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) async fn ensure_error_type_column(pool: &AnyPool) -> anyhow::Result<()> {
-    let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN error_type TEXT DEFAULT NULL")
-        .execute(pool)
-        .await; // ignore duplicate-column error
+    if let Err(error) =
+        sqlx::query("ALTER TABLE router_logs ADD COLUMN error_type TEXT DEFAULT NULL")
+            .execute(pool)
+            .await
+    {
+        if !error.to_string().contains("duplicate column") {
+            return Err(error.into());
+        }
+    }
     Ok(())
 }
 
 /// Ensure the `channel_providers` and `channel_abilities` tables exist.
 /// These tables supersede the deprecated `router_upstreams`, `router_groups`,
 /// and `router_group_members` tables.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> {
     // Create channel_providers if not exists
     sqlx::query(
@@ -276,7 +311,14 @@ pub(crate) async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> 
 
 /// Insert a channel for testing.
 /// Creates entries in both `channel_providers` and `channel_abilities`.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the integration fixture exposes every persisted channel field at its call sites"
+)]
 pub(crate) async fn insert_test_channel(
     pool: &AnyPool,
     channel_id: i32,
@@ -379,7 +421,10 @@ pub(crate) async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     Ok((db, pool, url))
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) async fn start_test_server(port: u16, db_url: &str) {
     // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
     // Use a fixed 64-hex-char test key; does not affect production.
@@ -419,8 +464,14 @@ pub(crate) async fn start_test_server(port: u16, db_url: &str) {
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 }
 
-#[allow(dead_code)]
-#[allow(clippy::disallowed_types)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
+#[allow(
+    clippy::disallowed_types,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 pub(crate) async fn start_mock_upstream(listener: TcpListener) {
     let handler = |method: axum::http::Method,
                    uri: axum::http::Uri,

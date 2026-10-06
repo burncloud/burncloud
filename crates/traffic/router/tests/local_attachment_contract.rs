@@ -1,6 +1,7 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
+    clippy::panic_in_result_fn,
     reason = "Test-only file. The fake attacher stores through a `Mutex`, so recording an attachment \
               requires a lock acquisition whose failure the test cannot act on, and the assertions are \
               the test. The sibling test files in this directory carry the same allowance; this one \

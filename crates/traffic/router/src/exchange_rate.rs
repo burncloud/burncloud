@@ -151,8 +151,7 @@ impl ExchangeRateService {
 
                 let now = Utc::now();
                 let needs_refresh = self.rates.iter().any(|entry| {
-                    now.signed_duration_since(entry.updated_at).num_hours()
-                        >= STALE_THRESHOLD_HOURS
+                    now.signed_duration_since(entry.updated_at).num_hours() >= STALE_THRESHOLD_HOURS
                 });
                 if needs_refresh {
                     tracing::info!("Exchange rates are stale, attempting refresh");
@@ -334,9 +333,30 @@ mod tests {
         service.set_rate(Currency::USD, Currency::CNY, 7.2);
         service.set_rate(Currency::USD, Currency::EUR, 0.93);
         service.set_rate(Currency::EUR, Currency::CNY, 7.75);
-        assert!((service.convert(100.0, Currency::USD, Currency::CNY).unwrap() - 720.0).abs() < 0.001);
-        assert!((service.convert(100.0, Currency::USD, Currency::EUR).unwrap() - 93.0).abs() < 0.001);
-        assert!((service.convert(100.0, Currency::EUR, Currency::CNY).unwrap() - 775.0).abs() < 0.001);
+        assert!(
+            (service
+                .convert(100.0, Currency::USD, Currency::CNY)
+                .unwrap()
+                - 720.0)
+                .abs()
+                < 0.001
+        );
+        assert!(
+            (service
+                .convert(100.0, Currency::USD, Currency::EUR)
+                .unwrap()
+                - 93.0)
+                .abs()
+                < 0.001
+        );
+        assert!(
+            (service
+                .convert(100.0, Currency::EUR, Currency::CNY)
+                .unwrap()
+                - 775.0)
+                .abs()
+                < 0.001
+        );
         assert_eq!(service.list_rates().len(), 3);
     }
 

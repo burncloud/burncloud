@@ -6,7 +6,9 @@
     clippy::unnecessary_cast,
     clippy::let_and_return,
     clippy::redundant_pattern_matching,
-    unused_variables
+    unused_variables,
+    clippy::panic_in_result_fn,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
 )]
 
 mod common;

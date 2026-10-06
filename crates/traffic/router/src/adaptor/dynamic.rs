@@ -1,5 +1,8 @@
 // LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 
 //! Dynamic Protocol Adaptor Module
 //!
@@ -14,7 +17,10 @@ use reqwest::RequestBuilder;
 use serde_json::Value;
 
 /// Dynamic adaptor that uses protocol configuration at runtime
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 pub(crate) struct DynamicAdaptor {
     /// Channel type identifier
     pub channel_type: i32,
@@ -30,7 +36,10 @@ pub(crate) struct DynamicAdaptor {
     response_mapping: Option<ResponseMapping>,
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "kept for supported provider and dynamic-dispatch paths not exercised in every build"
+)]
 impl DynamicAdaptor {
     /// Create a new dynamic adaptor with the given configuration
     pub(crate) fn new(
@@ -181,7 +190,8 @@ impl ChannelAdaptor for DynamicAdaptor {
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
 )]
 mod tests {
     use super::*;

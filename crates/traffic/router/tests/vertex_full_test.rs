@@ -5,7 +5,10 @@
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    clippy::panic_in_result_fn,
+    clippy::too_many_lines,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
 )]
 
 mod common;

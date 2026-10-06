@@ -26,7 +26,9 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::disallowed_types,
-    clippy::unnecessary_cast
+    clippy::unnecessary_cast,
+    clippy::panic_in_result_fn,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
 )]
 
 mod common;
@@ -214,11 +216,16 @@ async fn t8_drop_refunds_full_est_on_timeout_cancel() {
     // outer timeout cancels it after 50ms, dropping the future and the
     // guard inside it.
     let budget_for_task = budget.clone();
-    let _ = tokio::time::timeout(Duration::from_millis(50), async move {
-        let _guard = BudgetGuard::new(budget_for_task.as_ref(), 1, TrafficColor::Yellow, est_tpm);
-        tokio::time::sleep(Duration::from_secs(60)).await;
-    })
-    .await;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), async move {
+            let _guard =
+                BudgetGuard::new(budget_for_task.as_ref(), 1, TrafficColor::Yellow, est_tpm);
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        })
+        .await
+        .is_err(),
+        "the timeout must cancel the future and drop its budget guard"
+    );
 
     let snap_final = budget.snapshot(1).expect("snapshot");
     assert_eq!(
@@ -283,7 +290,10 @@ async fn grant_unlimited_quota(pool: &sqlx::AnyPool, key: &str) -> anyhow::Resul
 /// Insert a `channel_providers` + `channel_abilities` pair so the model
 /// router can resolve `model` → `channel_id`. `rpm_cap` / `tpm_cap` /
 /// `reservation_*` are passed straight through to the L2 Shaper config.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "legacy proxy boundary preserves the established call-site contract pending decomposition"
+)]
 async fn seed_channel(
     pool: &sqlx::AnyPool,
     channel_id: i32,
@@ -445,7 +455,7 @@ async fn t9_unconfigured_channel_increments_fail_open_count() -> anyhow::Result<
     // Fire one request — it'll fail at the upstream HTTP call (dead host),
     // but the shaper fail-open branch will still have run + incremented
     // fail_open_count.
-    let _ = client
+    if let Err(error) = client
         .post(&url)
         .header("Authorization", "Bearer tok-shaper-t9")
         .json(&serde_json::json!({
@@ -454,7 +464,10 @@ async fn t9_unconfigured_channel_increments_fail_open_count() -> anyhow::Result<
             "messages": [{"role": "user", "content": "hi"}],
         }))
         .send()
-        .await;
+        .await
+    {
+        eprintln!("expected dead-upstream request failure: {error}");
+    }
 
     // Check /console/internal/health — fail_open_count must be ≥ 1.
     let health_resp = client

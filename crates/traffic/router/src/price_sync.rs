@@ -135,6 +135,10 @@ impl PriceSyncService {
     /// On remote failure:
     /// - If DB has prices → warn and return Ok (graceful degradation)
     /// - If DB is empty → retry up to 3 times (5s, 15s, 30s), then return Err (fatal)
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "price-source priority, retries, and graceful degradation form one ordered synchronization policy"
+    )]
     pub async fn sync_all(&mut self, forced: bool) -> anyhow::Result<SyncResult> {
         // 1. Local override (highest priority, always checked)
         if let Some(config) = self.load_local_override()? {
@@ -227,6 +231,11 @@ impl PriceSyncService {
     }
 
     /// Apply pricing configuration to database
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "the legacy price import transaction validates and persists all pricing variants atomically"
+    )]
     pub async fn apply_prices(
         &self,
         config: &PricingConfig,
@@ -573,6 +582,10 @@ impl PriceSyncService {
     /// Import tiered pricing from a JSON structure
     ///
     /// This is used for models like Qwen that have tiered pricing based on context length.
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "tier validation enumerates every invalid boundary before persisting accepted tiers"
+    )]
     pub async fn import_tiered_pricing(&self, tiers: &[TieredPriceInput]) -> anyhow::Result<usize> {
         let mut imported_count = 0;
 
@@ -787,14 +800,21 @@ pub fn start_price_sync_task(
                             if let Err(e) = price_cache.refresh(&db).await {
                                 tracing::error!("Failed to refresh price cache after force sync: {e}");
                             }
-                            let _ = reply_tx.send(result);
+                            if reply_tx.send(result).is_err() {
+                                tracing::debug!("force price sync requester disconnected before reply");
+                            }
                         }
                         Err(e) => {
                             tracing::error!("Force price sync failed: {e}");
-                            let _ = reply_tx.send(SyncResult {
+                            if reply_tx
+                                .send(SyncResult {
                                 source: format!("error: {e}"),
                                 ..Default::default()
-                            });
+                                })
+                                .is_err()
+                            {
+                                tracing::debug!("force price sync requester disconnected before error reply");
+                            }
                         }
                     }
                 }

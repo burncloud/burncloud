@@ -1,6 +1,7 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
+    clippy::panic_in_result_fn,
     reason = "Test-only file: the assertions are the test."
 )]
 //! Permit release and TPM refund for the rate budget (#633, plan section 5 item 12).

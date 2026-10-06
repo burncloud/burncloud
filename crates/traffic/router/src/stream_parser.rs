@@ -1,5 +1,8 @@
 // SSE stream parser — dynamic LLM streaming response — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 
 use crate::token_counter::StreamingTokenCounter;
 use serde_json::Value;

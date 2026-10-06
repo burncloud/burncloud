@@ -45,6 +45,11 @@ impl ChannelHealthManager {
     }
 
     /// Process a response and update health state
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_arguments,
+        reason = "health processing consumes one complete response observation and applies all breaker transitions together"
+    )]
     pub fn process_response(
         &self,
         channel_id: i32,

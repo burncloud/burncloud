@@ -2,6 +2,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::disallowed_types,
+    clippy::panic_in_result_fn,
     reason = "Test-only file: the assertions are the test, and the helper reads JSON of unknown shape."
 )]
 //! Whether one request settles once (#633, plan section 5 item 12), and the fixture work it needs.

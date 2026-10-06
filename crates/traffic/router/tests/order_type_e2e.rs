@@ -12,7 +12,14 @@
 //! - T4: legacy token with no `router_tokens` row → Value default
 //! - T5: `user_id` reaches the L3 Affinity HRW key (deterministic stickiness)
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::too_many_lines,
+    clippy::panic_in_result_fn,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 
 mod common;
 

@@ -6,7 +6,13 @@
 //! - T2: CostCalculator::preflight rejects unknown models (strict) and allows them (non-strict)
 //! - T3: Post-settle PriceNotFound sets cost_status="price_missing" and increments counter
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::panic_in_result_fn,
+    reason = "test fixtures and protocol-boundary code intentionally exercise dynamic upstream payloads"
+)]
 
 mod common;
 
