@@ -132,6 +132,56 @@ impl CircuitBreaker {
         }
     }
 
+    fn record_auth_or_payment_failure(
+        &self,
+        upstream_id: &str,
+        entry: &mut UpstreamState,
+        failure_type: &FailureType,
+    ) {
+        entry
+            .failure_count
+            .store(self.failure_threshold * 10, Ordering::Relaxed);
+        entry.last_failure_time = Some(Instant::now());
+        entry.rate_limit_until = Some(Instant::now() + Duration::from_secs(1800));
+        tracing::warn!(
+            "Circuit Breaker: Upstream {} auth/payment failure ({:?}) — circuit tripped for 30 min",
+            upstream_id,
+            failure_type
+        );
+    }
+
+    fn record_rate_limit_failure(
+        &self,
+        upstream_id: &str,
+        entry: &mut UpstreamState,
+        retry_after: Option<u64>,
+    ) {
+        let duration = retry_after
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
+        entry.rate_limit_until = Some(Instant::now() + duration);
+
+        let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
+        if new_count >= self.failure_threshold {
+            tracing::warn!(
+                "Circuit Breaker: Upstream {} tripped due to rate limit (Failures: {})",
+                upstream_id,
+                new_count
+            );
+        }
+    }
+
+    fn record_counted_failure(&self, upstream_id: &str, entry: &UpstreamState) {
+        let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
+        if new_count >= self.failure_threshold {
+            tracing::warn!(
+                "Circuit Breaker: Upstream {} tripped! (Failures: {})",
+                upstream_id,
+                new_count
+            );
+        }
+    }
+
     /// Records a failed request with a specific failure type.
     pub fn record_failure_with_type(&self, upstream_id: &str, failure_type: FailureType) {
         let mut entry = self.states.entry(upstream_id.to_string()).or_default();
@@ -145,45 +195,13 @@ impl CircuitBreaker {
 
         match failure_type {
             FailureType::AuthFailed | FailureType::PaymentRequired => {
-                entry
-                    .failure_count
-                    .store(self.failure_threshold * 10, Ordering::Relaxed);
-                entry.last_failure_time = Some(Instant::now());
-                entry.rate_limit_until = Some(Instant::now() + Duration::from_secs(1800));
-                tracing::warn!(
-                    "Circuit Breaker: Upstream {} auth/payment failure ({:?}) — circuit tripped for 30 min",
-                    upstream_id,
-                    failure_type
-                );
+                self.record_auth_or_payment_failure(upstream_id, &mut entry, &failure_type);
             }
             FailureType::RateLimited {
                 scope: _,
                 retry_after,
-            } => {
-                let duration = retry_after
-                    .map(Duration::from_secs)
-                    .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
-                entry.rate_limit_until = Some(Instant::now() + duration);
-
-                let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-                if new_count >= self.failure_threshold {
-                    tracing::warn!(
-                        "Circuit Breaker: Upstream {} tripped due to rate limit (Failures: {})",
-                        upstream_id,
-                        new_count
-                    );
-                }
-            }
-            _ => {
-                let new_count = entry.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-                if new_count >= self.failure_threshold {
-                    tracing::warn!(
-                        "Circuit Breaker: Upstream {} tripped! (Failures: {})",
-                        upstream_id,
-                        new_count
-                    );
-                }
-            }
+            } => self.record_rate_limit_failure(upstream_id, &mut entry, retry_after),
+            _ => self.record_counted_failure(upstream_id, &entry),
         }
     }
 
@@ -238,7 +256,11 @@ impl CircuitBreaker {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "tests use unwrap/expect only for fixture assertions"
+)]
 mod tests {
     use super::*;
     use std::sync::{Arc, Barrier};
@@ -426,7 +448,8 @@ mod tests {
 
         let admitted = handles
             .into_iter()
-            .filter(|handle| handle.join().unwrap_or(false))
+            .map(|handle| handle.join().unwrap_or(false))
+            .filter(|admitted| *admitted)
             .count();
         assert_eq!(admitted, 1, "Half-Open must expose exactly one probe slot");
     }
