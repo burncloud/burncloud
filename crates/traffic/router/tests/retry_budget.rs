@@ -18,8 +18,9 @@ use std::time::Duration;
 const SHARED_CLIENT_TIMEOUT_SECS: u64 = 36_000;
 
 fn source(path: &str) -> String {
-    std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/", path))
-        .unwrap_or_else(|e| panic!("{path} must be readable: {e}"))
+    let full_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    std::fs::read_to_string(&full_path)
+        .unwrap_or_else(|e| panic!("{} must be readable: {e}", full_path.display()))
 }
 
 #[test]
