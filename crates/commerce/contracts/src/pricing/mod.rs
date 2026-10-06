@@ -967,6 +967,64 @@ fn version_major(version: &str) -> u32 {
         .unwrap_or(1)
 }
 
+/// Which layout a document's `models` map is written in.
+///
+/// Kept separate from the `version` field because the two can disagree, and when
+/// they do the **layout** is the fact (#606). `to_json` always writes the
+/// normalised v1 layout, whatever `version` says, so a document parsed from a
+/// v7 payload and written back out is v1-layout carrying version "7.0". Trusting
+/// `version` alone sent that document to the v7 parser, which found no `text`
+/// block and silently dropped every price.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelLayout {
+    /// `models.<name>.pricing.<CUR>` — the normalised form this crate writes,
+    /// and the form v1 documents use.
+    NormalisedV1,
+    /// `models.<name>.<CUR>.text` — the flat, currency-first v7 form.
+    FlatV7,
+    /// Neither marker is present. The version decides, which preserves the
+    /// documented behaviour for degenerate documents.
+    Ambiguous,
+}
+
+/// Detect the layout of a `models` map from the first shape that matches.
+///
+/// Only the discriminator keys are inspected — a `pricing` key names the
+/// normalised form, and `text` / the other modality keys name the flat form — so
+/// a document with empty or unusual content still classifies as `Ambiguous`
+/// rather than being mis-parsed.
+#[allow(clippy::disallowed_types)] // Value is the intermediate parse step for layout sniffing only
+fn detect_model_layout(value: &serde_json::Value) -> ModelLayout {
+    const V1_ONLY_KEYS: [&str; 3] = ["pricing", "cache_pricing", "batch_pricing"];
+    const V7_ONLY_KEYS: [&str; 8] = [
+        "text", "cache", "batch", "image", "audio", "video", "music", "tiered",
+    ];
+
+    let Some(models) = value.get("models").and_then(|m| m.as_object()) else {
+        return ModelLayout::Ambiguous;
+    };
+
+    for entry in models.values() {
+        let Some(fields) = entry.as_object() else {
+            continue;
+        };
+        if V1_ONLY_KEYS.iter().any(|key| fields.contains_key(*key)) {
+            return ModelLayout::NormalisedV1;
+        }
+        // The flat form nests per currency, so the marker is one level deeper.
+        for currency_block in fields.values() {
+            let Some(block) = currency_block.as_object() else {
+                continue;
+            };
+            if V7_ONLY_KEYS.iter().any(|key| block.contains_key(*key)) {
+                return ModelLayout::FlatV7;
+            }
+        }
+    }
+
+    ModelLayout::Ambiguous
+}
+
 impl PricingConfig {
     /// Create a new empty pricing configuration.
     pub fn new(source: &str) -> Self {
@@ -979,7 +1037,27 @@ impl PricingConfig {
     }
 
     /// Parse pricing configuration from JSON string.
+    ///
     /// Supports both v1.x (legacy nested) and v7+ (flat currency-first) formats.
+    ///
+    /// # Dispatch: the layout wins, the version breaks ties (#606)
+    ///
+    /// The `version` field and the document layout can disagree, and they did:
+    /// [`Self::to_json`] always writes the normalised v1 layout, so a document
+    /// parsed from a v7 payload and serialised again carried version `"7.0"`
+    /// with a v1 body. Dispatching on `version` alone sent that document to the
+    /// v7 parser, which looked for a `text` block it could not find and dropped
+    /// every price — silently, and with no error. `cli price export-file` emits
+    /// the same normalised layout, so an exported catalogue read back through
+    /// `import-file` had the same hole.
+    ///
+    /// So an **explicit layout marker decides**, and `version` is consulted only
+    /// when the document carries neither marker. Consequences worth stating:
+    ///
+    /// * `from_json(to_json(x))` preserves the prices **and** the version string;
+    /// * a v1 body keeps being read as v1 whatever its version says;
+    /// * a genuinely flat v7 body is read as v7 even under a pre-7 version string
+    ///   — mislabelled input is recovered rather than silently emptied.
     #[allow(clippy::disallowed_types)] // Value is an intermediate parse step for version sniffing only
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(json)?;
@@ -988,8 +1066,24 @@ impl PricingConfig {
             // Unchanged fallback: a document without a version field is parsed as v1.
             None => "1.0".to_string(),
         };
-        let is_new_format = version_major(&version) >= 7;
-        if is_new_format {
+        let use_flat_v7 = match detect_model_layout(&value) {
+            ModelLayout::NormalisedV1 => false,
+            ModelLayout::FlatV7 => true,
+            ModelLayout::Ambiguous => version_major(&version) >= 7,
+        };
+        if use_flat_v7 {
+            // A flat body can arrive without a version (the documented "absence means 1.0" fallback). The flat
+            // parser requires the field, and the assumed version is what the parsed config must carry, so the
+            // default is written into the value rather than rejected as a missing field.
+            let mut value = value;
+            if value.get("version").is_none() {
+                if let Some(obj) = value.as_object_mut() {
+                    obj.insert(
+                        "version".to_string(),
+                        serde_json::Value::String(version.clone()),
+                    );
+                }
+            }
             let new_cfg: NewFormatPricingConfig = serde_json::from_value(value)?;
             return Ok(PricingConfig::from(new_cfg));
         }
@@ -997,6 +1091,11 @@ impl PricingConfig {
     }
 
     /// Serialize to JSON string.
+    ///
+    /// The output is the **normalised v1 layout** and self-describes as such:
+    /// `from_json` dispatches on the layout first (#606), so parsing this output
+    /// returns the same prices *and* the same `version` string, whichever format
+    /// the configuration was originally read from. See [`Self::from_json`].
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }

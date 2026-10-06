@@ -11,6 +11,10 @@
 //! documented contract behaviour:
 //!   * a v7 currency block without a `text` section is skipped;
 //!   * a document without a `version` field is parsed as v1.
+//!
+//! Since #606 `from_json` dispatches on the document **layout** first, falling back to the `version`
+//! string only when the layout carries no marker, so `to_json` output (always the normalised v1
+//! layout) can be read back whatever version it carries.
 
 use std::fs;
 use std::path::PathBuf;
@@ -212,13 +216,14 @@ fn missing_version_is_parsed_as_v1() {
 }
 
 #[test]
-fn v7_output_loses_its_price_blocks_when_read_back() {
-    // Known gap of the moved implementation, asserted so it is visible rather than assumed away:
-    // `to_json()` omits `version`, so re-parsing its own output of a v7-sourced document takes the
-    // v1 path. The `version` string survives in the JSON, but the v7 price blocks do not: they are
-    // read as v1 currency entries and dropped. Until that is fixed, a v7 document must not be
-    // round-tripped through this serializer (today it never is: v7 documents are parsed from the
-    // price-sync payload and written to the billing tables directly).
+fn v7_output_keeps_its_price_blocks_when_read_back() {
+    // #606: `from_json` dispatches on the document **layout** first and only falls back to the `version`
+    // string when the layout carries no marker. `to_json()` writes the normalised v1 layout whatever the
+    // version says, so re-parsing its own output of a v7-sourced document finds the v1 body and reads it
+    // correctly instead of routing it to the v7 parser, which found no `text` block and dropped every price.
+    //
+    // Both halves matter, so both are asserted: the prices survive, and the version string is still carried
+    // through rather than being rewritten to "1.0".
     let original = load("v7.json");
     assert!(
         original.get_pricing("gemini-flash", "USD").is_some(),
@@ -226,10 +231,40 @@ fn v7_output_loses_its_price_blocks_when_read_back() {
     );
 
     let once = original.to_json().unwrap();
-    let reparsed = PricingConfig::from_json(&once).unwrap();
+    let reparsed = PricingConfig::from_json(&once)
+        .unwrap_or_else(|e| panic!("to_json output must re-parse: {e}"));
     assert_eq!(reparsed.version, "7.0", "the version string is preserved");
-    assert!(
-        reparsed.get_pricing("gemini-flash", "USD").is_none(),
-        "documented gap: the v7 price block does not survive a serialize/re-parse cycle"
+
+    let before = original.get_pricing("gemini-flash", "USD").unwrap();
+    let after = reparsed
+        .get_pricing("gemini-flash", "USD")
+        .expect("the v7 price block must survive a serialize/re-parse cycle");
+    assert_eq!(
+        after.input_price, before.input_price,
+        "input price is intact"
+    );
+    assert_eq!(
+        after.output_price, before.output_price,
+        "output price is intact"
+    );
+    assert_eq!(
+        reparsed
+            .get_cache_pricing("gemini-flash", "USD")
+            .expect("cache block survives")
+            .cache_read_input_price,
+        original
+            .get_cache_pricing("gemini-flash", "USD")
+            .unwrap()
+            .cache_read_input_price,
+        "and so is the cache block"
+    );
+
+    // A second cycle changes nothing: the round-trip is a fixed point, not merely lossless once.
+    let twice = reparsed.to_json().unwrap();
+    let value_once: serde_json::Value = serde_json::from_str(&once).unwrap();
+    let value_twice: serde_json::Value = serde_json::from_str(&twice).unwrap();
+    assert_eq!(
+        value_once, value_twice,
+        "re-serialising the re-parsed document must reproduce the same JSON"
     );
 }
