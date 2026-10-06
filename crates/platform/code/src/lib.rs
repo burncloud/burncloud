@@ -2,7 +2,6 @@
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
-mod cleanup;
 mod init;
 mod plan;
 mod report;
@@ -58,17 +57,13 @@ pub fn command() -> Command {
 pub fn handle(matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("init", _)) => Ok(init::init()?),
-        Some(("test", options)) => {
-            let result = test::run(test::Options {
-                all: options.get_flag("all"),
-                plan_only: options.get_flag("plan"),
-                staged: options.get_flag("staged"),
-                last: options.get_flag("last"),
-                base: options.get_one::<String>("base").cloned(),
-            });
-            cleanup::cleanup_target_if_oversized();
-            result
-        }
+        Some(("test", options)) => test::run(test::Options {
+            all: options.get_flag("all"),
+            plan_only: options.get_flag("plan"),
+            staged: options.get_flag("staged"),
+            last: options.get_flag("last"),
+            base: options.get_one::<String>("base").cloned(),
+        }),
         Some(("stamp", options)) => {
             let message = options
                 .get_one::<String>("message")
