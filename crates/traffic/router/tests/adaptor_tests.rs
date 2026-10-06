@@ -79,7 +79,13 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "router returned {status}: {response_body}"
+    );
 
     let resp_json: serde_json::Value = resp.json().await?;
     println!("Adaptor Response: {}", resp_json);
@@ -231,7 +237,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     // Let's stick to this for now: it ensures no panic and correct path.
     // We should add a unit test for `ClaudeAdaptor` logic separately if we want to be strict.
 
-    let _json: serde_json::Value = resp.json().await?;
+    let _json: serde_json::Value = serde_json::from_str(&response_body)?;
     // Verification limited here without real upstream response structure.
     Ok(())
 }
