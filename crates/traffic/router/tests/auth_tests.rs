@@ -144,6 +144,13 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         .bind(channel_id)
         .execute(&pool)
         .await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
+         VALUES (?, 'USD', 1, 1, '')",
+    )
+    .bind(model)
+    .execute(&pool)
+    .await?;
 
     let port_guard = std::net::TcpListener::bind(("127.0.0.1", 0))?;
     let port = port_guard.local_addr()?.port();
@@ -163,8 +170,10 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(status, 200, "router returned {status}: {response_body}");
+    let json: serde_json::Value = serde_json::from_str(&response_body)?;
 
     let headers = json
         .get("headers")
@@ -208,6 +217,13 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         .bind(channel_id)
         .execute(&pool)
         .await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
+         VALUES (?, 'USD', 1, 1, '')",
+    )
+    .bind(model)
+    .execute(&pool)
+    .await?;
 
     let port_guard = std::net::TcpListener::bind(("127.0.0.1", 0))?;
     let port = port_guard.local_addr()?.port();
@@ -227,8 +243,10 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(status, 200, "router returned {status}: {response_body}");
+    let json: serde_json::Value = serde_json::from_str(&response_body)?;
 
     let headers = json
         .get("headers")
