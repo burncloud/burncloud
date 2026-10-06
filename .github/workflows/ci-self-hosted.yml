@@ -7,6 +7,9 @@ name: CI / Self-hosted Code Test
 #   submitting an APPROVE review. The approval creates a new Code Test run on the
 #   same PR instead of trying to re-run an immutable skipped job.
 #
+# Access is decided entirely at **job level** (`RUN_CODE_TEST` and `runs-on` below), not by the trigger, so
+# the `on:` block deliberately carries no branch filter — see the note there for why that matters.
+#
 # The workflow is driven from the base repository via pull_request_target/review,
 # so an untrusted PR cannot edit this file to remove the gate before execution.
 # No repository secrets are exposed and the GITHUB_TOKEN is read-only.
@@ -22,14 +25,26 @@ name: CI / Self-hosted Code Test
 # run. `code test` then performs `code init`, fmt, tests, Clippy and cargo-deny.
 
 on:
+  # No `branches:` filter: every PR gets a real Code Test check, whatever its base.
+  #
+  # The filter used to be `branches: [main]`, and two things followed from it — both wrong for a stack of PRs.
+  # A PR based on a feature branch produced **no run at all** (not the "real (failed) Code Test check" the
+  # policy above promises), and the job-level `base.ref == 'main'` conditions meant that even once a run
+  # existed it was sent to `ubuntu-latest` to fail the manual-approval step rather than run the gate. So the
+  # intermediate layers of a stack could not be verified until retargeted at `main`, which defeats the point of
+  # splitting one change into layers.
+  #
+  # Removing both does not widen access: `RUN_CODE_TEST` still requires a **same-repository** PR from an
+  # **allowlisted** author (or an APPROVE review by one), and `runs-on` still falls back to `ubuntu-latest` for
+  # everything else — so an untrusted PR gets a failing check on a GitHub-hosted runner and never reaches the
+  # self-hosted one. The base branch was never part of the trust decision.
   pull_request_target:
-    branches:
-      - main
     types:
       - opened
       - synchronize
       - reopened
       - ready_for_review
+  # `pull_request_review` never had a branch filter, so only the job-level conditions applied to it.
   pull_request_review:
     types:
       - submitted
@@ -45,8 +60,8 @@ jobs:
   code-test:
     name: Code Test
     env:
-      RUN_CODE_TEST: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
-    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+      RUN_CODE_TEST: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 90
 
     steps:
