@@ -789,8 +789,7 @@ impl BalanceModel {
                 return Self::deduct_cny(db, user_id, cost_nano).await;
             }
             let required_cny = cost_nano - balance_cny;
-            let required_usd =
-                (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
+            let required_usd = (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
             if required_usd > balance_usd as i128 {
                 return Ok(false);
             }
@@ -821,8 +820,7 @@ impl BalanceModel {
             return Self::deduct_usd(db, user_id, cost_nano).await;
         }
         let required_usd = cost_nano - balance_usd;
-        let required_cny =
-            (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
+        let required_cny = (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
         if required_cny > balance_cny as i128 {
             return Ok(false);
         }

@@ -428,7 +428,10 @@ impl UserService {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "test assertions and fixture setup intentionally unwrap known-good values"
+)]
 mod tests {
     use super::*;
     use burncloud_database::create_database_with_url;
@@ -449,7 +452,11 @@ mod tests {
                     .unwrap_or_default()
                     .as_nanos()
             ));
-            let _ = std::fs::remove_file(&path);
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
             let normalized = path.to_string_lossy().replace('\\', "/");
             let url = format!("sqlite:///{}?mode=rwc", normalized);
             let db = create_database_with_url(&url).await?;
@@ -498,8 +505,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_register_user() -> anyhow::Result<()> {
-        let temp = test_db("register_user").await?;
+    async fn test_register_user() {
+        let temp = test_db("register_user").await.unwrap();
         let db = &temp.db;
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
@@ -510,9 +517,12 @@ mod tests {
                 "password123",
                 Some("test@example.com".to_string()),
             )
-            .await?;
+            .await
+            .unwrap();
         assert!(!user_id.is_empty());
-        let user = UserDatabase::get_user_by_username(db, &username).await?;
+        let user = UserDatabase::get_user_by_username(db, &username)
+            .await
+            .unwrap();
         assert!(user.is_some());
         assert_eq!(
             user.unwrap_or_else(|| panic!("user should exist for {username}"))
@@ -520,18 +530,18 @@ mod tests {
             username
         );
         temp.cleanup().await;
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_register_duplicate_user() -> anyhow::Result<()> {
-        let temp = test_db("register_duplicate").await?;
+    async fn test_register_duplicate_user() {
+        let temp = test_db("register_duplicate").await.unwrap();
         let db = &temp.db;
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
         service
             .register_user(db, &username, "password123", None)
-            .await?;
+            .await
+            .unwrap();
         let result = service
             .register_user(db, &username, "password123", None)
             .await;
@@ -540,46 +550,47 @@ mod tests {
         };
         assert!(matches!(error, UserServiceError::UserAlreadyExists));
         temp.cleanup().await;
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_login_user_success() -> anyhow::Result<()> {
-        let temp = test_db("login_success").await?;
+    async fn test_login_user_success() {
+        let temp = test_db("login_success").await.unwrap();
         let db = &temp.db;
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
         let password = "password123";
-        service.register_user(db, &username, password, None).await?;
-        let token = service.login_user(db, &username, password).await?;
+        service
+            .register_user(db, &username, password, None)
+            .await
+            .unwrap();
+        let token = service.login_user(db, &username, password).await.unwrap();
         assert!(!token.token.is_empty());
         assert_eq!(token.username, username);
         assert!(token.expires_at > Utc::now().timestamp());
         temp.cleanup().await;
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_login_user_wrong_password() -> anyhow::Result<()> {
-        let temp = test_db("login_wrong_password").await?;
+    async fn test_login_user_wrong_password() {
+        let temp = test_db("login_wrong_password").await.unwrap();
         let db = &temp.db;
         let service = test_service();
         let username = format!("testuser_{}", Uuid::new_v4());
         service
             .register_user(db, &username, "password123", None)
-            .await?;
+            .await
+            .unwrap();
         let result = service.login_user(db, &username, "wrongpassword").await;
         let Err(error) = result else {
             panic!("wrong password login should fail");
         };
         assert!(matches!(error, UserServiceError::InvalidCredentials));
         temp.cleanup().await;
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_login_user_not_found() -> anyhow::Result<()> {
-        let temp = test_db("login_not_found").await?;
+    async fn test_login_user_not_found() {
+        let temp = test_db("login_not_found").await.unwrap();
         let db = &temp.db;
         let service = test_service();
         let result = service.login_user(db, "nonexistent", "password").await;
@@ -588,7 +599,6 @@ mod tests {
         };
         assert!(matches!(error, UserServiceError::UserNotFound));
         temp.cleanup().await;
-        Ok(())
     }
 
     #[test]

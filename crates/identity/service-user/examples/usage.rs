@@ -3,8 +3,6 @@
 //! This example demonstrates how to use the service-user crate
 //! for user registration, login, and token management.
 
-#![allow(clippy::unwrap_used)]
-
 use burncloud_database::create_default_database;
 use burncloud_database_user::UserDatabase;
 use burncloud_service_user::{JwtSecret, UserService};
@@ -26,14 +24,12 @@ async fn main() -> anyhow::Result<()> {
     println!("✓ UserService created\n");
 
     // Use a unique username for this run
-    let username = format!(
-        "user_{}",
-        Uuid::new_v4()
-            .to_string()
-            .split('-')
-            .next()
-            .unwrap_or_else(|| panic!("UUID string has no segments"))
-    );
+    let uuid = Uuid::new_v4().to_string();
+    let short_id = uuid
+        .split('-')
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("UUID string has no segments"))?;
+    let username = format!("user_{short_id}");
     let email = format!("{}@example.com", username);
 
     // Register a new user

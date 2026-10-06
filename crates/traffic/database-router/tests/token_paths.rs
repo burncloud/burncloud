@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "integration tests combine fallible database setup with assertions; assertion panics are the test oracle"
 )]
 //! Token validation's two paths, and what each of them checks (#633, plan item 11).
 //!
@@ -58,7 +59,11 @@ impl TempDb {
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        let _ = std::fs::remove_file(&path);
+        if let Err(error) = std::fs::remove_file(&path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(error.into());
+            }
+        }
         let normalized = path.to_string_lossy().replace('\\', "/");
         // Three slashes: `sqlite:///C:/...` is the absolute form.
         let url = format!("sqlite:///{}?mode=rwc", normalized);
@@ -69,13 +74,27 @@ impl TempDb {
 
     async fn cleanup(self) {
         let path = self.path.clone();
-        self.db.close().await.ok();
+        if let Err(error) = self.db.close().await {
+            eprintln!("test database close failed (cleanup continues): {error}");
+        }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        let _ = std::fs::remove_file(&path);
+        if let Err(error) = std::fs::remove_file(&path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                eprintln!("failed to remove test database {}: {error}", path.display());
+            }
+        }
         for suffix in ["-wal", "-shm"] {
             let mut candidate = path.as_os_str().to_os_string();
             candidate.push(suffix);
-            let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+            let candidate = std::path::PathBuf::from(candidate);
+            if let Err(error) = std::fs::remove_file(&candidate) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!(
+                        "failed to remove test database sidecar {}: {error}",
+                        candidate.display()
+                    );
+                }
+            }
         }
     }
 }

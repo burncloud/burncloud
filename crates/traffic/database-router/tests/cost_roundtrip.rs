@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test fixtures intentionally unwrap setup values so failures stop the test"
+)]
 
 /// Integration tests for RouterLog per-type cost and token round-trip.
 ///
@@ -73,7 +77,7 @@ impl Drop for TestDb {
 
         // The thread owns the close. If it cannot be spawned the files are simply left behind, which is
         // the pre-existing behaviour rather than a new failure, so the test result is unaffected.
-        let _ = std::thread::Builder::new()
+        let cleanup = std::thread::Builder::new()
             .name("bc-testdb-cleanup".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
@@ -89,9 +93,26 @@ impl Drop for TestDb {
                 for suffix in ["", "-wal", "-shm"] {
                     let mut candidate = path.clone().into_os_string();
                     candidate.push(suffix);
-                    let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+                    let candidate = std::path::PathBuf::from(candidate);
+                    if let Err(error) = std::fs::remove_file(&candidate) {
+                        if error.kind() != std::io::ErrorKind::NotFound {
+                            eprintln!(
+                                "failed to remove test database file {}: {error}",
+                                candidate.display()
+                            );
+                        }
+                    }
                 }
             });
+
+        match cleanup {
+            Ok(handle) => {
+                if handle.join().is_err() {
+                    eprintln!("test database cleanup thread panicked");
+                }
+            }
+            Err(error) => eprintln!("failed to spawn test database cleanup thread: {error}"),
+        }
     }
 }
 

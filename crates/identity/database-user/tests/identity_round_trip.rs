@@ -33,7 +33,10 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
     ));
     if let Err(error) = std::fs::remove_file(&path) {
         if error.kind() != std::io::ErrorKind::NotFound {
-            panic!("failed to remove stale test database {}: {error}", path.display());
+            panic!(
+                "failed to remove stale test database {}: {error}",
+                path.display()
+            );
         }
     }
     let normalized = path.to_string_lossy().replace('\\', "/");
@@ -117,20 +120,34 @@ async fn accounts_round_trip_through_the_real_schema() {
     assert_eq!(by_email.id, "u-1");
 
     let all = UserDatabase::list_users(&db).await.unwrap();
-    assert_eq!(all.len(), 2, "the demo-user seed plus the account created here");
+    assert_eq!(
+        all.len(),
+        2,
+        "the demo-user seed plus the account created here"
+    );
     assert!(
         all.iter().any(|u| u.username == "demo-user"),
         "the seeded placeholder account is present"
     );
     let seed = all.iter().find(|u| u.username == "demo-user").unwrap();
-    assert_eq!(seed.password_hash.as_deref(), Some("no-login"), "the seed cannot authenticate");
-    assert_eq!(UserDatabase::count_users(&db).await.unwrap(), 1, "count_users excludes the seed");
+    assert_eq!(
+        seed.password_hash.as_deref(),
+        Some("no-login"),
+        "the seed cannot authenticate"
+    );
+    assert_eq!(
+        UserDatabase::count_users(&db).await.unwrap(),
+        1,
+        "count_users excludes the seed"
+    );
     assert!(
         !UserDatabase::has_admin_user(&db).await.unwrap(),
         "creating an account does not grant a role"
     );
 
-    UserDatabase::assign_role(&db, "u-1", "admin").await.unwrap();
+    UserDatabase::assign_role(&db, "u-1", "admin")
+        .await
+        .unwrap();
     let roles = UserDatabase::get_user_roles(&db, "u-1").await.unwrap();
     assert!(
         roles.iter().any(|r| r == "admin"),
@@ -203,7 +220,10 @@ async fn recharge_rows_round_trip_and_credit_the_balance() {
     assert_eq!(listed[0].amount, 10_000_000_000);
     assert_eq!(listed[0].currency.as_deref(), Some("USD"));
     assert_eq!(listed[0].description.as_deref(), Some("first top-up"));
-    assert!(listed[0].created_at.is_some(), "created_at is stamped by the schema default");
+    assert!(
+        listed[0].created_at.is_some(),
+        "created_at is stamped by the schema default"
+    );
 
     let credited = UserDatabase::get_user_by_id(&db, "u-3")
         .await
@@ -268,10 +288,15 @@ async fn api_keys_round_trip_and_updates_are_partial() {
         .unwrap();
     assert_eq!(after.name.as_deref(), Some("renamed"));
     assert_eq!(after.status, 2);
-    assert_eq!(after.remain_quota, 1_000_000, "remain_quota was not updated");
+    assert_eq!(
+        after.remain_quota, 1_000_000,
+        "remain_quota was not updated"
+    );
     assert_eq!(after.expired_time, -1, "expired_time was not updated");
 
-    let listed = UserApiKeyModel::list(&db, 10, 0, Some("u-4")).await.unwrap();
+    let listed = UserApiKeyModel::list(&db, 10, 0, Some("u-4"))
+        .await
+        .unwrap();
     assert_eq!(listed.len(), 1);
     assert!(UserApiKeyModel::delete(&db, &created.key).await.unwrap());
     assert!(

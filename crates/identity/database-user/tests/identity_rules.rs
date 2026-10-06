@@ -42,7 +42,7 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
 }
 
 async fn cleanup(db: Database, path: &std::path::Path) {
-    db.close().await;
+    db.close().await.expect("test database closes cleanly");
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     remove_file_if_present(path);
     for suffix in ["-wal", "-shm"] {
@@ -73,71 +73,95 @@ async fn read_api_key(db: &Database, key: &str) -> UserApiKey {
         .expect("key exists")
 }
 
+struct ExpectedApiKeyState<'a> {
+    name: &'a str,
+    remain_quota: i64,
+    status: i32,
+    expired_time: i64,
+}
+
+async fn update_api_key_and_assert(
+    db: &Database,
+    key: &str,
+    update: UserApiKeyUpdateInput,
+    expected: ExpectedApiKeyState<'_>,
+) {
+    let changed = UserApiKeyModel::update(db, key, &update)
+        .await
+        .expect("single-field key update succeeds");
+    assert!(changed, "one row changed");
+
+    let current = read_api_key(db, key).await;
+    assert_eq!(current.name.as_deref(), Some(expected.name));
+    assert_eq!(current.remain_quota, expected.remain_quota);
+    assert_eq!(current.status, expected.status);
+    assert_eq!(current.expired_time, expected.expired_time);
+}
+
 async fn exercise_single_field_key_updates(db: &Database, key: &str) {
-    let changed = UserApiKeyModel::update(
+    update_api_key_and_assert(
         db,
         key,
-        &UserApiKeyUpdateInput {
+        UserApiKeyUpdateInput {
             name: Some("renamed".to_string()),
             ..Default::default()
         },
+        ExpectedApiKeyState {
+            name: "renamed",
+            remain_quota: 100,
+            status: 1,
+            expired_time: 1_000,
+        },
     )
-    .await
-    .expect("name update succeeds");
-    assert!(changed, "one row changed");
-    let current = read_api_key(db, key).await;
-    assert_eq!(current.name.as_deref(), Some("renamed"));
-    assert_eq!(current.remain_quota, 100);
-    assert_eq!(current.status, 1);
-    assert_eq!(current.expired_time, 1_000);
+    .await;
 
-    UserApiKeyModel::update(
+    update_api_key_and_assert(
         db,
         key,
-        &UserApiKeyUpdateInput {
+        UserApiKeyUpdateInput {
             remain_quota: Some(250),
             ..Default::default()
         },
+        ExpectedApiKeyState {
+            name: "renamed",
+            remain_quota: 250,
+            status: 1,
+            expired_time: 1_000,
+        },
     )
-    .await
-    .expect("quota update succeeds");
-    let current = read_api_key(db, key).await;
-    assert_eq!(current.remain_quota, 250);
-    assert_eq!(current.name.as_deref(), Some("renamed"));
-    assert_eq!(current.status, 1);
-    assert_eq!(current.expired_time, 1_000);
+    .await;
 
-    UserApiKeyModel::update(
+    update_api_key_and_assert(
         db,
         key,
-        &UserApiKeyUpdateInput {
+        UserApiKeyUpdateInput {
             status: Some(0),
             ..Default::default()
         },
+        ExpectedApiKeyState {
+            name: "renamed",
+            remain_quota: 250,
+            status: 0,
+            expired_time: 1_000,
+        },
     )
-    .await
-    .expect("status update succeeds");
-    let current = read_api_key(db, key).await;
-    assert_eq!(current.status, 0);
-    assert_eq!(current.remain_quota, 250);
-    assert_eq!(current.name.as_deref(), Some("renamed"));
-    assert_eq!(current.expired_time, 1_000);
+    .await;
 
-    UserApiKeyModel::update(
+    update_api_key_and_assert(
         db,
         key,
-        &UserApiKeyUpdateInput {
+        UserApiKeyUpdateInput {
             expired_time: Some(2_000),
             ..Default::default()
         },
+        ExpectedApiKeyState {
+            name: "renamed",
+            remain_quota: 250,
+            status: 0,
+            expired_time: 2_000,
+        },
     )
-    .await
-    .expect("expiry update succeeds");
-    let current = read_api_key(db, key).await;
-    assert_eq!(current.expired_time, 2_000);
-    assert_eq!(current.status, 0);
-    assert_eq!(current.remain_quota, 250);
-    assert_eq!(current.name.as_deref(), Some("renamed"));
+    .await;
 }
 
 #[tokio::test]
@@ -149,7 +173,10 @@ async fn a_duplicate_username_is_rejected_by_the_database() {
     let before = UserDatabase::count_users(&db).await.expect("countable");
 
     let second = UserDatabase::create_user(&db, &account("usr_b", "alice")).await;
-    assert!(second.is_err(), "the unique constraint must reject a duplicate username");
+    assert!(
+        second.is_err(),
+        "the unique constraint must reject a duplicate username"
+    );
     let after = UserDatabase::count_users(&db).await.expect("countable");
     assert_eq!(before, after, "the failed insert must not add a row");
     let found = UserDatabase::get_user_by_username(&db, "alice")
@@ -275,7 +302,9 @@ async fn users_do_not_see_each_others_data() {
     ] {
         let mut user = account(id, name);
         user.balance_usd = balance;
-        UserDatabase::create_user(&db, &user).await.expect("created");
+        UserDatabase::create_user(&db, &user)
+            .await
+            .expect("created");
     }
 
     for (id, expected) in [
@@ -343,14 +372,21 @@ async fn large_balances_survive_the_round_trip_exactly() {
         ("usr_zero", "zero", 0, 0),
         ("usr_one_cent", "onecent", 10_000_000, 10_000_000),
         ("usr_dollar", "dollar", 1_000_000_000, 1_000_000_000),
-        ("usr_large", "large", 9_007_199_254_740_993, 9_007_199_254_740_993),
+        (
+            "usr_large",
+            "large",
+            9_007_199_254_740_993,
+            9_007_199_254_740_993,
+        ),
         ("usr_neg", "negative", -1_000_000_000, -2_000_000_000),
     ];
     for (id, name, usd, cny) in cases {
         let mut user = account(id, name);
         user.balance_usd = usd;
         user.balance_cny = cny;
-        UserDatabase::create_user(&db, &user).await.expect("created");
+        UserDatabase::create_user(&db, &user)
+            .await
+            .expect("created");
     }
     for (id, _, usd, cny) in cases {
         let user = UserDatabase::get_user_by_id(&db, id)
@@ -545,10 +581,7 @@ async fn keys_list_with_pagination_and_an_optional_user_filter() {
         .await
         .expect("listable");
     let names: Vec<String> = mine.iter().filter_map(|key| key.name.clone()).collect();
-    assert_eq!(
-        names,
-        vec!["key-4", "key-3", "key-2", "key-1", "key-0"]
-    );
+    assert_eq!(names, vec!["key-4", "key-3", "key-2", "key-1", "key-0"]);
 
     let page1 = UserApiKeyModel::list(&db, 2, 0, Some("usr_pager"))
         .await
@@ -611,7 +644,9 @@ async fn deleting_a_key_removes_only_that_key() {
     .await
     .expect("created");
 
-    assert!(UserApiKeyModel::delete(&db, &first.key).await.expect("deleted"));
+    assert!(UserApiKeyModel::delete(&db, &first.key)
+        .await
+        .expect("deleted"));
     assert!(UserApiKeyModel::get_by_key(&db, &first.key)
         .await
         .expect("readable")
@@ -687,7 +722,9 @@ async fn a_failed_reset_leaves_the_old_password_usable() {
     let (db, path) = fresh_db("reset_failure").await;
     let mut user = account("usr_pw", "pwuser");
     user.password_hash = Some("$2b$12$originalhashvalue".to_string());
-    UserDatabase::create_user(&db, &user).await.expect("created");
+    UserDatabase::create_user(&db, &user)
+        .await
+        .expect("created");
 
     async fn hash_of(db: &Database) -> Option<String> {
         UserDatabase::get_user_by_id(db, "usr_pw")
@@ -719,7 +756,10 @@ async fn a_failed_reset_leaves_the_old_password_usable() {
     println!("token for an absent user -> {orphan:?}");
 
     let after = hash_of(&db).await;
-    assert_eq!(before, after, "failed reset paths must not alter the password");
+    assert_eq!(
+        before, after,
+        "failed reset paths must not alter the password"
+    );
     UserDatabase::update_password_hash(&db, "usr_pw", "$2b$12$newhashvalue")
         .await
         .expect("updated");
