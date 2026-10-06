@@ -15,10 +15,10 @@ name: CI / Self-hosted Code Test
 # of trusted GitHub usernames, for example: ["rustburn","another-maintainer"].
 # Until that variable is configured, rustburn is the only trusted user.
 #
-# Keep CI policy in BurnCloud code. The self-hosted machine only needs a working
-# Cargo/rustup installation on PATH. `code test` reuses the `code init` environment
-# bootstrap on every run, installs missing rustfmt/Clippy/cargo-deny, then executes
-# the repository quality gate. Do not duplicate those tool commands in YAML.
+# Keep CI policy in BurnCloud code. A persistent self-hosted runner reuses its Rust
+# installation. Only a truly empty runner gets a one-time minimal stable bootstrap;
+# after Cargo exists, `code test` performs the `code init` environment checks and
+# installs any missing rustfmt/Clippy/cargo-deny before the repository quality gate.
 
 on:
   pull_request_target:
@@ -64,6 +64,28 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
+
+      - name: Ensure base Rust toolchain
+        if: env.RUN_CODE_TEST == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+          if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+            echo "Rust is missing for the runner user; bootstrapping minimal stable once."
+            if command -v rustup >/dev/null 2>&1; then
+              rustup toolchain install stable --profile minimal --no-self-update
+              rustup default stable
+            else
+              curl --proto '=https' --tlsv1.2 --retry 5 --retry-connrefused --fail --show-error --location https://sh.rustup.rs \
+                | sh -s -- -y --profile minimal --default-toolchain stable
+            fi
+          fi
+
+          cargo --version
+          rustc --version
 
       - name: Run BurnCloud code gate
         if: env.RUN_CODE_TEST == 'true'
