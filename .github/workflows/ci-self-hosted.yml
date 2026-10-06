@@ -15,9 +15,10 @@ name: CI / Self-hosted Code Test
 # of trusted GitHub usernames, for example: ["rustburn","another-maintainer"].
 # Until that variable is configured, rustburn is the only trusted user.
 #
-# Keep the test policy in one place: this workflow delegates the repository
-# quality gate to `cargo run -- code test --all` instead of restating fmt/test/
-# clippy/deny commands in YAML.
+# Keep CI policy in BurnCloud code. The self-hosted machine only needs a working
+# Cargo/rustup installation on PATH. `code test` reuses the `code init` environment
+# bootstrap on every run, installs missing rustfmt/Clippy/cargo-deny, then executes
+# the repository quality gate. Do not duplicate those tool commands in YAML.
 
 on:
   pull_request_target:
@@ -63,20 +64,6 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
-
-      - name: Install Rust toolchain
-        if: env.RUN_CODE_TEST == 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Verify required local CI tools
-        if: env.RUN_CODE_TEST == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo clippy --version
-          cargo deny --version
 
       - name: Run BurnCloud code gate
         if: env.RUN_CODE_TEST == 'true'
