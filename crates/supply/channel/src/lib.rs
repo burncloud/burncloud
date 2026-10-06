@@ -196,8 +196,8 @@ mod migration_invariants {
     /// The service facade must preserve the production invariant that create/update themselves
     /// synchronize abilities. The test deliberately never calls `sync_abilities` directly.
     #[tokio::test]
-    async fn service_lifecycle_keeps_abilities_synchronized_without_manual_sync(
-    ) -> TestResult<()> {
+    async fn service_lifecycle_keeps_abilities_synchronized_without_manual_sync() -> TestResult<()>
+    {
         let (db, path) = fresh_db("service_lifecycle").await?;
         let mut channel = sample_channel("service", "m1,m2", "default", 1);
 
@@ -226,9 +226,7 @@ mod migration_invariants {
         ChannelService::update(&db, &channel).await?;
         let reenabled = ChannelAbilityModel::list_by_channel(&db, id).await?;
         assert_eq!(reenabled.len(), 2);
-        let all_premium = reenabled
-            .iter()
-            .all(|ability| ability.group == "premium");
+        let all_premium = reenabled.iter().all(|ability| ability.group == "premium");
         assert!(all_premium);
         let mut models: Vec<_> = reenabled
             .iter()
