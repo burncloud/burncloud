@@ -1,0 +1,15 @@
+# BurnCloud known failing test baseline
+#
+# Format: test_name|issue_number|reason
+#
+# This file is not a place to hide new failures. Every entry must already be an accepted
+# main-branch baseline defect with a dedicated issue. Fixing that issue requires deleting
+# the corresponding line so the test resumes running in every gate.
+
+test_claude_adaptor|756|legacy Router HTTP fixture does not seed current Channel routing truth
+test_deepseek_proxy|756|legacy Router HTTP fixture does not seed current Channel routing truth
+test_qwen_proxy|756|legacy Router HTTP fixture does not seed current Channel routing truth
+test_round_robin_balancer|756|legacy router_groups HTTP scenario is outside the current model-scheduler path
+test_failover|756|legacy router_groups failover fixture is outside the current model-scheduler path
+test_vertex_full_flow|756|legacy Router HTTP fixture does not seed current Channel routing truth
+test_login_user_success|758|Windows SQLite cleanup can race a still-open file handle in full-suite runs
