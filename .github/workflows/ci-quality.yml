@@ -1,30 +1,21 @@
 name: CI / Quality
 
-# MANUAL ONLY. Every trigger that used to fire this on GitHub -- `pull_request` and the `push` to
-# `main` -- is gone on purpose: the same checks now run on the developer's machine, because
-# `.github/hooks/pre-commit` calls `cargo run --quiet -- code test --staged`. Adding a `push` or
-# `pull_request` trigger back would run every check twice.
+# RELEASE QUALITY GATE.
 #
-# This workflow is the repository's **workspace quality gate**. It is the remote equivalent of
-# `cargo run -- code test --all` and runs the same four commands that command runs, in the same
-# order, so a green run here and a green local run mean the same thing:
+# This is intentionally different from `cargo run -- code test`:
+#   - `code test` is the fast PR/developer path and runs affected-package tests.
+#   - this workflow validates the entire workspace before a release/version tag.
 #
-#   fmt --all -- --check
-#   test --workspace --no-default-features
-#   clippy --workspace --all-targets --no-default-features
-#   deny check
+# It may be started manually, and `maintenance-version-tag.yml` calls it before creating a tag.
+# The release gate owns the full-workspace versions of the four generic quality responsibilities:
 #
-# `--no-default-features` is not an accident and is copied from `crates/platform/code/src/plan.rs`.
-# It is what makes the gate a single verdict on one machine: the client crate's default `desktop`
-# feature pulls GTK native libraries, so a default-feature workspace build does not compile on a
-# headless Ubuntu runner. The desktop build keeps its own coverage in `ci-client.yml`. Cargo denies
-# all features, so the `cargo deny check` step is unaffected either way.
+#   cargo fmt --all -- --check
+#   cargo test --workspace --no-default-features
+#   cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+#   cargo deny check
 #
-# `workflow_call` is here so the release path reuses this file instead of restating the four
-# commands. `maintenance-version-tag.yml` calls it as a gate before it creates a tag: a tag is what
-# starts `cd-release.yml`, so a failed gate must mean no tag rather than a release that is already
-# tagged. Both entry points are deliberate and neither is automatic -- `workflow_call` only runs
-# when another workflow asks for it by name.
+# Desktop/default-feature configurations live in `ci-client.yml`; real PostgreSQL contracts live
+# in `ci-integration.yml`.
 on:
   workflow_dispatch:
   workflow_call:
@@ -137,7 +128,7 @@ jobs:
           # sequential today and neither has failed. Named here so the next person sees it before
           # spending an afternoon on "flaky router tests".
           #
-          # When any of these is fixed, delete its name here and in `ci-tests.yml`.
+          # When any of these is fixed, remove it from `.github/test-plan/known-test-baseline.txt`.
         run: |
           set -o pipefail
 
@@ -230,26 +221,10 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      # Moved here from `ci-architecture.yml` so that the four commands are named in exactly one
-      # place. `--all-targets` covers tests, examples and benches, which `cargo test` alone does not
-      # type-check for the targets it does not run.
-      #
-      # No `-- -D warnings`, deliberately, and this is the one place the gate differs from the local
-      # hook. `crates/platform/code/src/plan.rs` passes `-D warnings` (added by #719) but lints only the
-      # packages a change affects; across `--workspace` the same flag fails on pre-existing warnings:
-      #
-      #   $ cargo clippy --workspace --all-targets --no-default-features -- -D warnings
-      #   error: could not compile `burncloud-code` (lib) due to 3 previous errors
-      #   error: could not compile `burncloud-loops` (lib) due to 20 previous errors
-      #   exit code 101
-      #
-      # Adding it here before that baseline is cleared would be a gate that is red on `main`. Recorded
-      # so the divergence is a known state rather than a surprise; `.github/README.md` carries it too.
+      # The release gate treats warnings as failures. Desktop/default-feature coverage is owned by
+      # ci-client.yml rather than this headless Ubuntu job.
       - name: Check workspace Clippy policy
-        # The UI client's default `desktop` feature pulls GTK native libraries.
-        # Linux architecture CI checks every target with defaults disabled; the
-        # desktop feature remains the responsibility of platform-specific UI CI.
-        run: cargo clippy --workspace --all-targets --no-default-features
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
   cargo-deny:
     name: Dependency policy

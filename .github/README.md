@@ -21,8 +21,7 @@ Clippy and deny verdicts for trusted same-repository pull requests (or after mai
 | `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted `cargo deny check` |
 | `ci-self-hosted-rust.yml` | `workflow_call` only | Shared self-hosted authorization, checkout, Rust/OpenSSL setup, tool bootstrap and the four fixed Rust check implementations |
 | `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features`, `deny check` |
-| `ci-tests.yml` | manual | The same tests, with a choice of feature configuration |
-| `ci-architecture.yml` | manual | Only what the gate does not cover: `burncloud-code`'s own regression tests, formatting on Windows and Linux, the router dependency whitelist |
+| `ci-architecture.yml` | manual | `burncloud-code` regression on Windows/Linux plus the router dependency whitelist |
 | `ci-client.yml` | manual | Desktop builds, LiveView check and the console convention scripts — all excluded from the gate, which builds with `--no-default-features` |
 | `ci-integration.yml` | manual | The only job that needs a service container: PostgreSQL 16 and the 18 migrations |
 | `maintenance-version-tag.yml` | push touching a `Cargo.toml`, or manual | Validates the workspace, then tags — **only when the root package version actually advanced** |
@@ -72,8 +71,7 @@ remains a thin shell wrapper.
 | `ci-self-hosted-clippy.yml` | PR/review gate | Strict workspace Clippy |
 | `ci-self-hosted-deny.yml` | PR/review gate | Full dependency-policy check |
 | `ci-quality.yml` | manual; called by `maintenance-version-tag.yml` | The four gate commands. Also carries the identity test-discovery floors |
-| `ci-tests.yml` | manual | `cargo test --workspace`, with an input to choose the feature configuration, plus the identity discovery floors |
-| `ci-architecture.yml` | manual | `burncloud-code` regression tests on Windows and Linux, `cargo fmt --all -- --check` on both, and the router service dependency whitelist |
+| `ci-architecture.yml` | manual | `burncloud-code` regression on Windows/Linux plus the router dependency whitelist |
 | `ci-client.yml` | manual | UI convention scripts, LiveView feature check, desktop builds on Windows and macOS |
 | `ci-integration.yml` | manual | The Identity contract against a real PostgreSQL 16 server. The only job that needs a service container |
 | `maintenance-version-tag.yml` | root `Cargo.toml`, any `crates/**/Cargo.toml`, itself, `ci-quality.yml`; or manual | Runs the workspace gate, then tags the root package version — only when it advanced |
@@ -81,20 +79,6 @@ remains a thin shell wrapper.
 | `maintenance-sync-gitee.yml` | pushes to `main`, or manual | Mirrors the repository to Gitee |
 | `workflows/README.md` | — | Not a workflow: the naming scheme for the files in this directory, and two decisions measured there |
 
-### `ci-tests.yml`
-
-Historical note, kept because the shape of the file is explained by it: this workflow used to be split
-into five jobs (`node-invariants`, `billing-invariants`, `security-invariants`, `identity-invariants`,
-`migration-contracts`). The split existed so that one class of failure could not hide another — a single
-job ran everything in sequence, and the first non-zero exit ended it, so the known-failing Node P0
-compile error (`interfaces/server/src/node_orchestrator.rs`, E0308) terminated the job **before** the
-Billing and Security suites ran and neither had any CI coverage.
-
-With the suite green, the five jobs are replaced by one `cargo test --workspace`, which is both simpler
-and the only way to notice a package that has stopped being tested at all. The discovery floors the
-`identity-invariants` job carried are preserved as assertions in the same workflow and in
-`ci-quality.yml`: `cargo test` exits 0 for a suite that ran nothing, so the floors are what turn a
-silently-undeployed test target into a failure.
 
 ## What the workspace gate covers
 
@@ -124,7 +108,7 @@ overread:
 
 * **`--no-default-features` means the default-feature configuration is not built by the gate.** The
   client crate's `desktop` feature needs GTK native libraries. `ci-client.yml` covers the desktop build
-  on Windows and macOS, and `ci-tests.yml` takes an input that turns the flag off.
+  on Windows and macOS, and `ci-client.yml` owns the desktop/default-feature configurations the headless release gate cannot build.
 * **Ignored tests stay ignored.** `cargo test` reports them as ignored and exits 0. The gate asserts a
   floor on the *passed* count (`MIN_EXECUTED_TESTS`), which catches a suite that vanished, but it does
   not run `--ignored`. A defect recorded as an ignored test — the procedure described at the end of
@@ -288,8 +272,8 @@ mechanism is the local hook.
 * PR quality responsibilities are intentionally split into four thin self-hosted entry workflows so
   each produces an independent GitHub verdict. Shared execution policy belongs in
   `ci-self-hosted-rust.yml`; do not copy runner/bootstrap logic back into the four callers.
-* `ci-quality.yml` remains the manual/release workspace gate; do not silently weaken either path when
-  changing one of the shared quality commands.
+* `ci-quality.yml` is the full-workspace release gate. It is intentionally broader than affected-
+  package `code test`; do not describe the two as equivalent.
 
 ## Planned changes (not implemented)
 
@@ -298,7 +282,6 @@ Taken from `todos_1.txt` §2 and §9. Listed so the intent is on record, not to 
 ```
 arch.yml                       -> ci-architecture.yml
 client-ui.yml                  -> ci-client.yml
-security-billing-invariants.yml -> ci-tests.yml
 release.yml                    -> cd-release.yml
 version-check.yml              -> maintenance-version-tag.yml
 sync-to-gitee.yml              -> maintenance-sync-gitee.yml
