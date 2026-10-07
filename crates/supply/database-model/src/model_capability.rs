@@ -45,7 +45,7 @@ impl ModelCapabilityModel {
         let sql = adapt_sql(
             db.kind() == "postgres",
             r#"
-            SELECT id, model, context_window, max_output_tokens,
+            SELECT CAST(id AS BIGINT) AS id, model, context_window, max_output_tokens,
                    supports_vision, supports_function_calling,
                    input_price, output_price, synced_at
             FROM model_capabilities
@@ -53,10 +53,12 @@ impl ModelCapabilityModel {
             "#,
         );
 
-        sqlx::query_as::<_, ModelCapability>(&sql)
+        let capability = sqlx::query_as::<_, ModelCapability>(&sql)
             .bind(model)
             .fetch_optional(conn.pool())
-            .await
+            .await?;
+
+        Ok(capability)
     }
 
     /// Insert or replace the capability projection for one model.
