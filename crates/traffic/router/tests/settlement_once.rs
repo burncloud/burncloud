@@ -208,9 +208,7 @@ async fn start_openai_mock_upstream(
     received: Arc<AtomicUsize>,
     model: String,
 ) {
-    let handler = move |method: axum::http::Method,
-                        uri: axum::http::Uri,
-                        body: String| {
+    let handler = move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
         let received = Arc::clone(&received);
         let model = model.clone();
         async move {
@@ -307,15 +305,13 @@ async fn router_fixture(tag: &str) -> anyhow::Result<(u16, burncloud_database::D
 }
 
 async fn used_quota(pool: &burncloud_database::sqlx::AnyPool, token: &str) -> i64 {
-    burncloud_database::sqlx::query_scalar(
-        "SELECT used_quota FROM router_tokens WHERE token = ?",
-    )
-    .bind(token)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or(0)
+    burncloud_database::sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
+        .bind(token)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(0)
 }
 
 /// Used by the negative tests, where zero is the expected settled amount.
@@ -558,7 +554,10 @@ async fn a_successful_request_settles_exactly_once_and_logs_once() -> anyhow::Re
         "router_log request_id={request_id}, status={log_status}, cost={log_cost}, prompt_tokens={prompt_tokens}, completion_tokens={completion_tokens}"
     );
 
-    assert_eq!(log_status, 200, "the billing log must record the served status");
+    assert_eq!(
+        log_status, 200,
+        "the billing log must record the served status"
+    );
     assert_eq!(
         log_cost, EXPECTED_COST_NANODOLLARS,
         "the logged cost must equal the one-request settlement"
@@ -590,7 +589,15 @@ async fn an_unpriced_model_settles_zero() -> anyhow::Result<()> {
     let pool = conn.pool().clone();
 
     let token = "sk-unpriced-zero";
-    insert_router_token(&db, token, "unpriced-zero-user", "default", Some("value"), None).await?;
+    insert_router_token(
+        &db,
+        token,
+        "unpriced-zero-user",
+        "default",
+        Some("value"),
+        None,
+    )
+    .await?;
     grant_quota(&db, token, "unpriced-zero-user").await?;
 
     let before = used_quota(&pool, token).await;
