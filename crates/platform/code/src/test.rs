@@ -45,7 +45,7 @@ fn paths(result: &str, files: &mut BTreeSet<String>) {
     );
 }
 
-fn changes(root: &Path, options: &Options) -> Result<BTreeSet<String>> {
+pub(crate) fn changes(root: &Path, options: &Options) -> Result<BTreeSet<String>> {
     let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
     if options.staged {
         let unstaged = git(
