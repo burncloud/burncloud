@@ -4,8 +4,7 @@ name: CI / Client
 #
 # This workflow owns client/default-feature coverage that the headless release gate cannot provide.
 # `ci-quality.yml` intentionally uses `--no-default-features`; this file verifies UI conventions,
-# LiveView and real desktop/default-feature configurations on supported platforms. It replaces the
-# old `ci-tests.yml` default-feature escape hatch. Run it before a client release, and after changes
+# LiveView and real desktop/default-feature configurations on supported platforms. This keeps default-feature coverage in the platform-specific workflow. Run it before a client release, and after changes
 # to `crates/interfaces/client/**`.
 on:
   workflow_dispatch:

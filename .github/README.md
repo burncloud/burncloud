@@ -20,7 +20,7 @@ Clippy and deny verdicts for trusted same-repository pull requests (or after mai
 | `ci-self-hosted-clippy.yml` | PR/review gate | Self-hosted strict workspace Clippy |
 | `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted `cargo deny check` |
 | `ci-self-hosted-rust.yml` | `workflow_call` only | Shared self-hosted authorization, checkout, Rust/OpenSSL setup, tool bootstrap and the four fixed Rust check implementations |
-| `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features`, `deny check` |
+| `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features -- -D warnings`, `deny check` |
 | `ci-architecture.yml` | manual | `burncloud-code` regression on Windows/Linux plus the router dependency whitelist |
 | `ci-client.yml` | manual | Desktop builds, LiveView check and the console convention scripts — all excluded from the gate, which builds with `--no-default-features` |
 | `ci-integration.yml` | manual | The only job that needs a service container: PostgreSQL 16 and the 18 migrations |
@@ -57,7 +57,7 @@ select affected packages and run their Cargo tests. Strict Clippy is a separate 
 the managed pre-commit hook and in `ci-self-hosted-clippy.yml`; this keeps lint policy independent from
 test-scope selection and prevents a lint configuration change from inflating the test plan.
 
-The `code-init` job in `ci-architecture.yml` runs `cargo test -p burncloud-code` on Windows and Linux.
+The `code-regression` job in `ci-architecture.yml` runs `cargo test -p burncloud-code` on Windows and Linux.
 Native Rust regression tests verify real Git commits and selection, with Cargo check execution stubbed.
 Their success is not a workspace-health result. There is no Python or Shell test harness; Git's hook
 remains a thin shell wrapper.
@@ -161,7 +161,7 @@ like unrelated flakiness.
 
 ### What the gate does not run
 
-Seven tests are named in `SKIP_TESTS` in `ci-quality.yml` and `ci-tests.yml`, which skip them **by
+Seven known failures are sourced from `.github/test-plan/known-test-baseline.txt` by `ci-quality.yml` and skipped **by
 name**: the rest of each suite still runs. This is a visible hole, not a silent one — the step prints
 what it skipped — and **all seven are defects, not expected behaviour**.
 
