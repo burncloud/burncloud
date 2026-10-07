@@ -133,10 +133,15 @@ wrong. This was measured: `crates/*/Cargo.toml` matches **zero** of the 37 track
 
 ## Reproducibility limits
 
-* **`Cargo.lock` is not tracked** (`.gitignore` line 29). CI therefore resolves dependencies fresh on
-  every run, and `--locked` cannot be used. Two runs of the same commit can in principle resolve
-  differently. Committing the lock file is a prerequisite for any `--locked` command; it is **not**
-  done here because `.gitignore` is off limits for automated changes in this repository.
+* **`Cargo.lock` is still not tracked** (`.gitignore` line 29), so `--locked` still cannot be used and
+  two different runners can resolve differently on their first run. The trusted self-hosted PR gate now
+  reduces that cost by caching the generated lock file outside the checkout, keyed by the complete set
+  of `Cargo.toml` files. A runner therefore reuses the same resolution while the manifests are unchanged,
+  even though `actions/checkout` removes the ignored checkout-local `Cargo.lock`.
+* Self-hosted Cargo registry/git caches and build artifacts live under `~/.cache/burncloud/`, outside
+  the checkout. This avoids both `git clean -ffdx` deleting `target/` and stale ownership under
+  `~/.cargo/registry` breaking the shared runner cache. `code test` still enforces the 100 GiB target
+  cleanup threshold through `CARGO_TARGET_DIR`.
 * The Rust toolchain is `stable` via `dtolnay/rust-toolchain`, so the compiler version drifts with
   upstream releases. No version is pinned.
 
