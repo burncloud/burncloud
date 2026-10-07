@@ -66,21 +66,20 @@ fn sample_channel(name: &str, group: &str) -> Channel {
         name: name.to_string(),
         weight: 10,
         created_time: None,
-        test_time: None,
+        test_time: Some(1_700_000_000),
         response_time: Some(120),
         base_url: Some("https://api.anthropic.com/v1".to_string()),
         models: "claude-3-5-sonnet,claude-3-haiku".to_string(),
         group: group.to_string(),
-        used_quota: 0,
-        // The mapping target must not repeat a model from `models`: the primary key of
-        // `channel_abilities` is (group, model, channel_id), and `sync_abilities` inserts the
-        // mapping keys *and* values as additional ability rows.
+        used_quota: 42_000,
+        // Mapping keys and values are both routable aliases. The target here is distinct so this
+        // round-trip test observes both rows independently; overlap is covered in ability_sync.rs.
         model_mapping: Some(r#"{"claude-3":"claude-3-5-sonnet-2024"}"#.to_string()),
         priority: 7,
-        auto_ban: 1,
-        other_info: None,
+        auto_ban: 0,
+        other_info: Some(r#"{"owner":"supply"}"#.to_string()),
         tag: Some("prod".to_string()),
-        setting: None,
+        setting: Some(r#"{"retry":2}"#.to_string()),
         param_override: None,
         header_override: None,
         remark: Some("primary".to_string()),
@@ -119,24 +118,45 @@ async fn channel_survives_a_real_insert_and_select() {
     assert_eq!(stored.models, "claude-3-5-sonnet,claude-3-haiku");
     assert_eq!(stored.group, "default");
     assert_eq!(stored.priority, 7);
-    // Behaviour of the current writer, asserted rather than assumed. `create()` binds 19 columns;
-    // these data-bearing columns exist in the table and in the domain type but are not written on
-    // create, so they read back as NULL (or keep their column default). See the follow-up issue.
-    assert_eq!(stored.test_time, None, "test_time not in the INSERT list");
+    // Runtime/accounting columns keep their existing ownership: Supply creation does not overwrite
+    // probe state or Commerce-owned usage. Supply-owned configuration, however, must round-trip.
+    assert_eq!(
+        stored.test_time, None,
+        "probe-owned test_time is not written by Supply create"
+    );
     assert_eq!(
         stored.response_time, None,
-        "response_time not in the INSERT list"
+        "probe latency is not written by create"
     );
-    assert_eq!(stored.used_quota, 0, "used_quota keeps its DEFAULT 0");
     assert_eq!(
-        stored.model_mapping, None,
-        "model_mapping not in the INSERT list"
+        stored.used_quota, 0,
+        "Commerce-owned quota ignores the supplied 42_000 and keeps DEFAULT 0"
     );
-    assert_eq!(stored.auto_ban, 1, "auto_ban keeps its DEFAULT 1");
-    assert_eq!(stored.other_info, None, "other_info not in the INSERT list");
-    assert_eq!(stored.tag, None, "tag not in the INSERT list");
-    assert_eq!(stored.setting, None, "setting not in the INSERT list");
-    assert_eq!(stored.remark, None, "remark not in the INSERT list");
+    assert_eq!(
+        stored.model_mapping.as_deref(),
+        Some(r#"{"claude-3":"claude-3-5-sonnet-2024"}"#),
+        "model_mapping is Supply configuration and must be persisted"
+    );
+    assert_eq!(
+        stored.auto_ban, 1,
+        "runtime auto-ban ignores the supplied 0 and keeps DEFAULT 1"
+    );
+    assert_eq!(
+        stored.other_info.as_deref(),
+        Some(r#"{"owner":"supply"}"#),
+        "other_info must round-trip"
+    );
+    assert_eq!(stored.tag.as_deref(), Some("prod"), "tag must round-trip");
+    assert_eq!(
+        stored.setting.as_deref(),
+        Some(r#"{"retry":2}"#),
+        "setting must round-trip"
+    );
+    assert_eq!(
+        stored.remark.as_deref(),
+        Some("primary"),
+        "remark must round-trip"
+    );
 
     // Columns that ARE persisted come back intact.
     assert_eq!(
@@ -222,20 +242,19 @@ async fn ability_rows_round_trip_through_the_real_table() {
         burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
             .await
             .expect("real SELECT with the dialect-specific `group` alias");
-    // Abilities come from the `models` column only, because the writer does not persist
-    // `model_mapping` (see the assertion above); `sync_abilities` reads the mapping from the stored
-    // row, so with the current writer the mapping contributes nothing. When that write path is
-    // fixed, this expectation must change to include the mapping key and value.
+    // The stored row carries `model_mapping`, so re-syncing from the database must reproduce both
+    // mapping names as well as the explicit model list.
     let mut models: Vec<&str> = abilities.iter().map(|a| a.model.as_str()).collect();
     models.sort_unstable();
     assert_eq!(
         models,
-        vec!["claude-3-5-sonnet", "claude-3-haiku"],
-        "abilities are derived from `models`; mapping rows need the mapping column persisted"
-    );
-    assert!(
-        !models.contains(&"claude-3"),
-        "the mapping key is absent while model_mapping is not persisted"
+        vec![
+            "claude-3",
+            "claude-3-5-sonnet",
+            "claude-3-5-sonnet-2024",
+            "claude-3-haiku"
+        ],
+        "abilities include explicit models plus model_mapping key/value"
     );
     for ability in &abilities {
         assert_eq!(ability.channel_id, channel_id);
