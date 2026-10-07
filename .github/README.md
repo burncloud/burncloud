@@ -15,6 +15,10 @@ automatically on GitHub any more**.
 
 | Workflow | Trigger | Why |
 | --- | --- | --- |
+| `ci-self-hosted-fmt.yml` | PR/review gate | Self-hosted `cargo fmt --all -- --check` |
+| `ci-self-hosted-test.yml` | PR/review gate | Self-hosted affected-package `code test --base` |
+| `ci-self-hosted-clippy.yml` | PR/review gate | Self-hosted strict workspace Clippy |
+| `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted `cargo deny check` |
 | `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features`, `deny check` |
 | `ci-tests.yml` | manual | The same tests, with a choice of feature configuration |
 | `ci-architecture.yml` | manual | Only what the gate does not cover: `burncloud-code`'s own regression tests, formatting on Windows and Linux, the router dependency whitelist |
@@ -34,23 +38,16 @@ Two consequences worth stating plainly, because neither is obvious from the file
 
 ### The local gate
 
-`cargo run -- code init` installs the hooks; `cargo run -- code test --staged` runs in `pre-commit`.
-Rust tooling selects changed packages and their transitive consumers from Cargo metadata, with a
-full-workspace fallback for shared configuration, `.github` automation and unknown paths. It gates the
-selection on formatting, tests, Clippy and the full `cargo deny check`; existing failures are not
-suppressed. `--plan`, `--base REF` and `--all` support manual local verification.
+`cargo run -- code init` installs the hooks. The managed `pre-commit` runs four independent gates
+in order: workspace formatting, affected-package `code test --staged`, strict workspace Clippy, and
+`cargo deny check`. `code test` itself owns only Cargo test selection/execution. It ignores
+`.github/**`, `clippy.toml` and `deny.toml` for test-scope purposes, scopes a package manifest to
+that package and its consumers, and reserves full-workspace tests for root Cargo/build/toolchain
+configuration, unknown paths or explicit `--all`.
 
-`--all` is the meaningful equivalence to maintain: it runs exactly
-
-```
-fmt --all -- --check
-test --workspace --no-default-features
-clippy --workspace --all-targets --no-default-features
-deny check
-```
-
-and `ci-quality.yml` runs those four commands in that order. A green local `--all` and a green
-`ci-quality.yml` mean the same thing, which is the property that makes the manual model defensible.
+The same responsibilities are split into four self-hosted PR workflows so each check has an
+independent GitHub verdict: fmt, affected tests, Clippy and deny. `--plan`, `--base REF` and
+`--all` remain available for manual test-scope verification.
 
 **One deliberate divergence, measured rather than assumed.** PR #719 added `-- -D warnings` to the
 Clippy command in `crates/platform/code/src/plan.rs`, so the local gate now fails an affected package
@@ -82,6 +79,10 @@ remains a thin shell wrapper.
 
 | File | Trigger | What it checks |
 | --- | --- | --- |
+| `ci-self-hosted-fmt.yml` | PR/review gate | Workspace rustfmt on the trusted self-hosted runner |
+| `ci-self-hosted-test.yml` | PR/review gate | Affected-package tests through `burncloud-code` |
+| `ci-self-hosted-clippy.yml` | PR/review gate | Strict workspace Clippy |
+| `ci-self-hosted-deny.yml` | PR/review gate | Full dependency-policy check |
 | `ci-quality.yml` | manual; called by `maintenance-version-tag.yml` | The four gate commands. Also carries the identity test-discovery floors |
 | `ci-tests.yml` | manual | `cargo test --workspace`, with an input to choose the feature configuration, plus the identity discovery floors |
 | `ci-architecture.yml` | manual | `burncloud-code` regression tests on Windows and Linux, `cargo fmt --all -- --check` on both, and the router service dependency whitelist |
