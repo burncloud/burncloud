@@ -253,7 +253,7 @@ mod tests {
         );
         let libtest_args = &test[separator + 1..];
         anyhow::ensure!(
-            libtest_args.len() % 2 == 0,
+            libtest_args.len().is_multiple_of(2),
             "known skip arguments must be --skip/name pairs"
         );
         let mut skip_names = Vec::new();
