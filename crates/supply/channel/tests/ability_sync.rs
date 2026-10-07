@@ -403,6 +403,35 @@ async fn a_duplicate_name_in_the_group_list_is_reported_as_an_error() {
     cleanup(db, path).await;
 }
 
+#[tokio::test]
+async fn model_mapping_may_target_a_model_already_declared_in_models() {
+    // A mapping alias normally points at the actual upstream model, which may already be present in
+    // `models`. That overlap is configuration, not a duplicate operator typo, so it must not fail the
+    // channel create on PRIMARY KEY (group, model, channel_id).
+    let (db, path) = fresh_db("mapping_overlap").await;
+    let mut ch = channel("mapping-overlap", "gpt-4o", "default", 1);
+    ch.model_mapping = Some(r#"{"friendly":"gpt-4o"}"#.to_string());
+
+    let id = insert_channel(&db, &mut ch).await;
+    assert_eq!(
+        abilities_of(&db, id).await,
+        pairs(&[("default", "friendly"), ("default", "gpt-4o")]),
+        "mapping aliases are added while an already-declared target is de-duplicated"
+    );
+
+    let stored = ChannelProviderModel::get_by_id(&db, id)
+        .await
+        .expect("get_by_id")
+        .expect("created channel exists");
+    assert_eq!(
+        stored.model_mapping.as_deref(),
+        Some(r#"{"friendly":"gpt-4o"}"#),
+        "the mapping used to build abilities must also survive the database round-trip"
+    );
+
+    cleanup(db, path).await;
+}
+
 // -------------------------------------------------------------------------------------------
 // update, and the ability rows it does not touch
 // -------------------------------------------------------------------------------------------
@@ -418,6 +447,11 @@ async fn update_changes_the_channel_row_and_preserves_its_id() {
 
     ch.name = "renamed".to_string();
     ch.models = "gpt-4o,gpt-4o-mini".to_string();
+    ch.model_mapping = Some(r#"{"friendly":"gpt-4o"}"#.to_string());
+    ch.other_info = Some(r#"{"owner":"supply"}"#.to_string());
+    ch.tag = Some("updated".to_string());
+    ch.setting = Some(r#"{"retry":3}"#.to_string());
+    ch.remark = Some("updated remark".to_string());
     ChannelProviderModel::update(&db, &ch)
         .await
         .expect("update");
@@ -433,6 +467,26 @@ async fn update_changes_the_channel_row_and_preserves_its_id() {
     );
     assert_eq!(reloaded.name, "renamed");
     assert_eq!(reloaded.models, "gpt-4o,gpt-4o-mini");
+    assert_eq!(
+        reloaded.model_mapping.as_deref(),
+        Some(r#"{"friendly":"gpt-4o"}"#)
+    );
+    assert_eq!(
+        reloaded.other_info.as_deref(),
+        Some(r#"{"owner":"supply"}"#)
+    );
+    assert_eq!(reloaded.tag.as_deref(), Some("updated"));
+    assert_eq!(reloaded.setting.as_deref(), Some(r#"{"retry":3}"#));
+    assert_eq!(reloaded.remark.as_deref(), Some("updated remark"));
+    assert_eq!(
+        abilities_of(&db, id).await,
+        pairs(&[
+            ("default", "friendly"),
+            ("default", "gpt-4o"),
+            ("default", "gpt-4o-mini"),
+        ]),
+        "update persists model_mapping and synchronizes its alias without duplicating the target"
+    );
 
     cleanup(db, path).await;
 }
