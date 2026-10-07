@@ -66,18 +66,17 @@ fn sample_channel(name: &str, group: &str) -> Channel {
         name: name.to_string(),
         weight: 10,
         created_time: None,
-        test_time: None,
+        test_time: Some(1_700_000_000),
         response_time: Some(120),
         base_url: Some("https://api.anthropic.com/v1".to_string()),
         models: "claude-3-5-sonnet,claude-3-haiku".to_string(),
         group: group.to_string(),
-        used_quota: 0,
-        // The mapping target must not repeat a model from `models`: the primary key of
-        // `channel_abilities` is (group, model, channel_id), and `sync_abilities` inserts the
-        // mapping keys *and* values as additional ability rows.
+        used_quota: 42_000,
+        // Mapping keys and values are both routable aliases. The target here is distinct so this
+        // round-trip test observes both rows independently; overlap is covered in ability_sync.rs.
         model_mapping: Some(r#"{"claude-3":"claude-3-5-sonnet-2024"}"#.to_string()),
         priority: 7,
-        auto_ban: 1,
+        auto_ban: 0,
         other_info: Some(r#"{"owner":"supply"}"#.to_string()),
         tag: Some("prod".to_string()),
         setting: Some(r#"{"retry":2}"#.to_string()),
@@ -121,18 +120,27 @@ async fn channel_survives_a_real_insert_and_select() {
     assert_eq!(stored.priority, 7);
     // Runtime/accounting columns keep their existing ownership: Supply creation does not overwrite
     // probe state or Commerce-owned usage. Supply-owned configuration, however, must round-trip.
-    assert_eq!(stored.test_time, None, "probe state is not written by create");
+    assert_eq!(
+        stored.test_time, None,
+        "probe-owned test_time is not written by Supply create"
+    );
     assert_eq!(
         stored.response_time, None,
         "probe latency is not written by create"
     );
-    assert_eq!(stored.used_quota, 0, "Commerce-owned quota keeps DEFAULT 0");
+    assert_eq!(
+        stored.used_quota, 0,
+        "Commerce-owned quota ignores the supplied 42_000 and keeps DEFAULT 0"
+    );
     assert_eq!(
         stored.model_mapping.as_deref(),
         Some(r#"{"claude-3":"claude-3-5-sonnet-2024"}"#),
         "model_mapping is Supply configuration and must be persisted"
     );
-    assert_eq!(stored.auto_ban, 1, "runtime auto-ban keeps its DEFAULT 1");
+    assert_eq!(
+        stored.auto_ban, 1,
+        "runtime auto-ban ignores the supplied 0 and keeps DEFAULT 1"
+    );
     assert_eq!(
         stored.other_info.as_deref(),
         Some(r#"{"owner":"supply"}"#),
