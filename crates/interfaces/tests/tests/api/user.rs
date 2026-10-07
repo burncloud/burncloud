@@ -11,15 +11,15 @@
     clippy::redundant_pattern_matching,
     reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
-use crate::common::spawn_app;
+use crate::common::spawn_isolated_app;
 use burncloud_tests::TestClient;
 use serde_json::json;
 
 #[tokio::test]
 async fn test_user_management_lifecycle() -> anyhow::Result<()> {
     // 1. Start Server
-    let base_url = spawn_app().await;
-    let client = TestClient::new(&base_url);
+    let app = spawn_isolated_app().await;
+    let client = TestClient::new(&app.base_url);
 
     // 2. Register User
     let username = format!("testuser-{}", uuid::Uuid::new_v4());
@@ -30,7 +30,7 @@ async fn test_user_management_lifecycle() -> anyhow::Result<()> {
         "email": format!("{}@example.com", username)
     });
 
-    let res = client.post("/console/api/user/register", &body).await?;
+    let res = client.post("/api/auth/register", &body).await?;
     assert!(res["success"].as_bool().unwrap_or(false));
     let _user_id = res["data"]["id"].as_str().unwrap();
 
@@ -39,14 +39,16 @@ async fn test_user_management_lifecycle() -> anyhow::Result<()> {
         "username": username,
         "password": password
     });
-    let login_res = client.post("/console/api/user/login", &login_body).await?;
+    let login_res = client.post("/api/auth/login", &login_body).await?;
     assert!(login_res["success"].as_bool().unwrap_or(false));
     assert_eq!(login_res["data"]["username"], username);
-    assert!(!login_res["data"]["token"].is_null());
+    let token = login_res["data"]["token"]
+        .as_str()
+        .expect("login must return a Console JWT");
 
-    // 4. List Users (Should contain the new user)
-    // List users might require admin permission in future, but currently open.
-    let list_res = client.get("/console/api/list_users").await?;
+    // 4. List Users as the first (administrator) user in this isolated database.
+    let admin = TestClient::new(&app.base_url).with_token(token);
+    let list_res = admin.get("/console/api/list_users").await?;
     assert!(list_res["success"].as_bool().unwrap_or(false));
     let users = list_res["data"].as_array().unwrap();
 
