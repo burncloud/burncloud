@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// row only because the historical table mixed capability and pricing data. Canonical pricing
 /// continues to live in Commerce; these two columns are a compatibility projection until a future
 /// data migration physically separates the table.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelCapability {
     pub id: i64,
     pub model: String,
@@ -19,6 +19,35 @@ pub struct ModelCapability {
     pub input_price: Option<f64>,
     pub output_price: Option<f64>,
     pub synced_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct ModelCapabilityRow {
+    id: i64,
+    model: String,
+    context_window: Option<i64>,
+    max_output_tokens: Option<i64>,
+    supports_vision: i64,
+    supports_function_calling: i64,
+    input_price: Option<f64>,
+    output_price: Option<f64>,
+    synced_at: Option<i64>,
+}
+
+impl From<ModelCapabilityRow> for ModelCapability {
+    fn from(row: ModelCapabilityRow) -> Self {
+        Self {
+            id: row.id,
+            model: row.model,
+            context_window: row.context_window,
+            max_output_tokens: row.max_output_tokens,
+            supports_vision: row.supports_vision != 0,
+            supports_function_calling: row.supports_function_calling != 0,
+            input_price: row.input_price,
+            output_price: row.output_price,
+            synced_at: row.synced_at,
+        }
+    }
 }
 
 /// Input used by the single write boundary for `model_capabilities`.
@@ -46,17 +75,23 @@ impl ModelCapabilityModel {
             db.kind() == "postgres",
             r#"
             SELECT CAST(id AS BIGINT) AS id, model, context_window, max_output_tokens,
-                   supports_vision, supports_function_calling,
+                   CASE WHEN supports_vision
+                        THEN CAST(1 AS BIGINT) ELSE CAST(0 AS BIGINT)
+                   END AS supports_vision,
+                   CASE WHEN supports_function_calling
+                        THEN CAST(1 AS BIGINT) ELSE CAST(0 AS BIGINT)
+                   END AS supports_function_calling,
                    input_price, output_price, synced_at
             FROM model_capabilities
             WHERE model = ?
             "#,
         );
 
-        let capability = sqlx::query_as::<_, ModelCapability>(&sql)
+        let capability = sqlx::query_as::<_, ModelCapabilityRow>(&sql)
             .bind(model)
             .fetch_optional(conn.pool())
-            .await?;
+            .await?
+            .map(ModelCapability::from);
 
         Ok(capability)
     }
