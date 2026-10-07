@@ -1,7 +1,12 @@
 //! Database billing crate for BurnCloud
 //!
-//! This crate aggregates all billing_ domain tables: billing_prices,
-//! billing_tiered_prices, billing_exchange_rates.
+//! This crate aggregates the active billing persistence for prices, tiered prices and exchange
+//! rates.
+//!
+//! Migration `0015_monthly_quota.sql` also contains `billing_plans` and
+//! `billing_subscriptions`, but those tables do not currently have Rust domain types, modules or
+//! a runtime service/API. The old uncompiled source files were removed in #653; implementing that
+//! feature is tracked separately by #652. Their schema must not be treated as an active capability.
 
 #[expect(
     clippy::too_many_lines,
