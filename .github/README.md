@@ -19,7 +19,7 @@ Clippy and deny verdicts for trusted same-repository pull requests (or after mai
 | `ci-self-hosted-test.yml` | PR/review gate | Self-hosted affected-package `code test --base` |
 | `ci-self-hosted-clippy.yml` | PR/review gate | Self-hosted strict workspace Clippy |
 | `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted `cargo deny check` |
-| `_ci-self-hosted-rust.yml` | `workflow_call` only | Shared self-hosted authorization, checkout, Rust/OpenSSL setup, tool bootstrap and the four fixed Rust check implementations |
+| `ci-self-hosted-rust.yml` | `workflow_call` only | Shared self-hosted authorization, checkout, Rust/OpenSSL setup, tool bootstrap and the four fixed Rust check implementations |
 | `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features`, `deny check` |
 | `ci-tests.yml` | manual | The same tests, with a choice of feature configuration |
 | `ci-architecture.yml` | manual | Only what the gate does not cover: `burncloud-code`'s own regression tests, formatting on Windows and Linux, the router dependency whitelist |
@@ -48,7 +48,7 @@ configuration, unknown paths or explicit `--all`.
 
 The same responsibilities are split into four thin self-hosted PR entry workflows so each check has
 an independent GitHub verdict: fmt, affected tests, Clippy and deny. All four call
-`_ci-self-hosted-rust.yml`, which owns the shared authorization, runner selection, checkout, Rust
+`ci-self-hosted-rust.yml`, which owns the shared authorization, runner selection, checkout, Rust
 toolchain/OpenSSL setup and fixed command implementations. The callers pass only a closed check kind
 (`fmt`, `test`, `clippy` or `deny`), never arbitrary shell commands. `--plan`, `--base REF`
 and `--all` remain available for manual test-scope verification.
@@ -287,7 +287,7 @@ mechanism is the local hook.
   report success when its command did not run.
 * PR quality responsibilities are intentionally split into four thin self-hosted entry workflows so
   each produces an independent GitHub verdict. Shared execution policy belongs in
-  `_ci-self-hosted-rust.yml`; do not copy runner/bootstrap logic back into the four callers.
+  `ci-self-hosted-rust.yml`; do not copy runner/bootstrap logic back into the four callers.
 * `ci-quality.yml` remains the manual/release workspace gate; do not silently weaken either path when
   changing one of the shared quality commands.
 
