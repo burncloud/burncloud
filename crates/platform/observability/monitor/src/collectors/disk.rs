@@ -12,6 +12,14 @@ use winapi::um::fileapi::GetDiskFreeSpaceExW;
 #[cfg(unix)]
 use std::fs;
 
+#[cfg(unix)]
+fn normalize_unix_unsigned<T>(value: T) -> u64
+where
+    u64: From<T>,
+{
+    u64::from(value)
+}
+
 /// 磁盘数据收集器
 pub struct DiskCollector;
 
@@ -133,9 +141,9 @@ impl DiskCollector {
             // libc exposes these fields as different unsigned widths across
             // Unix targets (u64 on Linux, u32 for block counts on macOS ARM).
             // Normalize before doing byte arithmetic and building DiskInfo.
-            let block_size = u64::from(statvfs.f_frsize);
-            let total_blocks = u64::from(statvfs.f_blocks);
-            let free_blocks = u64::from(statvfs.f_bavail);
+            let block_size = normalize_unix_unsigned(statvfs.f_frsize);
+            let total_blocks = normalize_unix_unsigned(statvfs.f_blocks);
+            let free_blocks = normalize_unix_unsigned(statvfs.f_bavail);
 
             let total = total_blocks * block_size;
             let available = free_blocks * block_size;

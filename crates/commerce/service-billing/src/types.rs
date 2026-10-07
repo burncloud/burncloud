@@ -72,11 +72,44 @@ impl UnifiedUsage {
 
 /// Per-token-type cost breakdown, all in nanodollars.
 /// Formula: cost_nano = tokens * price_per_million / 1_000_000
+///
+/// # Cache costs are split (#618)
+///
+/// `cache_cost` used to be the only cache field, and it held read **plus** write
+/// cost merged. Anything that wanted to attribute cache spend read that single
+/// number and could not tell the two apart — and the router's
+/// `router_logs.cache_read_cost` column was filled with the merged value while
+/// `cache_write_cost` stayed 0, so cache *writes* (the more expensive side) were
+/// invisible in every per-column report.
+///
+/// The breakdown now carries [`Self::cache_read_cost`] and
+/// [`Self::cache_write_cost`] separately, with [`Self::cache_cost`] retained as
+/// their sum. New values satisfy:
+///
+/// ```text
+/// cache_cost == cache_read_cost + cache_write_cost
+/// ```
+///
+/// Old serialized values only contain `cache_cost`, so the split fields
+/// deserialize with zero defaults. `cache_cost` remains the authoritative
+/// cache component used by [`Self::total`]; the split fields are attribution
+/// detail. The calculator maintains the invariant that new values satisfy
+/// `cache_cost == cache_read_cost + cache_write_cost`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CostBreakdown {
     pub input_cost: i64,
     pub output_cost: i64,
+    /// Sum of [`Self::cache_read_cost`] and [`Self::cache_write_cost`].
+    ///
+    /// Retained because it is part of the published Commerce shape; prefer the
+    /// two split fields when attributing cache spend.
     pub cache_cost: i64,
+    /// Cost of `usage.cache_read_tokens` at the cache-read rate.
+    #[serde(default)]
+    pub cache_read_cost: i64,
+    /// Cost of `usage.cache_write_tokens` at the cache-write rate.
+    #[serde(default)]
+    pub cache_write_cost: i64,
     pub audio_cost: i64,
     pub voice_cost: i64,
     pub image_cost: i64,
@@ -88,6 +121,10 @@ pub struct CostBreakdown {
 
 impl CostBreakdown {
     /// Sum all components into a total, capping at i64::MAX on overflow.
+    ///
+    /// `cache_cost` stays authoritative for total billing compatibility;
+    /// `cache_read_cost` and `cache_write_cost` are attribution fields and
+    /// are not added again here.
     pub fn total(&self) -> i64 {
         let total = self.input_cost as i128
             + self.output_cost as i128
@@ -148,5 +185,54 @@ fn currency_symbol(code: &str) -> &'static str {
         "CNY" => "¥",
         "EUR" => "€",
         _ => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_cost_breakdown_json_keeps_merged_cache_cost() {
+        let json = r#"{
+            "input_cost": 10,
+            "output_cost": 20,
+            "cache_cost": 30,
+            "audio_cost": 0,
+            "voice_cost": 0,
+            "image_cost": 0,
+            "video_cost": 0,
+            "music_cost": 0,
+            "reasoning_cost": 0,
+            "embedding_cost": 0
+        }"#;
+
+        let breakdown: CostBreakdown =
+            serde_json::from_str(json).unwrap_or_else(|e| panic!("legacy JSON must parse: {e}"));
+        assert_eq!(breakdown.cache_read_cost, 0);
+        assert_eq!(breakdown.cache_write_cost, 0);
+        assert_eq!(
+            breakdown.total(),
+            60,
+            "legacy cache_cost must remain part of the total"
+        );
+    }
+
+    #[test]
+    fn total_keeps_cache_cost_as_the_authoritative_compatibility_field() {
+        let breakdown = CostBreakdown {
+            input_cost: 10,
+            output_cost: 20,
+            cache_cost: 999,
+            cache_read_cost: 12,
+            cache_write_cost: 18,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            breakdown.total(),
+            1_029,
+            "split cache fields are attribution detail; total billing keeps the published cache_cost semantic"
+        );
     }
 }

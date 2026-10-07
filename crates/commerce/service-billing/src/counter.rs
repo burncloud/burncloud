@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 ///
 /// Replaces `StreamingTokenCounter` and supports all token types defined in [`UnifiedUsage`].
 /// Settlement strategy: the last streaming chunk that carries usage data is authoritative
-/// (set, not accumulate) to avoid double-counting in providers that resend cumulative totals.
+/// (record, not add) to avoid double-counting in providers that resend cumulative totals.
 #[derive(Debug, Default)]
 pub struct UnifiedTokenCounter {
     input_tokens: AtomicU64,
@@ -50,10 +50,17 @@ impl UnifiedTokenCounter {
             .store(usage.embedding_tokens.max(0) as u64, Ordering::Relaxed);
     }
 
-    /// Accumulate usage from a partial chunk into existing counters.
-    /// Use this for providers that send incremental deltas (Anthropic message_start / message_delta).
-    /// Individual fields are updated only when non-zero to preserve previous values.
-    pub fn accumulate(&self, usage: &UnifiedUsage) {
+    /// Record a cumulative streaming-usage update.
+    ///
+    /// Anthropic streaming usage is split across events: `message_start`
+    /// carries the input side and `message_delta` carries cumulative output.
+    /// Each positive field therefore replaces that field's previous value;
+    /// zero or negative values mean "no update" and leave the prior value intact.
+    ///
+    /// This method deliberately does **not** add deltas. Providers that send
+    /// incremental usage need a separately named additive API rather than
+    /// reusing this cumulative-total contract (#667).
+    pub fn record_cumulative(&self, usage: &UnifiedUsage) {
         if usage.input_tokens > 0 {
             self.input_tokens
                 .store(usage.input_tokens as u64, Ordering::Relaxed);
@@ -141,16 +148,16 @@ mod tests {
     }
 
     #[test]
-    fn test_accumulate_two_anthropic_events() {
+    fn test_record_cumulative_two_anthropic_events() {
         let counter = UnifiedTokenCounter::new();
         // message_start sets input
-        counter.accumulate(&UnifiedUsage {
+        counter.record_cumulative(&UnifiedUsage {
             input_tokens: 50,
             cache_read_tokens: 10,
             ..Default::default()
         });
         // message_delta sets output
-        counter.accumulate(&UnifiedUsage {
+        counter.record_cumulative(&UnifiedUsage {
             output_tokens: 75,
             ..Default::default()
         });

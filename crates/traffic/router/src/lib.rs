@@ -1182,17 +1182,17 @@ async fn models_handler(State(state): State<AppState>) -> Response {
 async fn extract_token_user(
     state: &AppState,
     headers: &axum::http::HeaderMap,
-) -> Result<String, Response> {
+) -> Result<String, Box<Response>> {
     let token = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
         .map(|s| s.to_string())
         .ok_or_else(|| {
-            build_response(
+            Box::new(build_response(
                 StatusCode::UNAUTHORIZED,
                 Body::from(r#"{"error":"Missing Bearer token"}"#),
-            )
+            ))
         })?;
 
     match RouterDatabase::validate_token_and_get_info(&state.db, &token).await {
@@ -1206,22 +1206,22 @@ async fn extract_token_user(
                     let decoded = state.jwt_secret.verify::<JwtClaims>(&token);
                     match decoded {
                         Ok(claims) => Ok(claims.sub),
-                        _ => Err(build_response(
+                        _ => Err(Box::new(build_response(
                             StatusCode::UNAUTHORIZED,
                             Body::from(
                                 r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#,
                             ),
-                        )),
+                        ))),
                     }
                 }
             }
         }
         Err(e) => {
             tracing::error!("Token validation DB error: {e}");
-            Err(build_response(
+            Err(Box::new(build_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 Body::from(r#"{"error":"Service temporarily unavailable"}"#),
-            ))
+            )))
         }
     }
 }
@@ -1230,7 +1230,7 @@ async fn extract_token_user(
 async fn usage_handler(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
     let user_id = match extract_token_user(&state, &headers).await {
         Ok(id) => id,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     match burncloud_database_router::get_usage_stats(&state.db, &user_id, "month").await {
@@ -1262,7 +1262,7 @@ async fn usage_models_handler(
 ) -> Response {
     let user_id = match extract_token_user(&state, &headers).await {
         Ok(id) => id,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     match burncloud_database_router::get_usage_stats_by_model(&state.db, &user_id, "month").await {
@@ -1983,10 +1983,10 @@ async fn proxy_handler(
         embedding_tokens: usage.embedding_tokens as i32,
         input_cost: cost_breakdown.input_cost,
         output_cost: cost_breakdown.output_cost,
-        // TODO: promote cache_read_cost/cache_write_cost to separate CostBreakdown fields
-        // (calculator.rs already computes them separately before merging; see compute_breakdown)
-        cache_read_cost: cost_breakdown.cache_cost, // currently stores read+write merged
-        cache_write_cost: 0,
+        // #618: the calculator splits read from write; write each to its own
+        // column so cache-write spend is not reported as 0 / merged into read.
+        cache_read_cost: cost_breakdown.cache_read_cost,
+        cache_write_cost: cost_breakdown.cache_write_cost,
         audio_cost: cost_breakdown.audio_cost,
         image_cost: cost_breakdown.image_cost,
         video_cost: cost_breakdown.video_cost,
@@ -2559,12 +2559,15 @@ async fn proxy_logic(
                 );
                 continue;
             }
-            budget_guard = Some(BudgetGuard::new(
-                state.rate_budget.as_ref(),
-                channel_id_i32,
-                shaper_ctx.color,
-                shaper_ctx.est_tpm,
-            ));
+            budget_guard = outcome.sourced().map(|source| {
+                BudgetGuard::with_source(
+                    state.rate_budget.as_ref(),
+                    channel_id_i32,
+                    shaper_ctx.color,
+                    shaper_ctx.est_tpm,
+                    source,
+                )
+            });
             outcome.as_label()
         };
         shaper_ctx.outcome = Some(iter_label);
@@ -2657,7 +2660,7 @@ async fn proxy_logic(
                 let req = state
                     .client
                     .request(method.clone(), &url)
-                    .header("Authorization", format!("Bearer {}", &upstream.api_key));
+                    .header("Authorization", format!("Bearer {}", upstream.api_key));
                 (req, is_stream, false)
             } else {
                 // Gemini passthrough
@@ -3622,7 +3625,7 @@ async fn proxy_logic(
                                             seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                                         }
                                         match parser.provider_name() {
-                                            "anthropic" => counter_clone.accumulate(&u),
+                                            "anthropic" => counter_clone.record_cumulative(&u),
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }
@@ -3912,7 +3915,7 @@ async fn proxy_logic(
                                             seen_tokens_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                                         }
                                         match parser.provider_name() {
-                                            "anthropic" => counter_clone.accumulate(&u),
+                                            "anthropic" => counter_clone.record_cumulative(&u),
                                             _ => counter_clone.set_from_usage(&u),
                                         }
                                     }

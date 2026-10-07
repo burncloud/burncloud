@@ -1,0 +1,277 @@
+name: Reusable / Self-hosted Rust Check
+
+on:
+  workflow_call:
+    inputs:
+      check:
+        description: One of fmt, test, clippy, deny.
+        required: true
+        type: string
+      check_name:
+        description: Human-readable GitHub check name.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-${{ inputs.check }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: ${{ inputs.check_name }}
+    env:
+      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Manual approval required
+        if: env.RUN_SELF_HOSTED != 'true'
+        shell: bash
+        run: |
+          echo "::error::Self-hosted check requires manual approval for this PR."
+          echo "A trusted maintainer must submit an APPROVE review."
+          exit 1
+
+      - name: Validate requested check
+        if: env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        env:
+          REQUESTED_CHECK: ${{ inputs.check }}
+        run: |
+          set -euo pipefail
+          case "$REQUESTED_CHECK" in
+            fmt|test|clippy|deny) ;;
+            *)
+              echo "::error::Unsupported self-hosted Rust check: $REQUESTED_CHECK"
+              exit 2
+              ;;
+          esac
+
+      - name: Checkout PR merge commit
+        if: env.RUN_SELF_HOSTED == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Detect dependency-policy changes
+        id: deny_scope
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          base="origin/$BASE_REF"
+          merge_base="$(git merge-base "$base" HEAD)"
+          run_deny=false
+
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            case "$path" in
+              Cargo.toml|*/Cargo.toml|Cargo.lock|deny.toml|.cargo/*)
+                echo "Dependency-policy change: $path"
+                run_deny=true
+                ;;
+            esac
+          done < <(git diff --name-only "$merge_base" HEAD --)
+
+          echo "run=$run_deny" >> "$GITHUB_OUTPUT"
+          if [[ "$run_deny" == "false" ]]; then
+            echo "No dependency-policy changes; Cargo Deny will be skipped."
+          fi
+
+      - name: Prepare persistent Cargo caches
+        if: env.RUN_SELF_HOSTED == 'true' && (inputs.check != 'deny' || steps.deny_scope.outputs.run == 'true')
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_root="$HOME/.cache/burncloud"
+          cargo_home="$cache_root/cargo"
+          target_dir="$cache_root/target"
+          lock_dir="$cache_root/locks"
+          mkdir -p "$cargo_home" "$target_dir" "$lock_dir"
+
+          # Cargo.lock is intentionally ignored by this repository today. Preserve
+          # the resolved lock outside the checkout, keyed by every Cargo.toml, so
+          # checkout cleaning does not force a fresh 787-package resolution.
+          manifest_hash="$(
+            find . -name Cargo.toml -type f -print0 \
+              | sort -z \
+              | xargs -0 sha256sum \
+              | sha256sum \
+              | awk '{print $1}'
+          )"
+          lock_cache="$lock_dir/$manifest_hash.lock"
+          if [[ ! -f Cargo.lock && -f "$lock_cache" ]]; then
+            cp "$lock_cache" Cargo.lock
+            echo "Restored cached Cargo.lock for manifest set $manifest_hash"
+          fi
+          echo "BURNCLOUD_CARGO_LOCK_CACHE=$lock_cache" >> "$GITHUB_ENV"
+
+          # Keep registry/git caches and build artifacts outside the checkout.
+          # actions/checkout runs git clean -ffdx, so checkout-local target/ cannot
+          # be used as a persistent cache on a self-hosted runner.
+          if [[ -f "$HOME/.cargo/config.toml" && ! -e "$cargo_home/config.toml" ]]; then
+            cp "$HOME/.cargo/config.toml" "$cargo_home/config.toml"
+          elif [[ -f "$HOME/.cargo/config" && ! -e "$cargo_home/config" ]]; then
+            cp "$HOME/.cargo/config" "$cargo_home/config"
+          fi
+
+          # PR deny checks are offline with respect to the RustSec advisory DB.
+          # Seed the persistent Cargo home from the runner's legacy Cargo home once
+          # when an existing local advisory database is available.
+          legacy_advisory_db="$HOME/.cargo/advisory-dbs"
+          advisory_db="$cargo_home/advisory-dbs"
+          if [[ ! -d "$advisory_db" && -d "$legacy_advisory_db" ]]; then
+            cp -a "$legacy_advisory_db" "$advisory_db"
+            echo "Seeded local advisory database from $legacy_advisory_db"
+          fi
+
+          echo "CARGO_HOME=$cargo_home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
+          echo "$cargo_home/bin" >> "$GITHUB_PATH"
+
+      - name: Ensure base Rust toolchain
+        if: env.RUN_SELF_HOSTED == 'true' && (inputs.check != 'deny' || steps.deny_scope.outputs.run == 'true')
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+          if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+            if command -v rustup >/dev/null 2>&1; then
+              rustup toolchain install stable --profile minimal --no-self-update
+              rustup default stable
+            else
+              curl --proto '=https' --tlsv1.2 --retry 5 --retry-connrefused --fail --show-error --location https://sh.rustup.rs \
+                | sh -s -- -y --profile minimal --default-toolchain stable
+            fi
+          fi
+
+          cargo --version
+          rustc --version
+
+      - name: Prepare OpenSSL environment
+        if: env.RUN_SELF_HOSTED == 'true' && (inputs.check == 'test' || inputs.check == 'clippy')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f /usr/include/openssl/ssl.h ]]; then
+            echo "OPENSSL_INCLUDE_DIR=/usr/include" >> "$GITHUB_ENV"
+            ssl_lib="$(ldconfig -p 2>/dev/null | awk '/libssl\.so/{print $NF; exit}')"
+            if [[ -n "$ssl_lib" ]]; then
+              echo "OPENSSL_LIB_DIR=$(dirname "$ssl_lib")" >> "$GITHUB_ENV"
+            fi
+          fi
+
+      - name: Ensure rustfmt
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'fmt'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --version >/dev/null 2>&1 || rustup component add rustfmt
+
+      - name: Ensure Clippy
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'clippy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
+
+      - name: Ensure cargo-deny
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny' && steps.deny_scope.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo deny --version >/dev/null 2>&1 || cargo install --locked cargo-deny
+
+      - name: Cargo Fmt
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'fmt'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+
+      - name: Code Test
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'test'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run -p burncloud-code -- test --base "origin/${{ github.event.pull_request.base.ref }}"
+
+      - name: Cargo Clippy
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'clippy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run -p burncloud-code -- clippy --base "origin/${{ github.event.pull_request.base.ref }}"
+
+      - name: Cargo Deny
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny' && steps.deny_scope.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          advisory_db="$CARGO_HOME/advisory-dbs"
+          if [[ ! -d "$advisory_db" ]]; then
+            echo "::error::Local RustSec advisory database is missing: $advisory_db"
+            echo "Prime this runner once with an online cargo-deny advisories check, then PR checks stay local."
+            exit 2
+          fi
+
+          set +e
+          timeout --kill-after=30s 5m cargo deny --log-level info check --disable-fetch
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 124 || "$status" -eq 137 ]]; then
+            echo "::error::Cargo Deny exceeded the 5 minute PR limit."
+          fi
+          exit "$status"
+
+      - name: Save resolved Cargo.lock
+        if: always() && env.RUN_SELF_HOSTED == 'true' && (inputs.check != 'deny' || steps.deny_scope.outputs.run == 'true')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f Cargo.lock && -n "${BURNCLOUD_CARGO_LOCK_CACHE:-}" ]]; then
+            tmp="${BURNCLOUD_CARGO_LOCK_CACHE}.tmp.$"
+            cp Cargo.lock "$tmp"
+            mv "$tmp" "$BURNCLOUD_CARGO_LOCK_CACHE"
+            echo "Saved resolved Cargo.lock cache."
+          fi
+
+
+      - name: Clean oversized Cargo target cache
+        if: always() && env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          target="$HOME/.cache/burncloud/target"
+          limit_bytes=$((100 * 1024 * 1024 * 1024))
+
+          if [[ ! -d "$target" ]]; then
+            echo "Cargo target cache does not exist: $target"
+            exit 0
+          fi
+
+          size_bytes="$(du -sb "$target" | awk '{print $1}')"
+          size_gib="$(awk -v bytes="$size_bytes" 'BEGIN { printf "%.2f", bytes / 1024 / 1024 / 1024 }')"
+          echo "Cargo target cache size: ${size_gib} GiB"
+          echo "Cleanup threshold: 100 GiB"
+
+          if (( size_bytes > limit_bytes )); then
+            echo "Cargo target cache exceeds 100 GiB; removing $target"
+            rm -rf -- "$target"
+            mkdir -p "$target"
+            echo "Cargo target cache cleaned."
+          else
+            echo "Cargo target cache is within the limit."
+          fi

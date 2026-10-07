@@ -2,6 +2,7 @@
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
+mod clippy;
 mod init;
 mod plan;
 mod report;
@@ -47,6 +48,32 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("clippy")
+                .about("Lint changed packages and their transitive workspace consumers")
+                .arg(
+                    Arg::new("all")
+                        .long("all")
+                        .action(ArgAction::SetTrue)
+                        .help("Lint the entire workspace"),
+                )
+                .arg(
+                    Arg::new("plan")
+                        .long("plan")
+                        .action(ArgAction::SetTrue)
+                        .help("Print selection and command without running Clippy"),
+                )
+                .arg(
+                    Arg::new("staged")
+                        .long("staged")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("base")
+                        .help("Lint staged changes; reject unstaged and untracked files"),
+                )
+                .arg(Arg::new("base").long("base").value_name("REF").help(
+                    "Include branch changes since the merge base with REF, plus local changes",
+                )),
+        )
+        .subcommand(
             Command::new("stamp")
                 .hide(true)
                 .arg(Arg::new("message").required(true)),
@@ -64,12 +91,19 @@ pub fn handle(matches: &ArgMatches) -> Result<()> {
             last: options.get_flag("last"),
             base: options.get_one::<String>("base").cloned(),
         }),
+        Some(("clippy", options)) => clippy::run(test::Options {
+            all: options.get_flag("all"),
+            plan_only: options.get_flag("plan"),
+            staged: options.get_flag("staged"),
+            last: false,
+            base: options.get_one::<String>("base").cloned(),
+        }),
         Some(("stamp", options)) => {
             let message = options
                 .get_one::<String>("message")
                 .ok_or_else(|| anyhow::anyhow!("required stamp message is missing"))?;
             report::stamp(std::path::Path::new(message))
         }
-        _ => anyhow::bail!("Expected code init or code test"),
+        _ => anyhow::bail!("Expected code init, code test or code clippy"),
     }
 }

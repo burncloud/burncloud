@@ -11,25 +11,13 @@
     clippy::redundant_pattern_matching,
     reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
-use crate::common::spawn_app;
-use burncloud_tests::TestClient;
+use crate::common::spawn_isolated_app;
 
 #[tokio::test]
 async fn test_get_system_metrics() -> anyhow::Result<()> {
-    // 1. Start Server
-    // Ensure we are using a fresh server instance (mock or spawned)
-    let base_url = spawn_app().await;
-
-    let client = TestClient::new(&base_url);
-
-    // We'll try to fetch. If it's 401, we know we need auth.
-    // But since it FAILED with 401, let's fix it by assuming we need one.
-    // However, burncloud's default setup usually has a demo user.
-    // Let's try to add a bearer token.
-    // Note: In a real test env, we should create a user/token first, but for now let's try to see if just adding *any* token works if the auth middleware just checks for presence, or if we need a specific one.
-    // Actually, looking at `burncloud_database_router::RouterDatabase::init`, it inserts `sk-burncloud-demo`.
-
-    let client = client.with_token("sk-burncloud-demo");
+    // Authenticate as the real administrator of this isolated database.
+    let app = spawn_isolated_app().await;
+    let client = app.admin_client();
 
     // 2. GET /console/api/monitor
     let json = client.get("/console/api/monitor").await?;

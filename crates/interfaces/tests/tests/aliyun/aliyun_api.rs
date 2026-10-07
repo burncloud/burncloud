@@ -123,7 +123,7 @@ pub struct AliyunECS {
 
 impl AliyunECS {
     pub fn new(config: AliyunConfig) -> Self {
-        let endpoint = format!("ecs.{}.aliyuncs.com", &config.region_id);
+        let endpoint = format!("ecs.{}.aliyuncs.com", config.region_id);
         Self {
             config,
             client: Client::new(),
