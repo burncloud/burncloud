@@ -120,14 +120,6 @@ pub struct CostBreakdown {
 }
 
 impl CostBreakdown {
-    /// Recompute the derived [`Self::cache_cost`] sum from the split fields.
-    ///
-    /// Call after mutating `cache_read_cost` / `cache_write_cost` so the
-    /// published field stays consistent. Saturates rather than wrapping.
-    pub fn recompute_cache_cost(&mut self) {
-        self.cache_cost = self.cache_read_cost.saturating_add(self.cache_write_cost);
-    }
-
     /// Sum all components into a total, capping at i64::MAX on overflow.
     ///
     /// `cache_cost` stays authoritative for total billing compatibility;
