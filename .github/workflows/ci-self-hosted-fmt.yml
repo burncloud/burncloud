@@ -13,4 +13,4 @@ jobs:
     uses: ./.github/workflows/_ci-self-hosted-rust.yml
     with:
       check: fmt
-      check-name: Cargo Fmt
+      check_name: Cargo Fmt

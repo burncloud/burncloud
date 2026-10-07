@@ -13,4 +13,4 @@ jobs:
     uses: ./.github/workflows/_ci-self-hosted-rust.yml
     with:
       check: deny
-      check-name: Cargo Deny
+      check_name: Cargo Deny

@@ -13,4 +13,4 @@ jobs:
     uses: ./.github/workflows/_ci-self-hosted-rust.yml
     with:
       check: clippy
-      check-name: Cargo Clippy
+      check_name: Cargo Clippy

@@ -13,4 +13,4 @@ jobs:
     uses: ./.github/workflows/_ci-self-hosted-rust.yml
     with:
       check: test
-      check-name: Code Test
+      check_name: Code Test

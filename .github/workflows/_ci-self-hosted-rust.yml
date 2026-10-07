@@ -7,7 +7,7 @@ on:
         description: One of fmt, test, clippy, deny.
         required: true
         type: string
-      check-name:
+      check_name:
         description: Human-readable GitHub check name.
         required: true
         type: string
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   check:
-    name: ${{ inputs.check-name }}
+    name: ${{ inputs.check_name }}
     env:
       RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
     runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
