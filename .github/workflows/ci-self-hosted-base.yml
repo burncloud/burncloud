@@ -66,7 +66,25 @@ jobs:
           cache_root="$HOME/.cache/burncloud"
           cargo_home="$cache_root/cargo"
           target_dir="$cache_root/target/${{ inputs.check }}"
-          mkdir -p "$cargo_home" "$target_dir"
+          lock_dir="$cache_root/locks"
+          mkdir -p "$cargo_home" "$target_dir" "$lock_dir"
+
+          # Cargo.lock is intentionally ignored by this repository today. Preserve
+          # the resolved lock outside the checkout, keyed by every Cargo.toml, so
+          # checkout cleaning does not force a fresh 787-package resolution.
+          manifest_hash="$(
+            find . -name Cargo.toml -type f -print0 \
+              | sort -z \
+              | xargs -0 sha256sum \
+              | sha256sum \
+              | awk '{print $1}'
+          )"
+          lock_cache="$lock_dir/$manifest_hash.lock"
+          if [[ ! -f Cargo.lock && -f "$lock_cache" ]]; then
+            cp "$lock_cache" Cargo.lock
+            echo "Restored cached Cargo.lock for manifest set $manifest_hash"
+          fi
+          echo "BURNCLOUD_CARGO_LOCK_CACHE=$lock_cache" >> "$GITHUB_ENV"
 
           # Keep registry/git caches and build artifacts outside the checkout.
           # actions/checkout runs git clean -ffdx, so checkout-local target/ cannot
@@ -163,3 +181,15 @@ jobs:
         run: |
           set -euo pipefail
           cargo deny check
+
+      - name: Save resolved Cargo.lock
+        if: always() && env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f Cargo.lock && -n "${BURNCLOUD_CARGO_LOCK_CACHE:-}" ]]; then
+            tmp="${BURNCLOUD_CARGO_LOCK_CACHE}.tmp.$"
+            cp Cargo.lock "$tmp"
+            mv "$tmp" "$BURNCLOUD_CARGO_LOCK_CACHE"
+            echo "Saved resolved Cargo.lock cache."
+          fi
