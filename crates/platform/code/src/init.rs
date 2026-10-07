@@ -117,12 +117,7 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     // Install tools before activating either hook. A failed installation leaves
     // the existing Git hooks unchanged, and a later code init can retry.
     ensure_environment(&root)?;
-    install_hook(
-        &hooks,
-        "pre-commit",
-        HOOK,
-        &[PREVIOUS_HOOK, LEGACY_HOOK],
-    )?;
+    install_hook(&hooks, "pre-commit", HOOK, &[PREVIOUS_HOOK, LEGACY_HOOK])?;
     install_hook(&hooks, "commit-msg", MESSAGE_HOOK, &[])?;
     Ok(hooks)
 }
