@@ -138,10 +138,11 @@ jobs:
           # spending an afternoon on "flaky router tests".
           #
           # When any of these is fixed, delete its name here and in `ci-tests.yml`.
-          SKIP_TESTS: "test_claude_adaptor test_deepseek_proxy test_qwen_proxy test_round_robin_balancer test_failover test_vertex_full_flow test_login_user_success"
         run: |
           set -o pipefail
 
+          SKIP_TESTS="$(awk -F'|' '!/^[[:space:]]*(#|$)/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); printf "%s ", $1}' .github/test-plan/known-test-baseline.txt)"
+          echo "known failing tests: ${SKIP_TESTS:-none}"
           skips=""
           for name in $SKIP_TESTS; do
             skips="$skips --skip $name"
