@@ -90,10 +90,11 @@ impl UnifiedUsage {
 /// cache_cost == cache_read_cost + cache_write_cost
 /// ```
 ///
-/// Old serialized values only contain `cache_cost`. The split fields therefore
-/// deserialize with zero defaults, and [`Self::total`] falls back to the legacy
-/// merged field only when **both** split fields are absent/zero. This keeps old
-/// stored JSON billable while making new values count each cache component once.
+/// Old serialized values only contain `cache_cost`, so the split fields
+/// deserialize with zero defaults. `cache_cost` remains the authoritative
+/// cache component used by [`Self::total`]; the split fields are attribution
+/// detail. The calculator maintains the invariant that new values satisfy
+/// `cache_cost == cache_read_cost + cache_write_cost`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CostBreakdown {
     pub input_cost: i64,
@@ -127,27 +128,15 @@ impl CostBreakdown {
         self.cache_cost = self.cache_read_cost.saturating_add(self.cache_write_cost);
     }
 
-    /// Cache spend used by [`Self::total`].
-    ///
-    /// New values use the split fields. Legacy deserialized values have both
-    /// split fields at zero and keep their historical merged `cache_cost`, so
-    /// they remain compatible instead of silently dropping cache spend.
-    fn effective_cache_cost(&self) -> i64 {
-        if self.cache_read_cost == 0 && self.cache_write_cost == 0 {
-            self.cache_cost
-        } else {
-            self.cache_read_cost.saturating_add(self.cache_write_cost)
-        }
-    }
-
     /// Sum all components into a total, capping at i64::MAX on overflow.
     ///
-    /// New values take cache spend from the split fields. Legacy serialized
-    /// values without those fields fall back to the old merged `cache_cost`.
+    /// `cache_cost` stays authoritative for total billing compatibility;
+    /// `cache_read_cost` and `cache_write_cost` are attribution fields and
+    /// are not added again here.
     pub fn total(&self) -> i64 {
         let total = self.input_cost as i128
             + self.output_cost as i128
-            + self.effective_cache_cost() as i128
+            + self.cache_cost as i128
             + self.audio_cost as i128
             + self.voice_cost as i128
             + self.image_cost as i128
@@ -238,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn new_cost_breakdown_prefers_split_cache_fields_without_double_counting() {
+    fn total_keeps_cache_cost_as_the_authoritative_compatibility_field() {
         let breakdown = CostBreakdown {
             input_cost: 10,
             output_cost: 20,
@@ -250,8 +239,8 @@ mod tests {
 
         assert_eq!(
             breakdown.total(),
-            60,
-            "new split fields are authoritative and the redundant cache_cost is not counted twice"
+            1_029,
+            "split cache fields are attribution detail; total billing keeps the published cache_cost semantic"
         );
     }
 }
