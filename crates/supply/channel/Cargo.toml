@@ -1,9 +1,15 @@
 [package]
 publish.workspace = true
 license.workspace = true
-name = "burncloud-database-channel"
+name = "burncloud-supply-channel"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+# Preserve the existing Rust import name during the structural migration. Renaming the
+# library target is a separate compatibility change; the Cargo package/Owner boundary is
+# `burncloud-supply-channel` from this migration onward.
+name = "burncloud_database_channel"
 
 [dependencies]
 burncloud-database.workspace = true

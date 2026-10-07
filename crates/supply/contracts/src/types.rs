@@ -9,7 +9,7 @@
 //!   * [`Channel`] serializes its `type_` field as `"type"` (the historical JSON name).
 //!
 //! This is a pure contract: it has no database framework. The `channel_providers` and
-//! `channel_abilities` row mapping lives in `burncloud-database-channel`, which owns the SQL.
+//! `channel_abilities` row mapping lives in `burncloud-supply-channel`, which owns the SQL.
 
 use serde::{Deserialize, Serialize};
 

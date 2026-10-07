@@ -97,7 +97,7 @@ jobs:
 
           cargo test -p burncloud-database-router --test postgres_dialect_contract -- --nocapture 2>&1 \
             | tee -a /tmp/postgres-dialect-contract.log
-          cargo test -p burncloud-database-channel --test postgres_dialect_contract -- --nocapture 2>&1 \
+          cargo test -p burncloud-supply-channel --test postgres_dialect_contract -- --nocapture 2>&1 \
             | tee -a /tmp/postgres-dialect-contract.log
 
           if grep -q "SKIPPED: BURNCLOUD_TEST_POSTGRES_URL is not set" /tmp/postgres-dialect-contract.log; then
