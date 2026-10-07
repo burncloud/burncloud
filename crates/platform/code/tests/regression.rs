@@ -20,6 +20,20 @@ use tempfile::{tempdir, TempDir};
 const BIN: &str = env!("CARGO_BIN_EXE_burncloud-code");
 const HOOK: &str = include_str!("../../../../.github/hooks/pre-commit");
 const MESSAGE_HOOK: &str = include_str!("../../../../.github/hooks/commit-msg");
+const PREVIOUS_HOOK: &str = r#"#!/bin/sh
+# BurnCloud managed pre-commit hook. Reinstall with: cargo run -- code init
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+cargo run --quiet -- code test --staged
+
+# Keep the previous hook's interpreter, arguments and exit status intact.
+hooks=$(git rev-parse --git-path hooks)
+if [ -x "$hooks/pre-commit.burncloud-original" ]; then
+    exec "$hooks/pre-commit.burncloud-original" "$@"
+fi
+"#;
 const FULL: &str = "fmt --all -- --check\ntest --workspace --no-default-features\nclippy --workspace --all-targets --no-default-features\ndeny check\n";
 
 #[derive(Deserialize)]
@@ -245,11 +259,7 @@ fn install_repeat_commit_and_legacy_upgrade() -> Result<()> {
     assert!(message.contains("BurnCloud-Deny: ✅ PASS"));
     assert_eq!(f.latest()?.status, "passed");
     assert!(!f.repo.join(".env").exists());
-    let legacy = HOOK.replace(
-        "cargo run --quiet -- code test --staged",
-        "sh \"$root/.github/scripts/pre-commit-checks.sh\"",
-    );
-    fs::write(f.hook(), legacy)?;
+    fs::write(f.hook(), PREVIOUS_HOOK)?;
     fs::write(f.saved(), "keep me")?;
     f.run(&["init"])?;
     assert_eq!(fs::read_to_string(f.hook())?, HOOK);
@@ -369,23 +379,36 @@ fn existing_message_hook_runs_and_docs_only_receipt_is_skipped() -> Result<()> {
 }
 
 #[test]
-fn each_failed_gate_stops_and_blocks_commit() -> Result<()> {
+fn each_failed_pre_commit_gate_stops_and_blocks_commit() -> Result<()> {
     let f = Fixture::new()?;
     f.run(&["init"])?;
     for (index, check) in ["fmt", "test", "clippy", "deny"].iter().enumerate() {
         fs::write(f.base.join("checks.log"), "")?;
-        failed(
-            f.command("git")
-                .args(["commit", "-qm", "blocked"])
-                .env("FAIL_CHECK", check)
-                .output()?,
-            "Check failed",
-        );
+        let output = f
+            .command("git")
+            .args(["commit", "-qm", "blocked"])
+            .env("FAIL_CHECK", check)
+            .output()?;
+        assert!(!output.status.success(), "{check} unexpectedly allowed commit");
+        if *check == "test" {
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(text.contains("Check failed"), "missing code-test failure: {text}");
+        }
         assert_eq!(
             f.log()?,
             FULL.lines().take(index + 1).collect::<Vec<_>>().join("\n") + "\n"
         );
-        assert_eq!(f.latest()?.status, "failed");
+        if *check == "fmt" {
+            assert!(!f.repo.join(".git/burncloud/checks/latest.json").exists());
+        } else if *check == "test" {
+            assert_eq!(f.latest()?.status, "failed");
+        } else {
+            assert_eq!(f.latest()?.status, "passed");
+        }
         assert!(!f
             .command("git")
             .args(["rev-parse", "--verify", "HEAD"])
@@ -397,7 +420,7 @@ fn each_failed_gate_stops_and_blocks_commit() -> Result<()> {
 }
 
 #[test]
-fn test_installs_missing_tools_before_checks() -> Result<()> {
+fn code_test_does_not_bootstrap_unrelated_quality_tools() -> Result<()> {
     let f = Fixture::new()?;
     success(
         f.command(BIN)
@@ -405,11 +428,8 @@ fn test_installs_missing_tools_before_checks() -> Result<()> {
             .env("MISSING_TOOLS", "fmt,clippy,deny")
             .output()?,
     )?;
-    assert_eq!(
-        fs::read_to_string(f.base.join("install.log"))?,
-        "rustup component add rustfmt\nrustup component add clippy\ncargo install --locked cargo-deny\n"
-    );
-    assert_eq!(f.log()?, FULL);
+    assert!(!f.base.join("install.log").exists());
+    assert_eq!(f.log()?, "test --workspace --no-default-features\n");
     Ok(())
 }
 
@@ -546,21 +566,44 @@ fn selects_reverse_dependency_closure_not_unrelated_packages() -> Result<()> {
 }
 
 #[test]
-fn shared_config_unknown_paths_and_all_force_workspace() -> Result<()> {
+fn test_selection_ignores_non_test_config_and_scopes_package_manifests() -> Result<()> {
     let f = Fixture::new()?;
     f.seed()?;
-    for path in [
-        "deny.toml",
-        ".cargo/config.toml",
-        "crates/a/Cargo.toml",
-        "unknown.file",
-    ] {
-        f.write(path, "change")?;
-        let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
-        assert!(text.contains("cargo test --workspace --no-default-features"));
-        f.git(&["add", "."])?;
-        f.seed()?;
-    }
+
+    f.write(".github/test-plan/known-test-baseline.txt", "changed")?;
+    f.write("deny.toml", "changed")?;
+    let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
+    assert!(text.contains("No test-relevant changes selected; no tests executed."));
+    assert!(!text.contains("cargo test --workspace"));
+
+    f.write("crates/a/src/lib.rs", "changed")?;
+    let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
+    assert!(text.contains("Affected packages: a, b, burncloud"));
+    assert!(text.contains("cargo test -p a -p b -p burncloud --no-default-features"));
+    assert!(!text.contains("cargo test --workspace"));
+
+    f.git(&["add", "."])?;
+    f.seed()?;
+    f.write("crates/a/Cargo.toml", "change")?;
+    let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
+    assert!(text.contains("Affected packages: a, b, burncloud"));
+    assert!(!text.contains("cargo test --workspace"));
+
+    f.git(&["checkout", "--", "."])?;
+    f.write("Cargo.toml", "change")?;
+    let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
+    assert!(text.contains("cargo test --workspace --no-default-features"));
+
+    f.git(&["checkout", "--", "."])?;
+    f.write(".cargo/config.toml", "change")?;
+    let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
+    assert!(text.contains("cargo test --workspace --no-default-features"));
+
+    fs::remove_file(f.repo.join(".cargo/config.toml"))?;
+    f.write("unknown.file", "change")?;
+    let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
+    assert!(text.contains("cargo test --workspace --no-default-features"));
+
     let text = String::from_utf8(f.run(&["test", "--all", "--plan"])?.stdout)?;
     assert!(text.contains("--all requested"));
     Ok(())
