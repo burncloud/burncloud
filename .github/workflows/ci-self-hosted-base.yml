@@ -58,14 +58,41 @@ jobs:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
 
+      - name: Detect dependency-policy changes
+        id: deny_scope
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          base="origin/$BASE_REF"
+          merge_base="$(git merge-base "$base" HEAD)"
+          run_deny=false
+
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            case "$path" in
+              Cargo.toml|*/Cargo.toml|Cargo.lock|deny.toml|.cargo/*)
+                echo "Dependency-policy change: $path"
+                run_deny=true
+                ;;
+            esac
+          done < <(git diff --name-only "$merge_base" HEAD --)
+
+          echo "run=$run_deny" >> "$GITHUB_OUTPUT"
+          if [[ "$run_deny" == "false" ]]; then
+            echo "No dependency-policy changes; Cargo Deny will be skipped."
+          fi
+
       - name: Prepare persistent Cargo caches
-        if: env.RUN_SELF_HOSTED == 'true'
+        if: env.RUN_SELF_HOSTED == 'true' && (inputs.check != 'deny' || steps.deny_scope.outputs.run == 'true')
         shell: bash
         run: |
           set -euo pipefail
           cache_root="$HOME/.cache/burncloud"
           cargo_home="$cache_root/cargo"
-          target_dir="$cache_root/target/${{ inputs.check }}"
+          target_dir="$cache_root/target"
           lock_dir="$cache_root/locks"
           mkdir -p "$cargo_home" "$target_dir" "$lock_dir"
 
@@ -95,12 +122,22 @@ jobs:
             cp "$HOME/.cargo/config" "$cargo_home/config"
           fi
 
+          # PR deny checks are offline with respect to the RustSec advisory DB.
+          # Seed the persistent Cargo home from the runner's legacy Cargo home once
+          # when an existing local advisory database is available.
+          legacy_advisory_db="$HOME/.cargo/advisory-dbs"
+          advisory_db="$cargo_home/advisory-dbs"
+          if [[ ! -d "$advisory_db" && -d "$legacy_advisory_db" ]]; then
+            cp -a "$legacy_advisory_db" "$advisory_db"
+            echo "Seeded local advisory database from $legacy_advisory_db"
+          fi
+
           echo "CARGO_HOME=$cargo_home" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
           echo "$cargo_home/bin" >> "$GITHUB_PATH"
 
       - name: Ensure base Rust toolchain
-        if: env.RUN_SELF_HOSTED == 'true'
+        if: env.RUN_SELF_HOSTED == 'true' && (inputs.check != 'deny' || steps.deny_scope.outputs.run == 'true')
         shell: bash
         run: |
           set -euo pipefail
@@ -148,7 +185,7 @@ jobs:
           cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
 
       - name: Ensure cargo-deny
-        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny'
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny' && steps.deny_scope.outputs.run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -176,14 +213,30 @@ jobs:
           cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
       - name: Cargo Deny
-        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny'
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny' && steps.deny_scope.outputs.run == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          cargo deny check
+
+          advisory_db="$CARGO_HOME/advisory-dbs"
+          if [[ ! -d "$advisory_db" ]]; then
+            echo "::error::Local RustSec advisory database is missing: $advisory_db"
+            echo "Prime this runner once with an online cargo-deny advisories check, then PR checks stay local."
+            exit 2
+          fi
+
+          set +e
+          timeout --kill-after=30s 5m cargo deny --log-level info check --disable-fetch
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 124 || "$status" -eq 137 ]]; then
+            echo "::error::Cargo Deny exceeded the 5 minute PR limit."
+          fi
+          exit "$status"
 
       - name: Save resolved Cargo.lock
-        if: always() && env.RUN_SELF_HOSTED == 'true'
+        if: always() && env.RUN_SELF_HOSTED == 'true' && (inputs.check != 'deny' || steps.deny_scope.outputs.run == 'true')
         shell: bash
         run: |
           set -euo pipefail
