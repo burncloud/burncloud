@@ -1,7 +1,7 @@
 name: CI / Self-hosted Fmt
 
 # The trigger stays here so GitHub exposes an independent check for this gate.
-# Execution and self-hosted security policy live in ci-self-hosted-rust.yml.
+# Execution and self-hosted security policy live in ci-self-hosted-base.yml.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -10,7 +10,7 @@ on:
 
 jobs:
   check:
-    uses: ./.github/workflows/ci-self-hosted-rust.yml
+    uses: ./.github/workflows/ci-self-hosted-base.yml
     with:
       check: fmt
       check_name: Cargo Fmt
