@@ -146,8 +146,9 @@ wrong. This was measured: `crates/*/Cargo.toml` matches **zero** of the 37 track
   the checkout. All four PR check kinds share the same persistent build directory,
   `~/.cache/burncloud/target`, instead of maintaining separate `target/test`, `target/clippy`,
   `target/fmt` and `target/deny` trees. This avoids both `git clean -ffdx` deleting `target/` and
-  duplicate cold builds across checks. `code test` still enforces the 100 GiB target cleanup threshold
-  through `CARGO_TARGET_DIR`.
+  duplicate cold builds across checks. At the end of every trusted self-hosted Rust job, an `always()`
+  post-step measures this shared target. If it is greater than 100 GiB, the workflow removes and recreates
+  it. Cache housekeeping therefore belongs to CI, not to `code test`.
 * PR deny checks use the advisory database under the persistent `CARGO_HOME` and pass
   `check --disable-fetch`. On first migration, the workflow seeds that database from
   `~/.cargo/advisory-dbs` when the runner already has one. A runner with no local advisory database
