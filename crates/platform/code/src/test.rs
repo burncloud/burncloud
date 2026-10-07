@@ -144,7 +144,9 @@ pub(crate) fn run(options: Options) -> Result<()> {
         git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
     let result = run_in_root(&root, options);
-    if let Err(error) = cleanup_target_if_oversized(&root, TARGET_LIMIT_BYTES) {
+    let configured_target = std::env::var_os("CARGO_TARGET_DIR");
+    let target = target_directory(&root, configured_target.as_deref());
+    if let Err(error) = cleanup_target_if_oversized(&target, TARGET_LIMIT_BYTES) {
         eprintln!("Warning: target cleanup failed: {error:#}");
     }
     result
@@ -247,8 +249,19 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
     Ok(())
 }
 
-fn cleanup_target_if_oversized(root: &Path, limit: u64) -> Result<()> {
-    let target = root.join("target");
+fn target_directory(root: &Path, configured: Option<&std::ffi::OsStr>) -> PathBuf {
+    let Some(configured) = configured else {
+        return root.join("target");
+    };
+    let configured = PathBuf::from(configured);
+    if configured.is_absolute() {
+        configured
+    } else {
+        root.join(configured)
+    }
+}
+
+fn cleanup_target_if_oversized(target: &Path, limit: u64) -> Result<()> {
     let metadata = match fs::symlink_metadata(&target) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -301,9 +314,33 @@ fn directory_size(root: &Path) -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::cleanup_target_if_oversized;
+    use super::{cleanup_target_if_oversized, target_directory};
     use anyhow::Result;
     use std::fs;
+
+    #[test]
+    fn default_target_directory_is_inside_the_repository() {
+        let root = std::path::Path::new("workspace");
+        assert_eq!(target_directory(root, None), root.join("target"));
+    }
+
+    #[test]
+    fn configured_target_directory_can_live_outside_the_repository() -> Result<()> {
+        let root = std::path::Path::new("workspace");
+        let external_root = tempfile::tempdir()?;
+        let external = external_root.path().join("target");
+        assert_eq!(target_directory(root, Some(external.as_os_str())), external);
+        Ok(())
+    }
+
+    #[test]
+    fn relative_configured_target_directory_is_resolved_from_the_repository() {
+        let root = std::path::Path::new("workspace");
+        assert_eq!(
+            target_directory(root, Some(std::ffi::OsStr::new("../cache/target"))),
+            root.join("../cache/target")
+        );
+    }
 
     #[test]
     fn target_at_or_below_limit_is_kept() -> Result<()> {
@@ -311,7 +348,7 @@ mod tests {
         let target = root.path().join("target");
         fs::create_dir_all(&target)?;
         fs::write(target.join("artifact"), b"1234")?;
-        cleanup_target_if_oversized(root.path(), 4)?;
+        cleanup_target_if_oversized(&target, 4)?;
         assert!(target.exists());
         Ok(())
     }
@@ -322,7 +359,7 @@ mod tests {
         let target = root.path().join("target/nested");
         fs::create_dir_all(&target)?;
         fs::write(target.join("artifact"), b"12345")?;
-        cleanup_target_if_oversized(root.path(), 4)?;
+        cleanup_target_if_oversized(&root.path().join("target"), 4)?;
         assert!(!root.path().join("target").exists());
         Ok(())
     }
