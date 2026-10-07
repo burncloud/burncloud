@@ -82,9 +82,7 @@ impl Drop for TestDb {
                             eprintln!("test database close failed (cleanup continues): {e}");
                         }
                         Err(_) => {
-                            eprintln!(
-                                "test database close timed out after 5s; cleanup continues"
-                            );
+                            eprintln!("test database close timed out after 5s; cleanup continues");
                         }
                     }
                 }
