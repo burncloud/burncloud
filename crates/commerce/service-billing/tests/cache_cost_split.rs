@@ -209,8 +209,8 @@ async fn a_request_with_no_cache_tokens_reports_zero_everywhere() -> Result<(), 
 
 #[tokio::test]
 async fn recompute_cache_cost_restores_the_derived_sum() -> Result<(), Box<dyn Error>> {
-    // The helper exists so a caller that adjusts one side cannot leave the published
-    // sum stale; `total()` reads the split fields, so the two cannot double-count.
+    // The helper exists so a caller that adjusts one side can explicitly restore
+    // the published merged field; total() continues to read cache_cost for compatibility.
     let mut b = breakdown_for("recompute", &read_and_write_usage()).await?;
 
     b.cache_read_cost = 7;
@@ -223,7 +223,7 @@ async fn recompute_cache_cost_restores_the_derived_sum() -> Result<(), Box<dyn E
     assert_eq!(
         b.total(),
         10,
-        "the total follows the split fields, not the merged one"
+        "after recompute, the authoritative merged cache_cost carries the updated split total"
     );
 
     Ok(())
