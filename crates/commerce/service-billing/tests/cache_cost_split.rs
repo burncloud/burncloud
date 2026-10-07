@@ -48,7 +48,11 @@ async fn fresh_db(tag: &str) -> Result<(Database, std::path::PathBuf), Box<dyn E
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    if let Err(error) = std::fs::remove_file(&path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error.into());
+        }
+    }
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     Ok((create_database_with_url(&url).await?, path))
@@ -89,11 +93,12 @@ async fn breakdown_for(tag: &str, usage: &UnifiedUsage) -> Result<CostBreakdown,
         .calculate("cache-split", usage, tag, false, false, None)
         .await?;
     let b = result.breakdown.clone();
-    assert_eq!(
-        result.usd_amount_nano,
-        b.total(),
-        "the reported total must equal the sum of the components"
-    );
+    if result.usd_amount_nano != b.total() {
+        return Err(std::io::Error::other(
+            "the reported total must equal the sum of the components",
+        )
+        .into());
+    }
     cleanup(db, path).await;
     Ok(b)
 }
@@ -109,8 +114,10 @@ fn read_and_write_usage() -> UnifiedUsage {
 
 #[tokio::test]
 async fn read_and_write_costs_are_reported_separately_and_still_sum_to_the_merged_value(
-) -> Result<(), Box<dyn Error>> {
-    let b = breakdown_for("both", &read_and_write_usage()).await?;
+) {
+    let b = breakdown_for("both", &read_and_write_usage())
+        .await
+        .unwrap();
     println!(
         "cache_read_cost={} cache_write_cost={} cache_cost={} total={}",
         b.cache_read_cost,
@@ -140,16 +147,15 @@ async fn read_and_write_costs_are_reported_separately_and_still_sum_to_the_merge
         "and the total counts each cache token once: 100 read + 1_000 write, not 2_200"
     );
 
-    Ok(())
 }
 
 #[tokio::test]
-async fn a_read_only_request_reports_zero_write_cost() -> Result<(), Box<dyn Error>> {
+async fn a_read_only_request_reports_zero_write_cost() {
     let usage = UnifiedUsage {
         cache_read_tokens: 1_000,
         ..Default::default()
     };
-    let b = breakdown_for("read_only", &usage).await?;
+    let b = breakdown_for("read_only", &usage).await.unwrap();
     println!("read only: {b:?}");
 
     assert_eq!(b.cache_read_cost, 100, "the read side");
@@ -159,18 +165,17 @@ async fn a_read_only_request_reports_zero_write_cost() -> Result<(), Box<dyn Err
     );
     assert_eq!(b.cache_cost, 100, "and the merged figure is the read cost");
 
-    Ok(())
 }
 
 #[tokio::test]
-async fn a_write_only_request_reports_zero_read_cost() -> Result<(), Box<dyn Error>> {
+async fn a_write_only_request_reports_zero_read_cost() {
     // The case that was previously mis-attributed: with no read tokens the old code put the
     // **write** cost into `cache_read_cost` and left `cache_write_cost` at 0.
     let usage = UnifiedUsage {
         cache_write_tokens: 800,
         ..Default::default()
     };
-    let b = breakdown_for("write_only", &usage).await?;
+    let b = breakdown_for("write_only", &usage).await.unwrap();
     println!("write only: {b:?}");
 
     assert_eq!(
@@ -187,22 +192,20 @@ async fn a_write_only_request_reports_zero_read_cost() -> Result<(), Box<dyn Err
         "the merged figure is unchanged by the split, so the money is the same"
     );
 
-    Ok(())
 }
 
 #[tokio::test]
-async fn a_request_with_no_cache_tokens_reports_zero_everywhere() -> Result<(), Box<dyn Error>> {
+async fn a_request_with_no_cache_tokens_reports_zero_everywhere() {
     let usage = UnifiedUsage {
         input_tokens: 100,
         output_tokens: 100,
         ..Default::default()
     };
-    let b = breakdown_for("no_cache", &usage).await?;
+    let b = breakdown_for("no_cache", &usage).await.unwrap();
 
     assert_eq!(b.cache_read_cost, 0);
     assert_eq!(b.cache_write_cost, 0);
     assert_eq!(b.cache_cost, 0);
     assert_eq!(b.total(), 100 + 200, "input at 1 nano, output at 2 nano");
 
-    Ok(())
 }
