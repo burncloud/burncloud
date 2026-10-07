@@ -17,7 +17,7 @@ Clippy and deny verdicts for trusted same-repository pull requests (or after mai
 | --- | --- | --- |
 | `ci-self-hosted-fmt.yml` | PR/review gate | Self-hosted `cargo fmt --all -- --check` |
 | `ci-self-hosted-test.yml` | PR/review gate | Self-hosted affected-package `code test --base` |
-| `ci-self-hosted-clippy.yml` | PR/review gate | Self-hosted strict workspace Clippy |
+| `ci-self-hosted-clippy.yml` | PR/review gate | Self-hosted strict Clippy for changed packages plus transitive workspace consumers |
 | `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted dependency-policy check; skips ordinary source-only PRs and uses the runner-local advisory DB |
 | `ci-self-hosted-base.yml` | `workflow_call` only | Shared self-hosted authorization, checkout, Rust/OpenSSL setup, tool bootstrap and the four fixed Rust check implementations |
 | `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features -- -D warnings`, `deny check` |
@@ -54,12 +54,14 @@ a GitHub verdict for every PR, but the expensive `cargo deny` command is execute
 or dependency-policy files change: any `Cargo.toml`, `Cargo.lock`, `deny.toml` or `.cargo/**`.
 PR deny runs use the runner-local RustSec advisory database with fetching disabled and have a five-minute
 command timeout, so an external advisory-db fetch cannot silently occupy a runner. `--plan`, `--base REF`
-and `--all` remain available for manual test-scope verification.
+and `--all` remain available for manual test/Clippy scope verification.
 
-**Clippy is deliberately outside `code test`.** `code test` now has one responsibility:
-select affected packages and run their Cargo tests. Strict Clippy is a separate workspace-wide gate in
-the managed pre-commit hook and in `ci-self-hosted-clippy.yml`; this keeps lint policy independent from
-test-scope selection and prevents a lint configuration change from inflating the test plan.
+**Clippy is deliberately outside `code test`.** `code test` has one responsibility:
+select affected packages and run their Cargo tests. The managed pre-commit hook deliberately keeps
+strict workspace-wide Clippy, while the trusted PR check uses `code clippy --base` to lint only the
+changed packages plus every transitive workspace consumer. Shared/root Cargo configuration and
+`clippy.toml` force a full-workspace Clippy run. This keeps lint policy independent from the test
+plan while avoiding a workspace-wide rebuild for an isolated crate change.
 
 The `code-regression` job in `ci-architecture.yml` runs `cargo test -p burncloud-code` on Windows and Linux.
 Native Rust regression tests verify real Git commits and selection, with Cargo check execution stubbed.
@@ -72,7 +74,7 @@ remains a thin shell wrapper.
 | --- | --- | --- |
 | `ci-self-hosted-fmt.yml` | PR/review gate | Workspace rustfmt on the trusted self-hosted runner |
 | `ci-self-hosted-test.yml` | PR/review gate | Affected-package tests through `burncloud-code` |
-| `ci-self-hosted-clippy.yml` | PR/review gate | Strict workspace Clippy |
+| `ci-self-hosted-clippy.yml` | PR/review gate | Strict affected-package Clippy plus transitive workspace consumers; global lint/build configuration expands to the full workspace |
 | `ci-self-hosted-deny.yml` | PR/review gate | Dependency-policy check only when `Cargo.toml`, `Cargo.lock`, `deny.toml` or `.cargo/**` changes |
 | `ci-quality.yml` | manual; called by `maintenance-version-tag.yml` | The four gate commands. Also carries the identity test-discovery floors |
 | `ci-architecture.yml` | manual | `burncloud-code` regression on Windows/Linux plus the router dependency whitelist |

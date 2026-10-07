@@ -146,10 +146,10 @@ pub fn routes() -> Router<AppState> {
         .route("/console/api/playground/chat", post(playground_chat))
 }
 
-async fn principal_is_admin(state: &AppState, claims: &Claims) -> Result<bool, Response> {
-    is_admin(state, claims)
-        .await
-        .map_err(|status| err_status(status, "Failed to authorize request").into_response())
+async fn principal_is_admin(state: &AppState, claims: &Claims) -> Result<bool, Box<Response>> {
+    is_admin(state, claims).await.map_err(|status| {
+        Box::new(err_status(status, "Failed to authorize request").into_response())
+    })
 }
 
 /// Resolve either the opaque management reference or, for backwards-compatible
@@ -159,27 +159,33 @@ pub(crate) async fn authorized_token(
     state: &AppState,
     claims: &Claims,
     token_ref: &str,
-) -> Result<RouterToken, Response> {
+) -> Result<RouterToken, Box<Response>> {
     let admin = principal_is_admin(state, claims).await?;
     let tokens = TokenService::list(&state.db).await.map_err(|e| {
         tracing::error!(error = %e, "Failed to load API token for authorization");
-        err_status(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to load API token",
+        Box::new(
+            err_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load API token",
+            )
+            .into_response(),
         )
-        .into_response()
     })?;
 
     let Some(record) = tokens.into_iter().find(|record| {
         record.token == token_ref || token_management_id(&record.token) == token_ref
     }) else {
-        return Err(err_status(StatusCode::NOT_FOUND, "Token not found").into_response());
+        return Err(Box::new(
+            err_status(StatusCode::NOT_FOUND, "Token not found").into_response(),
+        ));
     };
 
     if admin || record.user_id == claims.sub {
         Ok(record)
     } else {
-        Err(err_status(StatusCode::FORBIDDEN, "Token access denied").into_response())
+        Err(Box::new(
+            err_status(StatusCode::FORBIDDEN, "Token access denied").into_response(),
+        ))
     }
 }
 
@@ -190,7 +196,7 @@ async fn list_tokens(
 ) -> impl IntoResponse {
     let admin = match principal_is_admin(&state, &claims).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     match TokenService::list(&state.db).await {
@@ -217,7 +223,7 @@ async fn create_token(
 ) -> impl IntoResponse {
     let admin = match principal_is_admin(&state, &claims).await {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if !admin && payload.user_id != claims.sub {
         return err_status(
@@ -277,7 +283,7 @@ async fn get_token(
 ) -> impl IntoResponse {
     match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => ok(TokenSummary::from(record)).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -290,7 +296,7 @@ async fn update_token(
 ) -> impl IntoResponse {
     let record = match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     match TokenService::update_status(&state.db, &record.token, &payload.status).await {
@@ -310,7 +316,7 @@ async fn delete_token(
 ) -> impl IntoResponse {
     let record = match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     match TokenService::delete(&state.db, &record.token).await {
@@ -331,7 +337,7 @@ async fn rotate_token(
 ) -> impl IntoResponse {
     let record = match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     match TokenService::rotate(
@@ -362,7 +368,7 @@ async fn revoke_old_key(
 ) -> impl IntoResponse {
     let record = match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     match TokenService::revoke_old_key(&state.db, &record.token).await {
@@ -384,7 +390,7 @@ async fn set_ip_whitelist(
 ) -> impl IntoResponse {
     let record = match authorized_token(&state, &claims, &token_ref).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     match TokenService::set_ip_whitelist(&state.db, &record.token, &payload.ip_whitelist).await {
@@ -407,7 +413,7 @@ async fn playground_chat(
 ) -> Response {
     let record = match authorized_token(&state, &claims, &payload.token_ref).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     let body = serde_json::json!({

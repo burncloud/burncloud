@@ -15,6 +15,10 @@ cargo run -- code test --base origin/main --plan
 cargo run -- code test --all
 cargo run -- code test --staged
 cargo run -- code test --last
+cargo run -- code clippy
+cargo run -- code clippy --plan
+cargo run -- code clippy --base origin/main
+cargo run -- code clippy --all
 ```
 
 `code init` checks for rustfmt, Clippy and cargo-deny. It installs missing Rust
@@ -22,10 +26,10 @@ components with `rustup component add` and missing cargo-deny with
 `cargo install --locked cargo-deny`. It verifies each command before activating
 the Git hooks. Repeating `code init` does not reinstall available tools.
 
-The `code test` command owns test selection and test execution only. It does not
-install or run rustfmt, Clippy or cargo-deny. `code init` remains responsible for
-installing those tools because the managed pre-commit hook runs them as independent
-quality gates.
+The `code test` command owns test selection and test execution only. `code clippy`
+owns Clippy package selection/execution for the self-hosted PR gate. Neither command
+installs quality tools; `code init` remains responsible for installing them because
+the managed pre-commit hook runs its four gates independently.
 
 The lightweight equivalent, useful when application compilation is broken, is
 `cargo run -p burncloud-code -- test` (or `-- init`). Both binaries use the same
@@ -46,6 +50,8 @@ command definition and implementation. Tests are `cargo test -p burncloud-code`.
 | Root `Cargo.toml`/`Cargo.lock`, `.cargo/**`, Rust toolchain files | Whole workspace |
 | A package's own `Cargo.toml` | Owning package plus every transitive workspace consumer |
 | `.github/**`, `clippy.toml`, `deny.toml` | No test impact; ignored for test selection |
+| `clippy.toml` for `code clippy` | Whole workspace |
+| `.github/**`, `deny.toml` for `code clippy` | No Clippy impact |
 | Unknown path | Whole workspace, with the path printed as the reason |
 | Only root README/license or `.github/README.md` | No checks, explicitly reported |
 | No changes | No checks, explicitly reported; use `--all` or `--base REF` |
@@ -62,19 +68,26 @@ excluded: unknown shared documentation forces the whole workspace.
 
 ## Execution contract
 
-For selected code changes, `code test` runs only:
+For selected code changes, `code test` runs:
 
 1. `cargo test -p <affected> ... --no-default-features` (includes package integration/doc tests)
 
-Full selection replaces `-p ...` with `--workspace`. The managed pre-commit hook
-owns the full local quality sequence: `cargo fmt --all -- --check`, affected
-`code test --staged`, strict workspace Clippy, then `cargo deny check`. Output
-states what test scope was selected and whether tests actually ran. Existing ignores, external test prerequisites and feature policies
-remain in effect; this command does not claim to run ignored tests, every feature
-combination, UI convention scripts or other operating systems. Dynamic relationships
-not represented in Cargo remain a reason to run `--all` and retain the existing CI
-suites. No test-result cache is used. Source edits and dependency allowlist changes
-are never automated here.
+For selected code changes, `code clippy` runs:
+
+1. `cargo clippy -p <affected> ... --all-targets --no-default-features -- -D warnings`
+
+Both commands use the same reverse workspace dependency closure, so changing crate A
+selects A plus every workspace package that consumes A directly or transitively.
+Root Cargo/build/toolchain configuration expands to the whole workspace; `clippy.toml`
+also forces a full Clippy run. The managed pre-commit hook intentionally remains
+broader: workspace fmt, affected `code test --staged`, strict workspace Clippy, then
+`cargo deny check`. The self-hosted PR Clippy gate uses `code clippy --base` instead
+to avoid linting unrelated packages on every PR.
+
+Existing ignores, external test prerequisites and feature policies remain in effect.
+These commands do not claim to cover every feature combination, UI convention script
+or operating system. Dynamic relationships not represented in Cargo remain a reason
+to run `--all` and retain the existing full-workspace/release suites.
 
 `code test` does not own Cargo target-cache housekeeping. Trusted self-hosted
 GitHub Actions use the shared `~/.cache/burncloud/target` directory and perform

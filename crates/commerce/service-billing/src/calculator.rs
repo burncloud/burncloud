@@ -239,18 +239,21 @@ fn compute_breakdown(
             price.input_price,
             CACHE_WRITE_SURCHARGE_PERCENT,
         ));
-    let cache_cost = nano(
+    let cache_read_cost = nano(
         usage.cache_read_tokens,
         cache_read_price,
         request_id,
         "cache_read",
-    )
-    .saturating_add(nano(
+    );
+    let cache_write_cost = nano(
         usage.cache_write_tokens,
         cache_write_price,
         request_id,
         "cache_write",
-    ));
+    );
+    // Keep the published merged field authoritative for total billing
+    // compatibility; the split fields are attribution detail (#618).
+    let cache_cost = cache_read_cost.saturating_add(cache_write_cost);
 
     // --- Audio tokens ---
     let audio_input_price = price.audio_input_price.unwrap_or(saturating_mul_percent(
@@ -334,6 +337,8 @@ fn compute_breakdown(
         input_cost,
         output_cost,
         cache_cost,
+        cache_read_cost,
+        cache_write_cost,
         audio_cost,
         voice_cost,
         image_cost,

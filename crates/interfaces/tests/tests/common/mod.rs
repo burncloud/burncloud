@@ -200,13 +200,18 @@ pub(crate) async fn spawn_app() -> String {
         //
         // Give the spawned server its own database so the first registered
         // account is predictably the administrator for this test process.
-        let db_path = std::env::temp_dir().join(format!(
-            "burncloud-api-tests-{}.db",
-            std::process::id()
-        ));
+        let db_path =
+            std::env::temp_dir().join(format!("burncloud-api-tests-{}.db", std::process::id()));
         let normalized_db_path = db_path.to_string_lossy().replace('\\', "/");
         let database_url = format!("sqlite:///{}?mode=rwc", normalized_db_path);
-        let _ = std::fs::remove_file(&db_path);
+        if let Err(error) = std::fs::remove_file(&db_path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                panic!(
+                    "failed to remove stale black-box test database {}: {error}",
+                    db_path.display()
+                );
+            }
+        }
         std::env::set_var("BURNCLOUD_DATABASE_URL", &database_url);
 
         // 2. Locate Binary
