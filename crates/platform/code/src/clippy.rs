@@ -9,8 +9,7 @@ use crate::test;
 pub(crate) fn run(options: test::Options) -> Result<()> {
     let directory = std::env::current_dir()?;
     let root = PathBuf::from(
-        test::git(&directory, &["rev-parse", "--show-toplevel"])?
-            .trim_end_matches(['\r', '\n']),
+        test::git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
     let files = test::changes(&root, &options)?;
 

@@ -1044,9 +1044,7 @@ fn detect_model_layout(value: &serde_json::Value) -> ModelLayout {
         // currency blocks, and future metadata/capability fields may legitimately
         // reuse words such as "video" or "audio".
         for (field_name, currency_block) in fields {
-            if field_name.as_str() == "metadata"
-                || V1_PRICING_KEYS.contains(&field_name.as_str())
-            {
+            if field_name.as_str() == "metadata" || V1_PRICING_KEYS.contains(&field_name.as_str()) {
                 continue;
             }
             let Some(block) = currency_block.as_object() else {
