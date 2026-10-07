@@ -212,13 +212,19 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     } else {
         "working"
     };
+    let needs_server_binary = plan.affected.contains("burncloud-tests");
     let mut summary = report::new(
         root,
         mode,
         files.iter().cloned().collect(),
         plan.affected.iter().cloned().collect(),
     )?;
-    let result = run_checks(root, &commands, &mut summary);
+    let result = (|| -> Result<()> {
+        if needs_server_binary {
+            build_black_box_server(root, &mut summary)?;
+        }
+        run_checks(root, &commands, &mut summary)
+    })();
     report::finish(
         root,
         &mut summary,
@@ -227,6 +233,26 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     )?;
     result?;
     println!("All selected tests passed.");
+    Ok(())
+}
+
+fn build_black_box_server(root: &Path, summary: &mut report::Summary) -> Result<()> {
+    let args = vec![
+        "build".to_owned(),
+        "-p".to_owned(),
+        "burncloud".to_owned(),
+        "--bin".to_owned(),
+        "burncloud".to_owned(),
+        "--no-default-features".to_owned(),
+    ];
+    println!("[prerequisite] cargo {}", args.join(" "));
+    let status = report::execute(root, summary, "build-server", &args)?;
+    anyhow::ensure!(
+        status.success(),
+        "Black-box server prerequisite failed ({}): cargo {}",
+        status,
+        args.join(" ")
+    );
     Ok(())
 }
 
