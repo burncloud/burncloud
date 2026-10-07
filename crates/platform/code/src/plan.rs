@@ -191,6 +191,19 @@ impl Plan {
         if self.affected.is_empty() {
             return Ok(Vec::new());
         }
+
+        let mut commands = Vec::new();
+        if self.affected.contains("burncloud-tests") {
+            commands.push(vec![
+                "build".to_owned(),
+                "-p".to_owned(),
+                "burncloud".to_owned(),
+                "--bin".to_owned(),
+                "burncloud".to_owned(),
+                "--no-default-features".to_owned(),
+            ]);
+        }
+
         let mut test = vec!["test".to_owned()];
         if self.full_reason.is_some() {
             test.push("--workspace".to_owned());
@@ -207,7 +220,8 @@ impl Plan {
                 test.extend(["--skip".to_owned(), name.to_owned()]);
             }
         }
-        Ok(vec![test])
+        commands.push(test);
+        Ok(commands)
     }
 }
 
@@ -230,6 +244,29 @@ mod tests {
                 "test_login_user_success",
             ]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn black_box_tests_build_the_server_binary_before_running() -> anyhow::Result<()> {
+        let plan = Plan {
+            full_reason: None,
+            direct: BTreeSet::from(["burncloud-tests".to_owned()]),
+            affected: BTreeSet::from(["burncloud-tests".to_owned()]),
+        };
+        let commands = plan.commands()?;
+        assert_eq!(
+            commands[0],
+            [
+                "build",
+                "-p",
+                "burncloud",
+                "--bin",
+                "burncloud",
+                "--no-default-features"
+            ]
+        );
+        assert_eq!(commands[1][0], "test");
         Ok(())
     }
 

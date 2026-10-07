@@ -238,7 +238,12 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
             commands.len(),
             args.join(" ")
         );
-        let status = report::execute(root, summary, "test", args)?;
+        let step_name = if args.first().is_some_and(|arg| arg == "test") {
+            "test"
+        } else {
+            "prepare"
+        };
+        let status = report::execute(root, summary, step_name, args)?;
         anyhow::ensure!(
             status.success(),
             "Check failed ({}): cargo {}",
