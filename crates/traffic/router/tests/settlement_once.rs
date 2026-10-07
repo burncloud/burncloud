@@ -516,17 +516,29 @@ async fn a_successful_request_settles_exactly_once_and_logs_once() -> anyhow::Re
         "exactly one request must reach the mock upstream"
     );
 
+    // Read the billing log before asserting quota. Besides being part of the contract,
+    // this makes a failed settlement self-diagnosing: non-zero log cost + zero quota means
+    // the write path failed; zero log cost means usage/cost calculation failed earlier.
+    let log_probe = wait_for_router_log(&pool, MODEL).await;
+    let legacy_used: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT used_quota FROM user_api_keys WHERE key = ?",
+    )
+    .bind(token)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(0);
+
     let after = wait_for_positive_settlement(&pool, token).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     let stable_after = used_quota(&pool, token).await;
 
     println!(
-        "used_quota before={before}, after={after}, stable_after={stable_after}, expected_once={EXPECTED_COST_NANODOLLARS}"
+        "used_quota before={before}, after={after}, stable_after={stable_after}, user_api_keys.used_quota={legacy_used}, expected_once={EXPECTED_COST_NANODOLLARS}, router_log={log_probe:?}"
     );
 
     assert!(
         after > before,
-        "a served request must produce a non-zero settlement; before={before}, after={after}"
+        "a served request must produce a non-zero settlement; before={before}, after={after}, user_api_keys.used_quota={legacy_used}, router_log={log_probe:?}"
     );
     assert!(
         settlement_is_exactly_once(before, after, EXPECTED_COST_NANODOLLARS),
