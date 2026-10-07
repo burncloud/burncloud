@@ -1,68 +1,107 @@
-use burncloud_database::{Database, Result};
+use crate::common::current_timestamp;
+use burncloud_database::{adapt_sql, Database, Result};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ModelInfo {
-    pub model_id: String,
-    pub private: bool,
-    pub pipeline_tag: Option<String>,
-    pub library_name: Option<String>,
-    pub model_type: Option<String>,
-    pub downloads: i64,
-    pub likes: i64,
-    pub sha: Option<String>,
-    pub last_modified: Option<String>,
-    pub gated: bool,
-    pub disabled: bool,
-    pub tags: String,
-    pub config: String,
-    pub widget_data: String,
-    pub card_data: String,
-    pub transformers_info: String,
-    pub siblings: String,
-    pub spaces: String,
-    pub safetensors: String,
-    pub used_storage: i64,
-    pub filename: Option<String>,
-    pub size: i64,
-    pub created_at: String,
-    pub updated_at: String,
+/// Persisted row from the legacy `model_capabilities` table.
+///
+/// Capability fields are Supply-owned truth. `input_price` and `output_price` remain in this
+/// row only because the historical table mixed capability and pricing data. Canonical pricing
+/// continues to live in Commerce; these two columns are a compatibility projection until a future
+/// data migration physically separates the table.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ModelCapability {
+    pub id: i64,
+    pub model: String,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: bool,
+    pub supports_function_calling: bool,
+    pub input_price: Option<f64>,
+    pub output_price: Option<f64>,
+    pub synced_at: Option<i64>,
 }
 
-pub struct ModelDatabase {
-    db: Database,
+/// Input used by the single write boundary for `model_capabilities`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelCapabilityInput {
+    pub model: String,
+    pub context_window: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub supports_vision: bool,
+    pub supports_function_calling: bool,
+    /// Legacy USD price projection stored by the historical mixed table.
+    pub input_price: Option<f64>,
+    /// Legacy USD price projection stored by the historical mixed table.
+    pub output_price: Option<f64>,
 }
 
-impl ModelDatabase {
-    pub async fn new() -> Result<Self> {
-        Ok(Self {
-            db: Database::new().await?,
-        })
+/// Supply-owned persistence boundary for model capability truth.
+pub struct ModelCapabilityModel;
+
+impl ModelCapabilityModel {
+    /// Read one persisted capability row by model name.
+    pub async fn get(db: &Database, model: &str) -> Result<Option<ModelCapability>> {
+        let conn = db.get_connection()?;
+        let sql = adapt_sql(
+            db.kind() == "postgres",
+            r#"
+            SELECT id, model, context_window, max_output_tokens,
+                   supports_vision, supports_function_calling,
+                   input_price, output_price, synced_at
+            FROM model_capabilities
+            WHERE model = ?
+            "#,
+        );
+
+        sqlx::query_as::<_, ModelCapability>(&sql)
+            .bind(model)
+            .fetch_optional(conn.pool())
+            .await
     }
 
-    pub async fn close(self) -> Result<()> {
-        self.db.close().await
-    }
+    /// Insert or replace the capability projection for one model.
+    ///
+    /// This is the only production write entrance for `model_capabilities`; callers provide
+    /// domain values and this adapter owns SQL dialect handling and the sync timestamp.
+    pub async fn upsert(db: &Database, input: &ModelCapabilityInput) -> Result<()> {
+        let conn = db.get_connection()?;
+        let sql = adapt_sql(
+            db.kind() == "postgres",
+            r#"
+            INSERT INTO model_capabilities (
+                model,
+                context_window,
+                max_output_tokens,
+                supports_vision,
+                supports_function_calling,
+                input_price,
+                output_price,
+                synced_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(model) DO UPDATE SET
+                context_window = EXCLUDED.context_window,
+                max_output_tokens = EXCLUDED.max_output_tokens,
+                supports_vision = EXCLUDED.supports_vision,
+                supports_function_calling = EXCLUDED.supports_function_calling,
+                input_price = EXCLUDED.input_price,
+                output_price = EXCLUDED.output_price,
+                synced_at = EXCLUDED.synced_at
+            "#,
+        );
 
-    pub async fn add_model(&self, _model: &ModelInfo) -> Result<()> {
-        Ok(())
-    }
-    pub async fn update(&self, _model: &ModelInfo) -> Result<()> {
-        Ok(())
-    }
-    pub async fn get_model(&self, _model_id: &str) -> Result<Option<ModelInfo>> {
-        Ok(None)
-    }
-    pub async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        Ok(vec![])
-    }
-    pub async fn search_by_pipeline(&self, _pipeline_tag: &str) -> Result<Vec<ModelInfo>> {
-        Ok(vec![])
-    }
-    pub async fn get_popular_models(&self, _limit: i64) -> Result<Vec<ModelInfo>> {
-        Ok(vec![])
-    }
-    pub async fn delete(&self, _model_id: &str) -> Result<()> {
+        sqlx::query(&sql)
+            .bind(&input.model)
+            .bind(input.context_window)
+            .bind(input.max_output_tokens)
+            .bind(input.supports_vision)
+            .bind(input.supports_function_calling)
+            .bind(input.input_price)
+            .bind(input.output_price)
+            .bind(current_timestamp())
+            .execute(conn.pool())
+            .await?;
+
         Ok(())
     }
 }
