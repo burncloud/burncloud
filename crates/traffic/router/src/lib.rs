@@ -1182,17 +1182,17 @@ async fn models_handler(State(state): State<AppState>) -> Response {
 async fn extract_token_user(
     state: &AppState,
     headers: &axum::http::HeaderMap,
-) -> Result<String, Response> {
+) -> Result<String, Box<Response>> {
     let token = headers
         .get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
         .map(|s| s.to_string())
         .ok_or_else(|| {
-            build_response(
+            Box::new(build_response(
                 StatusCode::UNAUTHORIZED,
                 Body::from(r#"{"error":"Missing Bearer token"}"#),
-            )
+            ))
         })?;
 
     match RouterDatabase::validate_token_and_get_info(&state.db, &token).await {
@@ -1206,22 +1206,22 @@ async fn extract_token_user(
                     let decoded = state.jwt_secret.verify::<JwtClaims>(&token);
                     match decoded {
                         Ok(claims) => Ok(claims.sub),
-                        _ => Err(build_response(
+                        _ => Err(Box::new(build_response(
                             StatusCode::UNAUTHORIZED,
                             Body::from(
                                 r#"{"error":{"message":"Invalid Token","type":"invalid_request_error","code":"invalid_token"}}"#,
                             ),
-                        )),
+                        ))),
                     }
                 }
             }
         }
         Err(e) => {
             tracing::error!("Token validation DB error: {e}");
-            Err(build_response(
+            Err(Box::new(build_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 Body::from(r#"{"error":"Service temporarily unavailable"}"#),
-            ))
+            )))
         }
     }
 }
@@ -1230,7 +1230,7 @@ async fn extract_token_user(
 async fn usage_handler(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
     let user_id = match extract_token_user(&state, &headers).await {
         Ok(id) => id,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     match burncloud_database_router::get_usage_stats(&state.db, &user_id, "month").await {
@@ -1262,7 +1262,7 @@ async fn usage_models_handler(
 ) -> Response {
     let user_id = match extract_token_user(&state, &headers).await {
         Ok(id) => id,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     match burncloud_database_router::get_usage_stats_by_model(&state.db, &user_id, "month").await {
@@ -2660,7 +2660,7 @@ async fn proxy_logic(
                 let req = state
                     .client
                     .request(method.clone(), &url)
-                    .header("Authorization", format!("Bearer {}", &upstream.api_key));
+                    .header("Authorization", format!("Bearer {}", upstream.api_key));
                 (req, is_stream, false)
             } else {
                 // Gemini passthrough
