@@ -113,8 +113,7 @@ fn read_and_write_usage() -> UnifiedUsage {
 }
 
 #[tokio::test]
-async fn read_and_write_costs_are_reported_separately_and_still_sum_to_the_merged_value(
-) {
+async fn read_and_write_costs_are_reported_separately_and_still_sum_to_the_merged_value() {
     let b = breakdown_for("both", &read_and_write_usage())
         .await
         .unwrap();
@@ -146,7 +145,6 @@ async fn read_and_write_costs_are_reported_separately_and_still_sum_to_the_merge
         1_100,
         "and the total counts each cache token once: 100 read + 1_000 write, not 2_200"
     );
-
 }
 
 #[tokio::test]
@@ -164,7 +162,6 @@ async fn a_read_only_request_reports_zero_write_cost() {
         "nothing was written, so the write column must be zero rather than absent"
     );
     assert_eq!(b.cache_cost, 100, "and the merged figure is the read cost");
-
 }
 
 #[tokio::test]
@@ -191,7 +188,6 @@ async fn a_write_only_request_reports_zero_read_cost() {
         b.cache_cost, 1_000,
         "the merged figure is unchanged by the split, so the money is the same"
     );
-
 }
 
 #[tokio::test]
@@ -207,5 +203,4 @@ async fn a_request_with_no_cache_tokens_reports_zero_everywhere() {
     assert_eq!(b.cache_write_cost, 0);
     assert_eq!(b.cache_cost, 0);
     assert_eq!(b.total(), 100 + 200, "input at 1 nano, output at 2 nano");
-
 }
