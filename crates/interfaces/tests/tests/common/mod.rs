@@ -14,6 +14,10 @@
 )]
 pub(crate) mod evidence;
 
+use burncloud_database::create_database_with_url;
+use burncloud_database_router::RouterDatabase;
+use burncloud_database_user::UserDatabase;
+use burncloud_service_user::JwtSecret;
 use burncloud_tests::TestClient;
 use dotenvy::dotenv;
 use reqwest::Client;
@@ -22,7 +26,7 @@ use std::env;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 static SERVER_HANDLE: OnceLock<ServerHandle> = OnceLock::new();
@@ -68,6 +72,113 @@ struct ServerHandle {
     /// `None` when the suite reused a server it did not start -- on port 3000, or one named by `E2E_BASE_URL`.
     /// Killing that one would be exactly the mistake item 29 names.
     process: Option<Child>,
+}
+
+/// Owns a short-lived in-process server and its isolated administrator identity.
+///
+/// Dropping the handle aborts the listener; unlike the external-server fixture,
+/// nothing is stored in a static process handle.
+pub(crate) struct IsolatedApp {
+    pub(crate) base_url: String,
+    admin_token: String,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl IsolatedApp {
+    pub(crate) fn admin_client(&self) -> TestClient {
+        TestClient::new(&self.base_url).with_token(self.admin_token.as_str())
+    }
+}
+
+impl Drop for IsolatedApp {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// Start an in-process Console server on an ephemeral port, with a unique
+/// shared-memory SQLite database. Unlike spawn_app, this fixture never touches
+/// E2E_BASE_URL, port 3000, or the developer's on-disk database.
+pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
+    if env::var("MASTER_KEY").is_err() {
+        env::set_var(
+            "MASTER_KEY",
+            "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
+        );
+    }
+
+    let database_url = format!(
+        "sqlite:file:burncloud_api_test_{}?mode=memory&cache=shared",
+        uuid::Uuid::new_v4()
+    );
+    let db = create_database_with_url(&database_url)
+        .await
+        .expect("open isolated API-test database");
+    RouterDatabase::init(&db)
+        .await
+        .expect("initialize Router test schema");
+    UserDatabase::init(&db)
+        .await
+        .expect("initialize User test schema");
+
+    let jwt_secret =
+        JwtSecret::new("burncloud-api-test-jwt-secret").expect("test JWT secret must be valid");
+    let internal_secret =
+        burncloud_server::InternalSecret::new("burncloud-api-test-internal-secret")
+            .expect("test internal secret must be valid");
+    let router = burncloud_server::create_app(Arc::new(db), false, jwt_secret, internal_secret)
+        .await
+        .expect("create isolated API-test server");
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind isolated API-test port");
+    let address = listener.local_addr().expect("read isolated server address");
+    let base_url = format!("http://{address}");
+    let task = tokio::spawn(async move {
+        if let Err(error) = axum::serve(listener, router).await {
+            eprintln!("isolated API-test server stopped with error: {error}");
+        }
+    });
+
+    wait_for_server(&base_url).await;
+
+    // The first real user in a fresh database gets the administrator role.
+    // Keep its JWT scoped to this server; the external fixture's OnceCell
+    // must not share credentials across separate isolated databases.
+    let username = format!("isolated-admin-{}", uuid::Uuid::new_v4());
+    let registration = TestClient::new(&base_url)
+        .post(
+            "/api/auth/register",
+            &json!({
+                "username": username,
+                "password": "Password123!",
+                "email": format!("{username}@example.invalid")
+            }),
+        )
+        .await
+        .expect("register isolated test administrator");
+    assert!(
+        registration["success"].as_bool().unwrap_or(false),
+        "isolated administrator registration failed: {registration}"
+    );
+    let roles = registration["data"]["roles"]
+        .as_array()
+        .expect("isolated registration must return roles");
+    assert!(
+        roles.iter().any(|role| role.as_str() == Some("admin")),
+        "first isolated user must have administrator role: {registration}"
+    );
+    let admin_token = registration["data"]["token"]
+        .as_str()
+        .expect("isolated registration must return a Console JWT")
+        .to_owned();
+
+    IsolatedApp {
+        base_url,
+        admin_token,
+        task,
+    }
 }
 
 pub(crate) async fn spawn_app() -> String {

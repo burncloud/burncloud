@@ -11,16 +11,16 @@
     clippy::redundant_pattern_matching,
     reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
-use crate::common::{admin_client, spawn_app};
+use crate::common::spawn_isolated_app;
 use burncloud_tests::TestClient;
 use serde_json::json;
 
 #[tokio::test]
 async fn test_user_management_lifecycle() -> anyhow::Result<()> {
     // 1. Start Server
-    let base_url = spawn_app().await;
-    let admin = admin_client(&base_url).await;
-    let public = TestClient::new(&base_url);
+    let app = spawn_isolated_app().await;
+    let admin = app.admin_client();
+    let public = TestClient::new(&app.base_url);
 
     // 2. Register User through the administrator-only management endpoint.
     let username = format!("testuser-{}", uuid::Uuid::new_v4());
