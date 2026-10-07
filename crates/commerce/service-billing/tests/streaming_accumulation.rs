@@ -12,7 +12,7 @@
 //!
 //! `set_from_usage` remains the full-snapshot path used when every field in a
 //! usage object is authoritative. The two names now expose the semantic
-//! difference directly, removing the old `record_cumulative` naming trap without
+//! difference directly, removing the old `accumulate` naming trap without
 //! changing Anthropic billing behavior.
 
 use burncloud_service_billing::counter::UnifiedTokenCounter;
