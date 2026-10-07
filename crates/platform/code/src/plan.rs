@@ -70,14 +70,25 @@ fn known_test_skips() -> Result<Vec<&'static str>> {
         let name = fields[0];
         let issue = fields[1];
         let reason = fields[2];
-        anyhow::ensure!(!name.is_empty(), "Invalid known-test baseline line {}: empty test name", index + 1);
+        anyhow::ensure!(
+            !name.is_empty(),
+            "Invalid known-test baseline line {}: empty test name",
+            index + 1
+        );
         anyhow::ensure!(
             issue.parse::<u64>().is_ok(),
             "Invalid known-test baseline line {}: issue number must be numeric",
             index + 1
         );
-        anyhow::ensure!(!reason.is_empty(), "Invalid known-test baseline line {}: empty reason", index + 1);
-        anyhow::ensure!(seen.insert(name), "Duplicate known-test baseline entry: {name}");
+        anyhow::ensure!(
+            !reason.is_empty(),
+            "Invalid known-test baseline line {}: empty reason",
+            index + 1
+        );
+        anyhow::ensure!(
+            seen.insert(name),
+            "Duplicate known-test baseline entry: {name}"
+        );
         names.push(name);
     }
 
