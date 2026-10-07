@@ -86,7 +86,7 @@ pub(crate) struct IsolatedApp {
 
 impl IsolatedApp {
     pub(crate) fn admin_client(&self) -> TestClient {
-        TestClient::new(&self.base_url).with_token(&self.admin_token)
+        TestClient::new(&self.base_url).with_token(self.admin_token.as_str())
     }
 }
 
@@ -162,17 +162,17 @@ pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
         registration["success"].as_bool().unwrap_or(false),
         "isolated administrator registration failed: {registration}"
     );
-    assert_eq!(
-        registration["data"]["roles"]
-            .as_array()
-            .map(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
-        Some(true),
+    let roles = registration["data"]["roles"]
+        .as_array()
+        .expect("isolated registration must return roles");
+    assert!(
+        roles.iter().any(|role| role.as_str() == Some("admin")),
         "first isolated user must have administrator role: {registration}"
     );
     let admin_token = registration["data"]["token"]
         .as_str()
-        .unwrap_or_else(|| panic!("isolated registration returned no JWT: {registration}"))
-        .to_string();
+        .expect("isolated registration must return a Console JWT")
+        .to_owned();
 
     IsolatedApp {
         base_url,
