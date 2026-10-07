@@ -329,10 +329,7 @@ mod tests {
         let root = std::path::Path::new("workspace");
         let external_root = tempfile::tempdir()?;
         let external = external_root.path().join("target");
-        assert_eq!(
-            target_directory(root, Some(external.as_os_str())),
-            external
-        );
+        assert_eq!(target_directory(root, Some(external.as_os_str())), external);
         Ok(())
     }
 
