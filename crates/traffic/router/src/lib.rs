@@ -2557,6 +2557,10 @@ async fn proxy_logic(
                     Some("L2 Shaper rejected"),
                     0,
                 );
+                last_error = format!(
+                    "Local rejection on channel {} ({}): L2 Shaper rejected candidate",
+                    upstream.id, upstream.name
+                );
                 continue;
             }
             budget_guard = outcome.sourced().map(|source| {
@@ -2575,7 +2579,10 @@ async fn proxy_logic(
         // Circuit Breaker Check
         if !state.circuit_breaker.allow_request(&upstream.id) {
             tracing::debug!("Skipping upstream {} (Circuit Open)", upstream.name);
-            last_error = format!("Circuit Breaker Open for {}", upstream.name);
+            last_error = format!(
+                "Circuit breaker skip on channel {} ({}): circuit is open",
+                upstream.id, upstream.name
+            );
             // Record failover attempt (Issue #334)
             record_failover_attempt(
                 &mut request_log_data,
@@ -2618,7 +2625,10 @@ async fn proxy_logic(
         let mut body_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(_) => {
-                last_error = "Invalid JSON body".to_string();
+                last_error = format!(
+                    "Request error on channel {} ({}): invalid JSON body",
+                    upstream.id, upstream.name
+                );
                 continue;
             }
         };
@@ -2712,7 +2722,10 @@ async fn proxy_logic(
                     let resp_headers = resp.headers().clone();
 
                     if status.is_server_error() {
-                        last_error = format!("Upstream returned {status}");
+                        last_error = format!(
+                            "Upstream status on channel {} ({}): {}",
+                            upstream.id, upstream.name, status
+                        );
                         record_upstream_failure(
                             state,
                             upstream,
@@ -2803,8 +2816,10 @@ async fn proxy_logic(
                                                     .affinity_cache
                                                     .evict(&session_id.to_string(), model);
                                             }
-                                            last_error =
-                                                format!("SSE error {}: {}", error_code, error_msg);
+                                            last_error = format!(
+                                                "Upstream SSE error on channel {} ({}), code {}: {}",
+                                                upstream.id, upstream.name, error_code, error_msg
+                                            );
                                             peek_error_handled = true;
                                             futures::stream::empty::<
                                                 Result<axum::body::Bytes, reqwest::Error>,
@@ -2823,7 +2838,10 @@ async fn proxy_logic(
                                             &upstream.id,
                                             FailureType::EmptyResponse,
                                         );
-                                        last_error = "Empty response".to_string();
+                                        last_error = format!(
+                                            "Empty response on channel {} ({})",
+                                            upstream.id, upstream.name
+                                        );
                                         peek_error_handled = true;
                                         futures::stream::empty().boxed()
                                     }
@@ -2833,7 +2851,10 @@ async fn proxy_logic(
                                             &upstream.id,
                                             FailureType::ServerError,
                                         );
-                                        last_error = format!("Network error: {}", e);
+                                        last_error = format!(
+                                            "Network error on channel {} ({}): {}",
+                                            upstream.id, upstream.name, e
+                                        );
                                         peek_error_handled = true;
                                         futures::stream::empty().boxed()
                                     }
@@ -2992,7 +3013,10 @@ async fn proxy_logic(
                             let resp_bytes = match resp.bytes().await {
                                 Ok(b) => b,
                                 Err(e) => {
-                                    last_error = format!("Failed to read response: {e}");
+                                    last_error = format!(
+                                        "Response read error on channel {} ({}): {}",
+                                        upstream.id, upstream.name, e
+                                    );
                                     tracing::warn!(
                                         "Passthrough: {} response read failed: {}",
                                         upstream.name,
@@ -3058,7 +3082,10 @@ async fn proxy_logic(
                                         upstream.name
                                     );
 
-                                    last_error = error_message.to_string();
+                                    last_error = format!(
+                                        "Upstream error on channel {} ({}): {}",
+                                        upstream.id, upstream.name, error_message
+                                    );
                                     continue; // Try next candidate
                                 }
 
@@ -3089,6 +3116,10 @@ async fn proxy_logic(
                                     model = ?model_name,
                                     quality = ?quality,
                                     "Response quality check failed for passthrough"
+                                );
+                                last_error = format!(
+                                    "Response quality failure on channel {} ({}): {:?}",
+                                    upstream.id, upstream.name, quality
                                 );
                                 continue; // Try next candidate
                             }
@@ -3195,7 +3226,10 @@ async fn proxy_logic(
                                 upstream.name,
                                 status.as_u16()
                             );
-                            last_error = error_message.to_string();
+                            last_error = format!(
+                                "Upstream status on channel {} ({}): {} — {}",
+                                upstream.id, upstream.name, status, error_message
+                            );
                             continue;
                         }
 
@@ -3234,7 +3268,10 @@ async fn proxy_logic(
                     }
                 }
                 Err(e) => {
-                    last_error = format!("Network Error: {e}");
+                    last_error = format!(
+                        "Network error on channel {} ({}): {}",
+                        upstream.id, upstream.name, e
+                    );
                     let failure_type = if e.is_timeout() {
                         FailureType::Timeout
                     } else {
@@ -3313,7 +3350,10 @@ async fn proxy_logic(
         let mut request_body_json = match request_body_json {
             Some(json) => json,
             None => {
-                last_error = "Failed to prepare request body".to_string();
+                last_error = format!(
+                    "Request preparation error on channel {} ({}): failed to prepare request body",
+                    upstream.id, upstream.name
+                );
                 continue;
             }
         };
@@ -3362,7 +3402,10 @@ async fn proxy_logic(
                 // Handle different response status codes
                 if status.is_server_error() {
                     // 5xx Server Error
-                    last_error = format!("Upstream returned {status}");
+                    last_error = format!(
+                        "Upstream status on channel {} ({}): {}",
+                        upstream.id, upstream.name, status
+                    );
                     record_upstream_failure(
                         state,
                         upstream,
@@ -3433,7 +3476,10 @@ async fn proxy_logic(
                             let resp_bytes = match resp.bytes().await {
                                 Ok(b) => b,
                                 Err(e) => {
-                                    last_error = format!("Failed to read video gen response: {e}");
+                                    last_error = format!(
+                                        "Response read error on channel {} ({}): failed to read video generation response: {}",
+                                        upstream.id, upstream.name, e
+                                    );
                                     continue;
                                 }
                             };
@@ -3544,8 +3590,10 @@ async fn proxy_logic(
                                                 .affinity_cache
                                                 .evict(&session_id.to_string(), model);
                                         }
-                                        last_error =
-                                            format!("SSE error {}: {}", error_code, error_msg);
+                                        last_error = format!(
+                                            "Upstream SSE error on channel {} ({}), code {}: {}",
+                                            upstream.id, upstream.name, error_code, error_msg
+                                        );
                                         peek_error_handled = true;
                                         // Return empty stream since we will continue anyway
                                         futures::stream::empty::<
@@ -3565,7 +3613,10 @@ async fn proxy_logic(
                                         &upstream.id,
                                         FailureType::EmptyResponse,
                                     );
-                                    last_error = "Empty response".to_string();
+                                    last_error = format!(
+                                        "Empty response on channel {} ({})",
+                                        upstream.id, upstream.name
+                                    );
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
                                 }
@@ -3575,7 +3626,10 @@ async fn proxy_logic(
                                         &upstream.id,
                                         FailureType::EmptyResponse,
                                     );
-                                    last_error = format!("Network error: {}", e);
+                                    last_error = format!(
+                                        "Network error on channel {} ({}): {}",
+                                        upstream.id, upstream.name, e
+                                    );
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
                                 }
@@ -3831,8 +3885,10 @@ async fn proxy_logic(
                                                 .affinity_cache
                                                 .evict(&session_id.to_string(), model);
                                         }
-                                        last_error =
-                                            format!("SSE error {}: {}", error_code, error_msg);
+                                        last_error = format!(
+                                            "Upstream SSE error on channel {} ({}), code {}: {}",
+                                            upstream.id, upstream.name, error_code, error_msg
+                                        );
                                         peek_error_handled = true;
                                         futures::stream::empty::<
                                             Result<axum::body::Bytes, reqwest::Error>,
@@ -3850,7 +3906,10 @@ async fn proxy_logic(
                                         &upstream.id,
                                         FailureType::EmptyResponse,
                                     );
-                                    last_error = "Empty response".to_string();
+                                    last_error = format!(
+                                        "Empty response on channel {} ({})",
+                                        upstream.id, upstream.name
+                                    );
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
                                 }
@@ -3860,7 +3919,10 @@ async fn proxy_logic(
                                         &upstream.id,
                                         FailureType::EmptyResponse,
                                     );
-                                    last_error = format!("Network error: {}", e);
+                                    last_error = format!(
+                                        "Network error on channel {} ({}): {}",
+                                        upstream.id, upstream.name, e
+                                    );
                                     peek_error_handled = true;
                                     futures::stream::empty().boxed()
                                 }
@@ -4189,6 +4251,10 @@ async fn proxy_logic(
                             quality = ?quality,
                             "Response quality check failed for non-streaming main path"
                         );
+                        last_error = format!(
+                            "Response quality failure on channel {} ({}): {:?}",
+                            upstream.id, upstream.name, quality
+                        );
                         continue; // Try next candidate
                     }
 
@@ -4277,6 +4343,10 @@ async fn proxy_logic(
                             "Upstream {} rate limited, trying next candidate",
                             upstream.name
                         );
+                        last_error = format!(
+                            "Upstream status on channel {} ({}): {} — {}",
+                            upstream.id, upstream.name, status, error_message
+                        );
                         continue;
                     }
 
@@ -4356,7 +4426,10 @@ async fn proxy_logic(
                 }
             }
             Err(e) => {
-                last_error = format!("Network Error: {e}");
+                last_error = format!(
+                    "Network error on channel {} ({}): {}",
+                    upstream.id, upstream.name, e
+                );
                 let failure_type = if e.is_timeout() {
                     FailureType::Timeout
                 } else {
