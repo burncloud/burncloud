@@ -204,27 +204,6 @@ pub struct BudgetGuard<'a> {
 }
 
 impl<'a> BudgetGuard<'a> {
-    /// Wrap a freshly-consumed reservation, assuming the requester's own
-    /// bucket supplied it.
-    ///
-    /// Prefer [`BudgetGuard::with_source`] at real call sites: it takes the
-    /// [`ConsumeOutcome`]'s own account of where the tokens came from, so a
-    /// borrowed admission refunds to the lender. This constructor stays for
-    /// callers that consumed from their own bucket and for the guard's
-    /// unit-level tests.
-    ///
-    /// Call only when `try_consume` returned `OwnBucket`. Borrowed
-    /// admissions must use [`BudgetGuard::with_source`] so refunds cannot be
-    /// misdirected back to the borrower.
-    pub fn new_own(
-        backend: &'a (dyn BudgetBackend + Send + Sync),
-        channel_id: i32,
-        color: TrafficColor,
-        est_tpm: u64,
-    ) -> Self {
-        Self::with_source(backend, channel_id, color, est_tpm, ReservationSource::Own)
-    }
-
     /// Wrap a freshly-consumed reservation together with the bucket it came
     /// from — the pairing the failover loop performs after `try_consume`.
     pub fn with_source(
