@@ -96,6 +96,7 @@ fn metadata_without_any_price_block_is_still_normalised_v1() {
 
 #[test]
 fn flat_v7_with_model_level_metadata_stays_flat_and_keeps_prices() {
+    // Model-level metadata is an extension here; flat pricing must remain readable.
     let json = r#"{
         "version":"8.0",
         "updated_at":"2026-03-29T00:00:00Z",
