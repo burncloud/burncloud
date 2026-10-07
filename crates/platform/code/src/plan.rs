@@ -187,6 +187,25 @@ pub(crate) fn select(
 }
 
 impl Plan {
+    pub(crate) fn clippy_command(&self) -> Vec<String> {
+        let mut command = vec!["clippy".to_owned()];
+        if self.full_reason.is_some() {
+            command.push("--workspace".to_owned());
+        } else {
+            for name in &self.affected {
+                command.extend(["-p".to_owned(), name.clone()]);
+            }
+        }
+        command.extend([
+            "--all-targets".to_owned(),
+            "--no-default-features".to_owned(),
+            "--".to_owned(),
+            "-D".to_owned(),
+            "warnings".to_owned(),
+        ]);
+        command
+    }
+
     pub(crate) fn commands(&self) -> Result<Vec<Vec<String>>> {
         if self.affected.is_empty() {
             return Ok(Vec::new());
@@ -245,6 +264,51 @@ mod tests {
             ]
         );
         Ok(())
+    }
+
+    #[test]
+    fn affected_clippy_scopes_packages_and_stays_strict() {
+        let plan = Plan {
+            full_reason: None,
+            direct: BTreeSet::from(["a".to_owned()]),
+            affected: BTreeSet::from(["a".to_owned(), "b".to_owned()]),
+        };
+        assert_eq!(
+            plan.clippy_command(),
+            [
+                "clippy",
+                "-p",
+                "a",
+                "-p",
+                "b",
+                "--all-targets",
+                "--no-default-features",
+                "--",
+                "-D",
+                "warnings"
+            ]
+        );
+    }
+
+    #[test]
+    fn full_clippy_uses_workspace_and_stays_strict() {
+        let plan = Plan {
+            full_reason: Some("shared configuration changed".to_owned()),
+            direct: BTreeSet::new(),
+            affected: BTreeSet::from(["a".to_owned(), "b".to_owned()]),
+        };
+        assert_eq!(
+            plan.clippy_command(),
+            [
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--no-default-features",
+                "--",
+                "-D",
+                "warnings"
+            ]
+        );
     }
 
     #[test]
