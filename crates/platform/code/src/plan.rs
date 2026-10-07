@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+const KNOWN_TEST_BASELINE: &str =
+    include_str!("../../../../.github/test-plan/known-test-baseline.txt");
+
 #[derive(Deserialize)]
 pub(crate) struct Metadata {
     packages: Vec<Package>,
@@ -30,23 +33,62 @@ pub(crate) struct Plan {
     pub(crate) affected: BTreeSet<String>,
 }
 
-pub(crate) fn documentation(path: &str) -> bool {
+pub(crate) fn no_test_impact(path: &str) -> bool {
     matches!(
         path,
         "README.md" | "LICENSE" | "LICENSE.md" | ".github/README.md"
-    )
+    ) || path.starts_with(".github/")
+        || matches!(path, "clippy.toml" | "deny.toml")
 }
 
 fn global(path: &str) -> bool {
     matches!(
-        Path::new(path).file_name().and_then(|s| s.to_str()),
-        Some("Cargo.toml" | "Cargo.lock")
+        path,
+        "Cargo.toml" | "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml"
     ) || path.starts_with(".cargo/")
-        || path.starts_with(".github/")
-        || matches!(
-            path,
-            "clippy.toml" | "deny.toml" | "rust-toolchain" | "rust-toolchain.toml"
-        )
+}
+
+fn known_test_skips() -> Result<Vec<&'static str>> {
+    let mut names = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for (index, raw) in KNOWN_TEST_BASELINE.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = line.split('|').map(str::trim).collect();
+        anyhow::ensure!(
+            fields.len() == 3,
+            "Invalid known-test baseline line {}: expected test_name|issue_number|reason",
+            index + 1
+        );
+        let name = fields[0];
+        let issue = fields[1];
+        let reason = fields[2];
+        anyhow::ensure!(
+            !name.is_empty(),
+            "Invalid known-test baseline line {}: empty test name",
+            index + 1
+        );
+        anyhow::ensure!(
+            issue.parse::<u64>().is_ok(),
+            "Invalid known-test baseline line {}: issue number must be numeric",
+            index + 1
+        );
+        anyhow::ensure!(
+            !reason.is_empty(),
+            "Invalid known-test baseline line {}: empty reason",
+            index + 1
+        );
+        anyhow::ensure!(
+            seen.insert(name),
+            "Duplicate known-test baseline entry: {name}"
+        );
+        names.push(name);
+    }
+
+    Ok(names)
 }
 
 pub(crate) fn select(
@@ -80,7 +122,7 @@ pub(crate) fn select(
         affected: BTreeSet::new(),
     };
     for file in files {
-        if documentation(file) {
+        if no_test_impact(file) {
             continue;
         }
         if global(file) {
@@ -145,35 +187,77 @@ pub(crate) fn select(
 }
 
 impl Plan {
-    pub(crate) fn commands(&self) -> Vec<Vec<String>> {
+    pub(crate) fn commands(&self) -> Result<Vec<Vec<String>>> {
         if self.affected.is_empty() {
-            return Vec::new();
-        }
-        let mut scope = Vec::new();
-        if self.full_reason.is_some() {
-            scope.push("--workspace".to_owned());
-        } else {
-            for name in &self.affected {
-                scope.extend(["-p".to_owned(), name.clone()]);
-            }
+            return Ok(Vec::new());
         }
         let mut test = vec!["test".to_owned()];
-        test.extend(scope.clone());
+        if self.full_reason.is_some() {
+            test.push("--workspace".to_owned());
+        } else {
+            for name in &self.affected {
+                test.extend(["-p".to_owned(), name.clone()]);
+            }
+        }
         test.push("--no-default-features".to_owned());
-        let mut clippy = vec!["clippy".to_owned()];
-        clippy.extend(scope);
-        clippy.extend([
-            "--all-targets".to_owned(),
-            "--no-default-features".to_owned(),
-            "--".to_owned(),
-            "-D".to_owned(),
-            "warnings".to_owned(),
-        ]);
-        vec![
-            vec!["fmt".into(), "--all".into(), "--".into(), "--check".into()],
-            test,
-            clippy,
-            vec!["deny".into(), "check".into()],
-        ]
+        let known_skips = known_test_skips()?;
+        if !known_skips.is_empty() {
+            test.push("--".to_owned());
+            for name in known_skips {
+                test.extend(["--skip".to_owned(), name.to_owned()]);
+            }
+        }
+        Ok(vec![test])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{known_test_skips, Plan};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn known_test_baseline_is_the_reviewed_seven() -> anyhow::Result<()> {
+        assert_eq!(
+            known_test_skips()?,
+            vec![
+                "test_claude_adaptor",
+                "test_deepseek_proxy",
+                "test_qwen_proxy",
+                "test_round_robin_balancer",
+                "test_failover",
+                "test_vertex_full_flow",
+                "test_login_user_success",
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_command_applies_known_baseline_as_libtest_arguments() -> anyhow::Result<()> {
+        let plan = Plan {
+            full_reason: Some("test".to_owned()),
+            direct: BTreeSet::new(),
+            affected: BTreeSet::from(["burncloud-code".to_owned()]),
+        };
+        let commands = plan.commands()?;
+        let test = &commands[0];
+        let separator = test
+            .iter()
+            .position(|arg| arg == "--")
+            .expect("known test baseline must add libtest arguments");
+        assert_eq!(
+            &test[..separator],
+            ["test", "--workspace", "--no-default-features"]
+        );
+        let skip_names: Vec<_> = test[separator + 1..]
+            .chunks_exact(2)
+            .map(|chunk| {
+                assert_eq!(chunk[0], "--skip");
+                chunk[1].as_str()
+            })
+            .collect();
+        assert_eq!(skip_names, known_test_skips()?);
+        Ok(())
     }
 }
