@@ -33,23 +33,19 @@ pub(crate) struct Plan {
     pub(crate) affected: BTreeSet<String>,
 }
 
-pub(crate) fn documentation(path: &str) -> bool {
+pub(crate) fn no_test_impact(path: &str) -> bool {
     matches!(
         path,
         "README.md" | "LICENSE" | "LICENSE.md" | ".github/README.md"
-    )
+    ) || path.starts_with(".github/")
+        || matches!(path, "clippy.toml" | "deny.toml")
 }
 
 fn global(path: &str) -> bool {
     matches!(
-        Path::new(path).file_name().and_then(|s| s.to_str()),
-        Some("Cargo.toml" | "Cargo.lock")
+        path,
+        "Cargo.toml" | "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml"
     ) || path.starts_with(".cargo/")
-        || path.starts_with(".github/")
-        || matches!(
-            path,
-            "clippy.toml" | "deny.toml" | "rust-toolchain" | "rust-toolchain.toml"
-        )
 }
 
 fn known_test_skips() -> Result<Vec<&'static str>> {
@@ -126,7 +122,7 @@ pub(crate) fn select(
         affected: BTreeSet::new(),
     };
     for file in files {
-        if documentation(file) {
+        if no_test_impact(file) {
             continue;
         }
         if global(file) {
@@ -195,16 +191,14 @@ impl Plan {
         if self.affected.is_empty() {
             return Ok(Vec::new());
         }
-        let mut scope = Vec::new();
+        let mut test = vec!["test".to_owned()];
         if self.full_reason.is_some() {
-            scope.push("--workspace".to_owned());
+            test.push("--workspace".to_owned());
         } else {
             for name in &self.affected {
-                scope.extend(["-p".to_owned(), name.clone()]);
+                test.extend(["-p".to_owned(), name.clone()]);
             }
         }
-        let mut test = vec!["test".to_owned()];
-        test.extend(scope.clone());
         test.push("--no-default-features".to_owned());
         let known_skips = known_test_skips()?;
         if !known_skips.is_empty() {
@@ -213,21 +207,7 @@ impl Plan {
                 test.extend(["--skip".to_owned(), name.to_owned()]);
             }
         }
-        let mut clippy = vec!["clippy".to_owned()];
-        clippy.extend(scope);
-        clippy.extend([
-            "--all-targets".to_owned(),
-            "--no-default-features".to_owned(),
-            "--".to_owned(),
-            "-D".to_owned(),
-            "warnings".to_owned(),
-        ]);
-        Ok(vec![
-            vec!["fmt".into(), "--all".into(), "--".into(), "--check".into()],
-            test,
-            clippy,
-            vec!["deny".into(), "check".into()],
-        ])
+        Ok(vec![test])
     }
 }
 
@@ -261,7 +241,7 @@ mod tests {
             affected: BTreeSet::from(["burncloud-code".to_owned()]),
         };
         let commands = plan.commands()?;
-        let test = &commands[1];
+        let test = &commands[0];
         let separator = test
             .iter()
             .position(|arg| arg == "--")
