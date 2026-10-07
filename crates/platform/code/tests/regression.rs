@@ -392,14 +392,20 @@ fn each_failed_pre_commit_gate_stops_and_blocks_commit() -> Result<()> {
             .args(["commit", "-qm", "blocked"])
             .env("FAIL_CHECK", check)
             .output()?;
-        assert!(!output.status.success(), "{check} unexpectedly allowed commit");
+        assert!(
+            !output.status.success(),
+            "{check} unexpectedly allowed commit"
+        );
         if *check == "test" {
             let text = format!(
                 "{}{}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
-            assert!(text.contains("Check failed"), "missing code-test failure: {text}");
+            assert!(
+                text.contains("Check failed"),
+                "missing code-test failure: {text}"
+            );
         }
         assert_eq!(
             f.log()?,
