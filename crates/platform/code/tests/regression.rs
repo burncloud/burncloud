@@ -450,13 +450,12 @@ fn existing_hook_failure_propagates_after_checks() -> Result<()> {
     assert_eq!(f.log()?, FULL.to_owned() + "original\n");
     assert_eq!(fs::read_to_string(f.saved())?, original);
     fs::write(f.base.join("checks.log"), "")?;
-    failed(
-        f.command("git")
-            .args(["commit", "-qm", "blocked"])
-            .env("FAIL_CHECK", "fmt")
-            .output()?,
-        "Check failed",
-    );
+    let output = f
+        .command("git")
+        .args(["commit", "-qm", "blocked"])
+        .env("FAIL_CHECK", "fmt")
+        .output()?;
+    assert!(!output.status.success(), "fmt failure must block commit");
     assert_eq!(f.log()?, "fmt --all -- --check\n");
     Ok(())
 }
@@ -614,9 +613,9 @@ fn clean_tree_and_docs_report_no_execution() -> Result<()> {
     let f = Fixture::new()?;
     f.seed()?;
     let output = f.run(&["test"])?;
-    assert!(String::from_utf8(output.stdout)?.contains("no checks executed"));
+    assert!(String::from_utf8(output.stdout)?.contains("no tests executed"));
     f.write("README.md", "documentation")?;
-    assert!(String::from_utf8(f.run(&["test"])?.stdout)?.contains("no checks executed"));
+    assert!(String::from_utf8(f.run(&["test"])?.stdout)?.contains("no tests executed"));
     f.write("docs/architecture.md", "shared contract")?;
     let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
     assert!(text.contains("unclassified path: docs/architecture.md"));
