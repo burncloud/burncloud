@@ -137,8 +137,7 @@ Git directory (`.git/burncloud/checks/`). The terminal shows ✅ or ❌ per chec
 counts passed, failed and ignored tests by unit, integration and doc suite. On
 successful commits, `commit-msg` appends `BurnCloud-Checks`, `BurnCloud-Fmt`,
 `BurnCloud-Tests`, `BurnCloud-Clippy`, `BurnCloud-Deny` and the checked staged-tree
-hash to the commit message. Documentation-only commits say `SKIP`; no checks are
-presented as passing. Full logs stay local; the compact receipt travels with the
+hash to the commit message. For documentation-only commits, fmt/Clippy/deny still report `PASS` while the test receipt reports `SKIP`, because no test-relevant package was selected. Full logs stay local; the compact receipt travels with the
 commit. A changed index or HEAD after the checks blocks stamping.
 External test prerequisites, ignored files, existing lint/advisory policies and
 platform-specific CI still apply. This local command does not replace remote
