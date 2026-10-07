@@ -30,7 +30,7 @@ async fn test_e2e_real_upstream() {
         }
     };
 
-    let admin_client = TestClient::new(&base_url);
+    let admin_client = common_mod::admin_client(&base_url).await;
     let channel_name = format!("Real E2E {}", Uuid::new_v4());
 
     let body = json!({
@@ -87,7 +87,7 @@ async fn test_gemini_adaptor() {
     };
 
     let base_url = common_mod::spawn_app().await;
-    let admin_client = TestClient::new(&base_url);
+    let admin_client = common_mod::admin_client(&base_url).await;
     let channel_name = format!("Gemini Test {}", Uuid::new_v4());
 
     let body = json!({
