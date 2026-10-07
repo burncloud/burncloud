@@ -18,7 +18,7 @@ Clippy and deny verdicts for trusted same-repository pull requests (or after mai
 | `ci-self-hosted-fmt.yml` | PR/review gate | Self-hosted `cargo fmt --all -- --check` |
 | `ci-self-hosted-test.yml` | PR/review gate | Self-hosted affected-package `code test --base` |
 | `ci-self-hosted-clippy.yml` | PR/review gate | Self-hosted strict workspace Clippy |
-| `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted `cargo deny check` |
+| `ci-self-hosted-deny.yml` | PR/review gate | Self-hosted dependency-policy check; skips ordinary source-only PRs and uses the runner-local advisory DB |
 | `ci-self-hosted-base.yml` | `workflow_call` only | Shared self-hosted authorization, checkout, Rust/OpenSSL setup, tool bootstrap and the four fixed Rust check implementations |
 | `ci-quality.yml` | manual, or called by `maintenance-version-tag.yml` | The workspace gate: `fmt --all -- --check`, `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features -- -D warnings`, `deny check` |
 | `ci-architecture.yml` | manual | `burncloud-code` regression on Windows/Linux plus the router dependency whitelist |
@@ -49,7 +49,11 @@ The same responsibilities are split into four thin self-hosted PR entry workflow
 an independent GitHub verdict: fmt, affected tests, Clippy and deny. All four call
 `ci-self-hosted-base.yml`, which owns the shared authorization, runner selection, checkout, Rust
 toolchain/OpenSSL setup and fixed command implementations. The callers pass only a closed check kind
-(`fmt`, `test`, `clippy` or `deny`), never arbitrary shell commands. `--plan`, `--base REF`
+(`fmt`, `test`, `clippy` or `deny`), never arbitrary shell commands. The deny entry still creates
+a GitHub verdict for every PR, but the expensive `cargo deny` command is executed only when dependency
+or dependency-policy files change: any `Cargo.toml`, `Cargo.lock`, `deny.toml` or `.cargo/**`.
+PR deny runs use the runner-local RustSec advisory database with fetching disabled and have a five-minute
+command timeout, so an external advisory-db fetch cannot silently occupy a runner. `--plan`, `--base REF`
 and `--all` remain available for manual test-scope verification.
 
 **Clippy is deliberately outside `code test`.** `code test` now has one responsibility:
@@ -69,7 +73,7 @@ remains a thin shell wrapper.
 | `ci-self-hosted-fmt.yml` | PR/review gate | Workspace rustfmt on the trusted self-hosted runner |
 | `ci-self-hosted-test.yml` | PR/review gate | Affected-package tests through `burncloud-code` |
 | `ci-self-hosted-clippy.yml` | PR/review gate | Strict workspace Clippy |
-| `ci-self-hosted-deny.yml` | PR/review gate | Full dependency-policy check |
+| `ci-self-hosted-deny.yml` | PR/review gate | Dependency-policy check only when `Cargo.toml`, `Cargo.lock`, `deny.toml` or `.cargo/**` changes |
 | `ci-quality.yml` | manual; called by `maintenance-version-tag.yml` | The four gate commands. Also carries the identity test-discovery floors |
 | `ci-architecture.yml` | manual | `burncloud-code` regression on Windows/Linux plus the router dependency whitelist |
 | `ci-client.yml` | manual | UI convention scripts, LiveView feature check, desktop builds on Windows and macOS |
@@ -139,9 +143,15 @@ wrong. This was measured: `crates/*/Cargo.toml` matches **zero** of the 37 track
   of `Cargo.toml` files. A runner therefore reuses the same resolution while the manifests are unchanged,
   even though `actions/checkout` removes the ignored checkout-local `Cargo.lock`.
 * Self-hosted Cargo registry/git caches and build artifacts live under `~/.cache/burncloud/`, outside
-  the checkout. This avoids both `git clean -ffdx` deleting `target/` and stale ownership under
-  `~/.cargo/registry` breaking the shared runner cache. `code test` still enforces the 100 GiB target
-  cleanup threshold through `CARGO_TARGET_DIR`.
+  the checkout. All four PR check kinds share the same persistent build directory,
+  `~/.cache/burncloud/target`, instead of maintaining separate `target/test`, `target/clippy`,
+  `target/fmt` and `target/deny` trees. This avoids both `git clean -ffdx` deleting `target/` and
+  duplicate cold builds across checks. `code test` still enforces the 100 GiB target cleanup threshold
+  through `CARGO_TARGET_DIR`.
+* PR deny checks use the advisory database under the persistent `CARGO_HOME` and pass
+  `check --disable-fetch`. On first migration, the workflow seeds that database from
+  `~/.cargo/advisory-dbs` when the runner already has one. A runner with no local advisory database
+  fails fast with a clear bootstrap message rather than fetching during a PR.
 * The Rust toolchain is `stable` via `dtolnay/rust-toolchain`, so the compiler version drifts with
   upstream releases. No version is pinned.
 
