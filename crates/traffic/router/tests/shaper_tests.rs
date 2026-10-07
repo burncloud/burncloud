@@ -185,7 +185,7 @@ fn t7_commit_refunds_overestimate() {
 
     // commit with actual = 200 → refund 800.
     let actual_tpm: u64 = 200;
-    let guard = BudgetGuard::new(&budget, 1, TrafficColor::Yellow, est_tpm);
+    let guard = BudgetGuard::new_own(&budget, 1, TrafficColor::Yellow, est_tpm);
     guard.commit(actual_tpm);
 
     let snap_after_commit = budget.snapshot(1).expect("snapshot");
@@ -217,7 +217,7 @@ async fn t8_drop_refunds_full_est_on_timeout_cancel() {
     // guard inside it.
     let budget_for_task = budget.clone();
     tokio::time::timeout(Duration::from_millis(50), async move {
-        let _guard = BudgetGuard::new(budget_for_task.as_ref(), 1, TrafficColor::Yellow, est_tpm);
+        let _guard = BudgetGuard::new_own(budget_for_task.as_ref(), 1, TrafficColor::Yellow, est_tpm);
         tokio::time::sleep(Duration::from_secs(60)).await;
     })
     .await

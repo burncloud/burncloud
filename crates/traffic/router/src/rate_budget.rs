@@ -213,9 +213,10 @@ impl<'a> BudgetGuard<'a> {
     /// callers that consumed from their own bucket and for the guard's
     /// unit-level tests.
     ///
-    /// Call after `try_consume` returned `OwnBucket` or `Borrowed` (do NOT
-    /// call after `Rejected`).
-    pub fn new(
+    /// Call only when `try_consume` returned `OwnBucket`. Borrowed
+    /// admissions must use [`BudgetGuard::with_source`] so refunds cannot be
+    /// misdirected back to the borrower.
+    pub fn new_own(
         backend: &'a (dyn BudgetBackend + Send + Sync),
         channel_id: i32,
         color: TrafficColor,

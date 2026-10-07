@@ -16,7 +16,7 @@ mod common;
 use burncloud_commerce_contracts::price_u64::dollars_to_nano;
 use burncloud_database::sqlx;
 use burncloud_database_billing::{BillingPriceModel, PriceInput};
-use common::{insert_test_channel, setup_db, start_test_server};
+use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
@@ -104,11 +104,13 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
-    let mock_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
-    let mock_port = mock_listener.local_addr()?.port();
+    let mock_port = 3014;
     tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+            .await
+            .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
         axum::serve(
-            mock_listener,
+            listener,
             axum::Router::new().route(
                 "/anything",
                 axum::routing::post(|body: String| async move {
@@ -128,18 +130,33 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
-    let channel_id = 1401;
+    let id = "claude-adaptor-test";
     let name = "claude-3-opus";
-    let base_url = format!("http://localhost:{mock_port}");
+    let base_url = format!("http://localhost:{}", mock_port);
+    let match_path = "/anything";
+    let auth_type = "Claude";
     let api_key = "sk-ant-mock-key";
 
-    insert_test_channel(&pool, channel_id, name, &base_url, api_key, name, "default").await?;
-    // The shared fixture defaults to OpenAI. This test exercises the Claude
-    // adaptor, so select the production Anthropic channel type explicitly.
-    sqlx::query("UPDATE channel_providers SET type = 14 WHERE id = ?")
-        .bind(channel_id)
-        .execute(&pool)
-        .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type,
+            protocol = excluded.protocol
+        "#,
+    )
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
+    .bind("claude") // Force protocol to claude
+    .execute(&pool)
+    .await?;
 
     // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(
@@ -149,13 +166,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    // PR gates can run concurrently on the same self-hosted machine, so a
-    // fixed port can send this request to another test server and produce a
-    // misleading 404. Let the OS select a currently free port instead.
-    let port = {
-        let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
-        listener.local_addr()?.port()
-    };
+    let port = 3013;
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
@@ -179,13 +190,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    let status = resp.status();
-    let response_body = resp.text().await?;
-    assert_eq!(
-        status,
-        reqwest::StatusCode::OK,
-        "router returned {status}: {response_body}"
-    );
+    assert_eq!(resp.status(), 200);
 
     // 2. Inspect what HttpBin received (The Converted Claude Request)
     // Note: Since HttpBin echoes the request, and Router logic for `Claude` adaptor
@@ -222,7 +227,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     // Let's stick to this for now: it ensures no panic and correct path.
     // We should add a unit test for `ClaudeAdaptor` logic separately if we want to be strict.
 
-    let _json: serde_json::Value = serde_json::from_str(&response_body)?;
+    let _json: serde_json::Value = resp.json().await?;
     // Verification limited here without real upstream response structure.
     Ok(())
 }

@@ -13,7 +13,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{insert_test_channel, setup_db, start_test_server};
+use common::{setup_db, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
@@ -34,13 +34,7 @@ async fn start_mock_upstream(listener: tokio::net::TcpListener) {
         serde_json::json!({
             "headers": header_map,
             "data": body,
-            "json": serde_json::from_str::<serde_json::Value>(&body).ok(),
-            "choices": [{
-                "index": 0,
-                "message": { "role": "assistant", "content": "mock response" },
-                "finish_reason": "stop"
-            }],
-            "usage": { "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2 }
+            "json": serde_json::from_str::<serde_json::Value>(&body).ok()
         })
         .to_string()
     };
@@ -124,37 +118,42 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
-    let mock_port = listener.local_addr()?.port();
+    let mock_port = 3020;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+        .await
+        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
 
-    let channel_id = 4301;
+    let id = "deepseek-test";
     let name = "DeepSeek Test";
-    let model = "deepseek-test-model";
-    let base_url = format!("http://127.0.0.1:{mock_port}");
+    let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
     let api_key = "sk-deepseek-mock-key";
     let match_path = "/v1/chat/completions/test-deepseek";
-    insert_test_channel(
-        &pool, channel_id, name, &base_url, api_key, model, "default",
-    )
-    .await?;
-    sqlx::query("UPDATE channel_providers SET type = 43 WHERE id = ?")
-        .bind(channel_id)
-        .execute(&pool)
-        .await?;
+    let auth_type = "DeepSeek";
+
     sqlx::query(
-        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
-         VALUES (?, 'USD', 1, 1, '')",
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type,
+            match_path = excluded.match_path
+        "#,
     )
-    .bind(model)
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
     .execute(&pool)
     .await?;
 
-    let port_guard = std::net::TcpListener::bind(("127.0.0.1", 0))?;
-    let port = port_guard.local_addr()?.port();
-    drop(port_guard);
+    let port = 3009;
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
@@ -163,17 +162,12 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .json(&json!({
-            "model": model,
-            "messages": [{ "role": "user", "content": "deepseek body" }]
-        }))
+        .json(&json!({"content": "deepseek body"}))
         .send()
         .await?;
 
-    let status = resp.status();
-    let response_body = resp.text().await?;
-    assert_eq!(status, 200, "router returned {status}: {response_body}");
-    let json: serde_json::Value = serde_json::from_str(&response_body)?;
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await?;
 
     let headers = json
         .get("headers")
@@ -197,37 +191,42 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
-    let mock_port = listener.local_addr()?.port();
+    let mock_port = 3021;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
+        .await
+        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
 
-    let channel_id = 1701;
+    let id = "qwen-test";
     let name = "Qwen Test";
-    let model = "qwen-test-model";
-    let base_url = format!("http://127.0.0.1:{mock_port}");
+    let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
     let api_key = "sk-qwen-mock-key";
     let match_path = "/api/v1/services/aigc/text-generation/generation/test-qwen";
-    insert_test_channel(
-        &pool, channel_id, name, &base_url, api_key, model, "default",
-    )
-    .await?;
-    sqlx::query("UPDATE channel_providers SET type = 17 WHERE id = ?")
-        .bind(channel_id)
-        .execute(&pool)
-        .await?;
+    let auth_type = "Qwen";
+
     sqlx::query(
-        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
-         VALUES (?, 'USD', 1, 1, '')",
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type,
+            match_path = excluded.match_path
+        "#,
     )
-    .bind(model)
+    .bind(id)
+    .bind(name)
+    .bind(base_url)
+    .bind(api_key)
+    .bind(match_path)
+    .bind(auth_type)
     .execute(&pool)
     .await?;
 
-    let port_guard = std::net::TcpListener::bind(("127.0.0.1", 0))?;
-    let port = port_guard.local_addr()?.port();
-    drop(port_guard);
+    let port = 3010;
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
@@ -236,17 +235,12 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .json(&json!({
-            "model": model,
-            "messages": [{ "role": "user", "content": "qwen body" }]
-        }))
+        .json(&json!({"content": "qwen body"}))
         .send()
         .await?;
 
-    let status = resp.status();
-    let response_body = resp.text().await?;
-    assert_eq!(status, 200, "router returned {status}: {response_body}");
-    let json: serde_json::Value = serde_json::from_str(&response_body)?;
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await?;
 
     let headers = json
         .get("headers")

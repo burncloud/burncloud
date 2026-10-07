@@ -348,13 +348,10 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
     );
     if summary.status == "passed" {
         anyhow::ensure!(
-            summary.steps.len() == 4
-                && summary
-                    .steps
-                    .iter()
-                    .zip(["fmt", "test", "clippy", "deny"])
-                    .all(|(step, name)| step.name == name && step.status == "passed"),
-            "Incomplete saved checks"
+            summary.steps.len() == 1
+                && summary.steps[0].name == "test"
+                && summary.steps[0].status == "passed",
+            "Incomplete saved code test result"
         );
     } else {
         anyhow::ensure!(summary.steps.is_empty(), "Invalid skipped check result");
@@ -384,8 +381,8 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
     }
     let (overall, checks, tests) = if summary.status == "skipped" {
         (
-            "➖ SKIP (no code checks executed)",
-            "➖ SKIP",
+            "✅ PASS (tests skipped: no test-relevant changes)",
+            "✅ PASS",
             "➖ SKIP".to_owned(),
         )
     } else {

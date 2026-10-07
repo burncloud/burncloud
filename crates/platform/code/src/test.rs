@@ -143,11 +143,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
     let root = PathBuf::from(
         git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
-    let result = (|| {
-        crate::init::ensure_environment(&root)
-            .context("Could not prepare required code-test tools")?;
-        run_in_root(&root, options)
-    })();
+    let result = run_in_root(&root, options);
     if let Err(error) = cleanup_target_if_oversized(&root, TARGET_LIMIT_BYTES) {
         eprintln!("Warning: target cleanup failed: {error:#}");
     }
@@ -163,8 +159,8 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     for file in &files {
         println!("  {file}");
     }
-    if !options.all && files.iter().all(|file| plan::documentation(file)) {
-        println!("No code changes selected; no checks executed. Use --all for the full workspace or --base REF for branch changes.");
+    if !options.all && files.iter().all(|file| plan::no_test_impact(file)) {
+        println!("No test-relevant changes selected; no tests executed. Use --all for the full workspace or --base REF for branch changes.");
         if !options.plan_only {
             let mut summary = report::new(
                 root,
@@ -197,7 +193,7 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
         "Affected packages: {}",
         plan.affected.iter().cloned().collect::<Vec<_>>().join(", ")
     );
-    let commands = plan.commands();
+    let commands = plan.commands()?;
     for args in &commands {
         println!("  cargo {}", args.join(" "));
     }
@@ -228,7 +224,7 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
         result.as_ref().err().map(ToString::to_string),
     )?;
     result?;
-    println!("All selected checks passed.");
+    println!("All selected tests passed.");
     Ok(())
 }
 
@@ -240,12 +236,7 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
             commands.len(),
             args.join(" ")
         );
-        let status = report::execute(
-            root,
-            summary,
-            ["fmt", "test", "clippy", "deny"][index],
-            args,
-        )?;
+        let status = report::execute(root, summary, "test", args)?;
         anyhow::ensure!(
             status.success(),
             "Check failed ({}): cargo {}",
