@@ -105,8 +105,9 @@ subdirectory or linked Git worktree. Windows requires Git for Windows (including
 its bundled shell); the hook uses no PowerShell or Unix-only package manager.
 Existing regular hooks are saved as `<hook>.burncloud-original` and run along with
 the BurnCloud checks. Configured `core.hooksPath` and symlink hooks are left
-untouched: integrate `cargo run -- code test --staged` into that hook manager
-instead, or remove the custom setting before initializing.
+untouched: integrate the managed sequence (cargo fmt, `cargo run -- code test --staged`,
+cargo clippy, cargo deny) into that hook manager instead, or remove the custom setting
+before initializing.
 
 Run the same local automation yourself:
 
@@ -119,16 +120,18 @@ cargo run -- code test --last                  # latest result, counts and local
 ```
 
 `code test` uses Cargo's dependency graph to select changed packages and every
-transitive workspace consumer. Manifest/shared configuration changes and unknown
-paths force full-workspace checks. It prints the affected packages and commands.
-Selected code must pass workspace formatting, affected-package tests, affected-package
-Clippy (`--all-targets`), and full `cargo deny check`. Tests and Clippy use
-`--no-default-features`. A clean checkout or documentation-only change explicitly
-reports that no checks ran; use `--all` to override. No failures are suppressed.
+transitive workspace consumer, then runs only the affected Cargo tests with
+`--no-default-features`. Root workspace/build configuration and unknown paths can
+still force a full-workspace test, while `.github/**`, `clippy.toml` and `deny.toml`
+do not expand the test scope. A package's own `Cargo.toml` follows that package's
+dependency closure. A clean checkout or test-irrelevant change explicitly reports
+that no tests ran; use `--all` to override.
 
-The hook delegates to `code test --staged`. Stage or stash tracked changes and
-non-ignored untracked files before committing: Cargo checks the working tree, so
-partial staging is rejected. Missing tools and failed commands block the commit.
+The managed pre-commit hook runs `cargo fmt --all -- --check`, then
+`code test --staged`, strict workspace Clippy, and `cargo deny check`. Stage or
+stash tracked changes and non-ignored untracked files before committing: Cargo checks
+the working tree, so partial staging is rejected. Missing tools and failed commands
+block the commit.
 Each run records a JSON summary and individual Cargo logs under the repository's
 Git directory (`.git/burncloud/checks/`). The terminal shows ✅ or ❌ per check and
 counts passed, failed and ignored tests by unit, integration and doc suite. On
