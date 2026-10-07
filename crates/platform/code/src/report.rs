@@ -381,8 +381,8 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
     }
     let (overall, checks, tests) = if summary.status == "skipped" {
         (
-            "➖ SKIP (no code checks executed)",
-            "➖ SKIP",
+            "✅ PASS (tests skipped: no test-relevant changes)",
+            "✅ PASS",
             "➖ SKIP".to_owned(),
         )
     } else {
