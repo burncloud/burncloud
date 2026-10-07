@@ -14,8 +14,8 @@
 )]
 pub(crate) mod evidence;
 
-use dotenvy::dotenv;
 use burncloud_tests::TestClient;
+use dotenvy::dotenv;
 use reqwest::Client;
 use serde_json::json;
 use std::env;
