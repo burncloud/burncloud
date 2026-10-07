@@ -84,8 +84,7 @@ as warnings so housekeeping cannot replace the actual code-test result.
 Each executed check writes its full output under `.git/burncloud/checks/<run>/`,
 alongside `summary.json`; `latest.json` tracks the most recent result. The terminal
 shows ✅/❌, log locations, and unit/integration/doc test counts. A count is marked
-unavailable when Cargo emitted no parseable summary. A skipped documentation-only
-run is recorded explicitly as `SKIP`.
+unavailable when Cargo emitted no parseable summary. A documentation-only `code test` run records the test step as `SKIP`; the surrounding pre-commit fmt, Clippy and deny gates still run independently.
 
 The installed pre-commit hook runs formatting, `cargo run --quiet -- code test --staged`,
 strict workspace Clippy and cargo-deny in that order, then the preserved original hook. The commit-msg hook runs the preserved original hook
