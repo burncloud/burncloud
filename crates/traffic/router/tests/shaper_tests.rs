@@ -217,7 +217,12 @@ async fn t8_drop_refunds_full_est_on_timeout_cancel() {
     // guard inside it.
     let budget_for_task = budget.clone();
     tokio::time::timeout(Duration::from_millis(50), async move {
-        let _guard = BudgetGuard::new_own(budget_for_task.as_ref(), 1, TrafficColor::Yellow, est_tpm);
+        let _guard = BudgetGuard::new_own(
+            budget_for_task.as_ref(),
+            1,
+            TrafficColor::Yellow,
+            est_tpm,
+        );
         tokio::time::sleep(Duration::from_secs(60)).await;
     })
     .await
