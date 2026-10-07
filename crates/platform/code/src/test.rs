@@ -197,7 +197,7 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
         "Affected packages: {}",
         plan.affected.iter().cloned().collect::<Vec<_>>().join(", ")
     );
-    let commands = plan.commands();
+    let commands = plan.commands()?;
     for args in &commands {
         println!("  cargo {}", args.join(" "));
     }
