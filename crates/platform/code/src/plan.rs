@@ -191,6 +191,19 @@ impl Plan {
         if self.affected.is_empty() {
             return Ok(Vec::new());
         }
+
+        let mut commands = Vec::new();
+        if self.affected.contains("burncloud-tests") {
+            commands.push(vec![
+                "build".to_owned(),
+                "-p".to_owned(),
+                "burncloud".to_owned(),
+                "--bin".to_owned(),
+                "burncloud".to_owned(),
+                "--no-default-features".to_owned(),
+            ]);
+        }
+
         let mut test = vec!["test".to_owned()];
         if self.full_reason.is_some() {
             test.push("--workspace".to_owned());
@@ -207,7 +220,8 @@ impl Plan {
                 test.extend(["--skip".to_owned(), name.to_owned()]);
             }
         }
-        Ok(vec![test])
+        commands.push(test);
+        Ok(commands)
     }
 }
 
@@ -218,19 +232,41 @@ mod tests {
 
     #[test]
     fn known_test_baseline_is_the_reviewed_seven() -> anyhow::Result<()> {
-        anyhow::ensure!(
-            known_test_skips()?
-                == vec![
-                    "test_claude_adaptor",
-                    "test_deepseek_proxy",
-                    "test_qwen_proxy",
-                    "test_round_robin_balancer",
-                    "test_failover",
-                    "test_vertex_full_flow",
-                    "test_login_user_success",
-                ],
-            "known test baseline changed unexpectedly"
+        assert_eq!(
+            known_test_skips()?,
+            vec![
+                "test_claude_adaptor",
+                "test_deepseek_proxy",
+                "test_qwen_proxy",
+                "test_round_robin_balancer",
+                "test_failover",
+                "test_vertex_full_flow",
+                "test_login_user_success",
+            ]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn black_box_tests_build_the_server_binary_before_running() -> anyhow::Result<()> {
+        let plan = Plan {
+            full_reason: None,
+            direct: BTreeSet::from(["burncloud-tests".to_owned()]),
+            affected: BTreeSet::from(["burncloud-tests".to_owned()]),
+        };
+        let commands = plan.commands()?;
+        assert_eq!(
+            commands[0],
+            [
+                "build",
+                "-p",
+                "burncloud",
+                "--bin",
+                "burncloud",
+                "--no-default-features"
+            ]
+        );
+        assert_eq!(commands[1][0], "test");
         Ok(())
     }
 
@@ -246,25 +282,19 @@ mod tests {
         let separator = test
             .iter()
             .position(|arg| arg == "--")
-            .ok_or_else(|| anyhow::anyhow!("known test baseline must add libtest arguments"))?;
-        anyhow::ensure!(
-            &test[..separator] == ["test", "--workspace", "--no-default-features"],
-            "cargo test prefix changed unexpectedly"
+            .expect("known test baseline must add libtest arguments");
+        assert_eq!(
+            &test[..separator],
+            ["test", "--workspace", "--no-default-features"]
         );
-        let libtest_args = &test[separator + 1..];
-        anyhow::ensure!(
-            libtest_args.len().is_multiple_of(2),
-            "known skip arguments must be --skip/name pairs"
-        );
-        let mut skip_names = Vec::new();
-        for pair in libtest_args.chunks(2) {
-            anyhow::ensure!(pair[0] == "--skip", "unexpected libtest argument: {}", pair[0]);
-            skip_names.push(pair[1].as_str());
-        }
-        anyhow::ensure!(
-            skip_names == known_test_skips()?,
-            "known test skip arguments changed unexpectedly"
-        );
+        let skip_names: Vec<_> = test[separator + 1..]
+            .chunks_exact(2)
+            .map(|chunk| {
+                assert_eq!(chunk[0], "--skip");
+                chunk[1].as_str()
+            })
+            .collect();
+        assert_eq!(skip_names, known_test_skips()?);
         Ok(())
     }
 }

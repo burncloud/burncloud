@@ -20,7 +20,7 @@ use crate::common as common_mod;
 #[tokio::test]
 async fn test_billing_accuracy() {
     let base_url = common_mod::spawn_app().await;
-    let admin_client = common_mod::admin_client(&base_url).await;
+    let admin_client = TestClient::new(&base_url);
 
     if let Some((upstream_key, upstream_url)) = common_mod::get_openai_config() {
         let channel_body = json!({

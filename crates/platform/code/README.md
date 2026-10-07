@@ -76,10 +76,11 @@ not represented in Cargo remain a reason to run `--all` and retain the existing 
 suites. No test-result cache is used. Source edits and dependency allowlist changes
 are never automated here.
 
-After every `code test` invocation, BurnCloud measures the repository `target/`
-directory. If its apparent file size is greater than 100 GiB, the directory is
-removed. Cleanup also runs after a failed quality check. Cleanup errors are reported
-as warnings so housekeeping cannot replace the actual code-test result.
+`code test` does not own Cargo target-cache housekeeping. Trusted self-hosted
+GitHub Actions use the shared `~/.cache/burncloud/target` directory and perform
+the 100 GiB size check as the final workflow step, after the Rust check has
+finished. Local `code test` runs therefore never delete the developer's target
+directory as a side effect.
 
 Each executed check writes its full output under `.git/burncloud/checks/<run>/`,
 alongside `summary.json`; `latest.json` tracks the most recent result. The terminal

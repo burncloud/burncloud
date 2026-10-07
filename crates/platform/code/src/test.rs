@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -7,9 +6,6 @@ use anyhow::{Context, Result};
 
 use crate::plan::{self, Metadata};
 use crate::report;
-
-const GIB_BYTES: u64 = 1024 * 1024 * 1024;
-const TARGET_LIMIT_BYTES: u64 = 100 * GIB_BYTES;
 
 pub(crate) struct Options {
     pub(crate) all: bool,
@@ -143,13 +139,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
     let root = PathBuf::from(
         git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
-    let result = run_in_root(&root, options);
-    let configured_target = std::env::var_os("CARGO_TARGET_DIR");
-    let target = target_directory(&root, configured_target.as_deref());
-    if let Err(error) = cleanup_target_if_oversized(&target, TARGET_LIMIT_BYTES) {
-        eprintln!("Warning: target cleanup failed: {error:#}");
-    }
-    result
+    run_in_root(&root, options)
 }
 
 fn run_in_root(root: &Path, options: Options) -> Result<()> {
@@ -212,19 +202,13 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     } else {
         "working"
     };
-    let needs_server_binary = plan.affected.contains("burncloud-tests");
     let mut summary = report::new(
         root,
         mode,
         files.iter().cloned().collect(),
         plan.affected.iter().cloned().collect(),
     )?;
-    let result = (|| -> Result<()> {
-        if needs_server_binary {
-            build_black_box_server(root, &mut summary)?;
-        }
-        run_checks(root, &commands, &mut summary)
-    })();
+    let result = run_checks(root, &commands, &mut summary);
     report::finish(
         root,
         &mut summary,
@@ -236,26 +220,6 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     Ok(())
 }
 
-fn build_black_box_server(root: &Path, summary: &mut report::Summary) -> Result<()> {
-    let args = vec![
-        "build".to_owned(),
-        "-p".to_owned(),
-        "burncloud".to_owned(),
-        "--bin".to_owned(),
-        "burncloud".to_owned(),
-        "--no-default-features".to_owned(),
-    ];
-    println!("[prerequisite] cargo {}", args.join(" "));
-    let status = report::execute(root, summary, "build-server", &args)?;
-    anyhow::ensure!(
-        status.success(),
-        "Black-box server prerequisite failed ({}): cargo {}",
-        status,
-        args.join(" ")
-    );
-    Ok(())
-}
-
 fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summary) -> Result<()> {
     for (index, args) in commands.iter().enumerate() {
         println!(
@@ -264,7 +228,12 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
             commands.len(),
             args.join(" ")
         );
-        let status = report::execute(root, summary, "test", args)?;
+        let step_name = if args.first().is_some_and(|arg| arg == "test") {
+            "test"
+        } else {
+            "prepare"
+        };
+        let status = report::execute(root, summary, step_name, args)?;
         anyhow::ensure!(
             status.success(),
             "Check failed ({}): cargo {}",
@@ -273,126 +242,4 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
         );
     }
     Ok(())
-}
-
-fn target_directory(root: &Path, configured: Option<&std::ffi::OsStr>) -> PathBuf {
-    let Some(configured) = configured else {
-        return root.join("target");
-    };
-    let configured = PathBuf::from(configured);
-    if configured.is_absolute() {
-        configured
-    } else {
-        root.join(configured)
-    }
-}
-
-fn cleanup_target_if_oversized(target: &Path, limit: u64) -> Result<()> {
-    let metadata = match fs::symlink_metadata(target) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error).context("Cannot inspect target directory"),
-    };
-    anyhow::ensure!(
-        metadata.file_type().is_dir(),
-        "Refusing to clean non-directory target path: {}",
-        target.display()
-    );
-    let bytes = directory_size(target)?;
-    println!(
-        "Target directory size: {:.2} GiB (cleanup threshold: 100 GiB)",
-        bytes as f64 / GIB_BYTES as f64
-    );
-    if bytes > limit {
-        println!(
-            "Target directory exceeds 100 GiB; removing {}",
-            target.display()
-        );
-        fs::remove_dir_all(target).with_context(|| {
-            format!(
-                "Cannot remove oversized target directory {}",
-                target.display()
-            )
-        })?;
-        println!("Oversized target directory removed.");
-    }
-    Ok(())
-}
-
-fn directory_size(root: &Path) -> Result<u64> {
-    let mut total = 0_u64;
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(&directory)
-            .with_context(|| format!("Cannot read {}", directory.display()))?
-        {
-            let entry = entry?;
-            let metadata = fs::symlink_metadata(entry.path())?;
-            if metadata.file_type().is_dir() {
-                pending.push(entry.path());
-            } else {
-                total = total.saturating_add(metadata.len());
-            }
-        }
-    }
-    Ok(total)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{cleanup_target_if_oversized, target_directory};
-    use anyhow::Result;
-    use std::fs;
-
-    #[test]
-    fn default_target_directory_is_inside_the_repository() {
-        let root = std::path::Path::new("workspace");
-        assert_eq!(target_directory(root, None), root.join("target"));
-    }
-
-    #[test]
-    fn configured_target_directory_can_live_outside_the_repository() -> Result<()> {
-        let root = std::path::Path::new("workspace");
-        let external_root = tempfile::tempdir()?;
-        let external = external_root.path().join("target");
-        anyhow::ensure!(
-            target_directory(root, Some(external.as_os_str())) == external,
-            "configured target directory did not preserve the external path"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn relative_configured_target_directory_is_resolved_from_the_repository() {
-        let root = std::path::Path::new("workspace");
-        assert_eq!(
-            target_directory(root, Some(std::ffi::OsStr::new("../cache/target"))),
-            root.join("../cache/target")
-        );
-    }
-
-    #[test]
-    fn target_at_or_below_limit_is_kept() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let target = root.path().join("target");
-        fs::create_dir_all(&target)?;
-        fs::write(target.join("artifact"), b"1234")?;
-        cleanup_target_if_oversized(&target, 4)?;
-        anyhow::ensure!(target.exists(), "target at the cleanup limit was removed");
-        Ok(())
-    }
-
-    #[test]
-    fn target_above_limit_is_removed() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let target = root.path().join("target/nested");
-        fs::create_dir_all(&target)?;
-        fs::write(target.join("artifact"), b"12345")?;
-        cleanup_target_if_oversized(&root.path().join("target"), 4)?;
-        anyhow::ensure!(
-            !root.path().join("target").exists(),
-            "oversized target directory was not removed"
-        );
-        Ok(())
-    }
 }
