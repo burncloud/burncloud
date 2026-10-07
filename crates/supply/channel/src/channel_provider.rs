@@ -35,7 +35,7 @@ impl ChannelProviderModel {
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 24)
             )
         };
 
