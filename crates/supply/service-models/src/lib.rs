@@ -1,6 +1,8 @@
 //! # BurnCloud Service Models
 //!
-//! 模型服务层，提供简洁的增删改查接口
+//! Supply-side model resolution, manifest handling, downloads and HuggingFace discovery.
+//! This crate deliberately exposes no database CRUD for HuggingFace metadata; the former CRUD
+//! facade was backed only by no-op methods and was removed by #621.
 
 mod manifest;
 mod resolver;
