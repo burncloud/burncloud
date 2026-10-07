@@ -269,7 +269,11 @@ mod tests {
             "black-box server build prerequisite changed unexpectedly"
         );
         anyhow::ensure!(
-            commands.get(1).and_then(|command| command.first()).map(String::as_str) == Some("test"),
+            commands
+                .get(1)
+                .and_then(|command| command.first())
+                .map(String::as_str)
+                == Some("test"),
             "black-box tests must run after the server build prerequisite"
         );
         Ok(())
