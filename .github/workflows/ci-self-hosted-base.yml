@@ -58,6 +58,29 @@ jobs:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
 
+      - name: Prepare persistent Cargo caches
+        if: env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_root="$HOME/.cache/burncloud"
+          cargo_home="$cache_root/cargo"
+          target_dir="$cache_root/target/${{ inputs.check }}"
+          mkdir -p "$cargo_home" "$target_dir"
+
+          # Keep registry/git caches and build artifacts outside the checkout.
+          # actions/checkout runs git clean -ffdx, so checkout-local target/ cannot
+          # be used as a persistent cache on a self-hosted runner.
+          if [[ -f "$HOME/.cargo/config.toml" && ! -e "$cargo_home/config.toml" ]]; then
+            cp "$HOME/.cargo/config.toml" "$cargo_home/config.toml"
+          elif [[ -f "$HOME/.cargo/config" && ! -e "$cargo_home/config" ]]; then
+            cp "$HOME/.cargo/config" "$cargo_home/config"
+          fi
+
+          echo "CARGO_HOME=$cargo_home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
+          echo "$cargo_home/bin" >> "$GITHUB_PATH"
+
       - name: Ensure base Rust toolchain
         if: env.RUN_SELF_HOSTED == 'true'
         shell: bash
