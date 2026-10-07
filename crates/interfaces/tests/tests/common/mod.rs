@@ -16,6 +16,11 @@ pub(crate) mod evidence;
 
 use dotenvy::dotenv;
 use reqwest::Client;
+use burncloud_database::create_database_with_url;
+use burncloud_database_router::RouterDatabase;
+use burncloud_database_user::UserDatabase;
+use burncloud_service_user::JwtSecret;
+use std::sync::Arc;
 use std::env;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -62,6 +67,68 @@ struct ServerHandle {
     /// `None` when the suite reused a server it did not start -- on port 3000, or one named by `E2E_BASE_URL`.
     /// Killing that one would be exactly the mistake item 29 names.
     process: Option<Child>,
+}
+
+pub(crate) struct IsolatedApp {
+    pub(crate) base_url: String,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for IsolatedApp {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// Start an in-process Console server with isolated, shared-memory SQLite state.
+///
+/// This fixture is for unattended API tests: it never reuses port 3000, never
+/// reads the developer's default BurnCloud database, and never leaves an
+/// external `burncloud server` child process behind.
+pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
+    if env::var("MASTER_KEY").is_err() {
+        env::set_var(
+            "MASTER_KEY",
+            "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8",
+        );
+    }
+
+    let database_url = format!(
+        "sqlite:file:burncloud_api_test_{}?mode=memory&cache=shared",
+        uuid::Uuid::new_v4()
+    );
+    let db = create_database_with_url(&database_url)
+        .await
+        .expect("open isolated API-test database");
+    RouterDatabase::init(&db)
+        .await
+        .expect("initialize Router test schema");
+    UserDatabase::init(&db)
+        .await
+        .expect("initialize User test schema");
+
+    let jwt_secret = JwtSecret::new("burncloud-api-test-jwt-secret")
+        .expect("test JWT secret must be valid");
+    let internal_secret =
+        burncloud_server::InternalSecret::new("burncloud-api-test-internal-secret")
+            .expect("test internal secret must be valid");
+    let app = burncloud_server::create_app(Arc::new(db), false, jwt_secret, internal_secret)
+        .await
+        .expect("create isolated API-test server");
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind isolated API-test port");
+    let address = listener.local_addr().expect("read isolated server address");
+    let base_url = format!("http://{address}");
+    let task = tokio::spawn(async move {
+        if let Err(error) = axum::serve(listener, app).await {
+            eprintln!("isolated API-test server stopped with error: {error}");
+        }
+    });
+
+    wait_for_server(&base_url).await;
+    IsolatedApp { base_url, task }
 }
 
 pub(crate) async fn spawn_app() -> String {
