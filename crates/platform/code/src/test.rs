@@ -320,23 +320,25 @@ mod tests {
 
     #[test]
     fn default_target_directory_is_inside_the_repository() {
-        let root = std::path::Path::new("/workspace");
+        let root = std::path::Path::new("workspace");
         assert_eq!(target_directory(root, None), root.join("target"));
     }
 
     #[test]
-    fn configured_target_directory_can_live_outside_the_repository() {
-        let root = std::path::Path::new("/workspace");
-        let external = std::ffi::OsStr::new("/var/cache/burncloud/target");
+    fn configured_target_directory_can_live_outside_the_repository() -> Result<()> {
+        let root = std::path::Path::new("workspace");
+        let external_root = tempfile::tempdir()?;
+        let external = external_root.path().join("target");
         assert_eq!(
-            target_directory(root, Some(external)),
-            std::path::PathBuf::from(external)
+            target_directory(root, Some(external.as_os_str())),
+            external
         );
+        Ok(())
     }
 
     #[test]
     fn relative_configured_target_directory_is_resolved_from_the_repository() {
-        let root = std::path::Path::new("/workspace");
+        let root = std::path::Path::new("workspace");
         assert_eq!(
             target_directory(root, Some(std::ffi::OsStr::new("../cache/target"))),
             root.join("../cache/target")
