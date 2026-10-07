@@ -262,7 +262,7 @@ fn target_directory(root: &Path, configured: Option<&std::ffi::OsStr>) -> PathBu
 }
 
 fn cleanup_target_if_oversized(target: &Path, limit: u64) -> Result<()> {
-    let metadata = match fs::symlink_metadata(&target) {
+    let metadata = match fs::symlink_metadata(target) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error).context("Cannot inspect target directory"),
@@ -272,7 +272,7 @@ fn cleanup_target_if_oversized(target: &Path, limit: u64) -> Result<()> {
         "Refusing to clean non-directory target path: {}",
         target.display()
     );
-    let bytes = directory_size(&target)?;
+    let bytes = directory_size(target)?;
     println!(
         "Target directory size: {:.2} GiB (cleanup threshold: 100 GiB)",
         bytes as f64 / GIB_BYTES as f64
@@ -282,7 +282,7 @@ fn cleanup_target_if_oversized(target: &Path, limit: u64) -> Result<()> {
             "Target directory exceeds 100 GiB; removing {}",
             target.display()
         );
-        fs::remove_dir_all(&target).with_context(|| {
+        fs::remove_dir_all(target).with_context(|| {
             format!(
                 "Cannot remove oversized target directory {}",
                 target.display()
@@ -329,7 +329,10 @@ mod tests {
         let root = std::path::Path::new("workspace");
         let external_root = tempfile::tempdir()?;
         let external = external_root.path().join("target");
-        assert_eq!(target_directory(root, Some(external.as_os_str())), external);
+        anyhow::ensure!(
+            target_directory(root, Some(external.as_os_str())) == external,
+            "configured target directory did not preserve the external path"
+        );
         Ok(())
     }
 
@@ -349,7 +352,7 @@ mod tests {
         fs::create_dir_all(&target)?;
         fs::write(target.join("artifact"), b"1234")?;
         cleanup_target_if_oversized(&target, 4)?;
-        assert!(target.exists());
+        anyhow::ensure!(target.exists(), "target at the cleanup limit was removed");
         Ok(())
     }
 
@@ -360,7 +363,10 @@ mod tests {
         fs::create_dir_all(&target)?;
         fs::write(target.join("artifact"), b"12345")?;
         cleanup_target_if_oversized(&root.path().join("target"), 4)?;
-        assert!(!root.path().join("target").exists());
+        anyhow::ensure!(
+            !root.path().join("target").exists(),
+            "oversized target directory was not removed"
+        );
         Ok(())
     }
 }
