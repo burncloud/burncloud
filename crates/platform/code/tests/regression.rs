@@ -372,8 +372,8 @@ fn existing_message_hook_runs_and_docs_only_receipt_is_skipped() -> Result<()> {
     f.git(&["add", "."])?;
     f.git(&["commit", "-qm", "docs"])?;
     let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
-    assert!(message.contains("BurnCloud-Checks: ➖ SKIP (no code checks executed)"));
-    assert!(message.contains("BurnCloud-Tests: ➖ SKIP"));
+    assert!(message.contains("BurnCloud-Checks: ✅ PASS (tests skipped: no test-relevant changes)"));
+    assert!(message.contains("BurnCloud-Fmt: ✅ PASS"));\n    assert!(message.contains("BurnCloud-Tests: ➖ SKIP"));\n    assert!(message.contains("BurnCloud-Clippy: ✅ PASS"));\n    assert!(message.contains("BurnCloud-Deny: ✅ PASS"));
     assert_eq!(f.latest()?.status, "skipped");
     Ok(())
 }
