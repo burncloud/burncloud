@@ -1,0 +1,142 @@
+name: Reusable / Self-hosted Rust Check
+
+on:
+  workflow_call:
+    inputs:
+      check:
+        description: One of fmt, test, clippy, deny.
+        required: true
+        type: string
+      check-name:
+        description: Human-readable GitHub check name.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-${{ inputs.check }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: ${{ inputs.check-name }}
+    env:
+      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Manual approval required
+        if: env.RUN_SELF_HOSTED != 'true'
+        shell: bash
+        run: |
+          echo "::error::Self-hosted check requires manual approval for this PR."
+          echo "A trusted maintainer must submit an APPROVE review."
+          exit 1
+
+      - name: Validate requested check
+        if: env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        env:
+          REQUESTED_CHECK: ${{ inputs.check }}
+        run: |
+          set -euo pipefail
+          case "$REQUESTED_CHECK" in
+            fmt|test|clippy|deny) ;;
+            *)
+              echo "::error::Unsupported self-hosted Rust check: $REQUESTED_CHECK"
+              exit 2
+              ;;
+          esac
+
+      - name: Checkout PR merge commit
+        if: env.RUN_SELF_HOSTED == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Ensure base Rust toolchain
+        if: env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+          if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+            if command -v rustup >/dev/null 2>&1; then
+              rustup toolchain install stable --profile minimal --no-self-update
+              rustup default stable
+            else
+              curl --proto '=https' --tlsv1.2 --retry 5 --retry-connrefused --fail --show-error --location https://sh.rustup.rs \
+                | sh -s -- -y --profile minimal --default-toolchain stable
+            fi
+          fi
+
+          cargo --version
+          rustc --version
+
+      - name: Prepare OpenSSL environment
+        if: env.RUN_SELF_HOSTED == 'true' && (inputs.check == 'test' || inputs.check == 'clippy')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f /usr/include/openssl/ssl.h ]]; then
+            echo "OPENSSL_INCLUDE_DIR=/usr/include" >> "$GITHUB_ENV"
+            ssl_lib="$(ldconfig -p 2>/dev/null | awk '/libssl\.so/{print $NF; exit}')"
+            if [[ -n "$ssl_lib" ]]; then
+              echo "OPENSSL_LIB_DIR=$(dirname "$ssl_lib")" >> "$GITHUB_ENV"
+            fi
+          fi
+
+      - name: Ensure rustfmt
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'fmt'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --version >/dev/null 2>&1 || rustup component add rustfmt
+
+      - name: Ensure Clippy
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'clippy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --version >/dev/null 2>&1 || rustup component add clippy
+
+      - name: Ensure cargo-deny
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo deny --version >/dev/null 2>&1 || cargo install --locked cargo-deny
+
+      - name: Cargo Fmt
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'fmt'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+
+      - name: Code Test
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'test'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run -p burncloud-code -- test --base "origin/${{ github.event.pull_request.base.ref }}"
+
+      - name: Cargo Clippy
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'clippy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+      - name: Cargo Deny
+        if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo deny check

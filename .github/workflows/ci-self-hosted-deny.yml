@@ -1,73 +1,16 @@
 name: CI / Self-hosted Deny
 
-# Trusted same-repository PRs run automatically on the self-hosted Linux runner.
-# Other PRs receive a real failed check until an allowlisted maintainer APPROVEs them.
+# The trigger stays here so GitHub exposes an independent check for this gate.
+# Execution and self-hosted security policy live in _ci-self-hosted-rust.yml.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
   pull_request_review:
     types: [submitted]
 
-permissions:
-  contents: read
-
-concurrency:
-  group: self-hosted-deny-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   check:
-    name: Cargo Deny
-    env:
-      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
-    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 90
-
-    steps:
-      - name: Manual approval required
-        if: env.RUN_SELF_HOSTED != 'true'
-        shell: bash
-        run: |
-          echo "::error::Self-hosted check requires manual approval for this PR."
-          echo "A trusted maintainer must submit an APPROVE review."
-          exit 1
-
-      - name: Checkout PR merge commit
-        if: env.RUN_SELF_HOSTED == 'true'
-        uses: actions/checkout@v4
-        with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
-          fetch-depth: 0
-
-      - name: Ensure base Rust toolchain
-        if: env.RUN_SELF_HOSTED == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
-            if command -v rustup >/dev/null 2>&1; then
-              rustup toolchain install stable --profile minimal --no-self-update
-              rustup default stable
-            else
-              curl --proto '=https' --tlsv1.2 --retry 5 --retry-connrefused --fail --show-error --location https://sh.rustup.rs \
-                | sh -s -- -y --profile minimal --default-toolchain stable
-            fi
-          fi
-          cargo --version
-          rustc --version
-      - name: Ensure cargo-deny
-        if: env.RUN_SELF_HOSTED == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo deny --version >/dev/null 2>&1 || cargo install --locked cargo-deny
-
-
-      - name: Cargo Deny
-        if: env.RUN_SELF_HOSTED == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo deny check
+    uses: ./.github/workflows/_ci-self-hosted-rust.yml
+    with:
+      check: deny
+      check-name: Cargo Deny
