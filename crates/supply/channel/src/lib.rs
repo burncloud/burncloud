@@ -211,7 +211,10 @@ mod migration_invariants {
 
         let id = ChannelService::create(&db, &mut channel).await?;
         verify(id > 0, "create must assign a positive channel id")?;
-        verify(channel.id == id, "create must write the assigned id back to the channel")?;
+        verify(
+            channel.id == id,
+            "create must write the assigned id back to the channel",
+        )?;
 
         let created_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
         verify(
