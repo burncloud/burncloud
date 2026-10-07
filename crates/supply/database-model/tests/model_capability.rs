@@ -28,12 +28,8 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
 async fn cleanup(db: Database, path: &std::path::Path) {
     db.close().await.ok();
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    std::fs::remove_file(path).unwrap_or_else(|e| {
-        panic!(
-            "test database {} was not removed ({e})",
-            path.display()
-        )
-    });
+    std::fs::remove_file(path)
+        .unwrap_or_else(|e| panic!("test database {} was not removed ({e})", path.display()));
 }
 
 #[tokio::test]
