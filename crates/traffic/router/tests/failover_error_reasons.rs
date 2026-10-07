@@ -13,18 +13,50 @@ use burncloud_database::sqlx;
 use common::{insert_router_token, insert_test_channel, setup_db, start_test_server};
 use std::time::Duration;
 
-async fn seed_price(pool: &sqlx::AnyPool, model: &str) -> anyhow::Result<()> {
-    sqlx::query(
-        "INSERT OR REPLACE INTO billing_prices          (model, currency, input_price, output_price, region)          VALUES (?, 'USD', 1, 1, '')",
-    )
-    .bind(model)
-    .execute(pool)
-    .await?;
+async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::Result<()> {
+    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
+    use burncloud_database_billing::{BillingPriceModel, PriceInput};
+
+    let input = PriceInput {
+        model: model.to_string(),
+        input_price: dollars_to_nano(1.0),
+        output_price: dollars_to_nano(1.0),
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        music_price: None,
+        source: None,
+        region: None,
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: None,
+        supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
+    };
+    BillingPriceModel::upsert(db, &input).await?;
+    assert!(
+        BillingPriceModel::get(db, model, "USD", None).await?.is_some(),
+        "seeded price must be readable through the production lookup"
+    );
     Ok(())
 }
 
 async fn grant_unlimited_quota(pool: &sqlx::AnyPool, key: &str) -> anyhow::Result<()> {
-    sqlx::query("UPDATE user_api_keys SET remain_quota = -1 WHERE key = ?")
+    sqlx::query("UPDATE user_api_keys SET remain_quota = 1000000000 WHERE key = ?")
         .bind(key)
         .execute(pool)
         .await?;
@@ -71,7 +103,7 @@ async fn all_upstreams_failed_reports_network_reason_and_candidate() -> anyhow::
     let token = "tok-reason-network";
     let channel_id = 9_662;
 
-    seed_price(&pool, model).await?;
+    seed_price(&db, model).await?;
     insert_test_channel(
         &pool,
         channel_id,
@@ -89,7 +121,7 @@ async fn all_upstreams_failed_reports_network_reason_and_candidate() -> anyhow::
     start_test_server(router_port, &db_url).await;
 
     let resp = post_chat(router_port, token, model).await?;
-    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(resp.status().as_u16(), 502);
 
     let body: serde_json::Value = resp.json().await?;
     assert_eq!(
@@ -137,7 +169,7 @@ async fn all_upstreams_failed_reports_upstream_status_and_candidate() -> anyhow:
     let token = "tok-reason-status";
     let channel_id = 9_663;
 
-    seed_price(&pool, model).await?;
+    seed_price(&db, model).await?;
     insert_test_channel(
         &pool,
         channel_id,
@@ -155,7 +187,7 @@ async fn all_upstreams_failed_reports_upstream_status_and_candidate() -> anyhow:
     start_test_server(router_port, &db_url).await;
 
     let resp = post_chat(router_port, token, model).await?;
-    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(resp.status().as_u16(), 502);
 
     let body: serde_json::Value = resp.json().await?;
     assert_eq!(body["error"]["code"], "all_upstreams_failed");
