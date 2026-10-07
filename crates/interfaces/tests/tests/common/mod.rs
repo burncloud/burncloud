@@ -109,21 +109,28 @@ pub(crate) async fn spawn_app() -> String {
             .parent()
             .unwrap();
 
-        let binary_path = if cfg!(target_os = "windows") {
-            root_dir.join("target/debug/burncloud.exe")
+        let target_dir = env::var_os("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .map(|path| {
+                if path.is_absolute() {
+                    path
+                } else {
+                    root_dir.join(path)
+                }
+            })
+            .unwrap_or_else(|| root_dir.join("target"));
+        let binary_name = if cfg!(target_os = "windows") {
+            "burncloud.exe"
         } else {
-            root_dir.join("target/debug/burncloud")
+            "burncloud"
         };
+        let binary_path = target_dir.join("debug").join(binary_name);
 
         if !binary_path.exists() {
-            // **Cargo does not build this binary for these tests**, because the tests are integration tests of
-            // another crate. Eleven tests failed with this message before the prerequisite was met, and the
-            // message did not say which command produces the file, so the failure read like a broken test suite
-            // rather than a missing build step. The command is now spelled out.
             panic!(
-                "The black-box API tests need the server binary, which Cargo does not build for them.\n\
+                "The black-box API tests need the prebuilt server binary.\n\
                  Expected: {}\n\
-                 Build it first:  cargo build --bin burncloud\n\
+                 Build it first:  cargo build -p burncloud --bin burncloud --no-default-features\n\
                  Then re-run:     cargo test -p burncloud-tests --test api_tests",
                 binary_path.display()
             );
