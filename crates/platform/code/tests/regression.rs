@@ -577,6 +577,42 @@ fn selects_reverse_dependency_closure_not_unrelated_packages() -> Result<()> {
 }
 
 #[test]
+fn clippy_selection_scopes_packages_and_expands_global_config() -> Result<()> {
+    let f = Fixture::new()?;
+    f.seed()?;
+
+    f.write("crates/a/src/lib.rs", "changed")?;
+    let text = String::from_utf8(f.run(&["clippy", "--plan"])?.stdout)?;
+    assert!(text.contains("Direct packages: a"));
+    assert!(text.contains("Affected packages: a, b, burncloud"));
+    assert!(text.contains(
+        "cargo clippy -p a -p b -p burncloud --all-targets --no-default-features -- -D warnings"
+    ));
+    assert!(!text.contains("-p c"));
+
+    f.run(&["clippy"])?;
+    assert_eq!(
+        f.log()?,
+        "clippy -p a -p b -p burncloud --all-targets --no-default-features\n"
+    );
+
+    fs::write(f.base.join("checks.log"), "")?;
+    f.git(&["checkout", "--", "."])?;
+    f.write("clippy.toml", "configuration")?;
+    let text = String::from_utf8(f.run(&["clippy", "--plan"])?.stdout)?;
+    assert!(text.contains("Selection: full workspace (Clippy configuration changed: clippy.toml)"));
+    assert!(text.contains(
+        "cargo clippy --workspace --all-targets --no-default-features -- -D warnings"
+    ));
+
+    fs::remove_file(f.repo.join("clippy.toml"))?;
+    f.write("deny.toml", "policy only")?;
+    let text = String::from_utf8(f.run(&["clippy", "--plan"])?.stdout)?;
+    assert!(text.contains("No Clippy-relevant changes selected; no lint executed."));
+    Ok(())
+}
+
+#[test]
 fn test_selection_ignores_non_test_config_and_scopes_package_manifests() -> Result<()> {
     let f = Fixture::new()?;
     f.seed()?;
