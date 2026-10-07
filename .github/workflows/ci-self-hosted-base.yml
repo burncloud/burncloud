@@ -210,7 +210,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+          cargo run -p burncloud-code -- clippy --base "origin/${{ github.event.pull_request.base.ref }}"
 
       - name: Cargo Deny
         if: env.RUN_SELF_HOSTED == 'true' && inputs.check == 'deny' && steps.deny_scope.outputs.run == 'true'
