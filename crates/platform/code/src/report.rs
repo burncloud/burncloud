@@ -347,7 +347,11 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
         "Working tree changed after checks; rerun cargo run -- code test --staged"
     );
     if summary.status == "passed" {
-        let test_steps = summary.steps.iter().filter(|step| step.name == "test").count();
+        let test_steps = summary
+            .steps
+            .iter()
+            .filter(|step| step.name == "test")
+            .count();
         anyhow::ensure!(
             test_steps == 1
                 && summary.steps.iter().all(|step| {
