@@ -14,17 +14,17 @@
 )]
 pub(crate) mod evidence;
 
-use dotenvy::dotenv;
-use reqwest::Client;
 use burncloud_database::create_database_with_url;
 use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
 use burncloud_service_user::JwtSecret;
-use std::sync::Arc;
+use dotenvy::dotenv;
+use reqwest::Client;
 use std::env;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -107,8 +107,8 @@ pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
         .await
         .expect("initialize User test schema");
 
-    let jwt_secret = JwtSecret::new("burncloud-api-test-jwt-secret")
-        .expect("test JWT secret must be valid");
+    let jwt_secret =
+        JwtSecret::new("burncloud-api-test-jwt-secret").expect("test JWT secret must be valid");
     let internal_secret =
         burncloud_server::InternalSecret::new("burncloud-api-test-internal-secret")
             .expect("test internal secret must be valid");
