@@ -123,6 +123,14 @@ mod migration_invariants {
 
     static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
+    fn verify(condition: bool, message: &'static str) -> TestResult<()> {
+        if condition {
+            Ok(())
+        } else {
+            Err(Box::new(std::io::Error::other(message)))
+        }
+    }
+
     fn sample_channel(name: &str, models: &str, group: &str, status: i32) -> Channel {
         Channel {
             id: 0,
@@ -202,51 +210,68 @@ mod migration_invariants {
         let mut channel = sample_channel("service", "m1,m2", "default", 1);
 
         let id = ChannelService::create(&db, &mut channel).await?;
-        assert!(id > 0);
-        assert_eq!(channel.id, id);
+        verify(id > 0, "create must assign a positive channel id")?;
+        verify(channel.id == id, "create must write the assigned id back to the channel")?;
 
         let created_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
-        assert_eq!(
-            created_abilities.len(),
-            2,
-            "create must synchronize abilities itself"
-        );
+        verify(
+            created_abilities.len() == 2,
+            "create must synchronize abilities itself",
+        )?;
 
         channel.models = "m2,m3".to_owned();
         channel.group = "premium".to_owned();
         channel.status = 0;
         ChannelService::update(&db, &channel).await?;
         let disabled_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
-        assert!(
+        verify(
             disabled_abilities.is_empty(),
-            "disabling through update must remove abilities without a second sync call"
-        );
+            "disabling through update must remove abilities without a second sync call",
+        )?;
 
         channel.status = 1;
         ChannelService::update(&db, &channel).await?;
         let reenabled = ChannelAbilityModel::list_by_channel(&db, id).await?;
-        assert_eq!(reenabled.len(), 2);
+        verify(
+            reenabled.len() == 2,
+            "re-enabling through update must restore both abilities",
+        )?;
         let all_premium = reenabled.iter().all(|ability| ability.group == "premium");
-        assert!(all_premium);
+        verify(
+            all_premium,
+            "re-enabled abilities must use the updated premium group",
+        )?;
         let mut models: Vec<_> = reenabled
             .iter()
             .map(|ability| ability.model.as_str())
             .collect();
         models.sort_unstable();
-        assert_eq!(models, vec!["m2", "m3"]);
+        verify(
+            models == vec!["m2", "m3"],
+            "re-enabled abilities must reflect the updated model list",
+        )?;
 
         let fetched = ChannelService::get_by_id(&db, id).await?;
-        assert_eq!(
-            fetched.as_ref().map(|item| item.name.as_str()),
-            Some("service")
-        );
+        verify(
+            fetched.as_ref().map(|item| item.name.as_str()) == Some("service"),
+            "get_by_id must return the created channel",
+        )?;
         let listed = ChannelService::list(&db, 100, 0).await?;
-        assert!(listed.iter().any(|item| item.id == id));
+        verify(
+            listed.iter().any(|item| item.id == id),
+            "list must include the created channel",
+        )?;
 
         ChannelService::delete(&db, id).await?;
-        assert!(ChannelService::get_by_id(&db, id).await?.is_none());
+        verify(
+            ChannelService::get_by_id(&db, id).await?.is_none(),
+            "delete must remove the channel",
+        )?;
         let remaining_abilities = ChannelAbilityModel::list_by_channel(&db, id).await?;
-        assert!(remaining_abilities.is_empty());
+        verify(
+            remaining_abilities.is_empty(),
+            "delete must remove the channel abilities",
+        )?;
 
         cleanup(db, &path).await
     }
@@ -260,10 +285,10 @@ mod migration_invariants {
         let mut channel = sample_channel("duplicate", "same,same", "default", 1);
 
         let result = ChannelService::create(&db, &mut channel).await;
-        assert!(
+        verify(
             result.is_err(),
-            "#744 is a structural migration and must not change the existing duplicate-model failure behavior"
-        );
+            "#744 is a structural migration and must not change the existing duplicate-model failure behavior",
+        )?;
 
         cleanup(db, &path).await
     }
