@@ -251,8 +251,8 @@ fn compute_breakdown(
         request_id,
         "cache_write",
     );
-    // Kept as the published sum of the two so existing consumers and the total
-    // are unchanged; `total()` sums the split fields (#618).
+    // Keep the published merged field authoritative for total billing
+    // compatibility; the split fields are attribution detail (#618).
     let cache_cost = cache_read_cost.saturating_add(cache_write_cost);
 
     // --- Audio tokens ---
