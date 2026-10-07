@@ -70,4 +70,4 @@ jobs:
               export OPENSSL_LIB_DIR="$(dirname "$ssl_lib")"
             fi
           fi
-          cargo run -p burncloud-code -- test --base "origin/${{ github.base_ref }}"
+          cargo run -p burncloud-code -- test --base "origin/${{ github.event.pull_request.base.ref }}"
