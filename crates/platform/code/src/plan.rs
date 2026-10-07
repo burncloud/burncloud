@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+const KNOWN_TEST_BASELINE: &str =
+    include_str!("../../../../.github/test-plan/known-test-baseline.txt");
+
 #[derive(Deserialize)]
 pub(crate) struct Metadata {
     packages: Vec<Package>,
@@ -47,6 +50,38 @@ fn global(path: &str) -> bool {
             path,
             "clippy.toml" | "deny.toml" | "rust-toolchain" | "rust-toolchain.toml"
         )
+}
+
+fn known_test_skips() -> Result<Vec<&'static str>> {
+    let mut names = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for (index, raw) in KNOWN_TEST_BASELINE.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = line.split('|').map(str::trim).collect();
+        anyhow::ensure!(
+            fields.len() == 3,
+            "Invalid known-test baseline line {}: expected test_name|issue_number|reason",
+            index + 1
+        );
+        let name = fields[0];
+        let issue = fields[1];
+        let reason = fields[2];
+        anyhow::ensure!(!name.is_empty(), "Invalid known-test baseline line {}: empty test name", index + 1);
+        anyhow::ensure!(
+            issue.parse::<u64>().is_ok(),
+            "Invalid known-test baseline line {}: issue number must be numeric",
+            index + 1
+        );
+        anyhow::ensure!(!reason.is_empty(), "Invalid known-test baseline line {}: empty reason", index + 1);
+        anyhow::ensure!(seen.insert(name), "Duplicate known-test baseline entry: {name}");
+        names.push(name);
+    }
+
+    Ok(names)
 }
 
 pub(crate) fn select(
@@ -145,9 +180,9 @@ pub(crate) fn select(
 }
 
 impl Plan {
-    pub(crate) fn commands(&self) -> Vec<Vec<String>> {
+    pub(crate) fn commands(&self) -> Result<Vec<Vec<String>>> {
         if self.affected.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let mut scope = Vec::new();
         if self.full_reason.is_some() {
@@ -160,6 +195,13 @@ impl Plan {
         let mut test = vec!["test".to_owned()];
         test.extend(scope.clone());
         test.push("--no-default-features".to_owned());
+        let known_skips = known_test_skips()?;
+        if !known_skips.is_empty() {
+            test.push("--".to_owned());
+            for name in known_skips {
+                test.extend(["--skip".to_owned(), name.to_owned()]);
+            }
+        }
         let mut clippy = vec!["clippy".to_owned()];
         clippy.extend(scope);
         clippy.extend([
@@ -169,11 +211,62 @@ impl Plan {
             "-D".to_owned(),
             "warnings".to_owned(),
         ]);
-        vec![
+        Ok(vec![
             vec!["fmt".into(), "--all".into(), "--".into(), "--check".into()],
             test,
             clippy,
             vec!["deny".into(), "check".into()],
-        ]
+        ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{known_test_skips, Plan};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn known_test_baseline_is_the_reviewed_seven() -> anyhow::Result<()> {
+        assert_eq!(
+            known_test_skips()?,
+            vec![
+                "test_claude_adaptor",
+                "test_deepseek_proxy",
+                "test_qwen_proxy",
+                "test_round_robin_balancer",
+                "test_failover",
+                "test_vertex_full_flow",
+                "test_login_user_success",
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_command_applies_known_baseline_as_libtest_arguments() -> anyhow::Result<()> {
+        let plan = Plan {
+            full_reason: Some("test".to_owned()),
+            direct: BTreeSet::new(),
+            affected: BTreeSet::from(["burncloud-code".to_owned()]),
+        };
+        let commands = plan.commands()?;
+        let test = &commands[1];
+        let separator = test
+            .iter()
+            .position(|arg| arg == "--")
+            .expect("known test baseline must add libtest arguments");
+        assert_eq!(
+            &test[..separator],
+            ["test", "--workspace", "--no-default-features"]
+        );
+        let skip_names: Vec<_> = test[separator + 1..]
+            .chunks_exact(2)
+            .map(|chunk| {
+                assert_eq!(chunk[0], "--skip");
+                chunk[1].as_str()
+            })
+            .collect();
+        assert_eq!(skip_names, known_test_skips()?);
+        Ok(())
     }
 }
