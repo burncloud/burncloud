@@ -218,17 +218,18 @@ mod tests {
 
     #[test]
     fn known_test_baseline_is_the_reviewed_seven() -> anyhow::Result<()> {
-        assert_eq!(
-            known_test_skips()?,
-            vec![
-                "test_claude_adaptor",
-                "test_deepseek_proxy",
-                "test_qwen_proxy",
-                "test_round_robin_balancer",
-                "test_failover",
-                "test_vertex_full_flow",
-                "test_login_user_success",
-            ]
+        anyhow::ensure!(
+            known_test_skips()?
+                == vec![
+                    "test_claude_adaptor",
+                    "test_deepseek_proxy",
+                    "test_qwen_proxy",
+                    "test_round_robin_balancer",
+                    "test_failover",
+                    "test_vertex_full_flow",
+                    "test_login_user_success",
+                ],
+            "known test baseline changed unexpectedly"
         );
         Ok(())
     }
@@ -245,19 +246,25 @@ mod tests {
         let separator = test
             .iter()
             .position(|arg| arg == "--")
-            .expect("known test baseline must add libtest arguments");
-        assert_eq!(
-            &test[..separator],
-            ["test", "--workspace", "--no-default-features"]
+            .ok_or_else(|| anyhow::anyhow!("known test baseline must add libtest arguments"))?;
+        anyhow::ensure!(
+            &test[..separator] == ["test", "--workspace", "--no-default-features"],
+            "cargo test prefix changed unexpectedly"
         );
-        let skip_names: Vec<_> = test[separator + 1..]
-            .chunks_exact(2)
-            .map(|chunk| {
-                assert_eq!(chunk[0], "--skip");
-                chunk[1].as_str()
-            })
-            .collect();
-        assert_eq!(skip_names, known_test_skips()?);
+        let libtest_args = &test[separator + 1..];
+        anyhow::ensure!(
+            libtest_args.len() % 2 == 0,
+            "known skip arguments must be --skip/name pairs"
+        );
+        let mut skip_names = Vec::new();
+        for pair in libtest_args.chunks(2) {
+            anyhow::ensure!(pair[0] == "--skip", "unexpected libtest argument: {}", pair[0]);
+            skip_names.push(pair[1].as_str());
+        }
+        anyhow::ensure!(
+            skip_names == known_test_skips()?,
+            "known test skip arguments changed unexpectedly"
+        );
         Ok(())
     }
 }
