@@ -9,9 +9,9 @@ of describing the intention as if it were the behaviour.
 
 ## What triggers what, after this change
 
-The verification model changed. Checks used to run on GitHub for every pull request and every push to
-`main`; they now run on the developer's machine before the commit exists, and **almost nothing runs
-automatically on GitHub any more**.
+The verification model is split between local hooks and trusted self-hosted PR checks. Developers run
+the same four quality responsibilities before commit, while GitHub exposes independent fmt, test,
+Clippy and deny verdicts for trusted same-repository pull requests (or after maintainer approval).
 
 | Workflow | Trigger | Why |
 | --- | --- | --- |
@@ -30,11 +30,11 @@ automatically on GitHub any more**.
 
 Two consequences worth stating plainly, because neither is obvious from the files:
 
-* **Nothing on GitHub gates a pull request any more.** The pre-commit hook is the gate. It can be
-  bypassed with `git commit --no-verify`, and nothing on the GitHub side will notice. Re-enabling a
-  check on PRs means adding a trigger back, not re-adding a job.
-* **A push that does not change a version runs no checks at all** except the Gitee mirror. That is the
-  intent: the local gate has already run, and re-running it remotely would only duplicate it.
+* **The PR gate is self-hosted and trust-gated.** Same-repository PRs from allowlisted users run
+  automatically; other PRs receive failed placeholder checks until an allowlisted maintainer submits
+  an APPROVE review. Untrusted code is never sent to the persistent self-hosted runner automatically.
+* **A push that does not change a version still runs no push-time quality checks** except the Gitee
+  mirror. PR checks and the local hook are the quality gates; release/version workflows remain separate.
 
 ### The local gate
 
@@ -49,26 +49,10 @@ The same responsibilities are split into four self-hosted PR workflows so each c
 independent GitHub verdict: fmt, affected tests, Clippy and deny. `--plan`, `--base REF` and
 `--all` remain available for manual test-scope verification.
 
-**One deliberate divergence, measured rather than assumed.** PR #719 added `-- -D warnings` to the
-Clippy command in `crates/platform/code/src/plan.rs`, so the local gate now fails an affected package
-that produces a warning. The gate does **not** do that, because it runs `--workspace`:
-
-```
-$ cargo clippy --workspace --all-targets --no-default-features -- -D warnings
-error: non-binding `let` on an expression with `#[must_use]` type
-error: the function has a cognitive complexity of (41/20)
-error: could not compile `burncloud-code` (lib) due to 3 previous errors
-error: could not compile `burncloud-loops` (lib) due to 20 previous errors
-$ echo $LASTEXITCODE
-101
-```
-
-The workspace has pre-existing Clippy warnings in several crates — `burncloud-code`, `burncloud-database`,
-`burncloud-commerce-contracts`, `burncloud-loops` and others. The local hook does not hit them because it
-lints only the packages a change affects; a workspace-wide run does. So the gate stays at warnings-not-
-denied, and **the two are not identical for Clippy**: a change can pass the hook while adding a warning to
-a crate the hook did not select. Making them identical means clearing the workspace warning baseline
-first, which is its own change and not a trigger change.
+**Clippy is deliberately outside `code test`.** `code test` now has one responsibility:
+select affected packages and run their Cargo tests. Strict Clippy is a separate workspace-wide gate in
+the managed pre-commit hook and in `ci-self-hosted-clippy.yml`; this keeps lint policy independent from
+test-scope selection and prevents a lint configuration change from inflating the test plan.
 
 The `code-init` job in `ci-architecture.yml` runs `cargo test -p burncloud-code` on Windows and Linux.
 Native Rust regression tests verify real Git commits and selection, with Cargo check execution stubbed.
@@ -297,11 +281,10 @@ mechanism is the local hook.
   target groupings belong in the workflow matrix, and the coverage matrix is documentation only.
 * `run` steps use Bash. Shell scripts must not swallow failures with `|| true`, and a step must not
   report success when its command did not run.
-* The four gate commands are named in exactly one file, `ci-quality.yml`, and nowhere else. The
-  release path calls that file rather than repeating it. A second copy is a second thing to update and
-  two verdicts to reconcile.
-* Any new check has to answer "why is this not the local gate?" before it earns a workflow. If the
-  answer is "it is the local gate", it belongs in `ci-quality.yml`.
+* PR quality responsibilities are intentionally split into four self-hosted workflows so each produces
+  an independent GitHub verdict. Keep their command semantics aligned with the managed pre-commit hook.
+* `ci-quality.yml` remains the manual/release workspace gate; do not silently weaken either path when
+  changing one of the shared quality commands.
 
 ## Planned changes (not implemented)
 
