@@ -433,7 +433,7 @@ async fn model_mapping_may_target_a_model_already_declared_in_models() {
 }
 
 // -------------------------------------------------------------------------------------------
-// update, and the ability rows it does not touch
+// update, persisted configuration, and synchronized ability rows
 // -------------------------------------------------------------------------------------------
 
 #[tokio::test]
