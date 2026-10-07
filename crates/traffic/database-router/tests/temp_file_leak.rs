@@ -140,7 +140,7 @@ impl Drop for TestDb {
             return;
         };
         let path = self.path.clone();
-        let _ = std::thread::Builder::new()
+        match std::thread::Builder::new()
             .name("bc-leak-guard-fallback".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
@@ -151,9 +151,15 @@ impl Drop for TestDb {
                         eprintln!("test database close failed (cleanup continues): {e}");
                     }
                 }
-                let _ = remove_all_blocking(database_files(&path));
-            })
-            .map(|handle| handle.join());
+                drop(remove_all_blocking(database_files(&path)));
+            }) {
+            Ok(handle) => {
+                if handle.join().is_err() {
+                    eprintln!("test database fallback cleanup thread panicked");
+                }
+            }
+            Err(e) => eprintln!("failed to spawn test database fallback cleanup thread: {e}"),
+        }
     }
 }
 
