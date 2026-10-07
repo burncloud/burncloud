@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -7,9 +6,6 @@ use anyhow::{Context, Result};
 
 use crate::plan::{self, Metadata};
 use crate::report;
-
-const GIB_BYTES: u64 = 1024 * 1024 * 1024;
-const TARGET_LIMIT_BYTES: u64 = 100 * GIB_BYTES;
 
 pub(crate) struct Options {
     pub(crate) all: bool,
@@ -143,15 +139,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
     let root = PathBuf::from(
         git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
-    let result = (|| {
-        crate::init::ensure_environment(&root)
-            .context("Could not prepare required code-test tools")?;
-        run_in_root(&root, options)
-    })();
-    if let Err(error) = cleanup_target_if_oversized(&root, TARGET_LIMIT_BYTES) {
-        eprintln!("Warning: target cleanup failed: {error:#}");
-    }
-    result
+    run_in_root(&root, options)
 }
 
 fn run_in_root(root: &Path, options: Options) -> Result<()> {
@@ -163,8 +151,8 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     for file in &files {
         println!("  {file}");
     }
-    if !options.all && files.iter().all(|file| plan::documentation(file)) {
-        println!("No code changes selected; no checks executed. Use --all for the full workspace or --base REF for branch changes.");
+    if !options.all && files.iter().all(|file| plan::no_test_impact(file)) {
+        println!("No test-relevant changes selected; no tests executed. Use --all for the full workspace or --base REF for branch changes.");
         if !options.plan_only {
             let mut summary = report::new(
                 root,
@@ -197,7 +185,7 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
         "Affected packages: {}",
         plan.affected.iter().cloned().collect::<Vec<_>>().join(", ")
     );
-    let commands = plan.commands();
+    let commands = plan.commands()?;
     for args in &commands {
         println!("  cargo {}", args.join(" "));
     }
@@ -228,7 +216,7 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
         result.as_ref().err().map(ToString::to_string),
     )?;
     result?;
-    println!("All selected checks passed.");
+    println!("All selected tests passed.");
     Ok(())
 }
 
@@ -240,12 +228,12 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
             commands.len(),
             args.join(" ")
         );
-        let status = report::execute(
-            root,
-            summary,
-            ["fmt", "test", "clippy", "deny"][index],
-            args,
-        )?;
+        let step_name = if args.first().is_some_and(|arg| arg == "test") {
+            "test"
+        } else {
+            "prepare"
+        };
+        let status = report::execute(root, summary, step_name, args)?;
         anyhow::ensure!(
             status.success(),
             "Check failed ({}): cargo {}",
@@ -254,85 +242,4 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
         );
     }
     Ok(())
-}
-
-fn cleanup_target_if_oversized(root: &Path, limit: u64) -> Result<()> {
-    let target = root.join("target");
-    let metadata = match fs::symlink_metadata(&target) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error).context("Cannot inspect target directory"),
-    };
-    anyhow::ensure!(
-        metadata.file_type().is_dir(),
-        "Refusing to clean non-directory target path: {}",
-        target.display()
-    );
-    let bytes = directory_size(&target)?;
-    println!(
-        "Target directory size: {:.2} GiB (cleanup threshold: 100 GiB)",
-        bytes as f64 / GIB_BYTES as f64
-    );
-    if bytes > limit {
-        println!(
-            "Target directory exceeds 100 GiB; removing {}",
-            target.display()
-        );
-        fs::remove_dir_all(&target).with_context(|| {
-            format!(
-                "Cannot remove oversized target directory {}",
-                target.display()
-            )
-        })?;
-        println!("Oversized target directory removed.");
-    }
-    Ok(())
-}
-
-fn directory_size(root: &Path) -> Result<u64> {
-    let mut total = 0_u64;
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(&directory)
-            .with_context(|| format!("Cannot read {}", directory.display()))?
-        {
-            let entry = entry?;
-            let metadata = fs::symlink_metadata(entry.path())?;
-            if metadata.file_type().is_dir() {
-                pending.push(entry.path());
-            } else {
-                total = total.saturating_add(metadata.len());
-            }
-        }
-    }
-    Ok(total)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cleanup_target_if_oversized;
-    use anyhow::Result;
-    use std::fs;
-
-    #[test]
-    fn target_at_or_below_limit_is_kept() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let target = root.path().join("target");
-        fs::create_dir_all(&target)?;
-        fs::write(target.join("artifact"), b"1234")?;
-        cleanup_target_if_oversized(root.path(), 4)?;
-        assert!(target.exists());
-        Ok(())
-    }
-
-    #[test]
-    fn target_above_limit_is_removed() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let target = root.path().join("target/nested");
-        fs::create_dir_all(&target)?;
-        fs::write(target.join("artifact"), b"12345")?;
-        cleanup_target_if_oversized(root.path(), 4)?;
-        assert!(!root.path().join("target").exists());
-        Ok(())
-    }
 }

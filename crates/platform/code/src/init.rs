@@ -6,7 +6,21 @@ use std::process::Command;
 
 const HOOK: &str = include_str!("../../../../.github/hooks/pre-commit");
 const MESSAGE_HOOK: &str = include_str!("../../../../.github/hooks/commit-msg");
-// Exact previous managed wrapper: upgrade it without chaining the deleted script.
+const PREVIOUS_HOOK: &str = r#"#!/bin/sh
+# BurnCloud managed pre-commit hook. Reinstall with: cargo run -- code init
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+cargo run --quiet -- code test --staged
+
+# Keep the previous hook's interpreter, arguments and exit status intact.
+hooks=$(git rev-parse --git-path hooks)
+if [ -x "$hooks/pre-commit.burncloud-original" ]; then
+    exec "$hooks/pre-commit.burncloud-original" "$@"
+fi
+"#;
+// Older managed wrapper: upgrade it without chaining the deleted script.
 const LEGACY_HOOK: &str = r#"#!/bin/sh
 # BurnCloud managed pre-commit hook. Reinstall with: cargo run -- code init
 set -eu
@@ -46,7 +60,7 @@ pub(crate) fn init() -> io::Result<()> {
         hooks.display()
     );
     println!("Required tools ready: rustfmt, Clippy and cargo-deny.");
-    println!("Commits run code test --staged: formatting, affected tests, Clippy and cargo deny.");
+    println!("Commits run cargo fmt, affected code test, cargo clippy and cargo deny.");
     Ok(())
 }
 
@@ -83,7 +97,7 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
         Some(1) => {}
         Some(0) => {
             return Err(Error::other(
-                "core.hooksPath is already configured. Integrate cargo run -- code test --staged into your existing hook manager, or remove that setting before code init.",
+                "core.hooksPath is already configured. Integrate cargo fmt, cargo run -- code test --staged, cargo clippy and cargo deny into your existing hook manager, or remove that setting before code init.",
             ));
         }
         _ => return Err(Error::other("Unable to inspect Git core.hooksPath.")),
@@ -93,17 +107,18 @@ fn install(directory: &Path) -> io::Result<PathBuf> {
     let hooks = root.join(git(&root, &["rev-parse", "--git-path", "hooks"])?);
     fs::create_dir_all(&hooks)?;
     // Check both hooks before changing either one.
+    let pre_commit_legacy: &[&str] = &[PREVIOUS_HOOK, LEGACY_HOOK];
     for (name, content, legacy) in [
-        ("pre-commit", HOOK, Some(LEGACY_HOOK)),
-        ("commit-msg", MESSAGE_HOOK, None),
+        ("pre-commit", HOOK, pre_commit_legacy),
+        ("commit-msg", MESSAGE_HOOK, &[]),
     ] {
         inspect(&hooks, name, content, legacy)?;
     }
     // Install tools before activating either hook. A failed installation leaves
     // the existing Git hooks unchanged, and a later code init can retry.
     ensure_environment(&root)?;
-    install_hook(&hooks, "pre-commit", HOOK, Some(LEGACY_HOOK))?;
-    install_hook(&hooks, "commit-msg", MESSAGE_HOOK, None)?;
+    install_hook(&hooks, "pre-commit", HOOK, &[PREVIOUS_HOOK, LEGACY_HOOK])?;
+    install_hook(&hooks, "commit-msg", MESSAGE_HOOK, &[])?;
     Ok(hooks)
 }
 
@@ -139,7 +154,7 @@ fn ensure_tool(root: &Path, tool: &str, installer: &str, args: &[&str]) -> io::R
     Ok(())
 }
 
-fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io::Result<()> {
+fn inspect(hooks: &Path, name: &str, content: &str, legacy: &[&str]) -> io::Result<()> {
     let hook = hooks.join(name);
     let backup = hooks.join(format!("{name}.burncloud-original"));
     let existing = match fs::symlink_metadata(&hook) {
@@ -152,7 +167,9 @@ fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io:
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => return Err(error),
     };
-    let upgrading = legacy.is_some_and(|text| existing.as_deref() == Some(text.as_bytes()));
+    let upgrading = legacy
+        .iter()
+        .any(|text| existing.as_deref() == Some(text.as_bytes()));
     if existing.as_deref() != Some(content.as_bytes()) && !upgrading {
         match fs::symlink_metadata(&backup) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -168,7 +185,7 @@ fn inspect(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io:
     Ok(())
 }
 
-fn install_hook(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -> io::Result<()> {
+fn install_hook(hooks: &Path, name: &str, content: &str, legacy: &[&str]) -> io::Result<()> {
     let hook = hooks.join(name);
     let backup = hooks.join(format!("{name}.burncloud-original"));
     // Lock before reading existing state, including across linked worktrees.
@@ -188,7 +205,9 @@ fn install_hook(hooks: &Path, name: &str, content: &str, legacy: Option<&str>) -
             make_executable(&hook)?;
             return Ok(());
         }
-        let upgrading = legacy.is_some_and(|text| existing.as_deref() == Some(text.as_bytes()));
+        let upgrading = legacy
+            .iter()
+            .any(|text| existing.as_deref() == Some(text.as_bytes()));
         file.write_all(content.as_bytes())?;
         file.sync_all()?;
         drop(file);

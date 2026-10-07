@@ -22,11 +22,10 @@ components with `rustup component add` and missing cargo-deny with
 `cargo install --locked cargo-deny`. It verifies each command before activating
 the Git hooks. Repeating `code init` does not reinstall available tools.
 
-Every `code test` invocation reuses the same environment bootstrap before selection
-or execution. Missing rustfmt, Clippy or cargo-deny is installed automatically, so
-local development and self-hosted CI have one source of truth for required Rust
-quality tools. Cargo/rustup themselves must already be available because they are
-needed to start the command.
+The `code test` command owns test selection and test execution only. It does not
+install or run rustfmt, Clippy or cargo-deny. `code init` remains responsible for
+installing those tools because the managed pre-commit hook runs them as independent
+quality gates.
 
 The lightweight equivalent, useful when application compilation is broken, is
 `cargo run -p burncloud-code -- test` (or `-- init`). Both binaries use the same
@@ -44,7 +43,9 @@ command definition and implementation. Tests are `cargo test -p burncloud-code`.
 | `--last` | Show the latest local status, per-check logs and parsed test counts |
 | Source, assets or test data in a package | Owning package plus every transitive workspace consumer |
 | Root application `src/` or `crates/interfaces/cli/` | Root application and its consumers |
-| Any Cargo manifest/lock, shared checks/toolchain configuration, `.github` automation | Whole workspace |
+| Root `Cargo.toml`/`Cargo.lock`, `.cargo/**`, Rust toolchain files | Whole workspace |
+| A package's own `Cargo.toml` | Owning package plus every transitive workspace consumer |
+| `.github/**`, `clippy.toml`, `deny.toml` | No test impact; ignored for test selection |
 | Unknown path | Whole workspace, with the path printed as the reason |
 | Only root README/license or `.github/README.md` | No checks, explicitly reported |
 | No changes | No checks, explicitly reported; use `--all` or `--base REF` |
@@ -61,36 +62,33 @@ excluded: unknown shared documentation forces the whole workspace.
 
 ## Execution contract
 
-For any selected code changes, run in order:
+For selected code changes, `code test` runs only:
 
-1. `cargo fmt --all -- --check`
-2. `cargo test -p <affected> ... --no-default-features` (includes package integration/doc tests)
-3. `cargo clippy -p <affected> ... --all-targets --no-default-features`
-4. `cargo deny check` (whole dependency graph, including advisories)
+1. `cargo test -p <affected> ... --no-default-features` (includes package integration/doc tests)
 
-Full selection replaces `-p ...` with `--workspace`. Required Rust quality tools are
-prepared before selection/execution; a failed installation stops immediately and
-returns failure to Git/the caller. Output states what was selected and whether checks
-actually ran. Existing ignores, external test prerequisites and feature policies
+Full selection replaces `-p ...` with `--workspace`. The managed pre-commit hook
+owns the full local quality sequence: `cargo fmt --all -- --check`, affected
+`code test --staged`, strict workspace Clippy, then `cargo deny check`. Output
+states what test scope was selected and whether tests actually ran. Existing ignores, external test prerequisites and feature policies
 remain in effect; this command does not claim to run ignored tests, every feature
 combination, UI convention scripts or other operating systems. Dynamic relationships
 not represented in Cargo remain a reason to run `--all` and retain the existing CI
 suites. No test-result cache is used. Source edits and dependency allowlist changes
 are never automated here.
 
-After every `code test` invocation, BurnCloud measures the repository `target/`
-directory. If its apparent file size is greater than 100 GiB, the directory is
-removed. Cleanup also runs after a failed quality check. Cleanup errors are reported
-as warnings so housekeeping cannot replace the actual code-test result.
+`code test` does not own Cargo target-cache housekeeping. Trusted self-hosted
+GitHub Actions use the shared `~/.cache/burncloud/target` directory and perform
+the 100 GiB size check as the final workflow step, after the Rust check has
+finished. Local `code test` runs therefore never delete the developer's target
+directory as a side effect.
 
 Each executed check writes its full output under `.git/burncloud/checks/<run>/`,
 alongside `summary.json`; `latest.json` tracks the most recent result. The terminal
 shows ✅/❌, log locations, and unit/integration/doc test counts. A count is marked
-unavailable when Cargo emitted no parseable summary. A skipped documentation-only
-run is recorded explicitly as `SKIP`.
+unavailable when Cargo emitted no parseable summary. A documentation-only `code test` run records the test step as `SKIP`; the surrounding pre-commit fmt, Clippy and deny gates still run independently.
 
-The installed pre-commit hook runs `cargo run --quiet -- code test --staged`, then
-the preserved original hook. The commit-msg hook runs the preserved original hook
+The installed pre-commit hook runs formatting, `cargo run --quiet -- code test --staged`,
+strict workspace Clippy and cargo-deny in that order, then the preserved original hook. The commit-msg hook runs the preserved original hook
 and then stamps the message with check status, test counts and the staged tree hash.
 It rejects a changed index or HEAD after checks. On `--amend`, the previous receipt
 is replaced. Full logs remain local; commit messages carry only the compact result.

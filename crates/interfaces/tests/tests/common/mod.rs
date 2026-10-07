@@ -19,16 +19,21 @@ use burncloud_database_router::RouterDatabase;
 use burncloud_database_user::UserDatabase;
 use burncloud_service_user::JwtSecret;
 use dotenvy::dotenv;
+use burncloud_tests::TestClient;
 use reqwest::Client;
+use serde_json::json;
 use std::env;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 static SERVER_HANDLE: OnceLock<ServerHandle> = OnceLock::new();
+static ADMIN_JWT: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+
+const TEST_JWT_SECRET: &str = "burncloud-api-tests-jwt-secret";
+const TEST_INTERNAL_SECRET: &str = "burncloud-api-tests-internal-secret";
 
 /// A handle to the server the suite is talking to.
 ///
@@ -69,9 +74,20 @@ struct ServerHandle {
     process: Option<Child>,
 }
 
+/// Owns a short-lived in-process server and its isolated administrator identity.
+///
+/// Dropping the handle aborts the listener; unlike the external-server fixture,
+/// nothing is stored in a static process handle.
 pub(crate) struct IsolatedApp {
     pub(crate) base_url: String,
+    admin_token: String,
     task: tokio::task::JoinHandle<()>,
+}
+
+impl IsolatedApp {
+    pub(crate) fn admin_client(&self) -> TestClient {
+        TestClient::new(&self.base_url).with_token(&self.admin_token)
+    }
 }
 
 impl Drop for IsolatedApp {
@@ -80,11 +96,9 @@ impl Drop for IsolatedApp {
     }
 }
 
-/// Start an in-process Console server with isolated, shared-memory SQLite state.
-///
-/// This fixture is for unattended API tests: it never reuses port 3000, never
-/// reads the developer's default BurnCloud database, and never leaves an
-/// external `burncloud server` child process behind.
+/// Start an in-process Console server on an ephemeral port, with a unique
+/// shared-memory SQLite database. Unlike spawn_app, this fixture never touches
+/// E2E_BASE_URL, port 3000, or the developer's on-disk database.
 pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
     if env::var("MASTER_KEY").is_err() {
         env::set_var(
@@ -112,7 +126,7 @@ pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
     let internal_secret =
         burncloud_server::InternalSecret::new("burncloud-api-test-internal-secret")
             .expect("test internal secret must be valid");
-    let app = burncloud_server::create_app(Arc::new(db), false, jwt_secret, internal_secret)
+    let router = burncloud_server::create_app(Arc::new(db), false, jwt_secret, internal_secret)
         .await
         .expect("create isolated API-test server");
 
@@ -122,13 +136,49 @@ pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
     let address = listener.local_addr().expect("read isolated server address");
     let base_url = format!("http://{address}");
     let task = tokio::spawn(async move {
-        if let Err(error) = axum::serve(listener, app).await {
+        if let Err(error) = axum::serve(listener, router).await {
             eprintln!("isolated API-test server stopped with error: {error}");
         }
     });
 
     wait_for_server(&base_url).await;
-    IsolatedApp { base_url, task }
+
+    // The first real user in a fresh database gets the administrator role.
+    // Keep its JWT scoped to this server; the external fixture's OnceCell
+    // must not share credentials across separate isolated databases.
+    let username = format!("isolated-admin-{}", uuid::Uuid::new_v4());
+    let registration = TestClient::new(&base_url)
+        .post(
+            "/api/auth/register",
+            &json!({
+                "username": username,
+                "password": "Password123!",
+                "email": format!("{username}@example.invalid")
+            }),
+        )
+        .await
+        .expect("register isolated test administrator");
+    assert!(
+        registration["success"].as_bool().unwrap_or(false),
+        "isolated administrator registration failed: {registration}"
+    );
+    assert_eq!(
+        registration["data"]["roles"]
+            .as_array()
+            .map(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
+        Some(true),
+        "first isolated user must have administrator role: {registration}"
+    );
+    let admin_token = registration["data"]["token"]
+        .as_str()
+        .unwrap_or_else(|| panic!("isolated registration returned no JWT: {registration}"))
+        .to_string();
+
+    IsolatedApp {
+        base_url,
+        admin_token,
+        task,
+    }
 }
 
 pub(crate) async fn spawn_app() -> String {
@@ -143,20 +193,21 @@ pub(crate) async fn spawn_app() -> String {
     }
 
     let handle = SERVER_HANDLE.get_or_init(|| {
-        // 1. Reuse port 3000 only when not forcing an isolated test server
-        let force_spawn = env::var("E2E_FORCE_SPAWN")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        if !force_spawn && is_port_open(3000) {
-            println!("TEST: Reusing existing server at http://127.0.0.1:3000");
-            return ServerHandle {
-                base_url: "http://127.0.0.1:3000".to_string(),
-                process: None,
-            };
-        }
-        if force_spawn {
-            println!("TEST: E2E_FORCE_SPAWN set — spawning dedicated server (skip :3000 reuse)");
-        }
+        // 1. No implicit localhost reuse. A stale developer/CI server may have
+        // different auth state or a different database and makes the black-box
+        // suite non-deterministic. E2E_BASE_URL above is the explicit opt-in
+        // for testing an externally managed server.
+        //
+        // Give the spawned server its own database so the first registered
+        // account is predictably the administrator for this test process.
+        let db_path = std::env::temp_dir().join(format!(
+            "burncloud-api-tests-{}.db",
+            std::process::id()
+        ));
+        let normalized_db_path = db_path.to_string_lossy().replace('\\', "/");
+        let database_url = format!("sqlite:///{}?mode=rwc", normalized_db_path);
+        let _ = std::fs::remove_file(&db_path);
+        std::env::set_var("BURNCLOUD_DATABASE_URL", &database_url);
 
         // 2. Locate Binary
         let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
@@ -169,21 +220,28 @@ pub(crate) async fn spawn_app() -> String {
             .parent()
             .unwrap();
 
-        let binary_path = if cfg!(target_os = "windows") {
-            root_dir.join("target/debug/burncloud.exe")
+        let target_dir = env::var_os("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .map(|path| {
+                if path.is_absolute() {
+                    path
+                } else {
+                    root_dir.join(path)
+                }
+            })
+            .unwrap_or_else(|| root_dir.join("target"));
+        let binary_name = if cfg!(target_os = "windows") {
+            "burncloud.exe"
         } else {
-            root_dir.join("target/debug/burncloud")
+            "burncloud"
         };
+        let binary_path = target_dir.join("debug").join(binary_name);
 
         if !binary_path.exists() {
-            // **Cargo does not build this binary for these tests**, because the tests are integration tests of
-            // another crate. Eleven tests failed with this message before the prerequisite was met, and the
-            // message did not say which command produces the file, so the failure read like a broken test suite
-            // rather than a missing build step. The command is now spelled out.
             panic!(
-                "The black-box API tests need the server binary, which Cargo does not build for them.\n\
+                "The black-box API tests need the prebuilt server binary.\n\
                  Expected: {}\n\
-                 Build it first:  cargo build --bin burncloud\n\
+                 Build it first:  cargo build -p burncloud --bin burncloud --no-default-features\n\
                  Then re-run:     cargo test -p burncloud-tests --test api_tests",
                 binary_path.display()
             );
@@ -197,6 +255,9 @@ pub(crate) async fn spawn_app() -> String {
             .arg("server")
             .arg("start")
             .env("PORT", port.to_string())
+            .env("BURNCLOUD_DATABASE_URL", &database_url)
+            .env("JWT_SECRET", TEST_JWT_SECRET)
+            .env("BURNCLOUD_INTERNAL_SECRET", TEST_INTERNAL_SECRET)
             .env("RUST_LOG", "burncloud=warn") // Reduce log noise
             .env("NO_PROXY", "*") // Prevent proxy issues
             .env(
@@ -222,12 +283,61 @@ pub(crate) async fn spawn_app() -> String {
     // Since multiple tests run in parallel, they might all call this.
     // It's idempotent (GET /status).
     wait_for_server(&handle.base_url).await;
+    ensure_test_admin(&handle.base_url).await;
 
     handle.base_url.clone()
 }
 
-fn is_port_open(port: u16) -> bool {
-    std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
+async fn ensure_test_admin(base_url: &str) -> String {
+    ADMIN_JWT
+        .get_or_init(|| async {
+            let username = format!("burncloud-ci-admin-{}", std::process::id());
+            let password = "burncloud-ci-admin-password";
+            let client = Client::builder()
+                .no_proxy()
+                .build()
+                .expect("test admin client");
+
+            let response = client
+                .post(format!("{base_url}/api/auth/register"))
+                .json(&json!({
+                    "username": username,
+                    "password": password,
+                    "email": format!("{username}@example.invalid")
+                }))
+                .send()
+                .await
+                .expect("register test admin");
+            let status = response.status();
+            let body: serde_json::Value = response
+                .json()
+                .await
+                .expect("test admin registration must return JSON");
+
+            assert!(
+                status.is_success(),
+                "test admin registration failed with {status}: {body}"
+            );
+            assert_eq!(
+                body["data"]["roles"]
+                    .as_array()
+                    .map(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
+                Some(true),
+                "isolated test database must promote the first real user to admin: {body}"
+            );
+
+            body["data"]["token"]
+                .as_str()
+                .unwrap_or_else(|| panic!("test admin registration returned no JWT: {body}"))
+                .to_string()
+        })
+        .await
+        .clone()
+}
+
+pub(crate) async fn admin_client(base_url: &str) -> TestClient {
+    let token = ensure_test_admin(base_url).await;
+    TestClient::new(base_url).with_token(&token)
 }
 
 fn get_free_port() -> u16 {

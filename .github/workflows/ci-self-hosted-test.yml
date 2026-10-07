@@ -1,0 +1,16 @@
+name: CI / Self-hosted Test
+
+# The trigger stays here so GitHub exposes an independent check for this gate.
+# Execution and self-hosted security policy live in ci-self-hosted-base.yml.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci-self-hosted-base.yml
+    with:
+      check: test
+      check_name: Code Test

@@ -1,10 +1,10 @@
 name: CI / Integration
 
-# MANUAL ONLY. The `pull_request` and `push` triggers that used to fire this are gone: the tests in
-# `ci-quality.yml` already run this repository's suites on every commit through the local pre-commit
-# hook, and an automatic trigger here would run them a second time.
+# MANUAL ONLY. This is an environment-specific integration suite, not a normal PR quality gate.
+# The self-hosted PR test selects affected Cargo tests, while `ci-quality.yml` runs the full workspace
+# before release. Neither provides a real PostgreSQL service.
 #
-# This workflow is not redundant with the gate, though, and that is why it still exists: it is the
+# This workflow remains separate because it is the
 # **only** job in the repository that needs a service container. It applies the 18 PostgreSQL
 # migrations to a real PostgreSQL 16 server and round-trips the Identity contract against it. The
 # workspace gate runs on SQLite and cannot cover that. Run this before a release that touches
