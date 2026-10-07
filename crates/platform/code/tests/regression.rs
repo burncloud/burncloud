@@ -546,7 +546,10 @@ fn worktree_subdirectory_uses_common_hooks() -> Result<()> {
             .current_dir(linked)
             .output()?,
     )?;
-    assert!(!f.base.join("checks.log").exists()); // Explicitly no changes selected.
+    assert_eq!(
+        f.log()?,
+        "fmt --all -- --check\nclippy --workspace --all-targets --no-default-features\ndeny check\n"
+    ); // No Cargo test is selected, but the independent quality gates still run.
     Ok(())
 }
 
