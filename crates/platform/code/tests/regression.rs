@@ -601,9 +601,8 @@ fn clippy_selection_scopes_packages_and_expands_global_config() -> Result<()> {
     f.write("clippy.toml", "configuration")?;
     let text = String::from_utf8(f.run(&["clippy", "--plan"])?.stdout)?;
     assert!(text.contains("Selection: full workspace (Clippy configuration changed: clippy.toml)"));
-    assert!(text.contains(
-        "cargo clippy --workspace --all-targets --no-default-features -- -D warnings"
-    ));
+    assert!(text
+        .contains("cargo clippy --workspace --all-targets --no-default-features -- -D warnings"));
 
     fs::remove_file(f.repo.join("clippy.toml"))?;
     f.write("deny.toml", "policy only")?;
