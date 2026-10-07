@@ -20,7 +20,6 @@ use reqwest::Client;
 use serde_json::json;
 use std::env;
 use std::net::TcpListener;
-use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -98,32 +97,20 @@ pub(crate) async fn spawn_app() -> String {
         let _ = std::fs::remove_file(&db_path);
         std::env::set_var("BURNCLOUD_DATABASE_URL", &database_url);
 
-        // 2. Locate Binary
-        let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-        let manifest_path = PathBuf::from(manifest_dir);
-        let root_dir = manifest_path
+        // 2. Locate the server binary next to the active Cargo profile.
+        // Integration-test executables live under <target>/<profile>/deps, so
+        // deriving the path from current_exe works for the default target dir,
+        // CARGO_TARGET_DIR, and target-dir configured through .cargo/config.
+        let test_exe = env::current_exe().expect("cannot locate integration-test executable");
+        let profile_dir = test_exe
             .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
-
-        let configured_target = env::var_os("CARGO_TARGET_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root_dir.join("target"));
-        let target_dir = if configured_target.is_absolute() {
-            configured_target
+            .and_then(std::path::Path::parent)
+            .expect("integration-test executable is not under a Cargo profile/deps directory");
+        let binary_path = profile_dir.join(if cfg!(target_os = "windows") {
+            "burncloud.exe"
         } else {
-            root_dir.join(configured_target)
-        };
-        let binary_path = target_dir
-            .join("debug")
-            .join(if cfg!(target_os = "windows") {
-                "burncloud.exe"
-            } else {
-                "burncloud"
-            });
+            "burncloud"
+        });
 
         if !binary_path.exists() {
             // **Cargo does not build this binary for these tests**, because the tests are integration tests of
