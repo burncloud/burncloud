@@ -353,7 +353,7 @@ fn receipt_uses_matching_index_and_replaces_old_footer_on_amend() -> Result<()> 
 }
 
 #[test]
-fn existing_message_hook_runs_and_docs_only_receipt_is_skipped() -> Result<()> {
+fn existing_message_hook_runs_and_docs_only_receipt_marks_only_tests_skipped() -> Result<()> {
     let f = Fixture::new()?;
     let hook = f.repo.join(".git/hooks/commit-msg");
     fs::write(
@@ -373,7 +373,10 @@ fn existing_message_hook_runs_and_docs_only_receipt_is_skipped() -> Result<()> {
     f.git(&["commit", "-qm", "docs"])?;
     let message = String::from_utf8(f.git(&["log", "-1", "--format=%B"])?.stdout)?;
     assert!(message.contains("BurnCloud-Checks: ✅ PASS (tests skipped: no test-relevant changes)"));
-    assert!(message.contains("BurnCloud-Fmt: ✅ PASS"));\n    assert!(message.contains("BurnCloud-Tests: ➖ SKIP"));\n    assert!(message.contains("BurnCloud-Clippy: ✅ PASS"));\n    assert!(message.contains("BurnCloud-Deny: ✅ PASS"));
+    assert!(message.contains("BurnCloud-Fmt: ✅ PASS"));
+    assert!(message.contains("BurnCloud-Tests: ➖ SKIP"));
+    assert!(message.contains("BurnCloud-Clippy: ✅ PASS"));
+    assert!(message.contains("BurnCloud-Deny: ✅ PASS"));
     assert_eq!(f.latest()?.status, "skipped");
     Ok(())
 }
