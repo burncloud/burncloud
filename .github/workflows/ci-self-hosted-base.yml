@@ -246,3 +246,32 @@ jobs:
             mv "$tmp" "$BURNCLOUD_CARGO_LOCK_CACHE"
             echo "Saved resolved Cargo.lock cache."
           fi
+
+
+      - name: Clean oversized Cargo target cache
+        if: always() && env.RUN_SELF_HOSTED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          target="$HOME/.cache/burncloud/target"
+          limit_bytes=$((100 * 1024 * 1024 * 1024))
+
+          if [[ ! -d "$target" ]]; then
+            echo "Cargo target cache does not exist: $target"
+            exit 0
+          fi
+
+          size_bytes="$(du -sb "$target" | awk '{print $1}')"
+          size_gib="$(awk -v bytes="$size_bytes" 'BEGIN { printf "%.2f", bytes / 1024 / 1024 / 1024 }')"
+          echo "Cargo target cache size: ${size_gib} GiB"
+          echo "Cleanup threshold: 100 GiB"
+
+          if (( size_bytes > limit_bytes )); then
+            echo "Cargo target cache exceeds 100 GiB; removing $target"
+            rm -rf -- "$target"
+            mkdir -p "$target"
+            echo "Cargo target cache cleaned."
+          else
+            echo "Cargo target cache is within the limit."
+          fi
