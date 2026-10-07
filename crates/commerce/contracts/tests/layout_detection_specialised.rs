@@ -141,8 +141,9 @@ fn flat_v7_with_model_level_metadata_stays_flat_and_keeps_prices() {
         }
     }"#;
 
-    let config = PricingConfig::from_json(json)
-        .unwrap_or_else(|e| panic!("flat document with model-level metadata must still parse: {e}"));
+    let config = PricingConfig::from_json(json).unwrap_or_else(|e| {
+        panic!("flat document with model-level metadata must still parse: {e}")
+    });
 
     let price = config
         .get_pricing("future-model", "USD")

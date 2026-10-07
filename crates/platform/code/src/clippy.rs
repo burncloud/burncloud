@@ -20,9 +20,7 @@ pub(crate) fn run(options: test::Options) -> Result<()> {
     }
 
     let clippy_config_changed = files.contains("clippy.toml");
-    if !options.all
-        && !clippy_config_changed
-        && files.iter().all(|file| plan::no_test_impact(file))
+    if !options.all && !clippy_config_changed && files.iter().all(|file| plan::no_test_impact(file))
     {
         println!(
             "No Clippy-relevant changes selected; no lint executed. Use --all for the full workspace or --base REF for branch changes."
