@@ -25,12 +25,11 @@
 //! Each attempt runs under the shared HTTP client's timeout, `HTTP_REQUEST_TIMEOUT_SECS = 36000`
 //! (`lib.rs:205`), whose own comment says "Total time for request completion (600 minutes)" -- ten hours, which
 //! is deliberate for long-running work such as video generation. Nothing bounds the **total**: `elapsed()` is
-//! only ever read to record a latency (`lib.rs:1883`, `:1899`, `:2647`, `:3296`), never compared against a
-//! deadline.
+//! only ever read to record a latency; #680 adds an aggregate deadline around proxy_logic.
 //!
-//! The worst case for one client request is therefore five attempts of up to ten hours each. That is the
+//! The pre-fix worst case for one client request was five attempts of up to ten hours each. That is the
 //! reason a retry budget exists as a concept, and it is filed separately rather than asserted here -- a test
-//! cannot demonstrate a ten-hour timeout without waiting ten hours.
+//! cannot demonstrate a ten-hour timeout without waiting ten hours. The new budget is tested below.
 //!
 //! What this file can do is pin the parts that are structural: how many candidates the router produces, that
 //! the loop cannot revisit one, and that the cap is a literal rather than a setting.
@@ -141,8 +140,7 @@ fn the_effective_budget_is_the_candidate_count_capped_at_five() {
     assert_eq!(
         worst_case / 3600,
         50,
-        "five attempts of the configured HTTP timeout is fifty hours; if the timeout changed, this is a \
-         reminder that nothing bounds the total"
+        "five attempts of the unbounded baseline timeout would total fifty hours"
     );
 }
 
@@ -167,18 +165,30 @@ fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
 /// When a deadline cancels a future, its owned guard is dropped.
 #[tokio::test]
 async fn timeout_cancels_and_releases_owned_reservation() {
-    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
     struct Reservation(Arc<AtomicBool>);
     impl Drop for Reservation {
-        fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); }
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
     }
+
     let released = Arc::new(AtomicBool::new(false));
     let owned = released.clone();
     let task = async move {
         let _guard = Reservation(owned);
         std::future::pending::<()>().await;
     };
-    assert!(tokio::time::timeout(std::time::Duration::from_millis(10), task).await.is_err());
+
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(10), task)
+            .await
+            .is_err()
+    );
     assert!(released.load(Ordering::SeqCst));
 }
 
