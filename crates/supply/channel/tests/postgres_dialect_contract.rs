@@ -191,6 +191,78 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
     .await;
 }
 
+
+#[tokio::test]
+async fn failed_channel_writes_roll_back_atomically_on_postgres() {
+    with_postgres("provider_atomicity", |db| async move {
+        let mut failed = sample_channel();
+        failed.name = "pg-failed-create".to_string();
+        failed.models = "same,same".to_string();
+
+        assert!(
+            ChannelProviderModel::create(&db, &mut failed).await.is_err(),
+            "duplicate abilities must keep returning an error"
+        );
+        assert_eq!(
+            failed.id, 0,
+            "failed creation must not publish the rolled-back PostgreSQL id"
+        );
+        assert!(
+            ChannelProviderModel::list(&db, 100, 0)
+                .await
+                .expect("list providers after failed create")
+                .is_empty(),
+            "provider INSERT must roll back with the failed ability INSERT"
+        );
+
+        let conn = db.get_connection().expect("PostgreSQL connection");
+        let ability_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channel_abilities")
+            .fetch_one(conn.pool())
+            .await
+            .expect("count abilities after failed create");
+        assert_eq!(
+            ability_count.0, 0,
+            "the first ability INSERT must roll back with the duplicate failure"
+        );
+
+        let mut existing = sample_channel();
+        existing.name = "pg-before".to_string();
+        existing.models = "old".to_string();
+        let id = ChannelProviderModel::create(&db, &mut existing)
+            .await
+            .expect("control channel create");
+
+        existing.name = "pg-after".to_string();
+        existing.models = "same,same".to_string();
+        assert!(
+            ChannelProviderModel::update(&db, &existing).await.is_err(),
+            "duplicate abilities must fail the update"
+        );
+
+        let stored = ChannelProviderModel::get_by_id(&db, id)
+            .await
+            .expect("read provider after failed update")
+            .expect("provider remains");
+        assert_eq!(
+            stored.name, "pg-before",
+            "provider UPDATE must roll back with ability synchronization"
+        );
+        assert_eq!(stored.models, "old");
+
+        let abilities =
+            burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
+                .await
+                .expect("read abilities after failed update");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].group, "pg-vip");
+        assert_eq!(
+            abilities[0].model, "old",
+            "ability DELETE and partial rebuild must roll back too"
+        );
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn protocol_upsert_uses_postgres_conflict_and_default_demote_branches() {
     with_postgres("protocol", |db| async move {
