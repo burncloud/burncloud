@@ -122,14 +122,38 @@ jobs:
             cp "$HOME/.cargo/config" "$cargo_home/config"
           fi
 
-          # PR deny checks are offline with respect to the RustSec advisory DB.
-          # Seed the persistent Cargo home from the runner's legacy Cargo home once
-          # when an existing local advisory database is available.
+          # PR deny checks stay offline with respect to the RustSec advisory DB.
+          # A cancelled/manual cleanup can leave the root directory present while the
+          # actual git checkout underneath is gone. Directory existence alone is not
+          # enough: cargo-deny then fails while reading FETCH_HEAD metadata.
           legacy_advisory_db="$HOME/.cargo/advisory-dbs"
           advisory_db="$cargo_home/advisory-dbs"
-          if [[ ! -d "$advisory_db" && -d "$legacy_advisory_db" ]]; then
-            cp -a "$legacy_advisory_db" "$advisory_db"
-            echo "Seeded local advisory database from $legacy_advisory_db"
+
+          advisory_db_usable() {
+            local root="$1"
+            [[ -d "$root" ]] || return 1
+
+            local repo
+            while IFS= read -r -d '' repo; do
+              if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
+                && git -C "$repo" show -s --format=%cI FETCH_HEAD >/dev/null 2>&1; then
+                return 0
+              fi
+            done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print0)
+
+            return 1
+          }
+
+          if ! advisory_db_usable "$advisory_db"; then
+            if [[ -e "$advisory_db" ]]; then
+              echo "Discarding incomplete advisory database cache: $advisory_db"
+              rm -rf -- "$advisory_db"
+            fi
+
+            if advisory_db_usable "$legacy_advisory_db"; then
+              cp -a "$legacy_advisory_db" "$advisory_db"
+              echo "Re-seeded local advisory database from $legacy_advisory_db"
+            fi
           fi
 
           echo "CARGO_HOME=$cargo_home" >> "$GITHUB_ENV"
