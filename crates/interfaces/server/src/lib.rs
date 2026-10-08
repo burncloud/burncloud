@@ -15,7 +15,7 @@ use axum::http::HeaderName;
 use axum::{middleware, routing::get, Router};
 use burncloud_database::{create_default_database, Database};
 use burncloud_database_router::RouterDatabase;
-use burncloud_database_user::UserDatabase;
+use burncloud_service_user::UserDatabase;
 use burncloud_node_runtime::{NodeContext, NodeRuntime};
 use burncloud_router::create_router_app_with_route_miss;
 use burncloud_router::price_sync::SyncResult;
