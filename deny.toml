@@ -129,14 +129,15 @@ wrappers = [
 ]
 reason = "Interfaces/Common is compatibility infrastructure; new domain crates must depend on the owning contract directly"
 
-# burncloud-database-model — model_ domain (model_capabilities metadata)
+# burncloud-supply-model — Supply-owned Model implementation.
 [[bans.deny]]
-crate = "burncloud-database-model"
+crate = "burncloud-supply-model"
 wrappers = [
-    "burncloud",
+    "burncloud-node-runtime",
     "burncloud-router",
+    "burncloud-server",
 ]
-reason = "model_capabilities persistence is Supply-owned; direct consumers are frozen to composition and the Traffic sync adapter"
+reason = "Supply Model owns model capability persistence and model resolution/discovery; new consumers require architecture review"
 
 # burncloud-database-billing — billing_ domain (prices, tiered prices, exchange rates)
 [[bans.deny]]

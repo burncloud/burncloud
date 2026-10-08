@@ -1,13 +1,21 @@
-//! # BurnCloud Service Models
+//! # BurnCloud Supply Model
+//!
+//! Supply-owned vertical Model implementation. This crate merges the historical
+//! `database-model` and `service-models` technical split without changing behavior.
 //!
 //! Supply-side model resolution, manifest handling, downloads and HuggingFace discovery.
 //! This crate deliberately exposes no database CRUD for HuggingFace metadata; the former CRUD
 //! facade was backed only by no-op methods and was removed by #621.
 
+mod common;
 mod manifest;
+mod model_capability;
 mod resolver;
 
+pub use burncloud_database::DatabaseError;
+pub use common::current_timestamp;
 pub use manifest::{ModelManifest, Variant};
+pub use model_capability::{ModelCapability, ModelCapabilityInput, ModelCapabilityModel};
 pub use resolver::{
     FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelResolutionError,
     ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
