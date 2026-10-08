@@ -15,4 +15,4 @@
 
 - `burncloud-database`, `burncloud-database-router` — 数据持久化
 - `burncloud-service-setting` — 配置读取
-- `burncloud-service-models` — 模型信息
+- `burncloud-supply-model` — 模型信息

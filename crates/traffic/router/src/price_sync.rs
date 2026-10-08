@@ -20,7 +20,7 @@ use burncloud_database::{sqlx, Database};
 use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, DatabaseError, Price, PriceInput, TieredPriceInput,
 };
-use burncloud_database_model::{ModelCapabilityInput, ModelCapabilityModel};
+use burncloud_service_models::{ModelCapabilityInput, ModelCapabilityModel};
 use burncloud_service_billing::PriceCache;
 
 /// HTTP client timeout for price sync API calls (seconds).

@@ -238,7 +238,7 @@ before the suite is fixed: either give `api_tests` the prerequisite it needs, or
 ### The three compile failures no longer reproduce
 
 This file used to list `burncloud-service-inference` (`E0599`/`E0282`), `burncloud-server`
-`tests/log_api_tests.rs` (`E0433`) and the `burncloud-service-models` example (`E0432`) as the reason no
+`tests/log_api_tests.rs` (`E0433`) and the `burncloud-supply-model` example (`E0432`) as the reason no
 workflow runs `cargo test --workspace`. Re-measured against the current tree:
 `cargo check --workspace --all-targets --no-default-features` exits 0, which is what makes the
 workspace-wide gate possible at all.

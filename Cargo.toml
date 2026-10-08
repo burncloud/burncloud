@@ -7,8 +7,7 @@ members = [
     "crates/traffic/contracts",
     "crates/supply/contracts",
     "crates/supply/channel",
-    "crates/supply/database-model",
-    "crates/supply/service-models",
+    "crates/supply/model",
     "crates/traffic/database-router",
     "crates/traffic/router",
     "crates/traffic/router-aws",
@@ -182,7 +181,6 @@ burncloud-commerce-contracts = { path = "crates/commerce/contracts" }
 burncloud-common = { path = "crates/interfaces/common" }
 burncloud-database = { path = "crates/platform/storage/database" }
 burncloud-database-billing = { path = "crates/commerce/database-billing" }
-burncloud-database-model = { path = "crates/supply/database-model" }
 burncloud-database-router = { path = "crates/traffic/database-router" }
 burncloud-database-sys = { path = "crates/platform/storage/database-sys" }
 burncloud-database-user = { path = "crates/identity/database-user" }
@@ -195,7 +193,6 @@ burncloud-router-aws = { path = "crates/traffic/router-aws" }
 burncloud-server = { path = "crates/interfaces/server" }
 burncloud-service = { path = "crates/interfaces/service" }
 burncloud-service-ip = { path = "crates/platform/observability/ip" }
-burncloud-service-models = { path = "crates/supply/service-models" }
 burncloud-service-monitor = { path = "crates/platform/observability/monitor" }
 burncloud-service-setting = { path = "crates/platform/configuration/setting" }
 burncloud-service-inference = { path = "crates/trust/inference" }
@@ -204,6 +201,7 @@ burncloud-service-token = { path = "crates/identity/service-token" }
 burncloud-service-router-log = { path = "crates/traffic/service-router-log" }
 burncloud-service-billing = { path = "crates/commerce/service-billing" }
 burncloud-supply-channel = { path = "crates/supply/channel" }
+burncloud-supply-model = { path = "crates/supply/model" }
 burncloud-supply-contracts = { path = "crates/supply/contracts" }
 burncloud-traffic-contracts = { path = "crates/traffic/contracts" }
 

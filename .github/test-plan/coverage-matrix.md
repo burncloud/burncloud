@@ -1,6 +1,6 @@
 # CI coverage matrix
 
-Scope: the 33 packages in this workspace (`cargo metadata --no-deps`), plus the root package's CLI.
+Scope: the 32 packages in this workspace (`cargo metadata --no-deps`), plus the root package's CLI.
 This matrix is **documentation**; the executable grouping lives in the workflow YAML, so there is no
 second copy of the commands to keep in sync.
 
@@ -44,8 +44,7 @@ Every row below is a workspace member unless the row says otherwise, so every ro
 | `crates/trust/inference` | `burncloud-service-inference` | 1 integration | **tested** — workspace run |
 | `crates/identity/service-user` | `burncloud-service-user` | 1 unit | **tested** — workspace run, with a discovery floor |
 | `crates/identity/service-token` | `burncloud-service-token` | none | **tested** — workspace run, with a discovery floor |
-| `crates/supply/database-model` | `burncloud-database-model` | none | **tested** — workspace run |
-| `crates/supply/service-models` | `burncloud-service-models` | 1 unit + 1 integration | **tested** — workspace run |
+| `crates/supply/model` | `burncloud-supply-model` | model capability + resolver coverage | **tested** — workspace run |
 | `crates/traffic/database-router` | `burncloud-database-router` | 2 integration | **tested** — workspace run |
 | `crates/traffic/service-router-log` | `burncloud-service-router-log` | none | **tested** — workspace run |
 | `crates/traffic/router-aws` | `burncloud-router-aws` | 1 unit | **tested** — workspace run |
@@ -88,14 +87,14 @@ suites run, and the suites are empty or near-empty:
 | `crates/traffic/database-router` | credential validation, settlement, balance writes |
 | `crates/identity/service-user` | registration, login, JWT, first-user admin policy |
 | `crates/identity/service-token` | token lifecycle |
-| `crates/supply/database-model` | stubbed CRUD (see note below) |
+| `crates/supply/model` | model capability persistence + resolver/HF implementation |
 
 ### P0 crates with no tests at all
 
 `burncloud-service-token` (none in-crate; its tests live in `tests/`), `burncloud-service-router-log`,
 `burncloud-service-setting`.
 
-`crates/supply/database-model` deserves a separate line: its `ModelDatabase` methods return
+`crates/supply/model` now owns the real `model_capabilities` persistence from #621; the former stubbed `ModelDatabase` no longer exists. Historical note:
 `Ok(())` / `Ok(None)` / `Ok(vec![])`, so it is a placeholder, not an implementation. Writing tests
 against it now would either fail or freeze the stub as expected behaviour. It is tracked in #621.
 
@@ -110,7 +109,7 @@ compile and their tests run in the gate:
 
 * `burncloud-service-inference` `tests/integration_test.rs` — **compiles now** (was E0599 + E0282)
 * `burncloud-server` `tests/log_api_tests.rs` — **compiles now** (was E0433)
-* `burncloud-service-models` example — **compiles now** (was E0432)
+* `burncloud-supply-model` examples — **compile as part of the merged Supply Model crate**
 
 What remains excluded, and why:
 
