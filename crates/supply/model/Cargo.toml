@@ -5,11 +5,6 @@ name = "burncloud-supply-model"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-# Preserve the existing service-side Rust import surface during the structural
-# migration. Renaming the Rust crate to burncloud_supply_model is a separate,
-# mechanical compatibility cleanup after #778.
-name = "burncloud_service_models"
 
 [dependencies]
 burncloud-database.workspace = true

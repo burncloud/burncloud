@@ -1,4 +1,4 @@
-use burncloud_service_models::{
+use burncloud_supply_model::{
     FakeModelResolver, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
 };
 
