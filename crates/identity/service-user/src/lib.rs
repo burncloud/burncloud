@@ -558,22 +558,33 @@ mod tests {
     impl TempDb {
         /// Close the pool and delete the file.
         ///
-        /// Deliberately NOT implemented as `Drop`: dropping a `Database` does not release the
-        /// SQLite handle, and a type with a `Drop` impl cannot hand its fields out by value. The
-        /// same measured behaviour applies as elsewhere in this repository -- `close().await`
-        /// alone is not enough, the pool releases the handle asynchronously, so a short wait is
-        /// required or the removal fails and every run leaves a database in the temp directory.
+        /// Deliberately NOT implemented as `Drop`: pool shutdown is asynchronous.
+        /// On Windows, the OS can briefly retain a SQLite file handle even after
+        /// closing the pool. Retry only sharing/permission errors, with a fixed
+        /// deadline; never turn a genuine cleanup failure into a passing test.
         ///
-        /// The cost of not using `Drop` is that a panicking test leaves its file behind. That is
-        /// why the explicit call is enforced by `tests/no_default_database.rs` rather than left to
-        /// this comment.
+        /// The cost of not using `Drop` is that a panicking test leaves its file behind.
+        /// The explicit call is enforced by `tests/no_default_database.rs`.
         async fn cleanup(self) {
-            let path = self.path.clone();
             self.db.close().await.ok();
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            std::fs::remove_file(&path).unwrap_or_else(|e| {
-                panic!("test database {} was not removed ({e})", path.display())
-            });
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                match std::fs::remove_file(&self.path) {
+                    Ok(()) => break,
+                    Err(error)
+                        if cfg!(windows)
+                            && (error.kind() == std::io::ErrorKind::PermissionDenied
+                                || error.raw_os_error() == Some(32))
+                            && tokio::time::Instant::now() < deadline =>
+                    {
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                    Err(error) => panic!(
+                        "test database {} was not removed ({error})",
+                        self.path.display()
+                    ),
+                }
+            }
         }
     }
 
