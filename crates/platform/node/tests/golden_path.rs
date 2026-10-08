@@ -13,7 +13,7 @@ use burncloud_node_runtime::{
     HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
     ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
-use burncloud_service_models::{
+use burncloud_supply_model::{
     FakeModelResolver, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
 };
 
@@ -36,7 +36,7 @@ fn fake_node(pid: u32) -> FakeNode {
     )
 }
 
-async fn resolve_local(node: &FakeNode) -> burncloud_service_models::ResolvedModel {
+async fn resolve_local(node: &FakeNode) -> burncloud_supply_model::ResolvedModel {
     let hardware = node.hardware().inspect().await.unwrap();
     let accelerator_memory_bytes = hardware
         .accelerators
