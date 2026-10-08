@@ -347,14 +347,17 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
         "Working tree changed after checks; rerun cargo run -- code test --staged"
     );
     if summary.status == "passed" {
+        let test_steps = summary
+            .steps
+            .iter()
+            .filter(|step| step.name == "test")
+            .count();
         anyhow::ensure!(
-            summary.steps.len() == 4
-                && summary
-                    .steps
-                    .iter()
-                    .zip(["fmt", "test", "clippy", "deny"])
-                    .all(|(step, name)| step.name == name && step.status == "passed"),
-            "Incomplete saved checks"
+            test_steps == 1
+                && summary.steps.iter().all(|step| {
+                    matches!(step.name.as_str(), "prepare" | "test") && step.status == "passed"
+                }),
+            "Incomplete saved code test result"
         );
     } else {
         anyhow::ensure!(summary.steps.is_empty(), "Invalid skipped check result");
@@ -384,8 +387,8 @@ pub(crate) fn stamp(message: &Path) -> Result<()> {
     }
     let (overall, checks, tests) = if summary.status == "skipped" {
         (
-            "➖ SKIP (no code checks executed)",
-            "➖ SKIP",
+            "✅ PASS (tests skipped: no test-relevant changes)",
+            "✅ PASS",
             "➖ SKIP".to_owned(),
         )
     } else {

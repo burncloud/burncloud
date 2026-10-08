@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -19,7 +20,7 @@ async fn test_login_success() {
     let base_url = common::spawn_app().await;
     let (browser, _) = login_browser(&base_url).await;
     // login_browser already verifies dashboard loads
-    let _ = browser.screenshot("login-success");
+    browser.screenshot("login-success").ok();
 }
 
 #[tokio::test]
@@ -62,7 +63,7 @@ async fn test_login_invalid_credentials() {
         "Expected error message or staying on login page after invalid credentials"
     );
 
-    let _ = browser.screenshot("login-invalid-creds");
+    browser.screenshot("login-invalid-creds").ok();
 }
 
 /// Verify the dashboard loads and shows the sidebar navigation.
@@ -82,5 +83,5 @@ async fn test_dashboard_after_login() {
         snap.text
     );
 
-    let _ = browser.screenshot("dashboard-after-login");
+    browser.screenshot("dashboard-after-login").ok();
 }

@@ -15,11 +15,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use burncloud_commerce_contracts::pricing::PricingConfig;
+use burncloud_commerce_contracts::pricing::{CurrencyPricing, ModelPricing, PricingConfig};
 use burncloud_database::placeholder::adapt_sql;
 use burncloud_database::{sqlx, Database};
 use burncloud_database_billing::{
-    BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
+    BillingPriceModel, BillingTieredPriceModel, DatabaseError, Price, PriceInput, TieredPriceInput,
 };
 use burncloud_service_billing::PriceCache;
 
@@ -94,6 +94,153 @@ pub struct PriceSyncService {
     last_remote_sync: Option<DateTime<Utc>>,
 }
 
+/// Extended (non-token) pricing serialized for the USD entry of a model.
+///
+/// Used as the fallback when a currency has no extended pricing of its own.
+struct UsdExtendedPricing {
+    /// TTS voices pricing JSON
+    voices: Option<String>,
+    /// Video resolutions pricing JSON
+    video: Option<String>,
+    /// ASR per-minute pricing JSON
+    asr: Option<String>,
+    /// Realtime audio/image pricing JSON
+    realtime: Option<String>,
+}
+
+/// Extended pricing fields of one currency, falling back to the USD entry.
+struct CurrencyExtendedPricing {
+    /// TTS voices pricing JSON
+    voices: Option<String>,
+    /// Video resolutions pricing JSON
+    video: Option<String>,
+    /// ASR per-minute pricing JSON
+    asr: Option<String>,
+    /// Realtime audio/image pricing JSON
+    realtime: Option<String>,
+}
+
+/// Serialize one currency's extended pricing sections, falling back to the USD
+/// entries when the currency has none.
+fn currency_extended_pricing(
+    model_pricing: &ModelPricing,
+    currency: &str,
+    usd_pricing: &UsdExtendedPricing,
+) -> CurrencyExtendedPricing {
+    let voices = model_pricing
+        .voices_pricing
+        .as_ref()
+        .and_then(|vp| vp.get(currency))
+        .and_then(|config| serde_json::to_string(&config.voices).ok())
+        .or_else(|| usd_pricing.voices.clone());
+
+    let video = model_pricing
+        .video_pricing
+        .as_ref()
+        .and_then(|vp| vp.get(currency))
+        .and_then(|config| serde_json::to_string(&config.resolutions).ok())
+        .or_else(|| usd_pricing.video.clone());
+
+    let asr = model_pricing
+        .asr_pricing
+        .as_ref()
+        .and_then(|ap| ap.get(currency))
+        .and_then(|config| {
+            serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok()
+        })
+        .or_else(|| usd_pricing.asr.clone());
+
+    let realtime = model_pricing
+        .realtime_pricing
+        .as_ref()
+        .and_then(|rp| rp.get(currency))
+        .and_then(|config| {
+            let mut map = serde_json::Map::new();
+            if let Some(v) = config.audio_input {
+                map.insert("audio_input".to_string(), serde_json::json!(v));
+            }
+            if let Some(v) = config.audio_output {
+                map.insert("audio_output".to_string(), serde_json::json!(v));
+            }
+            if let Some(v) = config.image_input {
+                map.insert("image_input".to_string(), serde_json::json!(v));
+            }
+            if map.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&map).ok()
+            }
+        })
+        .or_else(|| usd_pricing.realtime.clone());
+
+    CurrencyExtendedPricing {
+        voices,
+        video,
+        asr,
+        realtime,
+    }
+}
+
+/// Derive `video_price` from `video_pricing["720p"]` so the billing formula
+/// cost = video_tokens × video_price / 1_000_000 gives the correct per-second cost.
+/// video_tokens = duration × resolution_weight (720p=2, 480p=1), so:
+///   video_price (nanodollars/MTok) = price_720p_per_sec (nanodollars) × 500_000
+/// This means 480p requests naturally cost half of 720p via resolution_weight.
+fn video_price_720p(model_pricing: &ModelPricing, currency: &str) -> Option<i64> {
+    model_pricing
+        .video_pricing
+        .as_ref()
+        .and_then(|vp| vp.get(currency))
+        .and_then(|config| config.resolutions.get("720p").copied())
+        .map(|price_per_sec_nanos: i64| (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64)
+}
+
+/// Serialize a model's USD-keyed extended pricing sections.
+fn usd_extended_pricing(model_pricing: &ModelPricing) -> UsdExtendedPricing {
+    let voices = model_pricing.voices_pricing.as_ref().and_then(|vp| {
+        vp.get("USD")
+            .and_then(|config| serde_json::to_string(&config.voices).ok())
+    });
+
+    let video = model_pricing.video_pricing.as_ref().and_then(|vp| {
+        vp.get("USD")
+            .and_then(|config| serde_json::to_string(&config.resolutions).ok())
+    });
+
+    let asr = model_pricing.asr_pricing.as_ref().and_then(|ap| {
+        ap.get("USD").and_then(|config| {
+            serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute})).ok()
+        })
+    });
+
+    let realtime = model_pricing.realtime_pricing.as_ref().and_then(|rp| {
+        rp.get("USD").and_then(|config| {
+            let mut map = serde_json::Map::new();
+            if let Some(v) = config.audio_input {
+                map.insert("audio_input".to_string(), serde_json::json!(v));
+            }
+            if let Some(v) = config.audio_output {
+                map.insert("audio_output".to_string(), serde_json::json!(v));
+            }
+            if let Some(v) = config.image_input {
+                map.insert("image_input".to_string(), serde_json::json!(v));
+            }
+            if map.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&map).ok()
+            }
+        })
+    });
+
+    UsdExtendedPricing {
+        voices,
+        video,
+        asr,
+        realtime,
+    }
+}
+
 impl PriceSyncService {
     /// Create a new PriceSyncService with default configuration
     pub fn new(db: Arc<Database>) -> Self {
@@ -144,27 +291,79 @@ impl PriceSyncService {
 
         // 2. Startup fast path: DB has prices and sync not forced → skip remote
         if !forced {
-            let db_count = self.count_db_models().await.unwrap_or(0);
-            if db_count > 0 {
-                tracing::info!(
-                    models = db_count,
-                    "DB already has prices, skipping remote sync (startup fast path)"
-                );
-                return Ok(SyncResult {
-                    source: "db_cache".to_string(),
-                    ..Default::default()
-                });
+            if let Some(cached) = self.db_cache_result().await {
+                return Ok(cached);
             }
         }
 
         // 3. Pull from remote with retry on cold start
+        let (remote, last_err) = self.sync_remote_with_retries().await;
+        let sync_err = match remote {
+            Some(result) => return Ok(result),
+            // At least one attempt always runs, so a failure leaves an error behind.
+            None => match last_err {
+                Some(err) => err,
+                None => unreachable!("sync_remote_with_retries ran no attempts"),
+            },
+        };
+
+        self.remote_sync_failure(sync_err).await
+    }
+
+    /// Handle a fully-failed remote sync: fall back to cached DB prices, or fail
+    /// fatally when the DB has none.
+    async fn remote_sync_failure(&self, sync_err: anyhow::Error) -> anyhow::Result<SyncResult> {
+        let db_count = self.count_db_models().await.unwrap_or(0);
+        if db_count == 0 {
+            tracing::error!(
+                error = %sync_err,
+                "FATAL: pricing_data unreachable and DB has no prices. \
+                 Check network connectivity or pre-seed DB."
+            );
+            return Err(sync_err);
+        }
+
+        tracing::warn!(
+            error = %sync_err,
+            models = db_count,
+            "Remote sync failed after all retries, using existing DB prices"
+        );
+        Ok(SyncResult {
+            source: "db_fallback".to_string(),
+            ..Default::default()
+        })
+    }
+
+    /// Startup fast path: when the DB already holds prices, skip the remote fetch.
+    ///
+    /// Returns `None` when the DB has no prices and the remote sync should run.
+    async fn db_cache_result(&self) -> Option<SyncResult> {
+        let db_count = self.count_db_models().await.unwrap_or(0);
+        if db_count == 0 {
+            return None;
+        }
+
+        tracing::info!(
+            models = db_count,
+            "DB already has prices, skipping remote sync (startup fast path)"
+        );
+        Some(SyncResult {
+            source: "db_cache".to_string(),
+            ..Default::default()
+        })
+    }
+
+    /// Pull remote prices, retrying on the cold-start delays (5s, 15s, 30s).
+    ///
+    /// Returns the successful result, or the last error if every attempt failed.
+    async fn sync_remote_with_retries(&mut self) -> (Option<SyncResult>, Option<anyhow::Error>) {
         const RETRY_DELAYS_SECS: &[u64] = &[5, 15, 30];
         let mut last_err: Option<anyhow::Error> = None;
         for (attempt, &delay) in RETRY_DELAYS_SECS.iter().enumerate() {
             match self.sync_remote_prices().await {
                 Ok(result) => {
                     self.last_remote_sync = Some(Utc::now());
-                    return Ok(result);
+                    return (Some(result), None);
                 }
                 Err(e) => {
                     if attempt < RETRY_DELAYS_SECS.len() - 1 {
@@ -181,28 +380,7 @@ impl PriceSyncService {
             }
         }
 
-        // All retries exhausted
-        let err = last_err
-            .ok_or_else(|| anyhow::anyhow!("last_err is set after at least one retry attempt"))?;
-        let db_count = self.count_db_models().await.unwrap_or(0);
-        if db_count > 0 {
-            tracing::warn!(
-                error = %err,
-                models = db_count,
-                "Remote sync failed after all retries, using existing DB prices"
-            );
-            return Ok(SyncResult {
-                source: "db_fallback".to_string(),
-                ..Default::default()
-            });
-        }
-
-        tracing::error!(
-            error = %err,
-            "FATAL: pricing_data unreachable and DB has no prices. \
-             Check network connectivity or pre-seed DB."
-        );
-        Err(err)
+        (None, last_err)
     }
 
     /// Count distinct model names in the prices table.
@@ -244,264 +422,8 @@ impl PriceSyncService {
                 .as_ref()
                 .and_then(|m| m.provider.clone());
 
-            // Convert extended pricing configs to JSON strings
-            let voices_pricing_json = model_pricing.voices_pricing.as_ref().and_then(|vp| {
-                vp.get("USD")
-                    .and_then(|config| serde_json::to_string(&config.voices).ok())
-            });
-
-            let video_pricing_json = model_pricing.video_pricing.as_ref().and_then(|vp| {
-                vp.get("USD")
-                    .and_then(|config| serde_json::to_string(&config.resolutions).ok())
-            });
-
-            let asr_pricing_json = model_pricing.asr_pricing.as_ref().and_then(|ap| {
-                ap.get("USD").and_then(|config| {
-                    serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute}))
-                        .ok()
-                })
-            });
-
-            let realtime_pricing_json = model_pricing.realtime_pricing.as_ref().and_then(|rp| {
-                rp.get("USD").and_then(|config| {
-                    let mut map = serde_json::Map::new();
-                    if let Some(v) = config.audio_input {
-                        map.insert("audio_input".to_string(), serde_json::json!(v));
-                    }
-                    if let Some(v) = config.audio_output {
-                        map.insert("audio_output".to_string(), serde_json::json!(v));
-                    }
-                    if let Some(v) = config.image_input {
-                        map.insert("image_input".to_string(), serde_json::json!(v));
-                    }
-                    if map.is_empty() {
-                        None
-                    } else {
-                        serde_json::to_string(&map).ok()
-                    }
-                })
-            });
-
-            // Apply standard pricing for each currency
-            for (currency, currency_pricing) in &model_pricing.pricing {
-                // Get currency-specific extended pricing if available
-                let currency_voices = model_pricing
-                    .voices_pricing
-                    .as_ref()
-                    .and_then(|vp| vp.get(currency))
-                    .and_then(|config| serde_json::to_string(&config.voices).ok())
-                    .or_else(|| voices_pricing_json.clone());
-
-                let currency_video = model_pricing
-                    .video_pricing
-                    .as_ref()
-                    .and_then(|vp| vp.get(currency))
-                    .and_then(|config| serde_json::to_string(&config.resolutions).ok())
-                    .or_else(|| video_pricing_json.clone());
-
-                // Derive video_price from video_pricing["720p"] so the billing formula
-                // cost = video_tokens × video_price / 1_000_000 gives the correct per-second cost.
-                // video_tokens = duration × resolution_weight (720p=2, 480p=1), so:
-                //   video_price (nanodollars/MTok) = price_720p_per_sec (nanodollars) × 500_000
-                // This means 480p requests naturally cost half of 720p via resolution_weight.
-                let video_price_derived: Option<i64> = model_pricing
-                    .video_pricing
-                    .as_ref()
-                    .and_then(|vp| vp.get(currency))
-                    .and_then(|config| config.resolutions.get("720p").copied())
-                    .map(|price_per_sec_nanos: i64| {
-                        (price_per_sec_nanos as i128 * 1_000_000 / 2) as i64
-                    });
-
-                let currency_asr = model_pricing
-                    .asr_pricing
-                    .as_ref()
-                    .and_then(|ap| ap.get(currency))
-                    .and_then(|config| {
-                        serde_json::to_string(&serde_json::json!({"per_minute": config.per_minute}))
-                            .ok()
-                    })
-                    .or_else(|| asr_pricing_json.clone());
-
-                let currency_realtime = model_pricing
-                    .realtime_pricing
-                    .as_ref()
-                    .and_then(|rp| rp.get(currency))
-                    .and_then(|config| {
-                        let mut map = serde_json::Map::new();
-                        if let Some(v) = config.audio_input {
-                            map.insert("audio_input".to_string(), serde_json::json!(v));
-                        }
-                        if let Some(v) = config.audio_output {
-                            map.insert("audio_output".to_string(), serde_json::json!(v));
-                        }
-                        if let Some(v) = config.image_input {
-                            map.insert("image_input".to_string(), serde_json::json!(v));
-                        }
-                        if map.is_empty() {
-                            None
-                        } else {
-                            serde_json::to_string(&map).ok()
-                        }
-                    })
-                    .or_else(|| realtime_pricing_json.clone());
-
-                let price_input = PriceInput {
-                    model: model_name.clone(),
-                    currency: currency.clone(),
-                    input_price: currency_pricing.input_price,
-                    output_price: currency_pricing.output_price,
-                    image_price: currency_pricing.image_output_price,
-                    audio_output_price: currency_pricing.audio_output_price,
-                    music_price: currency_pricing.music_price,
-                    video_price: video_price_derived,
-                    source: currency_pricing.source.clone().or(Some(source.to_string())),
-                    voices_pricing: currency_voices,
-                    video_pricing: currency_video,
-                    asr_pricing: currency_asr,
-                    realtime_pricing: currency_realtime,
-                    model_type: model_type.clone(),
-                    ..Default::default()
-                };
-
-                // Audit: read existing price before upsert so we can log changes
-                let old_price = if source == "remote" {
-                    BillingPriceModel::get(&self.db, model_name, currency, None)
-                        .await
-                        .ok()
-                        .flatten()
-                } else {
-                    None
-                };
-
-                match BillingPriceModel::upsert(&self.db, &price_input).await {
-                    Ok(_) => {
-                        result.models_synced += 1;
-                        result.currencies_synced += 1;
-                        // Emit structured audit log when price changes on remote sync
-                        if let Some(old) = old_price {
-                            let new_in = currency_pricing.input_price;
-                            let new_out = currency_pricing.output_price;
-                            if old.input_price != new_in || old.output_price != new_out {
-                                tracing::info!(
-                                    model = model_name,
-                                    currency = currency,
-                                    old_input_price = old.input_price,
-                                    new_input_price = new_in,
-                                    old_output_price = old.output_price,
-                                    new_output_price = new_out,
-                                    changed_at = %Utc::now(),
-                                    "price_changed"
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to upsert price for {} ({}): {}",
-                            model_name,
-                            currency,
-                            e
-                        );
-                        result.errors += 1;
-                    }
-                }
-            }
-
-            // Apply cache pricing — atomic column update, no read-then-write race
-            if let Some(ref cache_pricing) = model_pricing.cache_pricing {
-                for (currency, cache_config) in cache_pricing {
-                    match BillingPriceModel::update_cache_pricing(
-                        &self.db,
-                        model_name,
-                        None,
-                        Some(cache_config.cache_read_input_price),
-                        cache_config.cache_creation_input_price,
-                    )
-                    .await
-                    {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            tracing::warn!(
-                                model = model_name,
-                                currency = currency,
-                                "No existing price row for cache pricing update — base price must be synced first"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to update cache pricing for {}: {}",
-                                model_name,
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-
-            // Apply batch pricing — atomic column update, no read-then-write race
-            if let Some(ref batch_pricing) = model_pricing.batch_pricing {
-                for (currency, batch_config) in batch_pricing {
-                    match BillingPriceModel::update_batch_pricing(
-                        &self.db,
-                        model_name,
-                        None,
-                        Some(batch_config.batch_input_price),
-                        Some(batch_config.batch_output_price),
-                    )
-                    .await
-                    {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            tracing::warn!(
-                                model = model_name,
-                                currency = currency,
-                                "No existing price row for batch pricing update — base price must be synced first"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to update batch pricing for {}: {}",
-                                model_name,
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-
-            // Apply tiered pricing
-            if let Some(ref tiered_pricing) = model_pricing.tiered_pricing {
-                for (currency, tiers) in tiered_pricing {
-                    for tier in tiers {
-                        let tier_input = TieredPriceInput {
-                            model: model_name.clone(),
-                            region: Some(currency.clone()), // Use currency as region identifier
-                            currency: Some(currency.clone()),
-                            tier_type: Some("context_length".to_string()),
-                            tier_start: tier.tier_start,
-                            tier_end: tier.tier_end,
-                            input_price: tier.input_price,
-                            output_price: tier.output_price,
-                        };
-
-                        match BillingTieredPriceModel::upsert_tier(&self.db, &tier_input).await {
-                            Ok(_) => {
-                                result.tiered_pricing_synced += 1;
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    "Failed to upsert tiered pricing for {} ({}): {}",
-                                    model_name,
-                                    currency,
-                                    e
-                                );
-                                result.errors += 1;
-                            }
-                        }
-                    }
-                }
-            }
+            self.apply_model_pricing(model_name, model_pricing, model_type, source, &mut result)
+                .await;
         }
 
         tracing::info!(
@@ -513,6 +435,274 @@ impl PriceSyncService {
         );
 
         Ok(result)
+    }
+
+    /// Apply one model's standard per-currency prices, then its cache, batch and
+    /// tiered pricing rows.
+    ///
+    /// `result` accumulates per-currency/tier counters and error counts.
+    async fn apply_model_pricing(
+        &self,
+        model_name: &str,
+        model_pricing: &ModelPricing,
+        model_type: Option<String>,
+        source: &str,
+        result: &mut SyncResult,
+    ) {
+        let usd_pricing = usd_extended_pricing(model_pricing);
+
+        for (currency, currency_pricing) in &model_pricing.pricing {
+            self.apply_currency_pricing(
+                model_name,
+                model_pricing,
+                currency,
+                currency_pricing,
+                &usd_pricing,
+                model_type.clone(),
+                source,
+                result,
+            )
+            .await;
+        }
+
+        self.apply_cache_and_batch_pricing(model_name, model_pricing, result)
+            .await;
+        self.apply_tiered_pricing(model_name, model_pricing, result)
+            .await;
+    }
+
+    /// Upsert one model/currency price row, logging price changes on remote sync.
+    ///
+    /// # Arguments
+    /// * `model_name` - Model whose price is being written
+    /// * `model_pricing` - Full per-model pricing config (for extended fields)
+    /// * `currency` - Currency code of `currency_pricing`
+    /// * `currency_pricing` - Standard prices for this currency
+    /// * `usd_pricing` - USD extended pricing, used as the fallback
+    /// * `model_type` - Provider label stored on the row
+    /// * `source` - Sync source ("remote", "local_override", ...)
+    /// * `result` - Accumulator for sync counters and error counts
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "private helper carrying one price row's context; grouping it into a struct would add a type with a single caller"
+    )]
+    async fn apply_currency_pricing(
+        &self,
+        model_name: &str,
+        model_pricing: &ModelPricing,
+        currency: &str,
+        currency_pricing: &CurrencyPricing,
+        usd_pricing: &UsdExtendedPricing,
+        model_type: Option<String>,
+        source: &str,
+        result: &mut SyncResult,
+    ) {
+        let extended = currency_extended_pricing(model_pricing, currency, usd_pricing);
+
+        let price_input = PriceInput {
+            model: model_name.to_string(),
+            currency: currency.to_string(),
+            input_price: currency_pricing.input_price,
+            output_price: currency_pricing.output_price,
+            image_price: currency_pricing.image_output_price,
+            audio_output_price: currency_pricing.audio_output_price,
+            music_price: currency_pricing.music_price,
+            video_price: video_price_720p(model_pricing, currency),
+            source: currency_pricing.source.clone().or(Some(source.to_string())),
+            voices_pricing: extended.voices,
+            video_pricing: extended.video,
+            asr_pricing: extended.asr,
+            realtime_pricing: extended.realtime,
+            model_type,
+            ..Default::default()
+        };
+
+        // Audit: read existing price before upsert so we can log changes
+        let old_price = if source == "remote" {
+            BillingPriceModel::get(&self.db, model_name, currency, None)
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+
+        let outcome = BillingPriceModel::upsert(&self.db, &price_input).await;
+        self.record_price_upsert(
+            outcome,
+            old_price,
+            model_name,
+            currency,
+            currency_pricing,
+            result,
+        );
+    }
+
+    /// Update the sync counters and log a price change for one upsert outcome.
+    ///
+    /// # Arguments
+    /// * `outcome` - Result of the price upsert
+    /// * `old_price` - Price row read before the upsert, used for change auditing
+    /// * `model_name` - Model whose price was written
+    /// * `currency` - Currency of the written row
+    /// * `currency_pricing` - Prices that were written for this currency
+    /// * `result` - Accumulator for sync counters and error counts
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "private helper carrying one upsert's audit context; grouping it into a struct would add a type with a single caller"
+    )]
+    fn record_price_upsert(
+        &self,
+        outcome: Result<(), DatabaseError>,
+        old_price: Option<Price>,
+        model_name: &str,
+        currency: &str,
+        currency_pricing: &CurrencyPricing,
+        result: &mut SyncResult,
+    ) {
+        match outcome {
+            Ok(_) => {
+                result.models_synced += 1;
+                result.currencies_synced += 1;
+                // Emit structured audit log when price changes on remote sync
+                if let Some(old) = old_price {
+                    let new_in = currency_pricing.input_price;
+                    let new_out = currency_pricing.output_price;
+                    if old.input_price != new_in || old.output_price != new_out {
+                        tracing::info!(
+                            model = model_name,
+                            currency = currency,
+                            old_input_price = old.input_price,
+                            new_input_price = new_in,
+                            old_output_price = old.output_price,
+                            new_output_price = new_out,
+                            changed_at = %Utc::now(),
+                            "price_changed"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to upsert price for {} ({}): {}",
+                    model_name,
+                    currency,
+                    e
+                );
+                result.errors += 1;
+            }
+        }
+    }
+
+    /// Apply one model's cache and batch pricing column updates.
+    async fn apply_cache_and_batch_pricing(
+        &self,
+        model_name: &str,
+        model_pricing: &ModelPricing,
+        _result: &mut SyncResult,
+    ) {
+        self.apply_cache_pricing(model_name, model_pricing).await;
+        self.apply_batch_pricing(model_name, model_pricing).await;
+    }
+
+    /// Apply one model's cache pricing column updates.
+    async fn apply_cache_pricing(&self, model_name: &str, model_pricing: &ModelPricing) {
+        // Apply cache pricing — atomic column update, no read-then-write race
+        if let Some(ref cache_pricing) = model_pricing.cache_pricing {
+            for (currency, cache_config) in cache_pricing {
+                match BillingPriceModel::update_cache_pricing(
+                    &self.db,
+                    model_name,
+                    None,
+                    Some(cache_config.cache_read_input_price),
+                    cache_config.cache_creation_input_price,
+                )
+                .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(
+                            model = model_name,
+                            currency = currency,
+                            "No existing price row for cache pricing update — base price must be synced first"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to update cache pricing for {}: {}", model_name, e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply one model's batch pricing column updates.
+    async fn apply_batch_pricing(&self, model_name: &str, model_pricing: &ModelPricing) {
+        // Apply batch pricing — atomic column update, no read-then-write race
+        if let Some(ref batch_pricing) = model_pricing.batch_pricing {
+            for (currency, batch_config) in batch_pricing {
+                match BillingPriceModel::update_batch_pricing(
+                    &self.db,
+                    model_name,
+                    None,
+                    Some(batch_config.batch_input_price),
+                    Some(batch_config.batch_output_price),
+                )
+                .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(
+                            model = model_name,
+                            currency = currency,
+                            "No existing price row for batch pricing update — base price must be synced first"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to update batch pricing for {}: {}", model_name, e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply one model's tiered pricing rows.
+    async fn apply_tiered_pricing(
+        &self,
+        model_name: &str,
+        model_pricing: &ModelPricing,
+        result: &mut SyncResult,
+    ) {
+        if let Some(ref tiered_pricing) = model_pricing.tiered_pricing {
+            for (currency, tiers) in tiered_pricing {
+                for tier in tiers {
+                    let tier_input = TieredPriceInput {
+                        model: model_name.to_string(),
+                        region: Some(currency.clone()), // Use currency as region identifier
+                        currency: Some(currency.clone()),
+                        tier_type: Some("context_length".to_string()),
+                        tier_start: tier.tier_start,
+                        tier_end: tier.tier_end,
+                        input_price: tier.input_price,
+                        output_price: tier.output_price,
+                    };
+
+                    match BillingTieredPriceModel::upsert_tier(&self.db, &tier_input).await {
+                        Ok(_) => {
+                            result.tiered_pricing_synced += 1;
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to upsert tiered pricing for {} ({}): {}",
+                                model_name,
+                                currency,
+                                e
+                            );
+                            result.errors += 1;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Sync prices from remote repository (with Gitee fallback).
@@ -577,41 +767,11 @@ impl PriceSyncService {
         let mut imported_count = 0;
 
         for tier in tiers {
-            // Validate tier data (prices are now i64 nanodollars, so compare with 0)
-            if tier.input_price < 0 || tier.output_price < 0 {
-                tracing::error!(
-                    "Skipping tier with invalid price for model {}: prices must be >= 0",
-                    tier.model
-                );
+            if !valid_tier_or_logged(tier) {
                 continue;
             }
 
-            if let Some(tier_end) = tier.tier_end {
-                if tier.tier_start >= tier_end {
-                    tracing::error!(
-                        "Skipping tier with invalid range for model {}: tier_start ({}) must be < tier_end ({})",
-                        tier.model, tier.tier_start, tier_end
-                    );
-                    continue;
-                }
-            }
-
-            match BillingTieredPriceModel::upsert_tier(&self.db, tier).await {
-                Ok(_) => {
-                    imported_count += 1;
-                    tracing::info!(
-                        "Imported tier for model {} ({}-{} tokens): ${:.4}/${:.4} per 1M",
-                        tier.model,
-                        tier.tier_start,
-                        tier.tier_end.map_or("∞".to_string(), |e| format!("{e}")),
-                        tier.input_price,
-                        tier.output_price
-                    );
-                }
-                Err(e) => {
-                    tracing::error!("Failed to import tier for {}: {}", tier.model, e);
-                }
-            }
+            self.import_one_tier(tier, &mut imported_count).await;
         }
 
         tracing::info!(
@@ -619,6 +779,26 @@ impl PriceSyncService {
             imported_count
         );
         Ok(imported_count)
+    }
+
+    /// Upsert a single validated tier and report the outcome.
+    async fn import_one_tier(&self, tier: &TieredPriceInput, imported_count: &mut usize) {
+        match BillingTieredPriceModel::upsert_tier(&self.db, tier).await {
+            Ok(_) => {
+                *imported_count += 1;
+                tracing::info!(
+                    "Imported tier for model {} ({}-{} tokens): ${:.4}/${:.4} per 1M",
+                    tier.model,
+                    tier.tier_start,
+                    tier.tier_end.map_or("∞".to_string(), |e| format!("{e}")),
+                    tier.input_price,
+                    tier.output_price
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to import tier for {}: {}", tier.model, e);
+            }
+        }
     }
 
     /// Sync model capabilities to the local database
@@ -787,20 +967,54 @@ pub fn start_price_sync_task(
                             if let Err(e) = price_cache.refresh(&db).await {
                                 tracing::error!("Failed to refresh price cache after force sync: {e}");
                             }
-                            let _ = reply_tx.send(result);
+                            if reply_tx.send(result).is_err() {
+                                tracing::debug!("force-sync reply dropped (receiver gone)");
+                            }
                         }
                         Err(e) => {
                             tracing::error!("Force price sync failed: {e}");
-                            let _ = reply_tx.send(SyncResult {
-                                source: format!("error: {e}"),
-                                ..Default::default()
-                            });
+                            if reply_tx
+                                .send(SyncResult {
+                                    source: format!("error: {e}"),
+                                    ..Default::default()
+                                })
+                                .is_err()
+                            {
+                                tracing::debug!("force-sync reply dropped (receiver gone)");
+                            }
                         }
                     }
                 }
             }
         }
     })
+}
+
+/// Validate a tier before import: prices must be non-negative and the range
+/// must be non-empty. Invalid tiers are logged and skipped.
+fn valid_tier_or_logged(tier: &TieredPriceInput) -> bool {
+    // Prices are i64 nanodollars, so compare with 0
+    if tier.input_price < 0 || tier.output_price < 0 {
+        tracing::error!(
+            "Skipping tier with invalid price for model {}: prices must be >= 0",
+            tier.model
+        );
+        return false;
+    }
+
+    if let Some(tier_end) = tier.tier_end {
+        if tier.tier_start >= tier_end {
+            tracing::error!(
+                "Skipping tier with invalid range for model {}: tier_start ({}) must be < tier_end ({})",
+                tier.model,
+                tier.tier_start,
+                tier_end
+            );
+            return false;
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]

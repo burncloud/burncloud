@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 //! The billing price store's identity, precision and update scoping (#633, plan section 5 item 16).
 //!
@@ -67,7 +68,7 @@ async fn fresh_db(tag: &str) -> Result<(Database, std::path::PathBuf), Box<dyn E
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let db = create_database_with_url(&format!("sqlite:///{}?mode=rwc", normalized)).await?;
     Ok((db, path))
@@ -610,7 +611,7 @@ async fn get_all_currencies_reports_the_currency_at_one_region() -> Result<(), B
     println!("rows for two-regions: {rows:?}");
     assert_eq!(rows.len(), 2, "two regions, two rows");
     assert!(
-        rows.iter().any(|r| r.0 == "USD" && r.1 == "")
+        rows.iter().any(|r| r.0 == "USD" && r.1.is_empty())
             && rows.iter().any(|r| r.0 == "CNY" && r.1 == "cn-north-1"),
         "one USD row at the empty region and one CNY row at cn-north-1"
     );

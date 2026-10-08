@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    reason = "golden contract test: unwrap/expect is the intended failure signal and the DTOs intentionally use plain types"
+)]
 //! Golden contract for the Traffic protocol and scheduling types (S1-E).
 //!
 //! Three promises cross a version boundary and are pinned here:

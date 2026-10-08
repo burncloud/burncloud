@@ -1,5 +1,10 @@
 #[cfg(test)]
-#[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::module_inception,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "unit-test module: the module is named `tests` like its parent file, and assertions on known-good fixtures fail fast with unwrap/expect"
+)]
 mod tests {
     use crate::{aws_uri_encode, sign_request_at, AwsConfig};
     use chrono::{TimeZone, Utc};
@@ -322,7 +327,6 @@ mod tests {
     // ---------------------------------------------------------------------------------------
 
     #[test]
-    #[test]
     fn the_signing_key_matches_the_published_aws_test_vector() {
         // A signature that responded to every input could still be **wrong**, and none of the tests above can
         // tell the difference -- they establish sensitivity, not correctness. This one pins correctness
@@ -377,7 +381,7 @@ mod tests {
                 crate::signing_key(secret, "20150830", "us-east-1", "s3"),
             ),
         ] {
-            let hex_derived = hex::encode(&derived.expect("the derivation accepts any key length"));
+            let hex_derived = hex::encode(derived.expect("the derivation accepts any key length"));
             assert_ne!(
                 hex_derived, expected,
                 "changing {label} must change the signing key"
@@ -639,7 +643,7 @@ mod tests {
     fn the_credential_parser_rejects_fewer_than_three_segments() {
         // The one rule it does enforce, at each boundary. `AwsConfig::from_colon_string` is the only parse of
         // this format in the crate, so this is where a malformed environment variable is caught.
-        for input in ["", "AK", "AK:SK", "AK:SK:".repeat(1).as_str()] {
+        for input in ["", "AK", "AK:SK", "AK:SK:".to_string().as_str()] {
             let result = AwsConfig::from_colon_string(input);
             if input == "AK:SK:" {
                 assert!(

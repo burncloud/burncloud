@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "integration-test code: panicking on fixture failures is the intended signal, and fixtures use plain Value formatting and patterns"
 )]
 //! End-to-End Bundle Installation Test (Full Pipeline)
 //!
@@ -131,7 +132,7 @@ impl BundleE2ETest {
 
     /// Clear saved instance info
     pub fn clear_saved_instance() {
-        let _ = fs::remove_file(TEST_ENV_FILE);
+        fs::remove_file(TEST_ENV_FILE).ok();
     }
 
     /// Create test server and wait for it to be ready (or reuse existing)
@@ -298,7 +299,7 @@ impl BundleE2ETest {
     /// Upload directory recursively via SFTP
     fn upload_directory(&self, sftp: &ssh2::Sftp, local: &Path, remote: &str) -> Result<()> {
         // Create remote directory (mode 0755 = rwxr-xr-x)
-        let _ = sftp.mkdir(Path::new(remote), 0o755); // Ignore error if exists
+        sftp.mkdir(Path::new(remote), 0o755).ok(); // Ignore error if exists
 
         for entry in std::fs::read_dir(local).context("Failed to read local directory")? {
             let entry = entry?;

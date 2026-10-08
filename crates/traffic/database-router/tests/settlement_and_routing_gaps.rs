@@ -25,10 +25,9 @@ use tempfile::NamedTempFile;
 
 /// An isolated SQLite database with the production schema applied.
 ///
-/// Same shape as the helper in the neighbouring files, including the two things that are easy to get
-/// wrong: the three-slash URL (the two-slash form is not a URL SQLite can open on Windows) and taking
-/// the path away from the temp guard so removal is controlled here rather than racing the pool. This file
-/// does not attempt to fix the residual leak -- `temp_file_leak.rs` measures it and #643 owns the fix.
+/// The path is kept outside `NamedTempFile` so cleanup happens only after the SQLx pool is explicitly
+/// closed. `Drop` delegates that async close to a dedicated thread and joins it before returning.
+/// The close is time-bounded so a leaked SQLx connection cannot deadlock the entire test binary.
 async fn create_test_db() -> TestDb {
     let tmp = NamedTempFile::new().unwrap_or_else(|e| panic!("failed to create temp file: {e}"));
     let path = tmp
@@ -67,24 +66,50 @@ impl Drop for TestDb {
             return;
         };
         let path = self.path.clone();
-        let _ = std::thread::Builder::new()
+        let cleanup = std::thread::Builder::new()
             .name("bc-gap-testdb-cleanup".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                 {
-                    if let Err(e) = rt.block_on(db.close()) {
-                        eprintln!("test database close failed (cleanup continues): {e}");
+                    match rt.block_on(tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        db.close(),
+                    )) {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            eprintln!("test database close failed (cleanup continues): {e}");
+                        }
+                        Err(_) => {
+                            eprintln!("test database close timed out after 5s; cleanup continues");
+                        }
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 for suffix in ["", "-wal", "-shm"] {
                     let mut candidate = path.clone().into_os_string();
                     candidate.push(suffix);
-                    let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+                    let candidate = std::path::PathBuf::from(candidate);
+                    if let Err(e) = std::fs::remove_file(&candidate) {
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            eprintln!(
+                                "failed to remove test database file {}: {e}",
+                                candidate.display()
+                            );
+                        }
+                    }
                 }
             });
+
+        match cleanup {
+            Ok(handle) => {
+                if handle.join().is_err() {
+                    eprintln!("test database cleanup thread panicked");
+                }
+            }
+            Err(e) => eprintln!("failed to spawn test database cleanup thread: {e}"),
+        }
     }
 }
 
@@ -317,17 +342,29 @@ async fn saving_the_same_task_id_twice_keeps_the_first_channel() {
     // task. Asserted because "upsert" and "insert-if-absent" differ exactly here, and the SQL says the
     // latter.
     let db = create_test_db().await;
-    RouterVideoTaskModel::save(&db, &video_task("task-dup", 7))
-        .await
-        .expect("first save");
-    RouterVideoTaskModel::save(&db, &video_task("task-dup", 99))
-        .await
-        .expect("second save must not error");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        RouterVideoTaskModel::save(&db, &video_task("task-dup", 7)),
+    )
+    .await
+    .expect("first save timed out")
+    .expect("first save");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        RouterVideoTaskModel::save(&db, &video_task("task-dup", 99)),
+    )
+    .await
+    .expect("second save timed out")
+    .expect("second save must not error");
 
-    let loaded = RouterVideoTaskModel::get_by_task_id(&db, "task-dup")
-        .await
-        .expect("get")
-        .expect("the task must still exist");
+    let loaded = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        RouterVideoTaskModel::get_by_task_id(&db, "task-dup"),
+    )
+    .await
+    .expect("first read timed out")
+    .expect("get")
+    .expect("the task must still exist");
 
     assert_eq!(
         loaded.channel_id, 7,
@@ -335,9 +372,13 @@ async fn saving_the_same_task_id_twice_keeps_the_first_channel() {
     );
 
     // And it did not insert a second row under a different id.
-    let other = RouterVideoTaskModel::get_by_task_id(&db, "task-dup")
-        .await
-        .expect("get again");
+    let other = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        RouterVideoTaskModel::get_by_task_id(&db, "task-dup"),
+    )
+    .await
+    .expect("second read timed out")
+    .expect("get again");
     assert_eq!(other.map(|t| t.channel_id), Some(7));
 }
 

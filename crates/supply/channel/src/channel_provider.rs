@@ -19,23 +19,23 @@ impl ChannelProviderModel {
         let sql = if is_postgres {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, model_mapping, priority, other_info, tag, setting, created_time, param_override, header_override, remark, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
                 VALUES ({})
                 RETURNING id
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 24)
             )
         } else {
             format!(
                 r#"
-                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, priority, created_time, param_override, header_override, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
+                INSERT INTO channel_providers ({}, key, status, name, weight, base_url, models, {}, model_mapping, priority, other_info, tag, setting, created_time, param_override, header_override, remark, api_version, pricing_region, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)
                 VALUES ({})
                 "#,
                 type_col,
                 group_col,
-                phs(is_postgres, 19)
+                phs(is_postgres, 24)
             )
         };
 
@@ -54,10 +54,15 @@ impl ChannelProviderModel {
             .bind(&channel.base_url)
             .bind(&channel.models)
             .bind(&channel.group)
+            .bind(&channel.model_mapping)
             .bind(channel.priority)
+            .bind(&channel.other_info)
+            .bind(&channel.tag)
+            .bind(&channel.setting)
             .bind(channel.created_time)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
+            .bind(&channel.remark)
             .bind(&channel.api_version)
             .bind(&channel.pricing_region)
             .bind(channel.rpm_cap)
@@ -100,7 +105,7 @@ impl ChannelProviderModel {
             &format!(
                 r#"
             UPDATE channel_providers
-            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, priority = ?, param_override = ?, header_override = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?
+            SET {} = ?, key = ?, status = ?, name = ?, weight = ?, base_url = ?, models = ?, {} = ?, model_mapping = ?, priority = ?, other_info = ?, tag = ?, setting = ?, param_override = ?, header_override = ?, remark = ?, api_version = ?, pricing_region = ?, rpm_cap = ?, tpm_cap = ?, reservation_green = ?, reservation_yellow = ?, reservation_red = ?
             WHERE id = ?
             "#,
                 type_col, group_col
@@ -116,9 +121,14 @@ impl ChannelProviderModel {
             .bind(&channel.base_url)
             .bind(&channel.models)
             .bind(&channel.group)
+            .bind(&channel.model_mapping)
             .bind(channel.priority)
+            .bind(&channel.other_info)
+            .bind(&channel.tag)
+            .bind(&channel.setting)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
+            .bind(&channel.remark)
             .bind(&channel.api_version)
             .bind(&channel.pricing_region)
             .bind(channel.rpm_cap)
@@ -341,6 +351,21 @@ impl ChannelProviderModel {
             ),
         );
 
+        // Mapping aliases commonly point at a model already present in `models`. Keep the
+        // existing visible uniqueness error for duplicate `models`/`group` entries, but make
+        // mapping-derived abilities idempotent against that already-declared capability.
+        let sql_insert_mapping = adapt_sql(
+            is_postgres,
+            &format!(
+                r#"
+            INSERT INTO channel_abilities ({}, model, channel_id, enabled, priority, weight)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT ({}, model, channel_id) DO NOTHING
+            "#,
+                group_col, group_col
+            ),
+        );
+
         for model in models {
             for group in &groups {
                 tracing::info!(
@@ -378,7 +403,7 @@ impl ChannelProviderModel {
                             group,
                             channel.id
                         );
-                        sqlx::query(&sql_insert)
+                        sqlx::query(&sql_insert_mapping)
                             .bind(group)
                             .bind(&key_lower)
                             .bind(channel.id)
@@ -395,7 +420,7 @@ impl ChannelProviderModel {
                             group,
                             channel.id
                         );
-                        sqlx::query(&sql_insert)
+                        sqlx::query(&sql_insert_mapping)
                             .bind(group)
                             .bind(&value_lower)
                             .bind(channel.id)

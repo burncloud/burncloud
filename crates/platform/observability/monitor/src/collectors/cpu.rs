@@ -52,7 +52,8 @@ impl CpuCollector {
     async fn collect_windows(&mut self) -> Result<CpuInfo, MonitorError> {
         use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
 
-        // SYSTEM_INFO is a C POD struct whose zeroed representation is valid before GetSystemInfo fills it.
+        // SAFETY: `SYSTEM_INFO` is a plain-old-data Windows FFI struct made only of integers, so an
+        // all-zero bit pattern is a valid value; `GetSystemInfo` fills every field before it is read.
         let mut sys_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
         // SAFETY: `sys_info` points to valid writable storage for SYSTEM_INFO for the duration of the call.
         unsafe {

@@ -3,62 +3,168 @@
     clippy::expect_used,
     reason = "Test-only file: these assertions are the test, and the counters are test scaffolding."
 )]
-//! Guard for the temporary-database leak in this crate's test helpers (issue #643).
+//! Regression guard for issue #643: temporary SQLite databases created by this crate's test helpers must
+//! be gone when their guard is dropped.
 //!
-//! Every test in `cost_roundtrip.rs` and `usage_stats_tests.rs` creates a SQLite database in the temp
-//! directory. Dropping the `Database` does not release the file handle and `close().await` releases it
-//! only asynchronously, so the removal races the pool and the files accumulate: measured at **20 per
-//! run** of this crate.
+//! The original defect was that the helpers spawned a cleanup thread from `Drop` and **detached** it, so the
+//! test binary could exit while that thread still owned the close/removal work, leaving the SQLite file and
+//! its `-wal` / `-shm` sidecars behind.
 //!
-//! The helper now closes the pool on a separate thread before removing the files, which recovers about
-//! half of them (**9 per run**). That is an improvement, not a fix, and the reason is recorded in the
-//! helper: nothing joins those threads, and a test binary exits when its tests finish, so a detached
-//! thread's work is lost.
+//! # The first fix was not sufficient (measured)
 //!
-//! ## Why this test counts before and after rather than asserting zero
+//! It was replaced with a *joined* dedicated thread that builds its **own** runtime to run
+//! `Database::close().await`, on the reasoning that `Drop` may run inside a Tokio runtime and cannot
+//! block on another. Joining does close the leak-at-exit hole, but closing from a foreign runtime does not
+//! release the OS file handles at all. Measured on Windows, with the two paths run side by side on the same
+//! `Database`:
 //!
-//! Asserting zero would fail today, and the plan's rule is not to freeze a defect as the contract -- but
-//! neither should the defect be left unmeasured, or it will grow back unnoticed. So this asserts the
-//! **current** number as an upper bound: a change that makes the leak worse fails here, and whoever
-//! fixes #643 lowers the bound or replaces this with an assertion of zero.
+//! ```text
+//! close() inside the test's own runtime          -> all files removed on the first attempt
+//! close() from a dedicated thread + fresh runtime -> .sqlite, -wal and -shm all "os error 32
+//!                                                    (used by another process)" — still held 20 s later
+//! ```
 //!
-//! The measurement is deliberately taken around a run of the helper rather than of the whole suite: 14
-//! tests run in parallel, and counting their files from inside one of them would be measuring the test
-//! harness's scheduling rather than the helper.
+//! The handle is released when the process exits, which is why the leak only ever showed up as files left in
+//! the temp directory and the cleanup *appeared* to work. So the dedicated thread was not merely unnecessary:
+//! it was the cause. It also made this file's own regression test the thing that failed CI.
+//!
+//! The close therefore happens on the caller's runtime, and only the (synchronous) file removal runs on the
+//! dedicated thread — which keeps the original guarantee that removal work is joined before the test ends.
 
 use burncloud_database::create_database_with_url;
 use burncloud_database_router::RouterDatabase;
-use tempfile::NamedTempFile;
+use tempfile::{Builder, NamedTempFile};
 
-/// How many files one helper call leaves behind today. Lower this when #643 is fixed; raise it only with
-/// a measurement and a reason.
-const LEFTOVER_PER_CALL_UPPER_BOUND: usize = 3;
+const LEAK_GUARD_PREFIX: &str = "bc_router_cleanup_";
 
-/// Count the temp-directory entries that look like a database this helper created.
-fn count_temp_databases() -> usize {
-    let dir = std::env::temp_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+/// A prefix unique to one test **and** one process.
+///
+/// The two tests in this file both count guard files in the shared system temp directory, so with one common
+/// prefix they count each other's live fixtures — measured, the counter test read `after=2` against a `before`
+/// of 0 purely because the other test's database and sidecars existed at that moment (#754). Giving each test
+/// a disjoint prefix removes the interference without serialising them, so both keep running in parallel.
+///
+/// The pid is part of it because a stale file from an earlier crashed run must not be attributed to this one.
+fn unique_guard_prefix(tag: &str) -> String {
+    format!("{LEAK_GUARD_PREFIX}{tag}_{}_", std::process::id())
+}
+
+fn count_guard_files(prefix: &str) -> usize {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
         return 0;
     };
     entries
         .flatten()
-        .filter(|e| {
-            let name = e.file_name();
-            let name = name.to_string_lossy();
-            // `tempfile` generates `.tmpXXXXXX`, with `-wal`/`-shm` sidecars in WAL mode.
-            name.starts_with(".tmp")
-                && name.len() >= 8
-                && name[4..]
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_ascii_alphanumeric())
-        })
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(prefix))
         .count()
 }
 
-/// Open a database the way the helpers do, drop it, and give the cleanup thread a moment to run.
-async fn open_and_drop(tag: &str) {
-    let tmp = NamedTempFile::new().expect("temp file");
+/// The three paths one test database occupies: its own file plus the WAL sidecars.
+fn database_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    ["", "-wal", "-shm"]
+        .iter()
+        .map(|suffix| {
+            let mut candidate = path.to_path_buf().into_os_string();
+            candidate.push(suffix);
+            std::path::PathBuf::from(candidate)
+        })
+        .collect()
+}
+
+/// Remove `files`, returning the ones that survived. Removals run on a joined thread.
+///
+/// Retried rather than attempted once: even with the handle released, the OS can need a moment after close,
+/// and a bounded retry converges in milliseconds while still failing loudly instead of hanging.
+fn remove_all_blocking(files: Vec<std::path::PathBuf>) -> Vec<std::path::PathBuf> {
+    std::thread::Builder::new()
+        .name("bc-leak-guard-remove".to_string())
+        .spawn(move || {
+            let mut pending = files;
+            for attempt in 0..40u64 {
+                pending.retain(|candidate| match std::fs::remove_file(candidate) {
+                    Ok(()) => false,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                    Err(_) => true,
+                });
+                if pending.is_empty() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25 * (attempt + 1)));
+            }
+            pending
+        })
+        .map(|handle| handle.join().unwrap_or_default())
+        .unwrap_or_default()
+}
+
+/// An open test database that cleans itself up on drop.
+///
+/// `Drop` cannot await, so the close is exposed as an explicit step the test performs on its own runtime;
+/// `Drop` remains the backstop for a panic and closes on a dedicated runtime, which is the only thing it can
+/// do there.
+struct TestDb {
+    db: Option<burncloud_database::Database>,
+    path: std::path::PathBuf,
+}
+
+impl TestDb {
+    /// Close the database on the **caller's** runtime and remove its files. This is the path that releases
+    /// the OS handles; see the module docs.
+    async fn close_and_remove(mut self) -> Vec<std::path::PathBuf> {
+        let Some(db) = self.db.take() else {
+            return Vec::new();
+        };
+        if let Err(e) = db.close().await {
+            eprintln!("test database close failed (cleanup continues): {e}");
+        }
+        let files = database_files(&self.path);
+        let survivors = remove_all_blocking(files);
+        // `path` is a file that should now be gone; keep the struct's drop from repeating the work.
+        for survivor in &survivors {
+            eprintln!(
+                "failed to remove test database file {} after retries",
+                survivor.display()
+            );
+        }
+        survivors
+    }
+}
+
+impl Drop for TestDb {
+    /// Backstop for a panic or an early return: close on a dedicated runtime, then remove.
+    ///
+    /// This path is known **not** to release the OS handles (see module docs), so it is a last resort rather
+    /// than the normal route. `close_and_remove` is what the tests use.
+    fn drop(&mut self) {
+        let Some(db) = self.db.take() else {
+            return;
+        };
+        let path = self.path.clone();
+        match std::thread::Builder::new()
+            .name("bc-leak-guard-fallback".to_string())
+            .spawn(move || {
+                if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    if let Err(e) = rt.block_on(db.close()) {
+                        eprintln!("test database close failed (cleanup continues): {e}");
+                    }
+                }
+                drop(remove_all_blocking(database_files(&path)));
+            }) {
+            Ok(handle) => {
+                if handle.join().is_err() {
+                    eprintln!("test database fallback cleanup thread panicked");
+                }
+            }
+            Err(e) => eprintln!("failed to spawn test database fallback cleanup thread: {e}"),
+        }
+    }
+}
+
+async fn create_guard_db(prefix: &str) -> TestDb {
+    let tmp = Builder::new().prefix(prefix).tempfile().expect("temp file");
     let path = tmp.into_temp_path().keep().expect("keep temp path");
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{normalized}?mode=rwc");
@@ -66,62 +172,56 @@ async fn open_and_drop(tag: &str) {
         .await
         .unwrap_or_else(|e| panic!("open {url}: {e}"));
     RouterDatabase::init(&db).await.expect("router tables");
-    drop(db);
-    // The helper's cleanup runs on its own thread; without a pause this measurement would report the
-    // state before the thread was scheduled, which is a different question.
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    let _ = tag;
+    TestDb { db: Some(db), path }
 }
 
 #[tokio::test]
-async fn one_helper_call_leaves_no_more_than_the_recorded_number_of_files() {
-    let before = count_temp_databases();
+async fn dropping_a_test_database_leaves_zero_temp_files() {
+    let prefix = unique_guard_prefix("drop");
+    let before = count_guard_files(&prefix);
 
-    open_and_drop("guard").await;
-
-    let after = count_temp_databases();
-    let leaked = after.saturating_sub(before);
-
-    println!(
-        "temp databases before: {before}, after: {after}, leaked by this call: {leaked} \
-         (recorded upper bound: {LEFTOVER_PER_CALL_UPPER_BOUND})"
+    let db = create_guard_db(&prefix).await;
+    let during = count_guard_files(&prefix);
+    assert!(
+        during > before,
+        "the leak guard did not observe the temporary database while it was open; before={before}, during={during}"
     );
 
+    let survivors = db.close_and_remove().await;
     assert!(
-        leaked <= LEFTOVER_PER_CALL_UPPER_BOUND,
-        "one helper call left {leaked} file(s) behind, above the recorded bound of \
-         {LEFTOVER_PER_CALL_UPPER_BOUND}. The temp-directory leak is getting worse: see #643. If the \
-         leak was deliberately fixed, lower LEFTOVER_PER_CALL_UPPER_BOUND (or assert zero)."
+        survivors.is_empty(),
+        "closing the database must remove its files; still present: {survivors:?}"
+    );
+
+    let after = count_guard_files(&prefix);
+    let delta = after as isize - before as isize;
+    println!("#643 temp-file count: before={before}, after={after}, delta={delta}");
+
+    assert_eq!(
+        after, before,
+        "closing one test database must leave zero new temp files; before={before}, after={after}"
     );
 }
 
-// A second test is intentionally absent rather than added for symmetry: the point of the guard is the
-// number, and a duplicate would double the files it creates while measuring them.
-
-/// The counter must actually see the files, or a clean result above would prove nothing.
 #[test]
-fn the_temp_database_counter_is_not_silently_zero() {
-    // Run on the current thread only: this checks the counting logic, not the helper.
-    let tmp = NamedTempFile::new().expect("temp file");
-    let path = tmp.into_temp_path().keep().expect("keep temp path");
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    let url = format!("sqlite:///{normalized}?mode=rwc");
+fn the_counter_tracks_its_own_unique_prefix() {
+    let prefix = unique_guard_prefix("counter");
+    let before = count_guard_files(&prefix);
+    let tmp: NamedTempFile = Builder::new()
+        .prefix(&prefix)
+        .tempfile()
+        .expect("temp file");
+    let during = count_guard_files(&prefix);
 
-    // Create the file through the database layer so any sidecars exist too.
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("runtime");
-    let db = rt
-        .block_on(create_database_with_url(&url))
-        .unwrap_or_else(|e| panic!("open {url}: {e}"));
-    drop(db);
-
-    let counted = count_temp_databases();
-    println!("counter sees {counted} temp database entries while one is definitely present");
     assert!(
-        counted > 0,
-        "the counter found nothing even though this test just created a database, so the guard above \
-         would pass vacuously"
+        during > before,
+        "the counter must see a newly-created file with the guard prefix; before={before}, during={during}"
+    );
+
+    drop(tmp);
+    let after = count_guard_files(&prefix);
+    assert_eq!(
+        after, before,
+        "the counter's own proof file must clean itself up; before={before}, after={after}"
     );
 }

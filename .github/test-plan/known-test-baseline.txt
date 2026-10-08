@@ -1,0 +1,8 @@
+# test_name|issue_number|reason
+test_claude_adaptor|756|Router HTTP fixture still targets the retired router_upstreams path
+test_deepseek_proxy|756|Router HTTP fixture still targets the retired router_upstreams path
+test_qwen_proxy|756|Router HTTP fixture still targets the retired router_upstreams path
+test_round_robin_balancer|756|Legacy round-robin HTTP scenario is no longer on the current channel scheduler path
+test_failover|756|Router HTTP fixture still targets the retired router_upstreams path
+test_vertex_full_flow|756|Router HTTP fixture does not yet model the current channel scheduler contract
+test_login_user_success|758|Windows SQLite cleanup can race the file handle in a full-suite run

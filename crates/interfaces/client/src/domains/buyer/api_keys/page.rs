@@ -121,7 +121,11 @@ fn CreateKeyModal(mut state: Signal<ApiKeysState>) -> Element {
                         event.prevent_default();
                         // Validation failures are already stored in `validation_error` by `create_key`; the
                         // event handler intentionally consumes the Result after that state transition.
-                        state.with_mut(|value| drop(value.create_key()));
+                        state.with_mut(|value| {
+                            if let Err(err) = value.create_key() {
+                                tracing::warn!("failed to create api key: {err}");
+                            }
+                        });
                     },
                     div { class: "api-key-field",
                         label { r#for: "api-key-name", {copy.api_keys_name_label} }

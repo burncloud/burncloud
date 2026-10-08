@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -40,7 +41,7 @@ async fn test_sidebar_navigation() {
         );
     }
 
-    let _ = browser.screenshot("sidebar-navigation");
+    browser.screenshot("sidebar-navigation").ok();
 }
 
 #[tokio::test]
@@ -57,7 +58,7 @@ async fn test_sidebar_active_state() {
         "Dashboard sidebar item should be visible"
     );
 
-    let _ = browser.screenshot("sidebar-active-state");
+    browser.screenshot("sidebar-active-state").ok();
 }
 
 /// Verify that console pages load when accessed directly.
@@ -83,5 +84,5 @@ async fn test_console_page_loads_without_auth() {
         "Console page should load (with or without auth)"
     );
 
-    let _ = browser.screenshot("console-no-auth");
+    browser.screenshot("console-no-auth").ok();
 }

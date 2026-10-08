@@ -28,15 +28,53 @@ pub struct UserDatabase;
 /// Spec-aligned alias: operation type for the `user_accounts` table.
 pub type UserAccountModel = UserDatabase;
 
+/// Run a migration statement whose failure must not abort initialization.
+///
+/// `ALTER TABLE ... ADD COLUMN` fails with "duplicate column name" once the
+/// column exists, and the SQLite-only `INSERT OR IGNORE` seed is a no-op on
+/// other dialects, so both are expected results on a re-run and are logged at
+/// debug level instead of being propagated.
+async fn best_effort_execute(pool: &sqlx::AnyPool, sql: &str) {
+    if let Err(e) = sqlx::query(sql).execute(pool).await {
+        tracing::debug!(
+            "UserDatabase: best-effort statement skipped: {} ({})",
+            e,
+            sql
+        );
+    }
+}
+
 impl UserDatabase {
     pub async fn init(db: &Database) -> Result<()> {
         let conn = db.get_connection()?;
         let kind = db.kind();
 
-        // Table definitions
-        // Note: balance_usd and balance_cny use BIGINT nanodollars (9 decimal precision)
-        // Note: user_accounts CREATE TABLE is authoritative in schema.rs; omitted here
-        let (user_roles_sql, user_role_bindings_sql, user_recharges_sql) = match kind.as_str() {
+        Self::create_tables(conn.pool(), &kind).await?;
+
+        // Migrations (add columns if missing)
+        if kind == "sqlite" {
+            Self::migrate_sqlite_columns(conn.pool()).await;
+        }
+        if kind == "postgres" {
+            Self::migrate_postgres_columns(conn.pool()).await;
+        }
+
+        Self::seed_default_roles(conn.pool()).await?;
+
+        // Migration: assign roles to users that were created before the role
+        // system existed (they have no entries in user_role_bindings).
+        Self::assign_orphan_roles(db, conn.pool()).await?;
+
+        tracing::info!("UserDatabase: init complete.");
+        Ok(())
+    }
+
+    /// Create the `user_*` tables owned by this crate.
+    ///
+    /// Note: balance_usd and balance_cny use BIGINT nanodollars (9 decimal precision).
+    /// Note: user_accounts CREATE TABLE is authoritative in schema.rs; omitted here.
+    async fn create_tables(pool: &sqlx::AnyPool, kind: &str) -> Result<()> {
+        let (user_roles_sql, user_role_bindings_sql, user_recharges_sql) = match kind {
             "sqlite" => (
                 r#"
                 CREATE TABLE IF NOT EXISTS user_roles (
@@ -98,125 +136,145 @@ impl UserDatabase {
             _ => unreachable!("Unsupported database kind"),
         };
 
-        sqlx::query(user_roles_sql).execute(conn.pool()).await?;
+        sqlx::query(user_roles_sql).execute(pool).await?;
         tracing::info!("UserDatabase: tables created/verified.");
 
-        sqlx::query(user_role_bindings_sql)
-            .execute(conn.pool())
-            .await?;
-        sqlx::query(user_recharges_sql).execute(conn.pool()).await?;
+        sqlx::query(user_role_bindings_sql).execute(pool).await?;
+        sqlx::query(user_recharges_sql).execute(pool).await?;
 
-        // Migrations for SQLite (Add columns if missing)
-        if kind == "sqlite" {
-            // Ignoring errors as "duplicate column name" is the expected error if it exists
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN password_hash TEXT")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN github_id TEXT")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN status INTEGER DEFAULT 1")
-                .execute(conn.pool())
-                .await;
-            let _ =
-                sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0")
-                    .execute(conn.pool())
-                    .await;
-            let _ =
-                sqlx::query("ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0")
-                    .execute(conn.pool())
-                    .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_accounts ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
-            )
-            .execute(conn.pool())
-            .await;
-        }
+        Ok(())
+    }
 
-        // Migrations for PostgreSQL (Add columns if missing)
-        if kind == "postgres" {
-            let _ = sqlx::query(
-                "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
-            )
-            .execute(conn.pool())
-            .await;
-            let _ = sqlx::query("ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'")
-                .execute(conn.pool())
-                .await;
-            let _ = sqlx::query(
-                "ALTER TABLE user_recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
-            )
-            .execute(conn.pool())
-            .await;
-        }
+    /// SQLite migrations (add columns if missing).
+    ///
+    /// Best-effort: "duplicate column name" is the expected error if the column
+    /// already exists.
+    async fn migrate_sqlite_columns(pool: &sqlx::AnyPool) {
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN password_hash TEXT",
+        )
+        .await;
+        best_effort_execute(pool, "ALTER TABLE user_accounts ADD COLUMN github_id TEXT").await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN status INTEGER DEFAULT 1",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN balance_usd BIGINT DEFAULT 0",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN balance_cny BIGINT DEFAULT 0",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN preferred_currency VARCHAR(10) DEFAULT 'USD'",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_recharges ADD COLUMN currency VARCHAR(10) DEFAULT 'USD'",
+        )
+        .await;
+    }
 
-        // Initialize default roles
+    /// PostgreSQL migrations (add columns if missing). Best-effort, see
+    /// [`best_effort_execute`].
+    async fn migrate_postgres_columns(pool: &sqlx::AnyPool) {
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_usd BIGINT DEFAULT 0",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS balance_cny BIGINT DEFAULT 0",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS preferred_currency VARCHAR(10) DEFAULT 'USD'",
+        )
+        .await;
+        best_effort_execute(
+            pool,
+            "ALTER TABLE user_recharges ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD'",
+        )
+        .await;
+    }
+
+    /// Insert the default `admin` / `user` roles when the table is still empty.
+    async fn seed_default_roles(pool: &sqlx::AnyPool) -> Result<()> {
         let role_count: i64 = sqlx::query("SELECT COUNT(*) FROM user_roles")
-            .fetch_one(conn.pool())
+            .fetch_one(pool)
             .await?
             .get(0);
 
         if role_count == 0 {
             tracing::info!("UserDatabase: inserting default roles...");
-            let _ = sqlx::query("INSERT OR IGNORE INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')")
-                .execute(conn.pool())
-                .await;
+            best_effort_execute(pool, "INSERT OR IGNORE INTO user_roles (id, name, description) VALUES ('role-admin', 'admin', 'Administrator'), ('role-user', 'user', 'Standard User')").await;
         }
 
-        // Migration: assign roles to users that were created before the role
-        // system existed (they have no entries in user_role_bindings).
-        // The demo-user seed (password_hash = 'no-login) is always
-        // assigned "user" — it cannot log in and should never be admin.
-        {
-            let orphan_sql = if db.kind() == "postgres" {
-                "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
-            } else {
-                "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
-            };
-            let orphan_rows = sqlx::query(orphan_sql).fetch_all(conn.pool()).await?;
-
-            if !orphan_rows.is_empty() {
-                tracing::info!(
-                    "UserDatabase: assigning roles to {} orphan user(s)",
-                    orphan_rows.len()
-                );
-                // First real orphan (non-seed) gets admin; all others get user.
-                let mut first_real = true;
-                for row in orphan_rows.iter() {
-                    let user_id: String = row.get(0);
-                    let username: String = row.get(1);
-                    let pw_hash: Option<String> = row.get(2);
-                    let is_seed = username == "demo-user" || pw_hash.as_deref() == Some("no-login");
-                    let role = if !is_seed && first_real {
-                        first_real = false;
-                        "admin"
-                    } else {
-                        "user"
-                    };
-                    if let Err(e) = Self::assign_role(db, &user_id, role).await {
-                        tracing::warn!(
-                            "Failed to assign {} role to orphan user {}: {}",
-                            role,
-                            user_id,
-                            e
-                        );
-                    }
-                }
-            }
-        }
-
-        tracing::info!("UserDatabase: init complete.");
         Ok(())
+    }
+
+    /// Assign roles to users created before the role system existed (they have
+    /// no entries in user_role_bindings).
+    ///
+    /// The demo-user seed (password_hash = 'no-login) is always assigned "user"
+    /// — it cannot log in and should never be admin. The first real (non-seed)
+    /// orphan becomes admin when no other orphan was promoted yet.
+    async fn assign_orphan_roles(db: &Database, pool: &sqlx::AnyPool) -> Result<()> {
+        let orphan_sql = if db.kind() == "postgres" {
+            "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.id"
+        } else {
+            "SELECT u.id, u.username, u.password_hash FROM user_accounts u WHERE NOT EXISTS (SELECT 1 FROM user_role_bindings urb WHERE urb.user_id = u.id) ORDER BY u.rowid"
+        };
+        let orphan_rows = sqlx::query(orphan_sql).fetch_all(pool).await?;
+
+        if orphan_rows.is_empty() {
+            return Ok(());
+        }
+
+        tracing::info!(
+            "UserDatabase: assigning roles to {} orphan user(s)",
+            orphan_rows.len()
+        );
+        // First real orphan (non-seed) gets admin; all others get user.
+        let mut first_real = true;
+        for row in orphan_rows.iter() {
+            Self::assign_orphan_role(db, row, &mut first_real).await;
+        }
+
+        Ok(())
+    }
+
+    /// Give one orphan user a role: the first real (non-seed) orphan is promoted
+    /// to `admin`, every other orphan becomes `user`.
+    async fn assign_orphan_role(db: &Database, row: &sqlx::any::AnyRow, first_real: &mut bool) {
+        let user_id: String = row.get(0);
+        let username: String = row.get(1);
+        let pw_hash: Option<String> = row.get(2);
+        let is_seed = username == "demo-user" || pw_hash.as_deref() == Some("no-login");
+        let role = if !is_seed && *first_real {
+            *first_real = false;
+            "admin"
+        } else {
+            "user"
+        };
+        if let Err(e) = Self::assign_role(db, &user_id, role).await {
+            tracing::warn!(
+                "Failed to assign {} role to orphan user {}: {}",
+                role,
+                user_id,
+                e
+            );
+        }
     }
 
     pub async fn create_user(db: &Database, user: &UserAccount) -> Result<()> {

@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "Test-only file: the assertions on the compatibility fixtures are the test, and fail fast."
+)]
 //! S1-A compatibility evidence: the legacy `burncloud_common` import paths and the
 //! Commerce-owned contract path must resolve to the same implementation and return
 //! identical results for zero, positive/negative, rounding-boundary and large values.

@@ -8,8 +8,8 @@ name: Maintenance / Version Tag
 #
 # The push trigger is not a duplicate of the local hook. The hook answers "is this commit sound"; the
 # push of a version bump is the release decision, and the full workspace suite is what has to pass
-# before an artifact is built. `quality-gate` below runs the same four commands, by calling
-# `ci-quality.yml` rather than restating them.
+# before an artifact is built. `quality-gate` below calls the full-workspace release gate in
+# `ci-quality.yml` rather than restating its policy.
 on:
   push:
     branches: [ main, master ]
@@ -137,10 +137,9 @@ jobs:
             echo "::warning::root package version v$CURRENT is older than the latest tag $PREVIOUS; no tag created"
           fi
 
-  # The four commands the local gate runs -- `fmt --all -- --check`,
-  # `test --workspace --no-default-features`, `clippy --workspace --all-targets --no-default-features`
-  # and `deny check` -- executed against the commit being released. Called rather than copied so the
-  # commands are defined in exactly one file; see `ci-quality.yml`.
+  # Full-workspace release validation executed against the commit being released. This is deliberately
+  # broader than affected-package `code test`, and is called rather than copied so the release policy
+  # remains defined in exactly one file; see `ci-quality.yml`.
   #
   # Skipped when the version did not change: a version-change job must not be gated on the full suite
   # merely to report "nothing to do", and skipping is visible in the run summary rather than silent.

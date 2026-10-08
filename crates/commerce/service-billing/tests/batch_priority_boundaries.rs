@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 //! The batch and priority boundaries (#633, plan section 5 item 17).
 //!
@@ -58,7 +59,7 @@ async fn fresh_db(tag: &str) -> Result<(Database, std::path::PathBuf), Box<dyn E
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     Ok((create_database_with_url(&url).await?, path))

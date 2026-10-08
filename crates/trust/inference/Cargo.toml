@@ -12,7 +12,7 @@ serde = { workspace = true }
 reqwest = { workspace = true }
 burncloud-supply-contracts = { workspace = true }
 burncloud-database = { workspace = true }
-burncloud-database-channel = { workspace = true }
+burncloud-supply-channel = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

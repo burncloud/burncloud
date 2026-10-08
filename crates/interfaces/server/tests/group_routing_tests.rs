@@ -2,7 +2,9 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::let_and_return,
-    clippy::disallowed_types
+    clippy::disallowed_types,
+    clippy::panic_in_result_fn,
+    reason = "integration test: assertions are the failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 
 use axum::{body::Body, extract::State, response::Response, routing::post, Router};
@@ -20,6 +22,10 @@ struct MockUpstreamState {
 
 #[tokio::test]
 #[ignore = "requires full server+mock setup, needs rewrite"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one end-to-end routing scenario: splitting it would scatter the fixture setup across helpers"
+)]
 async fn test_group_routing_logic() -> anyhow::Result<()> {
     // 1. Start Mock Upstreams
     let count_a = Arc::new(Mutex::new(0));

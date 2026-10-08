@@ -90,9 +90,12 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
             && args[args.len() - 2] == "-D"
             && args[args.len() - 1] == "warnings";
         if !strict {
-            return Err("code test clippy must end with `-- -D warnings`".into());
+            return Err("clippy gate must end with `-- -D warnings`".into());
         }
         &args[..args.len() - 3]
+    } else if kind == "test" {
+        let cargo_args_end = args.iter().position(|arg| arg == "--").unwrap_or(args.len());
+        &args[..cargo_args_end]
     } else {
         &args[..]
     };

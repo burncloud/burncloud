@@ -16,7 +16,8 @@ impl LoopRunLock {
                 .and_then(|s| s.trim().parse::<u32>().ok())
                 .is_none_or(|pid| !is_process_alive(pid));
             if stale {
-                let _ = std::fs::remove_file(&path);
+                // Best effort: the lock file is rewritten just below, so a failed removal is harmless.
+                std::fs::remove_file(&path).ok();
             } else if let Ok(text) = std::fs::read_to_string(&path) {
                 let pid = text.trim();
                 anyhow::bail!(
@@ -33,7 +34,8 @@ impl LoopRunLock {
 
 impl Drop for LoopRunLock {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        // Best effort: releasing the lock must not panic when the file is already gone.
+        std::fs::remove_file(&self.path).ok();
     }
 }
 

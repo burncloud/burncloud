@@ -1,5 +1,8 @@
 // LLM protocol adaptor — dynamic JSON transformation — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "protocol/adaptor boundary must preserve arbitrary upstream JSON"
+)]
 
 use super::factory::ChannelAdaptor;
 use super::gemini::GeminiAdaptor;
@@ -160,7 +163,10 @@ impl ChannelAdaptor for VertexAdaptor {
 }
 
 impl VertexAdaptor {
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "service-account auth path kept complete; the router currently authenticates Vertex with an API key"
+    )]
     fn parse_service_account(json_str: &str) -> Result<(String, String, Option<String>)> {
         let account: ServiceAccount = serde_json::from_str(json_str)?;
         Ok((
@@ -170,7 +176,10 @@ impl VertexAdaptor {
         ))
     }
 
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "service-account OAuth token exchange, exercised by tests but not by the live API-key path"
+    )]
     pub(crate) async fn get_access_token(
         &self,
         client_email: &str,
@@ -246,7 +255,8 @@ impl VertexAdaptor {
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
     use super::*;

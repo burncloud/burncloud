@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// System status output for JSON format
 #[derive(Debug, Clone, Serialize)]
-pub struct SystemStatus {
+pub(crate) struct SystemStatus {
     pub total_channels: usize,
     pub active_channels: usize,
     pub today_requests: i64,
@@ -25,7 +25,7 @@ pub struct SystemStatus {
 
 /// Server status output
 #[derive(Debug, Clone, Serialize)]
-pub struct ServerStatus {
+pub(crate) struct ServerStatus {
     pub process_running: bool,
     pub pid: Option<u32>,
     pub tmux_session: Option<String>,
@@ -36,7 +36,7 @@ pub struct ServerStatus {
 }
 
 /// Handle monitor status command
-pub async fn cmd_monitor_status(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_monitor_status(db: &Database, matches: &ArgMatches) -> Result<()> {
     let format = matches
         .get_one::<String>("format")
         .map(|s| s.as_str())
@@ -91,7 +91,7 @@ pub async fn cmd_monitor_status(db: &Database, matches: &ArgMatches) -> Result<(
 }
 
 /// Handle monitor server command
-pub async fn cmd_monitor_server(matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn cmd_monitor_server(matches: &ArgMatches) -> Result<()> {
     let show_logs = matches.get_flag("logs");
     let tail_lines = matches.get_one::<usize>("tail").copied().unwrap_or(50);
 
@@ -543,7 +543,7 @@ async fn get_today_stats(db: &Database) -> Result<(i64, i64, i64)> {
 }
 
 /// Route monitor commands
-pub async fn handle_monitor_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_monitor_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("status", sub_m)) => {
             cmd_monitor_status(db, sub_m).await?;

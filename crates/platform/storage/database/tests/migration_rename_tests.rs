@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::unnecessary_unwrap)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unnecessary_unwrap,
+    reason = "Test-only file: the assertions and unwraps are the test."
+)]
 //! Integration tests for migration 0010 (table renames).
 //!
 //! Verifies that:
@@ -279,11 +284,12 @@ async fn test_user_role_bindings_insert_and_query() {
 
     // Insert a binding (user_role_bindings has FK to user_accounts and user_roles,
     // but user_roles is currently missing on fresh installs — insert without FK check)
-    let _ = sqlx::query(
+    sqlx::query(
         "INSERT INTO user_role_bindings (user_id, role_id) VALUES ('bind-user-1', 'role-1')",
     )
     .execute(pool)
-    .await;
+    .await
+    .ok();
 
     // Verify via user_accounts that the user is queryable (FK-agnostic check)
     let count: i64 =
@@ -694,6 +700,10 @@ async fn raw_sqlite_pool(path: &std::path::Path) -> sqlx::AnyPool {
 }
 
 /// Create old-style tables (matching 0001 schema) with no migration tracking.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one flat list of legacy DDL statements; splitting it would obscure the 0001 schema"
+)]
 async fn create_old_schema(pool: &sqlx::AnyPool) {
     // users (old name for user_accounts)
     sqlx::query(

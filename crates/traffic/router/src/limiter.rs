@@ -62,7 +62,7 @@ impl RateLimiter {
     ///   - Requires: storage for per-user rate limits (database or cache)
     ///   - Consider: integrating with database-user for user-specific configs
     ///   - Consider: hierarchical limits (global -> user -> token)
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "reserved stub for per-key rate-limit overrides")]
     pub fn set_custom_limit(&self, _key: &str, _capacity: f64, _refill_rate: f64) {
         // 预留接口
     }

@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -39,7 +40,7 @@ async fn test_reset_password_page_loads() {
         .wait_for_text("重置", 10_000)
         .or_else(|_| browser.wait_for_text("密码", 10_000));
     assert!(result.is_ok(), "Reset password page did not load");
-    let _ = browser.screenshot("reset-password");
+    browser.screenshot("reset-password").ok();
 }
 
 // ============================================================================
@@ -103,7 +104,7 @@ async fn test_register_success_flow() {
         .or_else(|_| browser.wait_for_text("企业控制台", 10_000));
 
     assert!(result.is_ok(), "Registration did not redirect to dashboard");
-    let _ = browser.screenshot("register-success");
+    browser.screenshot("register-success").ok();
 }
 
 #[tokio::test]
@@ -166,7 +167,7 @@ async fn test_register_duplicate_username() {
         "Expected error message or staying on register page after duplicate registration"
     );
 
-    let _ = browser.screenshot("register-duplicate");
+    browser.screenshot("register-duplicate").ok();
 }
 
 #[tokio::test]
@@ -185,10 +186,10 @@ async fn test_login_logout_flow() {
 
     // Click logout button (usually in user menu or settings)
     // Try clicking on user avatar/menu first
-    let _ = browser.click_by_name("button:用户", 3_000);
-    let _ = browser.click_by_name("button:退出", 3_000);
-    let _ = browser.click_by_name("link:退出", 3_000);
-    let _ = browser.click_by_name("link:登出", 3_000);
+    browser.click_by_name("button:用户", 3_000).ok();
+    browser.click_by_name("button:退出", 3_000).ok();
+    browser.click_by_name("link:退出", 3_000).ok();
+    browser.click_by_name("link:登出", 3_000).ok();
 
     // Wait for redirect to login or home page
     let _result = browser
@@ -196,7 +197,7 @@ async fn test_login_logout_flow() {
         .or_else(|_| browser.wait_for_text("Sign In", 5_000));
 
     // Screenshot for evidence
-    let _ = browser.screenshot("logout-flow");
+    browser.screenshot("logout-flow").ok();
 }
 
 #[tokio::test]
@@ -239,7 +240,7 @@ async fn test_login_invalid_credentials_error() {
         "Expected error message or staying on login page after invalid credentials"
     );
 
-    let _ = browser.screenshot("login-invalid-credentials");
+    browser.screenshot("login-invalid-credentials").ok();
 }
 
 // ============================================================================
@@ -274,7 +275,7 @@ async fn test_unauthenticated_access_redirects_to_login() {
         "Unauthenticated access behavior unclear"
     );
 
-    let _ = browser.screenshot("unauthenticated-redirect");
+    browser.screenshot("unauthenticated-redirect").ok();
 }
 
 #[tokio::test]
@@ -300,7 +301,7 @@ async fn test_login_navigation_from_home() {
         .wait_for_text("登录", 10_000)
         .expect("Did not navigate to login page");
 
-    let _ = browser.screenshot("home-to-login-nav");
+    browser.screenshot("home-to-login-nav").ok();
 }
 
 #[tokio::test]
@@ -328,7 +329,7 @@ async fn test_register_navigation_from_login() {
         .or_else(|_| browser.wait_for_text("注册", 5_000))
         .expect("Did not navigate to register page");
 
-    let _ = browser.screenshot("login-to-register-nav");
+    browser.screenshot("login-to-register-nav").ok();
 }
 
 // ============================================================================
@@ -360,7 +361,7 @@ async fn test_login_form_validation_empty_fields() {
         "Should stay on login page with empty fields"
     );
 
-    let _ = browser.screenshot("login-empty-fields");
+    browser.screenshot("login-empty-fields").ok();
 }
 
 #[tokio::test]
@@ -423,7 +424,7 @@ async fn test_register_form_validation_password_mismatch() {
         "Should show validation error or stay on register page"
     );
 
-    let _ = browser.screenshot("register-validation");
+    browser.screenshot("register-validation").ok();
 }
 
 // ============================================================================
@@ -465,14 +466,14 @@ async fn test_forgot_password_form_submission() {
         .or_else(|_| browser.wait_for_text("发送", 5_000));
 
     // Screenshot for evidence
-    let _ = browser.screenshot("forgot-password-submit");
+    browser.screenshot("forgot-password-submit").ok();
 
     // Accept either success or being on a new page
     assert!(
         result.is_ok()
             || browser
                 .snapshot()
-                .map(|s| s.text.len() > 0)
+                .map(|s| !s.text.is_empty())
                 .unwrap_or(false)
     );
 }
@@ -507,5 +508,5 @@ async fn test_forgot_password_navigation_from_login() {
         .wait_for_text("忘记密码", 10_000)
         .expect("Did not navigate to forgot password page");
 
-    let _ = browser.screenshot("login-to-forgot-password-nav");
+    browser.screenshot("login-to-forgot-password-nav").ok();
 }

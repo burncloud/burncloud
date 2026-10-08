@@ -12,4 +12,8 @@
 //! these items for consumers that have not switched yet.
 
 pub mod price_u64;
+#[expect(
+    clippy::allow_attributes_without_reason,
+    reason = "the legacy versioned pricing parser still carries narrowly-scoped dynamic-JSON/dead-code exceptions; keep that historical debt inside the pricing module until the parser conversion is complete"
+)]
 pub mod pricing;
