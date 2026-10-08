@@ -1,4 +1,4 @@
-use burncloud_service_models::{
+use burncloud_supply_model::{
     build_download_url, filter_gguf_files, get_data_dir, get_model_files,
 };
 
