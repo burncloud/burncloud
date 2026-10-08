@@ -3,7 +3,7 @@ use crate::{
     domains::buyer::overview::model::OverviewModel,
     i18n::{formatter::currency, strings, Locale, LocaleStrings},
     shared::{
-        types::{nav_items, NavKey, Role},
+        types::{nav_items, NavItem, NavKey, Role},
         ui::{GlobalStyle, Icon, IconName, Logo},
     },
 };
@@ -188,10 +188,7 @@ fn role_metric_label(locale: Locale, role: Role, copy: &LocaleStrings) -> &'stat
         (Locale::ZhTw, Role::Supplier) => "今日淨收益",
         (Locale::Ja, Role::Supplier) => "本日の純収益",
         (_, Role::Supplier) => "Today Net Earnings",
-        (Locale::Zh, Role::Admin) => "今日平台 GMV",
-        (Locale::ZhTw, Role::Admin) => "今日平台 GMV",
-        (Locale::Ja, Role::Admin) => "本日の GMV",
-        (_, Role::Admin) => "Today GMV (Gross)",
+        (_, Role::Admin) => copy.admin_overview_gmv_label,
     }
 }
 
@@ -210,6 +207,29 @@ fn is_active(path: &str, item_path: &str) -> bool {
     path == item_path
         || (item_path == "/buyer/overview" && path == "/buyer/overview")
         || path.starts_with(item_path)
+}
+
+#[component]
+fn SideNavLink(
+    item: NavItem,
+    current_path: &'static str,
+    locale: Locale,
+    copy: &'static LocaleStrings,
+    mut drawer_open: Signal<bool>,
+) -> Element {
+    rsx! {
+        Link {
+            class: if is_active(current_path, item.path) { "nav-link active" } else { "nav-link" },
+            to: item.path,
+            onclick: move |_| drawer_open.set(false),
+            span { class: "nav-label", Icon { name: item.icon, size: 16 } span { {nav_label(locale, copy, item.key)} } }
+            if item.key == NavKey::Playground {
+                span { class: "nav-badge", {copy.live} }
+            } else if let Some(badge) = item.badge {
+                span { class: "nav-badge", {badge} }
+            }
+        }
+    }
 }
 
 fn start_window_drag(event: Event<MouseData>) {
@@ -283,15 +303,25 @@ pub fn BuyerShell(children: Element) -> Element {
                 }
                 div { class: "workflow-strip", {role_flow(current_role, copy)} }
                 nav { class: "side-nav",
-                    div { class: "nav-list",
-                        for item in nav_items(current_role) {
-                            Link { class: if is_active(current_path, item.path) { "nav-link active" } else { "nav-link" }, to: item.path, onclick: move |_| drawer_open.set(false),
-                                span { class: "nav-label", Icon { name: item.icon, size: 16 } span { {nav_label(locale(), copy, item.key)} } }
-                                if item.key == NavKey::Playground {
-                                    span { class: "nav-badge", {copy.live} }
-                                } else if let Some(badge) = item.badge {
-                                    span { class: "nav-badge", {badge} }
+                    if current_role == Role::Admin {
+                        div { class: "nav-list admin-nav-list",
+                            div { class: "nav-group",
+                                div { class: "nav-group-title", {copy.admin_nav_group_control} }
+                                for item in nav_items(current_role).iter().take(5) {
+                                    SideNavLink { item: *item, current_path, locale: locale(), copy, drawer_open }
                                 }
+                            }
+                            div { class: "nav-group",
+                                div { class: "nav-group-title", {copy.admin_nav_group_finance} }
+                                for item in nav_items(current_role).iter().skip(5) {
+                                    SideNavLink { item: *item, current_path, locale: locale(), copy, drawer_open }
+                                }
+                            }
+                        }
+                    } else {
+                        div { class: "nav-list",
+                            for item in nav_items(current_role).iter() {
+                                SideNavLink { item: *item, current_path, locale: locale(), copy, drawer_open }
                             }
                         }
                     }
@@ -335,7 +365,7 @@ pub fn BuyerShell(children: Element) -> Element {
                         div { class: "profile", span { class: "avatar", {match current_role { Role::Buyer => "BY", Role::Supplier => "SP", Role::Admin => "AD" }} } span { class: "profile-copy", strong { "burncloud.com" } small { {role_label(current_role, copy)} } } }
                     }
                 }
-                main { class: "page-viewport", div { class: "content-width", if current_role == Role::Buyer || current_role == Role::Supplier { {children} } else { div { class: "placeholder-panel", span { class: "placeholder-icon", Icon { name: IconName::Layers, size: 22 } } h1 { {format!("{} Overview", role_label(current_role, copy))} } p { {copy.placeholder} } } } } }
+                main { class: "page-viewport", div { class: "content-width", if current_role == Role::Buyer || current_role == Role::Supplier || current_role == Role::Admin { {children} } else { div { class: "placeholder-panel", span { class: "placeholder-icon", Icon { name: IconName::Layers, size: 22 } } h1 { {format!("{} Overview", role_label(current_role, copy))} } p { {copy.placeholder} } } } } }
             }
         }
     }
