@@ -146,6 +146,42 @@ fn the_effective_budget_is_the_candidate_count_capped_at_five() {
     );
 }
 
+/// Regression for #680: the failover future is bounded independently of
+/// the intentionally long shared HTTP client timeout.
+#[test]
+fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
+    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
+        .expect("router source exists");
+    assert!(src.contains("tokio::time::timeout(remaining, proxy_future)"),
+        "removing the aggregate deadline must fail this regression");
+    assert!(src.contains("BURNCLOUD_INTERACTIVE_DEADLINE_SECS"));
+    assert!(src.contains("BURNCLOUD_LONG_TASK_DEADLINE_SECS"));
+    assert!(src.contains("DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120"));
+    assert!(src.contains("DEFAULT_LONG_TASK_DEADLINE_SECS: u64 = 72000"));
+    assert!(src.contains("StatusCode::GATEWAY_TIMEOUT"));
+    assert!(src.contains("retry_deadline_exceeded"));
+    assert!(src.contains("error_type: Some(\"timeout\".to_string())"));
+    assert!(src.contains("Dropping the timed-out future"));
+}
+
+/// When a deadline cancels a future, its owned guard is dropped.
+#[tokio::test]
+async fn timeout_cancels_and_releases_owned_reservation() {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    struct Reservation(Arc<AtomicBool>);
+    impl Drop for Reservation {
+        fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); }
+    }
+    let released = Arc::new(AtomicBool::new(false));
+    let owned = released.clone();
+    let task = async move {
+        let _guard = Reservation(owned);
+        std::future::pending::<()>().await;
+    };
+    assert!(tokio::time::timeout(std::time::Duration::from_millis(10), task).await.is_err());
+    assert!(released.load(Ordering::SeqCst));
+}
+
 /// The configured timeouts, so a change to either is visible rather than silent.
 #[test]
 fn the_timeouts_that_multiply_into_the_worst_case_are_pinned() {
