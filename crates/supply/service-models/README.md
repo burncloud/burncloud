@@ -1,60 +1,25 @@
 # BurnCloud Service Models
 
-模型服务层，提供简洁的增删改查接口
+Supply-side model resolution and HuggingFace discovery helpers.
 
-## 功能特性
+## What this crate owns
 
-- ✅ 调用 `burncloud-database-model` 数据库层
-- ✅ 提供简洁的 CRUD 接口
-- ✅ 支持高级查询（搜索、排序）
-- ✅ 100% Rust 编写
-- ✅ 异步设计
+- model manifest / variant resolution;
+- local-model resolver contracts and implementations;
+- HuggingFace model/file discovery;
+- model download URL and local data-directory helpers.
 
-## API 接口
+## What this crate does not own
 
-### ModelService
+It does **not** expose database CRUD for HuggingFace repository metadata. The previous `ModelService`
+CRUD facade called seven no-op methods in `burncloud-database-model`; #621 removed that false
+capability instead of preserving an API that never persisted anything.
+
+Runtime model capability truth is persisted by `burncloud-database-model::ModelCapabilityModel`.
+Pricing remains Commerce-owned.
+
+## HuggingFace example
 
 ```rust
-// 创建服务
-let service = ModelService::new().await?;
-
-// 增：添加模型
-service.create(&model).await?;
-
-// 删：删除模型
-service.delete("model_id").await?;
-
-// 改：更新模型
-service.update(&model).await?;
-
-// 查：获取单个模型
-let model = service.get("model_id").await?;
-
-// 查：列出所有模型
-let models = service.list().await?;
-
-// 查：根据类型搜索
-let models = service.search_by_pipeline("text-generation").await?;
-
-// 查：获取热门模型
-let popular = service.get_popular(10).await?;
-
-// 关闭服务
-service.close().await?;
-```
-
-## 使用示例
-
-运行示例程序：
-
-```bash
-cargo run --example usage
-```
-
-## 依赖关系
-
-```
-burncloud-service-models
-  └─ burncloud-database-model
-       └─ burncloud-database
+let models = ModelService::fetch_from_huggingface().await?;
 ```

@@ -35,20 +35,17 @@
 //! None of this is asserted as correct. It is recorded, because a caller reading the plan would expect to be
 //! able to store a USD and a CNY price for one model and would silently lose one of them.
 //!
-//! ## The uncompiled modules, checked rather than assumed
+//! ## Monthly quota subscription status
 //!
-//! The plan says of `billing_plan.rs` and `billing_subscription.rs`: *confirm their status first, and do not
-//! enable the feature just to test it*. Measured:
+//! The historical migration `0015_monthly_quota.sql` creates `billing_plans` and
+//! `billing_subscriptions` for both database backends. That schema is **not an active runtime
+//! capability** today: the orphan `billing_plan.rs` / `billing_subscription.rs` implementations
+//! were never part of a module, referenced types that did not exist, and were removed in #653.
 //!
-//! | Fact | Value |
-//! | --- | --- |
-//! | the two files | present on disk (138 and 307 lines) |
-//! | declared in `lib.rs` | **no** -- `mod billing_plan;` and `mod billing_subscription;` are absent |
-//! | `burncloud-common`, which they import | **is** a dependency, so they *would* compile |
-//! | their tables | `billing_plans` and `billing_subscriptions` exist, in migration `0015_monthly_quota.sql`, for **both** backends |
+//! No Rust plan/subscription types, database modules or service/API are currently exported.
+//! Completing that feature is tracked by #652 and must start by defining the contract and quota
+//! semantics rather than re-enabling the deleted files.
 //!
-//! So they are **deliberately excluded** rather than mislaid: the tables and the dependency are both in place
-//! and only the `mod` lines are missing. Nothing here touches them and no `mod` line was added.
 
 use burncloud_commerce_contracts::pricing::{PriceInput, TieredPriceInput};
 use burncloud_database::{create_database_with_url, Database};
