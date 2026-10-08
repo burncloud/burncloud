@@ -1,4 +1,4 @@
-use burncloud_service_models::ModelService;
+use burncloud_supply_model::ModelService;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
