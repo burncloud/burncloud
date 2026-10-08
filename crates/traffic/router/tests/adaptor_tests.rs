@@ -133,7 +133,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     // The Anthropic-native path selects Anthropic Channel candidates.
     common::ensure_channel_tables(&pool).await?;
     sqlx::query(
-        "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority) VALUES (75631, 2, ?, 1, 'Claude Adaptor Test', 1, ?, 'claude-3-opus', 'default', 0)",
+        "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority) VALUES (75631, 14, ?, 1, 'Claude Adaptor Test', 1, ?, 'claude-3-opus', 'default', 0)",
     )
     .bind("sk-ant-mock-key")
     .bind(format!("http://127.0.0.1:{mock_port}/anything"))
