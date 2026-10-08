@@ -220,6 +220,31 @@ const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 30;
 /// HTTP request timeout (seconds). Total time for request completion (600 minutes).
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 36000;
+/// Retry budget: upper bound for the entire proxy pipeline, including failover.
+/// Overrides: BURNCLOUD_INTERACTIVE_DEADLINE_SECS and BURNCLOUD_LONG_TASK_DEADLINE_SECS.
+/// An invalid or zero override falls back to the documented defaults.
+/// Long-task policies deliberately retain the existing 10-hour per-request timeout.
+const DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120;
+const DEFAULT_LONG_TASK_DEADLINE_SECS: u64 = 72000;
+
+fn retry_budget_secs(path: &str) -> u64 {
+    let interactive = path.contains("/chat/completions")
+        || path.contains("/embeddings")
+        || path.ends_with("/messages")
+        || path.contains(":generateContent")
+        || path.contains(":streamGenerateContent");
+    let (key, default) = if interactive {
+        ("BURNCLOUD_INTERACTIVE_DEADLINE_SECS", DEFAULT_INTERACTIVE_DEADLINE_SECS)
+    } else {
+        ("BURNCLOUD_LONG_TASK_DEADLINE_SECS", DEFAULT_LONG_TASK_DEADLINE_SECS)
+    };
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(default)
+}
+
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
 const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 /// HTTP TCP keepalive interval (seconds).
@@ -1801,8 +1826,13 @@ async fn proxy_handler(
     // Create unified token counter for streaming response parsing
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
-    // Perform Proxy Logic
-    let result = proxy_logic(
+    // Enforce one deadline across all failover attempts, rather than resetting
+    // a full client timeout for every upstream. Dropping the timed-out future
+    // also drops any live BudgetGuard, refunding uncommitted TPM reservations.
+    let retry_budget_secs = retry_budget_secs(&path);
+    let remaining = std::time::Duration::from_secs(retry_budget_secs)
+        .saturating_sub(start_time.elapsed());
+    let proxy_future = proxy_logic(
         &state,
         method,
         uri,
@@ -1816,8 +1846,38 @@ async fn proxy_handler(
         token_counter.clone(),
         model_name.as_deref(),
         start_time,
-    )
-    .await;
+    );
+    let result = match tokio::time::timeout(remaining, proxy_future).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!(
+                request_id = %request_id,
+                path = %path,
+                retry_budget_secs,
+                elapsed_ms = start_time.elapsed().as_millis() as u64,
+                "Router retry budget deadline exceeded; abandoning failover"
+            );
+            ProxyResult {
+                response: build_response_with_header(
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "content-type",
+                    "application/json",
+                    Body::from(
+                        r#"{"error":{"message":"Router retry budget deadline exceeded","type":"upstream_error","code":"retry_deadline_exceeded"}}"#,
+                    ),
+                ),
+                upstream_id: None,
+                final_status: StatusCode::GATEWAY_TIMEOUT,
+                pricing_region: None,
+                video_task_id: None,
+                shaper_outcome: None,
+                routing_decision: None,
+                sched_request_color: TrafficColor::Yellow,
+                error_type: Some("timeout".to_string()),
+                request_log_data: None,
+            }
+        }
+    };
 
     // Save video task mapping asynchronously (fire-and-forget)
     if let Some(task_id) = result.video_task_id {
