@@ -191,7 +191,6 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
     .await;
 }
 
-
 #[tokio::test]
 async fn failed_channel_writes_roll_back_atomically_on_postgres() {
     with_postgres("provider_atomicity", |db| async move {
