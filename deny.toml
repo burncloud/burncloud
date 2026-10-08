@@ -133,11 +133,10 @@ reason = "Interfaces/Common is compatibility infrastructure; new domain crates m
 [[bans.deny]]
 crate = "burncloud-database-model"
 wrappers = [
-    "burncloud-service-models",
     "burncloud",
     "burncloud-router",
 ]
-reason = "Model metadata must not be imported directly by server; use service layer"
+reason = "model_capabilities persistence is Supply-owned; direct consumers are frozen to composition and the Traffic sync adapter"
 
 # burncloud-database-billing — billing_ domain (prices, tiered prices, exchange rates)
 [[bans.deny]]

@@ -6,7 +6,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-model.workspace = true
 burncloud-service-ip.workspace = true
 burncloud-service-setting.workspace = true
 burncloud-download.workspace = true
@@ -17,11 +16,6 @@ reqwest.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 
-# The `service-models-usage` example was retired here. It imported `ModelInfo`, which this crate no
-# longer exports -- #630 replaced that type with the manifest/variant structures -- so the example had
-# not compiled since, and nothing but its own declaration referenced it. It is deleted rather than
-# rewritten against a shape this crate has not settled on yet; a fresh example is worth writing once
-# the resolver work lands.
 
 [lints]
 workspace = true
