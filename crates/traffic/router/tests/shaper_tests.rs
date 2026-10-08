@@ -419,6 +419,16 @@ async fn t6_all_candidates_rejected_returns_503_x_rejected_by_shaper() -> anyhow
         "Retry-After should be '60'"
     );
 
+    let body: serde_json::Value = resp.json().await?;
+    assert_eq!(
+        body["error"]["code"], "rate_budget_exhausted",
+        "all-Shaper-rejected must keep the existing D12 error code"
+    );
+    assert_eq!(
+        body["error"]["message"], "All candidate channels rejected by rate budget shaper",
+        "all-Shaper-rejected must stay on the dedicated 503 path, not fall through to 502"
+    );
+
     Ok(())
 }
 
