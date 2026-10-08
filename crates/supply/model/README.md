@@ -16,7 +16,6 @@ It owns:
 It does not own canonical pricing truth (Commerce), Traffic routing, database
 schema migrations, or runtime process lifecycle.
 
-The Cargo package is `burncloud-supply-model`. During #778 the Rust library
-target intentionally remains `burncloud_service_models` so the structural
-migration does not create unrelated import churn. A follow-up mechanical rename
-will remove that compatibility surface.
+The Cargo package is `burncloud-supply-model`, and the Rust crate import is
+`burncloud_supply_model`. The temporary `burncloud_service_models`
+compatibility surface used during #778 was removed by #780.
