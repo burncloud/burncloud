@@ -1,9 +1,8 @@
 [workspace]
 members = [
     "crates/interfaces/common",
-    "crates/identity/database-user",
     "crates/identity/service-token",
-    "crates/identity/service-user",
+    "crates/identity/user",
     "crates/traffic/contracts",
     "crates/supply/contracts",
     "crates/supply/channel",
@@ -183,7 +182,6 @@ burncloud-database = { path = "crates/platform/storage/database" }
 burncloud-database-billing = { path = "crates/commerce/database-billing" }
 burncloud-database-router = { path = "crates/traffic/database-router" }
 burncloud-database-sys = { path = "crates/platform/storage/database-sys" }
-burncloud-database-user = { path = "crates/identity/database-user" }
 burncloud-download = { path = "crates/platform/storage/download" }
 burncloud-download-aria2 = { path = "crates/platform/storage/download-aria2" }
 burncloud-installer = { path = "crates/platform/lifecycle/installer" }
@@ -196,7 +194,7 @@ burncloud-service-ip = { path = "crates/platform/observability/ip" }
 burncloud-service-monitor = { path = "crates/platform/observability/monitor" }
 burncloud-service-setting = { path = "crates/platform/configuration/setting" }
 burncloud-service-inference = { path = "crates/trust/inference" }
-burncloud-service-user = { path = "crates/identity/service-user" }
+burncloud-identity-user = { path = "crates/identity/user" }
 burncloud-service-token = { path = "crates/identity/service-token" }
 burncloud-service-router-log = { path = "crates/traffic/service-router-log" }
 burncloud-service-billing = { path = "crates/commerce/service-billing" }
@@ -244,7 +242,7 @@ burncloud-database-billing.workspace = true
 burncloud-supply-channel.workspace = true
 burncloud-database-router.workspace = true
 burncloud-database-sys.workspace = true
-burncloud-database-user.workspace = true
+burncloud-identity-user.workspace = true
 burncloud-installer.workspace = true
 bcrypt.workspace = true
 uuid.workspace = true

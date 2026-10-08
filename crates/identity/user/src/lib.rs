@@ -1,16 +1,18 @@
-//! # BurnCloud Service User
+//! # BurnCloud Identity User
 //!
-//! User service layer providing register, login, and token management functionality.
+//! Identity-owned User capability: authentication plus its persistence implementation.
+
+mod repository;
 
 use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_database::Database;
-use burncloud_database_user::PasswordResetDatabase;
-use burncloud_database_user::UserDatabase;
 use burncloud_traffic_contracts::TrafficColor;
 use dashmap::DashMap;
 
-// Re-export domain types so server can depend on service-user instead of database-user
-pub use burncloud_database_user::{UserAccount, UserRecharge};
+pub use repository::{
+    PasswordResetDatabase, PasswordResetToken, UserAccount, UserAccountInput, UserAccountModel,
+    UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput, UserDatabase, UserRecharge,
+};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::de::DeserializeOwned;

@@ -29,7 +29,7 @@
 
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_user::{UserAccount, UserDatabase};
+use burncloud_service_user::{UserAccount, UserDatabase};
 use std::str::FromStr;
 
 /// The environment variable naming the server, e.g. `postgres://postgres:postgres@localhost:5432/postgres`.
