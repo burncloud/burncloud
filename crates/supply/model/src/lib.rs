@@ -12,10 +12,10 @@ mod manifest;
 mod model_capability;
 mod resolver;
 
+pub use burncloud_database::DatabaseError;
 pub use common::current_timestamp;
 pub use manifest::{ModelManifest, Variant};
 pub use model_capability::{ModelCapability, ModelCapabilityInput, ModelCapabilityModel};
-pub use burncloud_database::DatabaseError;
 pub use resolver::{
     FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelResolutionError,
     ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
