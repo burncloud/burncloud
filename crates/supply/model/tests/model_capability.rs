@@ -4,7 +4,7 @@
 )]
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_service_models::{ModelCapabilityInput, ModelCapabilityModel};
+use burncloud_supply_model::{ModelCapabilityInput, ModelCapabilityModel};
 
 async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
     let path = std::env::temp_dir().join(format!(
