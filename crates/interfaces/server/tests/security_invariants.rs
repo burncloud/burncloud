@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::panic_in_result_fn,
+    reason = "integration test: assertions are the failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
+)]
 
 mod test_utils;
 

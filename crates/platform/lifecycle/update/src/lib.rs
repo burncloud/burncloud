@@ -21,6 +21,10 @@
 
 pub mod config;
 pub mod error;
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "the synchronous updater preserves platform/release fallback branches required by the current self-update flow; keep the legacy decomposition debt local to updater.rs"
+)]
 pub mod updater;
 
 pub use config::UpdateConfig;

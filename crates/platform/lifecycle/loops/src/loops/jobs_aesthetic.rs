@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
@@ -6,7 +6,7 @@ use std::time::Duration;
 use chrono::Utc;
 
 use crate::gates::{
-    ensure_api_tests_built, run_jobs_fast_gates, timings_from_log_lines, ReviewScope,
+    ensure_api_tests_built, run_jobs_fast_gates, timings_from_log_lines, JobsFastGates, ReviewScope,
 };
 use crate::lock::LoopRunLock;
 use crate::log::LoopLogger;
@@ -86,40 +86,7 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
     let server = E2eServer::start(&root, opts.e2e_port)?;
     server.apply_env();
 
-    println!("Jobs aesthetic layout loop (burncloud-loop)");
-    println!("  Goal       : one page at a time → J1 + J3 (ge 4) + final J4");
-    println!(
-        "  Acceptance : {}",
-        acceptance_dir()
-            .join("aesthetic-optimize-acceptance.md")
-            .display()
-    );
-    println!("  Run data   : {}", run_dir.display());
-    println!("  Max rounds : {}", opts.max_iterations);
-    println!(
-        "  Fast mode  : {} (naming + preview aesthetic, no 11-page css_visual)",
-        !opts.full_css_gate
-    );
-    println!("  E2E server : {} (persistent)", server.base_url);
-    if let Some(ref pages) = progress.active_pages {
-        println!(
-            "  Scope      : {} (pilot — one page at a time)",
-            pages.join(", ")
-        );
-    }
-    println!(
-        "  Page queue : {} done, current={}, {} remaining",
-        progress.completed_pages.len(),
-        progress.current_page,
-        progress.remaining_count()
-    );
-    if !progress.completed_pages.is_empty() {
-        println!("  Completed  : {}", progress.completed_pages.join(", "));
-    }
-    if opts.check_only {
-        println!("  Mode       : check only (no agent)");
-    }
-    println!();
+    print_run_banner(&run_dir, &opts, &progress, &server.base_url);
 
     if progress.all_complete() {
         println!("All pages already marked complete in page-progress.json.");
@@ -151,42 +118,9 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
             run_jobs_fast_gates(&root, opts.full_css_gate, Some(&review_scope), &mut logger);
         let phase = phase_from_gates(gates.css_ok, gates.metrics_ok, gates.review_ok);
         let elapsed = iter_start.elapsed().as_secs();
-        println!(
-            "  Iteration {i} checks finished in {elapsed}s (css={} metrics={} review={})",
-            gates.css_ok, gates.metrics_ok, gates.review_ok
-        );
-        for r in &gates.results {
-            println!(
-                "    {} {} {:.1}s",
-                if r.passed { "PASS" } else { "FAIL" },
-                r.category.log_label(),
-                r.elapsed_secs
-            );
-        }
+        print_gate_results(i, elapsed, &gates);
 
-        if check_log.exists() {
-            let log_text = std::fs::read_to_string(&check_log).unwrap_or_default();
-            let log_lines: Vec<String> = log_text.lines().map(|s| s.to_string()).collect();
-            let timings = timings_from_log_lines(&log_lines);
-            let timings_path = run_dir.join(format!("timings-{i}.json"));
-            let payload = serde_json::json!({
-                "iteration": i,
-                "focus_page": progress.current_page,
-                "completed_pages": progress.completed_pages,
-                "wall_secs": elapsed,
-                "gates": gates.results.iter().map(|r| serde_json::json!({
-                    "gate": r.category.log_label(),
-                    "passed": r.passed,
-                    "secs": r.elapsed_secs,
-                })).collect::<Vec<_>>(),
-                "e2e": timings,
-            });
-            let _ = std::fs::write(
-                &timings_path,
-                serde_json::to_string_pretty(&payload).unwrap_or_default(),
-            );
-            println!("  Timings log : {}", timings_path.display());
-        }
+        write_iteration_timings(&run_dir, &check_log, i, &progress, elapsed, &gates);
 
         let agent_prompt_path = build_jobs_aesthetic_prompt(&PromptInput {
             iteration: i,
@@ -200,39 +134,7 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
             root: root.clone(),
         })?;
 
-        write_loop_state(
-            &state_path,
-            &LoopState {
-                loop_name: "jobs-aesthetic".to_string(),
-                iteration: i,
-                max_iterations: opts.max_iterations,
-                phase: if gates.css_ok && gates.metrics_ok && gates.review_ok {
-                    if progress.all_complete() {
-                        "done".to_string()
-                    } else {
-                        "page-done".to_string()
-                    }
-                } else {
-                    phase.to_string()
-                },
-                css_ok: gates.css_ok,
-                metrics_ok: gates.metrics_ok,
-                review_ok: gates.review_ok,
-                next_action: next_action_from_phase(phase).to_string(),
-                agent_prompt: agent_prompt_path.display().to_string(),
-                fast_mode: !opts.full_css_gate,
-                preview_routes: true,
-                pages: progress
-                    .page_order()
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect(),
-                current_page: Some(progress.current_page.clone()),
-                completed_pages: progress.completed_pages.clone(),
-                pages_remaining: Some(progress.remaining_count()),
-                updated_at: Utc::now().to_rfc3339(),
-            },
-        )?;
+        write_iteration_state(&state_path, i, &opts, &gates, &progress, &agent_prompt_path)?;
 
         if gates.css_ok && gates.metrics_ok && gates.review_ok {
             if let Some(done) = progress.complete_current() {
@@ -268,17 +170,7 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
         }
 
         println!();
-        match phase {
-            "css" => println!("Phase: CSS baseline — agent fixes shared CSS only..."),
-            "metrics" => println!(
-                "Phase: J1 metrics — agent fixes {} only...",
-                progress.current_page
-            ),
-            _ => println!(
-                "Phase: J3 review — agent polishes {} only...",
-                progress.current_page
-            ),
-        }
+        print_phase_hint(phase, &progress.current_page);
 
         println!("  Agent prompt: {}", agent_prompt_path.display());
         let agent = default_agent_cmd();
@@ -297,8 +189,179 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
         }
     }
 
+    write_max_iterations_state(&state_path, &run_dir, &opts, &progress)?;
+    println!();
+    println!(
+        "Stopped: max iterations ({}). Current page: {}. See {}",
+        opts.max_iterations,
+        progress.current_page,
+        state_path.display()
+    );
+    Ok(1)
+}
+
+/// Prints the per-gate outcome of one iteration.
+fn print_gate_results(iteration: u32, elapsed_secs: u64, gates: &JobsFastGates) {
+    println!(
+        "  Iteration {iteration} checks finished in {elapsed_secs}s (css={} metrics={} review={})",
+        gates.css_ok, gates.metrics_ok, gates.review_ok
+    );
+    for r in &gates.results {
+        println!(
+            "    {} {} {:.1}s",
+            if r.passed { "PASS" } else { "FAIL" },
+            r.category.log_label(),
+            r.elapsed_secs
+        );
+    }
+}
+
+/// Persists the loop state after one iteration's gate run.
+fn write_iteration_state(
+    state_path: &Path,
+    iteration: u32,
+    opts: &JobsAestheticOptions,
+    gates: &JobsFastGates,
+    progress: &PageProgress,
+    agent_prompt_path: &Path,
+) -> anyhow::Result<()> {
+    let phase = phase_from_gates(gates.css_ok, gates.metrics_ok, gates.review_ok);
     write_loop_state(
-        &state_path,
+        state_path,
+        &LoopState {
+            loop_name: "jobs-aesthetic".to_string(),
+            iteration,
+            max_iterations: opts.max_iterations,
+            phase: if gates.css_ok && gates.metrics_ok && gates.review_ok {
+                if progress.all_complete() {
+                    "done".to_string()
+                } else {
+                    "page-done".to_string()
+                }
+            } else {
+                phase.to_string()
+            },
+            css_ok: gates.css_ok,
+            metrics_ok: gates.metrics_ok,
+            review_ok: gates.review_ok,
+            next_action: next_action_from_phase(phase).to_string(),
+            agent_prompt: agent_prompt_path.display().to_string(),
+            fast_mode: !opts.full_css_gate,
+            preview_routes: true,
+            pages: progress
+                .page_order()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            current_page: Some(progress.current_page.clone()),
+            completed_pages: progress.completed_pages.clone(),
+            pages_remaining: Some(progress.remaining_count()),
+            updated_at: Utc::now().to_rfc3339(),
+        },
+    )
+}
+
+/// Prints the run header: what the loop targets, where its data lives and the page queue.
+fn print_run_banner(
+    run_dir: &Path,
+    opts: &JobsAestheticOptions,
+    progress: &PageProgress,
+    base_url: &str,
+) {
+    println!("Jobs aesthetic layout loop (burncloud-loop)");
+    println!("  Goal       : one page at a time → J1 + J3 (ge 4) + final J4");
+    println!(
+        "  Acceptance : {}",
+        acceptance_dir()
+            .join("aesthetic-optimize-acceptance.md")
+            .display()
+    );
+    println!("  Run data   : {}", run_dir.display());
+    println!("  Max rounds : {}", opts.max_iterations);
+    println!(
+        "  Fast mode  : {} (naming + preview aesthetic, no 11-page css_visual)",
+        !opts.full_css_gate
+    );
+    println!("  E2E server : {base_url} (persistent)");
+    if let Some(ref pages) = progress.active_pages {
+        println!(
+            "  Scope      : {} (pilot — one page at a time)",
+            pages.join(", ")
+        );
+    }
+    println!(
+        "  Page queue : {} done, current={}, {} remaining",
+        progress.completed_pages.len(),
+        progress.current_page,
+        progress.remaining_count()
+    );
+    if !progress.completed_pages.is_empty() {
+        println!("  Completed  : {}", progress.completed_pages.join(", "));
+    }
+    if opts.check_only {
+        println!("  Mode       : check only (no agent)");
+    }
+    println!();
+}
+
+/// Records the gate timings of one iteration as `timings-{iteration}.json`.
+fn write_iteration_timings(
+    run_dir: &Path,
+    check_log: &Path,
+    iteration: u32,
+    progress: &PageProgress,
+    elapsed_secs: u64,
+    gates: &JobsFastGates,
+) {
+    if !check_log.exists() {
+        return;
+    }
+    let log_text = std::fs::read_to_string(check_log).unwrap_or_default();
+    let log_lines: Vec<String> = log_text.lines().map(|s| s.to_string()).collect();
+    let timings = timings_from_log_lines(&log_lines);
+    let timings_path = run_dir.join(format!("timings-{iteration}.json"));
+    let payload = serde_json::json!({
+        "iteration": iteration,
+        "focus_page": progress.current_page,
+        "completed_pages": progress.completed_pages,
+        "wall_secs": elapsed_secs,
+        "gates": gates.results.iter().map(|r| serde_json::json!({
+            "gate": r.category.log_label(),
+            "passed": r.passed,
+            "secs": r.elapsed_secs,
+        })).collect::<Vec<_>>(),
+        "e2e": timings,
+    });
+    if let Err(err) = std::fs::write(
+        &timings_path,
+        serde_json::to_string_pretty(&payload).unwrap_or_default(),
+    ) {
+        eprintln!(
+            "Warning: could not write timings log {}: {err}",
+            timings_path.display()
+        );
+    }
+    println!("  Timings log : {}", timings_path.display());
+}
+
+/// Prints which gate the agent should work on in this round.
+fn print_phase_hint(phase: &str, current_page: &str) {
+    match phase {
+        "css" => println!("Phase: CSS baseline — agent fixes shared CSS only..."),
+        "metrics" => println!("Phase: J1 metrics — agent fixes {current_page} only..."),
+        _ => println!("Phase: J3 review — agent polishes {current_page} only..."),
+    }
+}
+
+/// Persists the terminal state written when the iteration budget is exhausted.
+fn write_max_iterations_state(
+    state_path: &Path,
+    run_dir: &Path,
+    opts: &JobsAestheticOptions,
+    progress: &PageProgress,
+) -> anyhow::Result<()> {
+    write_loop_state(
+        state_path,
         &LoopState {
             loop_name: "jobs-aesthetic".to_string(),
             iteration: opts.max_iterations,
@@ -321,15 +384,7 @@ pub fn run(opts: JobsAestheticOptions) -> anyhow::Result<i32> {
             pages_remaining: Some(progress.remaining_count()),
             updated_at: Utc::now().to_rfc3339(),
         },
-    )?;
-    println!();
-    println!(
-        "Stopped: max iterations ({}). Current page: {}. See {}",
-        opts.max_iterations,
-        progress.current_page,
-        state_path.display()
-    );
-    Ok(1)
+    )
 }
 
 fn default_agent_cmd() -> PathBuf {

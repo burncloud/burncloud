@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]."
 )]
 //! The service layer over the router log and balance tables (#633, plan section 5 item 14).
 //!
@@ -57,7 +58,7 @@ async fn fresh_db(tag: &str) -> Result<(Database, std::path::PathBuf), Box<dyn E
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let db = create_database_with_url(&format!("sqlite:///{}?mode=rwc", normalized)).await?;
     burncloud_database_router::RouterDatabase::init(&db).await?;
@@ -186,7 +187,7 @@ fn recent(seconds_ago: i64) -> String {
     // Days since the epoch to a year/month/day, by the standard civil-from-days algorithm.
     let z = days as i64 + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as i64;
+    let doe = z - era * 146_097;
     let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
     let y = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);

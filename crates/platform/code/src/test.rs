@@ -45,7 +45,7 @@ fn paths(result: &str, files: &mut BTreeSet<String>) {
     );
 }
 
-fn changes(root: &Path, options: &Options) -> Result<BTreeSet<String>> {
+pub(crate) fn changes(root: &Path, options: &Options) -> Result<BTreeSet<String>> {
     let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
     if options.staged {
         let unstaged = git(
@@ -139,35 +139,39 @@ pub(crate) fn run(options: Options) -> Result<()> {
     let root = PathBuf::from(
         git(&directory, &["rev-parse", "--show-toplevel"])?.trim_end_matches(['\r', '\n']),
     );
+    run_in_root(&root, options)
+}
+
+fn run_in_root(root: &Path, options: Options) -> Result<()> {
     if options.last {
-        return report::show_latest(&root);
+        return report::show_latest(root);
     }
-    let files = changes(&root, &options)?;
+    let files = changes(root, &options)?;
     println!("Changed paths ({}):", files.len());
     for file in &files {
         println!("  {file}");
     }
-    if !options.all && files.iter().all(|file| plan::documentation(file)) {
-        println!("No code changes selected; no checks executed. Use --all for the full workspace or --base REF for branch changes.");
+    if !options.all && files.iter().all(|file| plan::no_test_impact(file)) {
+        println!("No test-relevant changes selected; no tests executed. Use --all for the full workspace or --base REF for branch changes.");
         if !options.plan_only {
             let mut summary = report::new(
-                &root,
+                root,
                 if options.staged { "staged" } else { "working" },
                 files.iter().cloned().collect(),
                 Vec::new(),
             )?;
-            report::finish(&root, &mut summary, "skipped", None)?;
+            report::finish(root, &mut summary, "skipped", None)?;
         }
         return Ok(());
     }
     let raw = output(
-        &root,
+        root,
         "cargo",
         &["metadata", "--no-deps", "--format-version", "1"],
     )?;
     let metadata: Metadata =
         serde_json::from_slice(&raw.stdout).context("Invalid Cargo workspace metadata")?;
-    let plan = plan::select(&root, &files, metadata, options.all)?;
+    let plan = plan::select(root, &files, metadata, options.all)?;
     if let Some(reason) = &plan.full_reason {
         println!("Selection: full workspace ({reason})");
     } else {
@@ -181,7 +185,7 @@ pub(crate) fn run(options: Options) -> Result<()> {
         "Affected packages: {}",
         plan.affected.iter().cloned().collect::<Vec<_>>().join(", ")
     );
-    let commands = plan.commands();
+    let commands = plan.commands()?;
     for args in &commands {
         println!("  cargo {}", args.join(" "));
     }
@@ -199,32 +203,24 @@ pub(crate) fn run(options: Options) -> Result<()> {
         "working"
     };
     let mut summary = report::new(
-        &root,
+        root,
         mode,
         files.iter().cloned().collect(),
         plan.affected.iter().cloned().collect(),
     )?;
-    let result = run_checks(&root, &commands, &mut summary);
+    let result = run_checks(root, &commands, &mut summary);
     report::finish(
-        &root,
+        root,
         &mut summary,
         if result.is_ok() { "passed" } else { "failed" },
         result.as_ref().err().map(ToString::to_string),
     )?;
     result?;
-    println!("All selected checks passed.");
+    println!("All selected tests passed.");
     Ok(())
 }
 
 fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summary) -> Result<()> {
-    for (tool, install) in [
-        ("fmt", "rustup component add rustfmt"),
-        ("clippy", "rustup component add clippy"),
-        ("deny", "cargo install cargo-deny --locked"),
-    ] {
-        output(root, "cargo", &[tool, "--version"])
-            .with_context(|| format!("Missing or broken {tool}. Run: {install}"))?;
-    }
     for (index, args) in commands.iter().enumerate() {
         println!(
             "[{}/{}] cargo {}",
@@ -232,12 +228,12 @@ fn run_checks(root: &Path, commands: &[Vec<String>], summary: &mut report::Summa
             commands.len(),
             args.join(" ")
         );
-        let status = report::execute(
-            root,
-            summary,
-            ["fmt", "test", "clippy", "deny"][index],
-            args,
-        )?;
+        let step_name = if args.first().is_some_and(|arg| arg == "test") {
+            "test"
+        } else {
+            "prepare"
+        };
+        let status = report::execute(root, summary, step_name, args)?;
         anyhow::ensure!(
             status.success(),
             "Check failed ({}): cargo {}",

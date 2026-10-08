@@ -2,8 +2,10 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::disallowed_types,
-    reason = "Test-only file: the assertions are the test. `serde_json::Value` is not used; the allowance is \
-              here because an integration test is its own crate root and cannot inherit the crate's settings."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not \
+              recognise #[tokio::test]. `serde_json::Value` is not used; the allowance is here because an \
+              integration test is its own crate root and cannot inherit the crate's settings."
 )]
 //! SQLite URL construction, migration idempotency and connection lifecycle (#633, plan item 26).
 //!
@@ -276,7 +278,7 @@ impl TempDb {
                 .expect("the clock is after the epoch")
                 .as_nanos()
         ));
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         Self { path }
     }
 
@@ -296,7 +298,7 @@ impl Drop for TempDb {
             candidate.push(suffix);
             let candidate = std::path::PathBuf::from(candidate);
             if candidate.exists() {
-                let _ = std::fs::remove_file(&candidate);
+                std::fs::remove_file(&candidate).ok();
             }
         }
     }

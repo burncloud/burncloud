@@ -12,7 +12,13 @@
 //! - T4: legacy token with no `router_tokens` row → Value default
 //! - T5: `user_id` reaches the L3 Affinity HRW key (deterministic stickiness)
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::panic_in_result_fn,
+    reason = "integration tests: a failed assertion is the intended failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
+)]
 
 mod common;
 
@@ -337,6 +343,10 @@ async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<(
 /// `layer_decision` / `traffic_color`, INSERT it, and SELECT it back —
 /// proving the production code path produces the correct observability values.
 #[tokio::test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "single end-to-end scenario: the fixture seeding, two routing calls, and the observability round-trip are one narrative"
+)]
 async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
     use burncloud_database::sqlx;
     use burncloud_router::affinity::AffinityCache;

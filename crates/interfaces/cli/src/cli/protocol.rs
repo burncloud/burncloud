@@ -3,7 +3,7 @@ use burncloud_database::Database;
 use burncloud_database_channel::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
 use clap::ArgMatches;
 
-pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list", sub_m)) => {
             let limit: i32 = sub_m
@@ -97,46 +97,7 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
 
-            // For show, we need to get by ID which isn't implemented, so use list and filter
-            let configs = ChannelProtocolConfigModel::list(db, 1000, 0).await?;
-            let config = configs.iter().find(|c| c.id == id);
-
-            match config {
-                Some(c) => {
-                    println!("ID: {}", c.id);
-                    println!(
-                        "Channel Type: {} ({})",
-                        channel_type_to_name(c.channel_type),
-                        c.channel_type
-                    );
-                    println!("API Version: {}", c.api_version);
-                    println!("Is Default: {}", c.is_default);
-                    println!(
-                        "Chat Endpoint: {}",
-                        c.chat_endpoint.as_deref().unwrap_or("-")
-                    );
-                    println!(
-                        "Embed Endpoint: {}",
-                        c.embed_endpoint.as_deref().unwrap_or("-")
-                    );
-                    println!(
-                        "Models Endpoint: {}",
-                        c.models_endpoint.as_deref().unwrap_or("-")
-                    );
-                    if let Some(ref req_map) = c.request_mapping {
-                        println!("Request Mapping: {}", req_map);
-                    }
-                    if let Some(ref resp_map) = c.response_mapping {
-                        println!("Response Mapping: {}", resp_map);
-                    }
-                    if let Some(ref rules) = c.detection_rules {
-                        println!("Detection Rules: {}", rules);
-                    }
-                }
-                None => {
-                    println!("Protocol config {} not found", id);
-                }
-            }
+            show_protocol_config(db, id).await?;
         }
         Some(("test", sub_m)) => {
             let channel_id: i32 = sub_m
@@ -156,6 +117,52 @@ pub async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Res
         _ => {
             println!("Usage: burncloud protocol <list|add|delete|show|test>");
             println!("Run 'burncloud protocol --help' for more information.");
+        }
+    }
+
+    Ok(())
+}
+
+/// Print a single protocol config, resolved from the listing API by id.
+async fn show_protocol_config(db: &Database, id: i32) -> Result<()> {
+    // For show, we need to get by ID which isn't implemented, so use list and filter
+    let configs = ChannelProtocolConfigModel::list(db, 1000, 0).await?;
+    let config = configs.iter().find(|c| c.id == id);
+
+    match config {
+        Some(c) => {
+            println!("ID: {}", c.id);
+            println!(
+                "Channel Type: {} ({})",
+                channel_type_to_name(c.channel_type),
+                c.channel_type
+            );
+            println!("API Version: {}", c.api_version);
+            println!("Is Default: {}", c.is_default);
+            println!(
+                "Chat Endpoint: {}",
+                c.chat_endpoint.as_deref().unwrap_or("-")
+            );
+            println!(
+                "Embed Endpoint: {}",
+                c.embed_endpoint.as_deref().unwrap_or("-")
+            );
+            println!(
+                "Models Endpoint: {}",
+                c.models_endpoint.as_deref().unwrap_or("-")
+            );
+            if let Some(ref req_map) = c.request_mapping {
+                println!("Request Mapping: {}", req_map);
+            }
+            if let Some(ref resp_map) = c.response_mapping {
+                println!("Response Mapping: {}", resp_map);
+            }
+            if let Some(ref rules) = c.detection_rules {
+                println!("Detection Rules: {}", rules);
+            }
+        }
+        None => {
+            println!("Protocol config {} not found", id);
         }
     }
 

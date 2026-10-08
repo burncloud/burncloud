@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "integration-test file: fail-fast setup is the intended behaviour"
+)]
 //! The Identity contract against a real PostgreSQL server (#633, plan section 5 item 02).
 //!
 //! `identity_round_trip.rs` pins this contract on SQLite, and the schema exists for both backends: 18
@@ -75,9 +79,9 @@ async fn create_database(server_url: &str, name: &str) -> String {
         .unwrap_or_else(|e| panic!("could not connect to {server_url}: {e}"));
 
     // A leftover database from a crashed run would make CREATE fail; drop first, ignoring the outcome.
-    let _ = conn
-        .execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
-        .await;
+    conn.execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
+        .await
+        .ok();
     conn.execute(format!("CREATE DATABASE {name}").as_str())
         .await
         .unwrap_or_else(|e| panic!("CREATE DATABASE {name}: {e}"));
@@ -92,9 +96,9 @@ async fn drop_database(server_url: &str, name: &str) {
         .connect()
         .await
     {
-        let _ = conn
-            .execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
-            .await;
+        conn.execute(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)").as_str())
+            .await
+            .ok();
     }
 }
 

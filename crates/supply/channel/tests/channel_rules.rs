@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 //! Channel lifecycles, the ability cross product, and the cascades that keep the two tables consistent
 //! (#633, plan item 07).
@@ -80,7 +81,7 @@ impl TempDb {
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         let normalized = path.to_string_lossy().replace('\\', "/");
         // Three slashes: `sqlite:///C:/...` is the absolute form, whereas two makes SQLite read `C:` as a host
         // and fail with `(code: 14) unable to open database file`.
@@ -94,11 +95,11 @@ impl TempDb {
         let path = self.path.clone();
         self.db.close().await.ok();
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         for suffix in ["-wal", "-shm"] {
             let mut candidate = path.as_os_str().to_os_string();
             candidate.push(suffix);
-            let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+            std::fs::remove_file(std::path::PathBuf::from(candidate)).ok();
         }
     }
 }
@@ -923,6 +924,10 @@ async fn optional_fields_accept_null_and_survive_round_trips(
 // here rather than left to be re-derived. An earlier revision of this file carried three `#[ignore]`d tests
 // because of those wrong assumptions; all three now pass.
 #[tokio::test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "test: the protocol-config round trip records the seed rows and every assertion in one place rather than splitting the fixture"
+)]
 async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // "Protocol Config 查询与更新". **The key is `(channel_type, api_version)`, not a channel id.** The config

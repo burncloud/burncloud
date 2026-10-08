@@ -263,7 +263,8 @@ impl ExchangeRateService {
     clippy::disallowed_types,
     clippy::unnecessary_cast,
     clippy::let_and_return,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "unit-test module: the fixtures cannot fail, so an unwrap failure is the intended failure signal"
 )]
 mod tests {
     use super::*;
@@ -322,7 +323,7 @@ mod tests {
                 .to_string();
 
             // Remove existing test db if exists
-            let _ = std::fs::remove_file(&db_path);
+            std::fs::remove_file(&db_path).ok();
 
             // Set environment variable for database path
             std::env::set_var("BURNCLOUD_DATABASE_URL", test_sqlite_url(&db_path));

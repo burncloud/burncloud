@@ -30,7 +30,10 @@ pub(crate) use passthrough::PassthroughScheduler;
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ScheduleError {
     #[error("scheduling failed: {0}")]
-    #[allow(dead_code)] // Used by trait implementors; compiler can't see across dyn dispatch
+    #[allow(
+        dead_code,
+        reason = "constructed by trait implementors; the compiler cannot see across dyn dispatch"
+    )]
     Internal(String),
 }
 
@@ -178,36 +181,44 @@ pub(crate) fn load_scheduler_config() -> SchedulerPolicyMap {
 
     let mut policies = HashMap::new();
     for (group, val) in raw {
-        let kind = match serde_json::from_value::<SchedulerPolicyEntry>(val) {
-            Ok(entry) => match entry.scheduler_type.as_str() {
-                "combined" => {
-                    let config = SchedulerPolicyConfig {
-                        health_weight: entry.health_weight.unwrap_or_else(default_health_weight),
-                        cost_weight: entry.cost_weight.unwrap_or_else(default_cost_weight),
-                        rpm_weight: entry.rpm_weight.unwrap_or_else(default_rpm_weight),
-                    };
-                    if !config.validate() {
-                        tracing::warn!(
-                            "Invalid scheduler weights for group '{}', falling back to passthrough",
-                            group
-                        );
-                        SchedulerKind::Passthrough
-                    } else {
-                        SchedulerKind::Combined { config }
-                    }
-                }
-                _ => SchedulerKind::Passthrough,
-            },
-            Err(e) => {
-                tracing::warn!("Failed to parse scheduler entry for group '{}': {e}", group);
-                SchedulerKind::Passthrough
-            }
-        };
+        let kind = resolve_scheduler_kind(&group, val);
         policies.insert(group.to_lowercase(), kind);
     }
 
     tracing::info!("Loaded {} scheduler policies", policies.len());
     policies
+}
+
+/// Resolve one group's scheduler kind, falling back to passthrough on any
+/// invalid entry or weight configuration.
+fn resolve_scheduler_kind(group: &str, val: serde_json::Value) -> SchedulerKind {
+    let entry = match serde_json::from_value::<SchedulerPolicyEntry>(val) {
+        Ok(entry) => entry,
+        Err(e) => {
+            tracing::warn!("Failed to parse scheduler entry for group '{}': {e}", group);
+            return SchedulerKind::Passthrough;
+        }
+    };
+
+    match entry.scheduler_type.as_str() {
+        "combined" => {
+            let config = SchedulerPolicyConfig {
+                health_weight: entry.health_weight.unwrap_or_else(default_health_weight),
+                cost_weight: entry.cost_weight.unwrap_or_else(default_cost_weight),
+                rpm_weight: entry.rpm_weight.unwrap_or_else(default_rpm_weight),
+            };
+            if config.validate() {
+                SchedulerKind::Combined { config }
+            } else {
+                tracing::warn!(
+                    "Invalid scheduler weights for group '{}', falling back to passthrough",
+                    group
+                );
+                SchedulerKind::Passthrough
+            }
+        }
+        _ => SchedulerKind::Passthrough,
+    }
 }
 
 #[derive(Deserialize)]
@@ -318,42 +329,7 @@ pub(crate) async fn build_context(
     for (ch, _) in candidates {
         // Look up price for this channel's region (deduplicated, normalized to USD)
         let region = ch.pricing_region.as_deref().unwrap_or("");
-        if let std::collections::hash_map::Entry::Vacant(e) = prices_usd.entry(region) {
-            if let Some(price) = price_cache
-                .get(
-                    model,
-                    if region.is_empty() {
-                        None
-                    } else {
-                        Some(region)
-                    },
-                )
-                .await
-            {
-                let raw = price.input_price as f64 + price.output_price as f64;
-                let price_usd = match burncloud_commerce_contracts::pricing::Currency::from_str(
-                    &price.currency,
-                ) {
-                    Ok(curr) if curr != burncloud_commerce_contracts::pricing::Currency::USD => {
-                        match exchange_rate.convert(
-                            raw,
-                            curr,
-                            burncloud_commerce_contracts::pricing::Currency::USD,
-                        ) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                tracing::warn!("Currency conversion failed: {e}, using raw amount");
-                                raw
-                            }
-                        }
-                    }
-                    _ => raw,
-                };
-                e.insert(price_usd);
-            } else if !region.is_empty() {
-                tracing::debug!("No price data for model='{model}' region='{region}', cost factor will use default");
-            }
-        }
+        lookup_region_price_usd(&mut prices_usd, region, model, price_cache, exchange_rate).await;
 
         // Combined health + adaptive lookup (1 DashMap get + 1 HashMap get)
         let (health, adaptive) = state_tracker.get_health_and_adaptive(ch.id, model);
@@ -378,6 +354,73 @@ pub(crate) async fn build_context(
     }
 
     SchedulingContext { factors }
+}
+
+/// Resolve a region's model price in USD and memoize it in `prices_usd`.
+///
+/// Regions are looked up once per `build_context` pass; a region whose price is
+/// missing stays absent from the map so the caller uses the default cost factor.
+async fn lookup_region_price_usd<'a>(
+    prices_usd: &mut HashMap<&'a str, f64>,
+    region: &'a str,
+    model: &str,
+    price_cache: &PriceCache,
+    exchange_rate: &ExchangeRateService,
+) {
+    if prices_usd.contains_key(region) {
+        return;
+    }
+
+    let region_filter = if region.is_empty() {
+        None
+    } else {
+        Some(region)
+    };
+    let Some(price) = price_cache.get(model, region_filter).await else {
+        if !region.is_empty() {
+            tracing::debug!(
+                "No price data for model='{model}' region='{region}', cost factor will use default"
+            );
+        }
+        return;
+    };
+
+    let price_usd = normalized_price_usd(
+        price.input_price,
+        price.output_price,
+        &price.currency,
+        exchange_rate,
+    )
+    .await;
+
+    // The entry was confirmed vacant above; insertion cannot overwrite a price.
+    if let std::collections::hash_map::Entry::Vacant(e) = prices_usd.entry(region) {
+        e.insert(price_usd);
+    }
+}
+
+/// Sum a price's input/output components and normalize the total to USD.
+async fn normalized_price_usd(
+    input_price: i64,
+    output_price: i64,
+    currency: &str,
+    exchange_rate: &ExchangeRateService,
+) -> f64 {
+    use burncloud_commerce_contracts::pricing::Currency;
+
+    let raw = input_price as f64 + output_price as f64;
+    match Currency::from_str(currency) {
+        Ok(curr) if curr != Currency::USD => {
+            match exchange_rate.convert(raw, curr, Currency::USD) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Currency conversion failed: {e}, using raw amount");
+                    raw
+                }
+            }
+        }
+        _ => raw,
+    }
 }
 
 #[cfg(test)]
@@ -509,6 +552,10 @@ pub(crate) mod tests {
         fn name(&self) -> &'static str {
             "panicking"
         }
+        #[allow(
+            clippy::panic_in_result_fn,
+            reason = "test fixture: the panic is the behavior under test (catch_unwind fallback)"
+        )]
         fn score(
             &self,
             _candidates: &[(Channel, i32)],

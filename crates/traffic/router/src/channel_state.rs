@@ -71,7 +71,10 @@ pub enum ModelStatus {
 ///
 /// Tracks the model's operational status, rate limiting, errors, and performance metrics.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "newer tracking fields are not read on every path yet"
+)]
 pub struct ModelState {
     /// The model name/identifier
     pub model: String,
@@ -113,7 +116,10 @@ impl ModelState {
     }
 
     /// Create a new ModelState with custom adaptive limit config
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "newer tracking fields are not read on every path yet"
+    )]
     pub fn with_config(model: String, channel_id: i32, config: AimdConfig) -> Self {
         Self {
             model,
@@ -135,7 +141,10 @@ impl ModelState {
 /// Tracks channel-level status including authentication, balance, and rate limits,
 /// as well as the state of individual models available through this channel.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "newer tracking fields are not read on every path yet"
+)]
 pub struct ChannelState {
     /// The channel ID
     pub channel_id: i32,
@@ -221,27 +230,8 @@ impl ChannelStateTracker {
             None => return true, // Unknown channel = available
         };
 
-        // Check channel-level conditions
-        if !channel_state.auth_ok {
-            tracing::warn!(channel_id, "is_available=false: auth_ok=false");
+        if !channel_gate_available(&channel_state, channel_id, now) {
             return false;
-        }
-
-        if channel_state.balance_status == BalanceStatus::Exhausted {
-            tracing::warn!(channel_id, "is_available=false: balance exhausted");
-            return false;
-        }
-
-        // Check account-level rate limit
-        if let Some(rate_limit_until) = channel_state.account_rate_limit_until {
-            if rate_limit_until > now {
-                tracing::warn!(
-                    channel_id,
-                    ?rate_limit_until,
-                    "is_available=false: account rate limit"
-                );
-                return false;
-            }
         }
 
         // If no model specified, channel-level checks passed
@@ -250,70 +240,13 @@ impl ChannelStateTracker {
             None => return true,
         };
 
-        // Check model-level status
-        if let Some(model_state) = channel_state.models.get(model_name) {
-            // Check if model is available
-            match model_state.status {
-                ModelStatus::Available => {}
-                ModelStatus::RateLimited => {
-                    // Allow probe if rate_limit_until has expired — prevents deadlock
-                    // where L0 blocks all requests and recovery never happens.
-                    if let Some(rate_limit_until) = model_state.rate_limit_until {
-                        if rate_limit_until > now {
-                            tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: model RateLimited (timer active)");
-                            return false; // still within rate limit window
-                        }
-                        // Timer expired — allow probe request to test recovery
-                        tracing::info!(channel_id, %model_name, "is_available: model RateLimited but timer expired, allowing probe");
-                    } else {
-                        tracing::warn!(channel_id, %model_name, "is_available=false: model RateLimited (no timer set — PERMANENT DEADLOCK)");
-                        return false; // no timer set, stay blocked
-                    }
-                }
-                ModelStatus::QuotaExhausted | ModelStatus::ModelNotFound => {
-                    tracing::warn!(channel_id, %model_name, ?model_state.status, "is_available=false: model status (permanent)");
-                    return false;
-                }
-                ModelStatus::TemporarilyDown => {
-                    // Allow probe if rate_limit_until has expired — prevents deadlock
-                    if let Some(rate_limit_until) = model_state.rate_limit_until {
-                        if rate_limit_until > now {
-                            tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: TemporarilyDown (timer active)");
-                            return false;
-                        }
-                        tracing::info!(channel_id, %model_name, "is_available: TemporarilyDown but timer expired, allowing probe");
-                    } else {
-                        // No timer — use a default backoff (5 minutes from when status was set)
-                        // to avoid permanent deadlock
-                        tracing::warn!(channel_id, %model_name, "is_available=false: TemporarilyDown (no timer set — PERMANENT DEADLOCK)");
-                        return false;
-                    }
-                }
+        match channel_state.models.get(model_name) {
+            Some(model_state) => {
+                model_status_available(model_state, channel_id, model_name, now)
+                    && model_limits_available(model_state, channel_id, model_name, now)
             }
-
-            // Check model-level rate limit
-            if let Some(rate_limit_until) = model_state.rate_limit_until {
-                if rate_limit_until > now {
-                    tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: model rate_limit_until");
-                    return false;
-                }
-            }
-
-            // Check adaptive rate limiter availability
-            if !model_state.adaptive_limit.check_available() {
-                tracing::warn!(
-                    channel_id,
-                    %model_name,
-                    aimd_state = ?model_state.adaptive_limit.state,
-                    aimd_cooldown_until = ?model_state.adaptive_limit.cooldown_until,
-                    aimd_rate_limit_until = ?model_state.adaptive_limit.rate_limit_until,
-                    "is_available=false: AIMD check_available"
-                );
-                return false;
-            }
+            None => true,
         }
-
-        true
     }
 
     /// Record an error for a specific channel and optionally a specific model.
@@ -354,102 +287,261 @@ impl ChannelStateTracker {
                 channel_state.balance_status = BalanceStatus::Exhausted;
             }
             FailureType::RateLimited { scope, retry_after } => {
-                let retry_after_duration = retry_after
-                    .map(Duration::from_secs)
-                    .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
-
-                let retry_until = now + retry_after_duration;
-
-                match scope {
-                    RateLimitScope::Account => {
-                        channel_state.account_rate_limit_until = Some(retry_until);
-                    }
-                    RateLimitScope::Model => {
-                        if let Some(model_name) = model {
-                            let model_state =
-                                channel_state.get_or_create_model(model_name, channel_id);
-                            model_state.status = ModelStatus::RateLimited;
-                            model_state.rate_limit_until = Some(retry_until);
-                            model_state.last_error = Some(error_message.to_string());
-                            model_state.last_error_time = Some(now);
-                            model_state.failure_count += 1;
-                            // Update adaptive rate limiter
-                            model_state.adaptive_limit.on_rate_limited(*retry_after);
-                        }
-                    }
-                    RateLimitScope::Unknown => {
-                        // If scope is unknown, treat as account-level to be safe
-                        channel_state.account_rate_limit_until = Some(retry_until);
-                        // Also update model-level adaptive limiter if model is specified
-                        if let Some(model_name) = model {
-                            let model_state =
-                                channel_state.get_or_create_model(model_name, channel_id);
-                            model_state.adaptive_limit.on_rate_limited(*retry_after);
-                        }
-                    }
-                }
+                record_rate_limited_failure(
+                    &mut channel_state,
+                    channel_id,
+                    model,
+                    scope,
+                    *retry_after,
+                    error_message,
+                    now,
+                );
             }
             FailureType::ModelNotFound => {
-                if let Some(model_name) = model {
-                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
-                    model_state.status = ModelStatus::ModelNotFound;
-                    model_state.last_error = Some(error_message.to_string());
-                    model_state.last_error_time = Some(now);
-                    model_state.failure_count += 1;
-                }
+                record_model_not_found(&mut channel_state, channel_id, model, error_message, now);
             }
             FailureType::EmptyResponse => {
-                // Empty response (HTTP 200 but zero tokens) - treat as transient error
-                if let Some(model_name) = model {
-                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
-                    model_state.failure_count += 1;
-
-                    // Exponential backoff for empty responses
-                    let multiplier = 1u64 << model_state.failure_count.min(5);
-                    let cooldown_secs = (BASE_COOLDOWN_SECS * multiplier).min(MAX_COOLDOWN_SECS);
-
-                    model_state.status = ModelStatus::TemporarilyDown;
-                    model_state.rate_limit_until = Some(now + Duration::from_secs(cooldown_secs));
-                    model_state.last_error = Some(error_message.to_string());
-                    model_state.last_error_time = Some(now);
-
-                    tracing::debug!(
-                        channel_id,
-                        %model_name,
-                        failure_count = model_state.failure_count,
-                        cooldown_secs,
-                        "Empty response recorded with exponential backoff"
-                    );
-                }
+                record_transient_model_failure(
+                    &mut channel_state,
+                    channel_id,
+                    model,
+                    error_message,
+                    now,
+                    "Empty response recorded with exponential backoff",
+                );
             }
             FailureType::ServerError | FailureType::Timeout | FailureType::ConnectionError => {
-                // These are transient errors, just update the model state if available
-                if let Some(model_name) = model {
-                    let model_state = channel_state.get_or_create_model(model_name, channel_id);
-                    model_state.failure_count += 1;
-
-                    // Exponential backoff: cooldown grows with consecutive failures
-                    // 60s -> 120s -> 240s -> 480s -> 960s -> 1800s (capped)
-                    let multiplier = 1u64 << model_state.failure_count.min(5); // max 2^5 = 32
-                    let cooldown_secs = (BASE_COOLDOWN_SECS * multiplier).min(MAX_COOLDOWN_SECS);
-
-                    model_state.status = ModelStatus::TemporarilyDown;
-                    model_state.rate_limit_until = Some(now + Duration::from_secs(cooldown_secs));
-                    model_state.last_error = Some(error_message.to_string());
-                    model_state.last_error_time = Some(now);
-
-                    tracing::debug!(
-                        channel_id,
-                        %model_name,
-                        failure_count = model_state.failure_count,
-                        cooldown_secs,
-                        "Transient error recorded with exponential backoff"
-                    );
-                }
+                record_transient_model_failure(
+                    &mut channel_state,
+                    channel_id,
+                    model,
+                    error_message,
+                    now,
+                    "Transient error recorded with exponential backoff",
+                );
             }
         }
     }
+}
 
+/// Channel-level gates: auth, balance and account-wide rate limit.
+#[allow(
+    clippy::cognitive_complexity,
+    reason = "one early-return branch per independent availability gate"
+)]
+fn channel_gate_available(channel_state: &ChannelState, channel_id: i32, now: Instant) -> bool {
+    if !channel_state.auth_ok {
+        tracing::warn!(channel_id, "is_available=false: auth_ok=false");
+        return false;
+    }
+
+    if channel_state.balance_status == BalanceStatus::Exhausted {
+        tracing::warn!(channel_id, "is_available=false: balance exhausted");
+        return false;
+    }
+
+    if let Some(rate_limit_until) = channel_state.account_rate_limit_until {
+        if rate_limit_until > now {
+            tracing::warn!(
+                channel_id,
+                ?rate_limit_until,
+                "is_available=false: account rate limit"
+            );
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Model status gate. Rate-limited and temporarily-down models may probe once
+/// their timer has expired — otherwise L0 would block all requests and recovery
+/// could never happen.
+#[allow(
+    clippy::cognitive_complexity,
+    reason = "one branch per model status; each branch only selects a log severity and message"
+)]
+fn model_status_available(
+    model_state: &ModelState,
+    channel_id: i32,
+    model_name: &str,
+    now: Instant,
+) -> bool {
+    match model_state.status {
+        ModelStatus::Available => true,
+        ModelStatus::RateLimited => {
+            if let Some(rate_limit_until) = model_state.rate_limit_until {
+                if rate_limit_until > now {
+                    tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: model RateLimited (timer active)");
+                    return false; // still within rate limit window
+                }
+                // Timer expired — allow probe request to test recovery
+                tracing::info!(channel_id, %model_name, "is_available: model RateLimited but timer expired, allowing probe");
+                true
+            } else {
+                tracing::warn!(channel_id, %model_name, "is_available=false: model RateLimited (no timer set — PERMANENT DEADLOCK)");
+                false // no timer set, stay blocked
+            }
+        }
+        ModelStatus::QuotaExhausted | ModelStatus::ModelNotFound => {
+            tracing::warn!(channel_id, %model_name, ?model_state.status, "is_available=false: model status (permanent)");
+            false
+        }
+        ModelStatus::TemporarilyDown => {
+            if let Some(rate_limit_until) = model_state.rate_limit_until {
+                if rate_limit_until > now {
+                    tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: TemporarilyDown (timer active)");
+                    return false;
+                }
+                tracing::info!(channel_id, %model_name, "is_available: TemporarilyDown but timer expired, allowing probe");
+                true
+            } else {
+                // No timer — use a default backoff (5 minutes from when status was set)
+                // to avoid permanent deadlock
+                tracing::warn!(channel_id, %model_name, "is_available=false: TemporarilyDown (no timer set — PERMANENT DEADLOCK)");
+                false
+            }
+        }
+    }
+}
+
+/// Model-level rate-limit timer and adaptive (AIMD) limiter gate.
+fn model_limits_available(
+    model_state: &ModelState,
+    channel_id: i32,
+    model_name: &str,
+    now: Instant,
+) -> bool {
+    if let Some(rate_limit_until) = model_state.rate_limit_until {
+        if rate_limit_until > now {
+            tracing::warn!(channel_id, %model_name, ?rate_limit_until, "is_available=false: model rate_limit_until");
+            return false;
+        }
+    }
+
+    if !model_state.adaptive_limit.check_available() {
+        tracing::warn!(
+            channel_id,
+            %model_name,
+            aimd_state = ?model_state.adaptive_limit.state,
+            aimd_cooldown_until = ?model_state.adaptive_limit.cooldown_until,
+            aimd_rate_limit_until = ?model_state.adaptive_limit.rate_limit_until,
+            "is_available=false: AIMD check_available"
+        );
+        return false;
+    }
+
+    true
+}
+
+/// Apply a rate-limit failure at account, model or unknown scope.
+///
+/// # Arguments
+/// * `channel_state` - Channel whose account/model limit timers are updated
+/// * `channel_id` - Channel ID, used to create a model entry on demand
+/// * `model` - Model the limit applies to, if known
+/// * `scope` - Account, model or unknown rate-limit scope
+/// * `retry_after` - Upstream-advertised retry delay, if any
+/// * `error_message` - Human-readable error message stored on the model
+/// * `now` - Timestamp captured by the caller
+#[allow(
+    clippy::too_many_arguments,
+    reason = "private helper carrying the rate-limit failure context; grouping it into a struct would add a type with a single caller"
+)]
+fn record_rate_limited_failure(
+    channel_state: &mut ChannelState,
+    channel_id: i32,
+    model: Option<&str>,
+    scope: &RateLimitScope,
+    retry_after: Option<u64>,
+    error_message: &str,
+    now: Instant,
+) {
+    let retry_after_duration = retry_after
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_RETRY_SECS));
+    let retry_until = now + retry_after_duration;
+
+    match scope {
+        RateLimitScope::Account => {
+            channel_state.account_rate_limit_until = Some(retry_until);
+        }
+        RateLimitScope::Model => {
+            if let Some(model_name) = model {
+                let model_state = channel_state.get_or_create_model(model_name, channel_id);
+                model_state.status = ModelStatus::RateLimited;
+                model_state.rate_limit_until = Some(retry_until);
+                model_state.last_error = Some(error_message.to_string());
+                model_state.last_error_time = Some(now);
+                model_state.failure_count += 1;
+                // Update adaptive rate limiter
+                model_state.adaptive_limit.on_rate_limited(retry_after);
+            }
+        }
+        RateLimitScope::Unknown => {
+            // If scope is unknown, treat as account-level to be safe
+            channel_state.account_rate_limit_until = Some(retry_until);
+            // Also update model-level adaptive limiter if model is specified
+            if let Some(model_name) = model {
+                let model_state = channel_state.get_or_create_model(model_name, channel_id);
+                model_state.adaptive_limit.on_rate_limited(retry_after);
+            }
+        }
+    }
+}
+
+/// Mark a model as not found on this channel.
+fn record_model_not_found(
+    channel_state: &mut ChannelState,
+    channel_id: i32,
+    model: Option<&str>,
+    error_message: &str,
+    now: Instant,
+) {
+    if let Some(model_name) = model {
+        let model_state = channel_state.get_or_create_model(model_name, channel_id);
+        model_state.status = ModelStatus::ModelNotFound;
+        model_state.last_error = Some(error_message.to_string());
+        model_state.last_error_time = Some(now);
+        model_state.failure_count += 1;
+    }
+}
+
+/// Record a transient model failure with exponential backoff
+/// (60s -> 120s -> 240s -> 480s -> 960s -> 1800s, capped).
+fn record_transient_model_failure(
+    channel_state: &mut ChannelState,
+    channel_id: i32,
+    model: Option<&str>,
+    error_message: &str,
+    now: Instant,
+    log_message: &'static str,
+) {
+    if let Some(model_name) = model {
+        let model_state = channel_state.get_or_create_model(model_name, channel_id);
+        model_state.failure_count += 1;
+
+        // Exponential backoff: cooldown grows with consecutive failures (max 2^5 = 32)
+        let multiplier = 1u64 << model_state.failure_count.min(5);
+        let cooldown_secs = (BASE_COOLDOWN_SECS * multiplier).min(MAX_COOLDOWN_SECS);
+
+        model_state.status = ModelStatus::TemporarilyDown;
+        model_state.rate_limit_until = Some(now + Duration::from_secs(cooldown_secs));
+        model_state.last_error = Some(error_message.to_string());
+        model_state.last_error_time = Some(now);
+
+        tracing::debug!(
+            channel_id,
+            %model_name,
+            failure_count = model_state.failure_count,
+            cooldown_secs,
+            "{}",
+            log_message
+        );
+    }
+}
+
+impl ChannelStateTracker {
     /// Record a successful request for a specific channel and model.
     ///
     /// Returns the AIMD learned limit if it changed after this success
@@ -524,7 +616,10 @@ impl ChannelStateTracker {
     ///
     /// # Returns
     /// A vector of channel IDs that are available for the given model (if specified)
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "list-filter helper kept for callers that need bulk availability checks"
+    )]
     pub fn get_available_channels(&self, candidates: &[i32], model: Option<&str>) -> Vec<i32> {
         candidates
             .iter()

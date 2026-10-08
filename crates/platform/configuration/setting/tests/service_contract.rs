@@ -1,7 +1,9 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and they return `Result` while still failing fast on \
+              assertion; clippy.toml's allow-panic-in-tests does not recognise `#[tokio::test]`."
 )]
 //! The `SettingService` contract (#633, plan section 5 item 19).
 //!
@@ -54,7 +56,7 @@ async fn fresh(tag: &str) -> Result<(SettingDatabase, std::path::PathBuf), Box<d
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let db =
         burncloud_database::create_database_with_url(&format!("sqlite:///{}?mode=rwc", normalized))

@@ -3,7 +3,10 @@
 //! This example demonstrates how to use the service-user crate
 //! for user registration, login, and token management.
 
-#![allow(clippy::unwrap_used)]
+#![allow(
+    clippy::unwrap_used,
+    reason = "example binary: setup values are known-good, so a failed unwrap is the demonstration's fail-fast signal"
+)]
 
 use burncloud_database::create_default_database;
 use burncloud_database_user::UserDatabase;
@@ -11,6 +14,10 @@ use burncloud_service_user::{JwtSecret, UserService};
 use uuid::Uuid;
 
 #[tokio::main]
+#[allow(
+    clippy::panic_in_result_fn,
+    reason = "example binary: the first UUID segment is always present, so the panic documents an invariant it cannot violate"
+)]
 async fn main() -> anyhow::Result<()> {
     println!("=== BurnCloud User Service Example ===\n");
 

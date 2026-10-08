@@ -4,7 +4,11 @@ set -eu
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
+
+cargo fmt --all -- --check
 cargo run --quiet -- code test --staged
+cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+cargo deny check
 
 # Keep the previous hook's interpreter, arguments and exit status intact.
 hooks=$(git rev-parse --git-path hooks)

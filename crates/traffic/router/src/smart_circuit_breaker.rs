@@ -577,11 +577,8 @@ mod tests {
         }
 
         let level = breaker.allow_request();
-        match level {
-            TripLevel::Degraded { weight } => {
-                assert!(weight < 1.0);
-            }
-            _ => {}
+        if let TripLevel::Degraded { weight } = level {
+            assert!(weight < 1.0);
         }
     }
 

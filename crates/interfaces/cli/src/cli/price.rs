@@ -1,5 +1,7 @@
-// CLI command output parsing — HTTP response JSON — Value required; no feasible typed alternative.
-#![allow(clippy::disallowed_types)]
+#![allow(
+    clippy::disallowed_types,
+    reason = "CLI command output parsing of HTTP response JSON requires Value; no feasible typed alternative"
+)]
 
 use anyhow::Result;
 use burncloud_common::{
@@ -29,7 +31,12 @@ fn from_nano(price: i64) -> f64 {
     nano_to_dollars(price)
 }
 
-pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "flat subcommand dispatch table over the whole pricing CLI surface; splitting it is a dedicated refactor"
+)]
+pub(crate) async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list", sub_m)) => {
             let limit: i32 = sub_m
@@ -1244,7 +1251,7 @@ pub async fn handle_price_command(db: &Database, matches: &ArgMatches) -> Result
 }
 
 /// Handle tiered pricing commands
-pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Result<()> {
+pub(crate) async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("list-tiers", sub_m)) => {
             let model = sub_m
@@ -1279,48 +1286,7 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             }
         }
         Some(("add-tier", sub_m)) => {
-            let model = sub_m
-                .get_one::<String>("model")
-                .ok_or_else(|| anyhow::anyhow!("model argument is required"))?
-                .to_string();
-            let region = sub_m.get_one::<String>("region").cloned();
-            let tier_start: i64 = sub_m
-                .get_one::<String>("tier-start")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let tier_end: Option<i64> = sub_m
-                .get_one::<String>("tier-end")
-                .and_then(|s| s.parse().ok());
-            let input_price: f64 = sub_m
-                .get_one::<String>("input-price")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0);
-            let output_price: f64 = sub_m
-                .get_one::<String>("output-price")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0);
-
-            // Convert to i64 nanodollars for storage
-            let input = TieredPriceInput {
-                model: model.clone(),
-                region,
-                currency: None,
-                tier_type: Some("context_length".to_string()),
-                tier_start,
-                tier_end,
-                input_price: to_nano(input_price),
-                output_price: to_nano(output_price),
-            };
-
-            BillingTieredPriceModel::upsert_tier(db, &input).await?;
-            println!(
-                "✓ Tier added for '{}': {}-{} tokens at ${:.4}/${:.4} per 1M",
-                model,
-                tier_start,
-                tier_end.map_or("∞".to_string(), |e| format!("{}", e)),
-                input_price,
-                output_price
-            );
+            add_tier(db, sub_m).await?;
         }
         Some(("import-tiered", sub_m)) => {
             let file_path = sub_m
@@ -1389,6 +1355,54 @@ pub async fn handle_tiered_command(db: &Database, matches: &ArgMatches) -> Resul
             println!("Run 'burncloud tiered --help' for more information.");
         }
     }
+
+    Ok(())
+}
+
+/// Read a single tier from the `add-tier` arguments and store it in the database.
+async fn add_tier(db: &Database, sub_m: &ArgMatches) -> Result<()> {
+    let model = sub_m
+        .get_one::<String>("model")
+        .ok_or_else(|| anyhow::anyhow!("model argument is required"))?
+        .to_string();
+    let region = sub_m.get_one::<String>("region").cloned();
+    let tier_start: i64 = sub_m
+        .get_one::<String>("tier-start")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let tier_end: Option<i64> = sub_m
+        .get_one::<String>("tier-end")
+        .and_then(|s| s.parse().ok());
+    let input_price: f64 = sub_m
+        .get_one::<String>("input-price")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let output_price: f64 = sub_m
+        .get_one::<String>("output-price")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+
+    // Convert to i64 nanodollars for storage
+    let input = TieredPriceInput {
+        model: model.clone(),
+        region,
+        currency: None,
+        tier_type: Some("context_length".to_string()),
+        tier_start,
+        tier_end,
+        input_price: to_nano(input_price),
+        output_price: to_nano(output_price),
+    };
+
+    BillingTieredPriceModel::upsert_tier(db, &input).await?;
+    println!(
+        "✓ Tier added for '{}': {}-{} tokens at ${:.4}/${:.4} per 1M",
+        model,
+        tier_start,
+        tier_end.map_or("∞".to_string(), |e| format!("{}", e)),
+        input_price,
+        output_price
+    );
 
     Ok(())
 }

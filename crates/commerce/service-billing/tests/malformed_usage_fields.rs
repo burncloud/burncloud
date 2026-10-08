@@ -2,7 +2,8 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::disallowed_types,
-    reason = "Test-only file: the assertions are the test, and the fixtures are JSON of unknown shape."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, the fixtures are JSON of unknown shape, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 //! What the provider usage parsers do with malformed or mistyped fields (#633, plan section 5 item 17).
 //!
@@ -395,7 +396,7 @@ async fn fresh_db(tag: &str) -> (burncloud_database::Database, std::path::PathBu
             .unwrap()
             .as_nanos()
     ));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     let db = burncloud_database::create_database_with_url(&url)

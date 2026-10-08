@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "e2e browser tests: unwrap/expect are the intended failure signal and these pedantic lints add no value in ignored, manually-run UI tests"
 )]
 use super::*;
 
@@ -31,7 +32,7 @@ async fn test_language_switch() {
     let result = browser.wait_for_text("General", 5_000);
     assert!(result.is_ok(), "Settings page should show General tab");
 
-    let _ = browser.screenshot("settings-general");
+    browser.screenshot("settings-general").ok();
 
     // Click Groups tab
     browser.click_by_name("Groups", 5_000).ok();
@@ -40,7 +41,7 @@ async fn test_language_switch() {
         result.is_ok(),
         "Clicking Groups tab did not show Groups content"
     );
-    let _ = browser.screenshot("settings-groups-tab");
+    browser.screenshot("settings-groups-tab").ok();
 
     // Click Tokens tab
     browser.click_by_name("Tokens", 5_000).ok();
@@ -49,7 +50,7 @@ async fn test_language_switch() {
         result.is_ok(),
         "Clicking Tokens tab did not show Tokens content"
     );
-    let _ = browser.screenshot("settings-tokens-tab");
+    browser.screenshot("settings-tokens-tab").ok();
 }
 
 #[tokio::test]
@@ -79,7 +80,7 @@ async fn test_tab_switching() {
         browser.wait_for_text("Groups", 5_000).is_ok(),
         "Groups tab should be visible after click"
     );
-    let _ = browser.screenshot("settings-groups-tab");
+    browser.screenshot("settings-groups-tab").ok();
 
     // Click Tokens tab
     browser.click_by_name("Tokens", 5_000).ok();
@@ -87,7 +88,7 @@ async fn test_tab_switching() {
         browser.wait_for_text("Tokens", 5_000).is_ok(),
         "Tokens tab should be visible after click"
     );
-    let _ = browser.screenshot("settings-tokens-tab");
+    browser.screenshot("settings-tokens-tab").ok();
 
     // Click General tab to go back
     browser.click_by_name("General", 5_000).ok();
@@ -95,5 +96,5 @@ async fn test_tab_switching() {
         browser.wait_for_text("General", 5_000).is_ok(),
         "General tab should be visible after click"
     );
-    let _ = browser.screenshot("settings-general-tab");
+    browser.screenshot("settings-general-tab").ok();
 }

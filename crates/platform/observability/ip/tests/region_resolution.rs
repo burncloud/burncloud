@@ -2,10 +2,13 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::disallowed_types,
+    clippy::panic_in_result_fn,
     reason = "Test-only file: the assertions are the test. `serde_json::Value` is used once, to show that a body \
               without the provider's field cannot satisfy the type the crate deserialises into -- reading an \
               untrusted document as a document, which is what the workspace gate permits at a boundary. An \
-              integration test is its own crate root, so it cannot inherit the crate's allowance."
+              integration test is its own crate root, so it cannot inherit the crate's allowance. The tests \
+              return `Result` and still assert on fixture data, failing fast; clippy.toml's allow-panic-in-tests \
+              does not recognise `#[tokio::test]`."
 )]
 //! Region resolution: parsing, provider shapes, fallback order and the cache (#633, plan item 24).
 //!
@@ -63,7 +66,7 @@ impl TempDb {
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_nanos()
         ));
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         let normalized = path.to_string_lossy().replace('\\', "/");
         let db = burncloud_database::create_database_with_url(&format!(
             "sqlite:///{}?mode=rwc",
@@ -87,7 +90,7 @@ impl Drop for TempDb {
             candidate.push(suffix);
             let candidate = std::path::PathBuf::from(candidate);
             if candidate.exists() {
-                let _ = std::fs::remove_file(&candidate);
+                std::fs::remove_file(&candidate).ok();
             }
         }
     }

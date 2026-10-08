@@ -184,6 +184,10 @@ impl ModelRouter {
     /// - `Ok((vec, None))` when channels exist but no model routing occurred (empty vec)
     /// - `Err(NoAvailableChannelsError)` if channels exist but all are unavailable,
     ///   **or** if `OrderType::Budget` filtered them all out (caller maps to 503).
+    #[allow(
+        clippy::cognitive_complexity,
+        reason = "single routing pipeline applying L0/L1.5/L3 filters in sequence; splitting requires a dedicated behavior-preserving refactor"
+    )]
     pub async fn route_with_scheduler(
         &self,
         inputs: RouteInputs<'_>,

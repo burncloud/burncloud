@@ -55,6 +55,17 @@ pub struct TokenValidationInfo {
 /// Aliased so the row type does not trip `clippy::type_complexity`.
 type TokenValidationRow = (String, String, i64, i64, Option<String>, Option<i64>);
 
+/// Run a migration statement whose failure must not abort initialization.
+///
+/// `ALTER TABLE ... ADD COLUMN` fails once the column already exists —
+/// "duplicate column name" on SQLite, "column already exists" on PostgreSQL —
+/// which is the expected outcome on every re-run. This crate carries no logging
+/// dependency, so the expected error is dropped here instead of propagated.
+async fn best_effort_execute(pool: &sqlx::AnyPool, sql: &str) {
+    // Failure is expected on re-runs ("duplicate column name") and is intentionally discarded.
+    sqlx::query(sql).execute(pool).await.ok();
+}
+
 /// Router database operations
 pub struct RouterDatabase;
 
@@ -97,31 +108,33 @@ impl RouterDatabase {
 
         sqlx::query(tokens_sql).execute(conn.pool()).await?;
 
-        // Migrations for router_tokens
+        // Migrations for router_tokens (best-effort: the column usually exists)
         if kind == "sqlite" {
-            let _ = sqlx::query(
+            best_effort_execute(
+                conn.pool(),
                 "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
             )
-            .execute(conn.pool())
             .await;
-            let _ = sqlx::query(
+            best_effort_execute(
+                conn.pool(),
                 "ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0",
             )
-            .execute(conn.pool())
             .await;
-            let _ = sqlx::query(
+            best_effort_execute(
+                conn.pool(),
                 "ALTER TABLE router_tokens ADD COLUMN expired_time INTEGER NOT NULL DEFAULT -1",
             )
-            .execute(conn.pool())
             .await;
-            let _ = sqlx::query(
+            best_effort_execute(
+                conn.pool(),
                 "ALTER TABLE router_tokens ADD COLUMN accessed_time INTEGER NOT NULL DEFAULT 0",
             )
-            .execute(conn.pool())
             .await;
-            let _ = sqlx::query("ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0")
-                .execute(conn.pool())
-                .await;
+            best_effort_execute(
+                conn.pool(),
+                "ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0",
+            )
+            .await;
         }
 
         Ok(())

@@ -10,21 +10,17 @@
 //! `t7_commit_refunds_overestimate` drive a request and read the effect. What is not covered is the guard's
 //! contract in isolation, and one case in particular that the outside tests cannot see:
 //!
-//! **A refund goes to the caller's own colour bucket, even when the consumption was borrowed from another.**
-//! `try_consume` takes the estimate from the first bucket that can afford it (`rate_budget.rs:381-395`), but
-//! `BudgetGuard::commit` refunds the difference to `self.color` (`:186`), and `refund` credits only that one
-//! bucket, capped at its own reservation (`:406-411`).
+//! **A refund goes back to the bucket that actually supplied the tokens** (#675). `try_consume` takes the
+//! estimate from the first bucket that can afford it (`rate_budget.rs`), reporting `OwnBucket` or
+//! `Borrowed { from, tpm }`; `BudgetGuard::with_source` records that, and both `commit` and `Drop` return the
+//! released tokens to the lender first, then to the requester's own bucket. An own-bucket admission behaves
+//! exactly as before.
 //!
-//! So a yellow request that borrowed from green and then used less than estimated returns the difference to
-//! **yellow**, which may be back at full reservation, while **green stays short**. No capacity is created or
-//! destroyed -- the two buckets are views over one cap -- but the split between them shifts, and the split is
-//! what the reservation exists to control.
+//! The refund is still capped at each bucket's own reservation, so no capacity can be invented -- only the
+//! *destination* changed, which is what the reservation exists to control.
 //!
-//! This file measures that rather than fixing it: whether the refund should follow the borrow chain is a
-//! decision about what the reservations mean, and the failing contract test at the end names it.
-//!
-//! Every budget here is freshly configured and the tests do not sleep, so the once-per-minute refill
-//! (`:362`) plays no part in any result.
+//! Every budget here is freshly configured and the tests do not sleep, so the once-per-minute refill plays no
+//! part in any result.
 
 use burncloud_router::rate_budget::{
     BudgetBackend, BudgetGuard, BudgetSnapshot, ChannelReservation, ConsumeOutcome, InMemoryBudget,
@@ -45,17 +41,18 @@ fn snapshot(b: &InMemoryBudget) -> BudgetSnapshot {
 }
 
 /// Consume and immediately build the guard, which is the pair the failover loop performs.
+///
+/// The guard is built `with_source`, exactly as `lib.rs` does it, so the tests exercise the production
+/// pairing rather than a hand-assembled "own bucket" assumption.
 fn reserve(
     b: &InMemoryBudget,
     color: TrafficColor,
     est_tpm: u64,
 ) -> (ConsumeOutcome, Option<BudgetGuard<'_>>) {
     let outcome = b.try_consume(1, color, est_tpm);
-    let guard = if outcome.admitted() {
-        Some(BudgetGuard::new(b, 1, color, est_tpm))
-    } else {
-        None
-    };
+    let guard = outcome
+        .sourced()
+        .map(|source| BudgetGuard::with_source(b, 1, color, est_tpm, source));
     (outcome, guard)
 }
 
@@ -185,18 +182,21 @@ fn the_rpm_slot_is_taken_once_and_is_not_returned_by_the_refund() {
 // the case the outside tests cannot see: a borrowed consumption
 // -------------------------------------------------------------------------------------------
 
-#[test]
-fn a_borrowed_reservation_is_refunded_to_the_borrower_not_the_lender() {
-    // The finding. Yellow's own bucket is drained first, so the next yellow request borrows from green. When
-    // that request commits an overestimate, the difference goes back to **yellow** -- the borrower -- while
-    // **green**, which actually supplied the tokens, stays short.
-    let b = budget_with(ChannelReservation::default());
-
-    // Drain yellow so the next yellow request must borrow. Yellow holds 40_000.
-    let (outcome, guard) = reserve(&b, TrafficColor::Yellow, 40_000);
+/// Drain yellow so the next yellow request must borrow from green.
+fn drain_yellow(b: &InMemoryBudget) {
+    let (outcome, guard) = reserve(b, TrafficColor::Yellow, 40_000);
     assert_eq!(outcome, ConsumeOutcome::OwnBucket);
     guard.expect("admitted").commit(40_000);
-    assert_eq!(snapshot(&b).tpm_remaining_yellow, 0);
+    assert_eq!(snapshot(b).tpm_remaining_yellow, 0);
+}
+
+#[test]
+fn a_borrowed_reservation_is_refunded_to_the_lender() {
+    // Yellow's own bucket is drained first, so the next yellow request borrows from green. When that request
+    // commits an overestimate, the unused part goes back to **green** -- the bucket that supplied the tokens --
+    // and yellow, which supplied nothing, is not credited with a refund it did not earn.
+    let b = budget_with(ChannelReservation::default());
+    drain_yellow(&b);
 
     let green_before = snapshot(&b).tpm_remaining_green;
 
@@ -212,7 +212,7 @@ fn a_borrowed_reservation_is_refunded_to_the_borrower_not_the_lender() {
         "the tokens came out of green"
     );
 
-    // It used only half of the estimate.
+    // It used only half of the estimate, so 5_000 goes back to green.
     guard.expect("admitted").commit(5_000);
 
     let after = snapshot(&b);
@@ -223,25 +223,21 @@ fn a_borrowed_reservation_is_refunded_to_the_borrower_not_the_lender() {
 
     assert_eq!(
         after.tpm_remaining_green,
-        green_before - 10_000,
-        "green supplied the tokens but received none of the 5_000 refund, so it stays 10_000 short"
+        green_before - 5_000,
+        "green lent 10_000 and got 5_000 back, so green is short exactly the 5_000 that was used"
     );
     assert_eq!(
-        after.tpm_remaining_yellow, 5_000,
-        "the refund landed in yellow, which supplied nothing -- yellow is now 5_000 better off than before \
-         it borrowed, and green is 5_000 worse off"
+        after.tpm_remaining_yellow, 0,
+        "yellow supplied nothing, so it must not be credited with a refund it did not earn"
     );
 }
 
 #[test]
-fn a_borrowed_cancellation_refunds_to_the_borrower_as_well() {
-    // The same asymmetry on the cancel path, which is the more common one for a failed request, and larger
-    // because the full estimate comes back rather than the difference.
+fn a_borrowed_cancellation_refunds_to_the_lender_as_well() {
+    // The same on the cancel path, which is the more common one for a failed request, and larger because the
+    // full estimate comes back rather than the difference.
     let b = budget_with(ChannelReservation::default());
-
-    let (_, guard) = reserve(&b, TrafficColor::Yellow, 40_000);
-    guard.expect("admitted").commit(40_000);
-    assert_eq!(snapshot(&b).tpm_remaining_yellow, 0);
+    drain_yellow(&b);
 
     let state = snapshot(&b);
     let (outcome, guard) = reserve(&b, TrafficColor::Yellow, 10_000);
@@ -255,21 +251,20 @@ fn a_borrowed_cancellation_refunds_to_the_borrower_as_well() {
     );
 
     assert_eq!(
-        after.tpm_remaining_green,
-        state.tpm_remaining_green - 10_000,
-        "cancelling returns the estimate to yellow, not to green, so green loses the 10_000 for good"
+        after.tpm_remaining_green, state.tpm_remaining_green,
+        "cancelling returns the estimate to green, which lent it, so green is whole again"
     );
     assert_eq!(
-        after.tpm_remaining_yellow, 10_000,
-        "and yellow is credited 10_000 it never had"
+        after.tpm_remaining_yellow, state.tpm_remaining_yellow,
+        "and yellow, which was empty, is empty again"
     );
 }
 
 #[test]
-fn the_refund_is_capped_at_the_borrowers_own_reservation() {
-    // The cap in `refund` (`:409`) limits how much of a misdirected refund the borrower can absorb. With a
-    // small yellow share the excess is dropped entirely, so the tokens are neither with the borrower nor with
-    // the lender -- they are gone from both views until the next refill.
+fn a_large_borrow_is_fully_returned_without_losing_capacity() {
+    // With a small yellow share the old code refunded at most yellow's own reservation and silently dropped
+    // the rest, so the two buckets together held less than before the request until the next refill. The
+    // lender-first refund cannot drop anything: it returns exactly what it took.
     let reservation = ChannelReservation {
         green: 0.8,
         yellow: 0.1,
@@ -285,6 +280,9 @@ fn the_refund_is_capped_at_the_borrowers_own_reservation() {
     // Yellow holds 10_000. Spend it, then borrow 30_000 from green and cancel.
     let (_, guard) = reserve(&b, TrafficColor::Yellow, 10_000);
     guard.expect("admitted").commit(10_000);
+    assert_eq!(snapshot(&b).tpm_remaining_yellow, 0);
+
+    let drained = snapshot(&b);
 
     let (outcome, guard) = reserve(&b, TrafficColor::Yellow, 30_000);
     assert!(
@@ -295,23 +293,48 @@ fn the_refund_is_capped_at_the_borrowers_own_reservation() {
 
     let after = snapshot(&b);
     println!(
-        "after borrowing 30_000 and cancelling: yellow {} (cap 10_000), green {}",
+        "after borrowing 30_000 and cancelling: yellow {}, green {}",
         after.tpm_remaining_yellow, after.tpm_remaining_green
     );
 
     assert_eq!(
-        after.tpm_remaining_yellow, 10_000,
-        "yellow is refilled to its own reservation, and the other 20_000 of the refund is discarded by the cap"
+        after.tpm_remaining_green, drained.tpm_remaining_green,
+        "green lent 30_000 and got all of it back"
     );
     assert_eq!(
-        after.tpm_remaining_green,
-        snap.tpm_remaining_green - 30_000,
-        "green is still missing all 30_000 it lent"
+        after.tpm_remaining_yellow, 0,
+        "yellow supplied nothing, so it stays empty rather than being refilled to its cap"
+    );
+    assert_eq!(
+        after.tpm_remaining_green + after.tpm_remaining_yellow,
+        drained.tpm_remaining_green + drained.tpm_remaining_yellow,
+        "so the two buckets together hold exactly what they held before the cancelled borrow: the capped \
+         excess is not dropped anywhere (before the fix this was 30_000 lower until the next refill)"
+    );
+}
+
+/// A refund may never push a bucket past its own reservation, even when far more is released than was ever
+/// borrowed — otherwise a misdirected refund would invent capacity.
+#[test]
+fn a_borrow_refund_cannot_exceed_the_reserved_cap() {
+    let b = budget_with(ChannelReservation::default());
+    drain_yellow(&b);
+
+    let (outcome, guard) = reserve(&b, TrafficColor::Yellow, 10_000);
+    assert!(matches!(outcome, ConsumeOutcome::Borrowed { .. }));
+    // Ask for the whole estimate back even though more than it was borrowed is in play across the channel.
+    guard.expect("admitted").commit(0);
+
+    let after = snapshot(&b);
+    assert!(
+        after.tpm_remaining_green <= 40_000,
+        "green must not exceed its 40_000 reservation, got {}",
+        after.tpm_remaining_green
     );
     assert!(
-        after.tpm_remaining_green + after.tpm_remaining_yellow < snap.tpm_remaining_green + snap.tpm_remaining_yellow,
-        "so the two buckets together hold less than they did before the request: the capped excess is not \
-         credited anywhere"
+        after.tpm_remaining_yellow <= 40_000,
+        "yellow must not exceed its 40_000 reservation, got {}",
+        after.tpm_remaining_yellow
     );
 }
 
@@ -321,16 +344,9 @@ fn the_refund_is_capped_at_the_borrowers_own_reservation() {
 
 /// The property #673-style issues share: a documented mechanism must not silently do something else.
 ///
-/// **Ignored, not deleted**, and failing today. `BudgetGuard::commit` documents "refund the difference"
-/// without saying *to which bucket*, and the answer is "the caller's" rather than "the one that supplied
-/// them". Two resolutions are defensible and the choice is about what a reservation means:
-///
-/// * refund along the borrow chain, so each bucket gets back what it lent;
-/// * or keep the current credit but document it, if the buckets are only ever read in total.
-///
-/// What the test rejects is the current state: an asymmetry that silently moves capacity between the colours
-/// the reservation exists to separate, with no warning and no test.
-#[ignore = "the contract: a borrowed reservation must be refunded along the borrow chain"]
+/// The contract #675 named: a borrowed reservation is refunded along the borrow chain, so each bucket gets
+/// back exactly what it lent and the split between colours (the thing the reservation exists to control) is
+/// restored rather than shifted.
 #[test]
 fn a_refund_follows_where_the_tokens_came_from() {
     let b = budget_with(ChannelReservation::default());

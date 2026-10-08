@@ -1,7 +1,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "Test-only file: the assertions are the test."
+    clippy::panic_in_result_fn,
+    reason = "Test-only file: the assertions are the test, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]."
 )]
 //! Token validation's two paths, and what each of them checks (#633, plan item 11).
 //!
@@ -58,7 +59,7 @@ impl TempDb {
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         let normalized = path.to_string_lossy().replace('\\', "/");
         // Three slashes: `sqlite:///C:/...` is the absolute form.
         let url = format!("sqlite:///{}?mode=rwc", normalized);
@@ -71,11 +72,11 @@ impl TempDb {
         let path = self.path.clone();
         self.db.close().await.ok();
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        let _ = std::fs::remove_file(&path);
+        std::fs::remove_file(&path).ok();
         for suffix in ["-wal", "-shm"] {
             let mut candidate = path.as_os_str().to_os_string();
             candidate.push(suffix);
-            let _ = std::fs::remove_file(std::path::PathBuf::from(candidate));
+            std::fs::remove_file(std::path::PathBuf::from(candidate)).ok();
         }
     }
 }

@@ -226,10 +226,15 @@ fn a_stale_lock_is_cleared_and_the_run_proceeds() {
             Ok(_) => println!("{label:?} contents were treated as stale and cleared"),
             Err(e) => println!("{label:?} contents were treated as a live holder: {e}"),
         }
-        // `"12"` parses as a pid, so it takes the liveness branch: pid 12 is almost certainly not running, but
-        // this asserts the *decision rule* rather than a particular machine's process table.
-        if label == "12" {
-            let pid_is_alive = std::path::Path::new("/proc/12").exists();
+        // The decision depends on whether the **contents** parse as a pid, not on the label: the numeric case
+        // is `("partially written", "12")`. This guard used to read `label == "12"`, which is never true — the
+        // label is `"partially written"` — so the numeric case always fell through to the "must be stale"
+        // assertion instead of the liveness one the comment describes.
+        //
+        // The liveness answer itself is read from the machine rather than assumed, so the rule under test is
+        // "decided by liveness", not one machine's process table.
+        if let Ok(pid) = contents.trim().parse::<u32>() {
+            let pid_is_alive = std::path::Path::new(&format!("/proc/{pid}")).exists();
             assert_eq!(
                 result.is_err(),
                 pid_is_alive,

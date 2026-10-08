@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    reason = "Test-only file: the assertions on the byte-identical JSON fixtures are the test, and `serde_json::Value` is read as a document at this boundary."
+)]
 //! S1-B compatibility evidence: the legacy `burncloud_common` price/pricing paths and the
 //! Commerce-owned contract path must resolve to the same types and produce byte-identical
 //! JSON. Serialization shape is a hard compatibility promise for `pricing.json`, the

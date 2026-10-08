@@ -78,6 +78,9 @@ pub fn run_aesthetic_review_scoped(
         }
     }
 
+    // Global J4 requirements only apply on the last page of the queue (or in unscoped runs).
+    let require_global_j4 = scope.is_none() || scope.is_some_and(|s| s.require_global_j4);
+
     if review_path.exists() {
         let text = std::fs::read_to_string(&review_path)?;
         let review: Value = serde_json::from_str(&text)?;
@@ -85,7 +88,7 @@ pub fn run_aesthetic_review_scoped(
         let pages_to_check: Vec<&str> = match scope {
             Some(s) => {
                 let mut list: Vec<&str> = s.completed_pages.iter().map(|p| p.as_str()).collect();
-                if !list.iter().any(|p| *p == s.current_page.as_str()) {
+                if !list.contains(&s.current_page.as_str()) {
                     list.push(s.current_page.as_str());
                 }
                 list
@@ -93,10 +96,8 @@ pub fn run_aesthetic_review_scoped(
             None => REQUIRED_PAGES.to_vec(),
         };
 
-        if scope.is_none() || scope.is_some_and(|s| s.require_global_j4) {
-            if review.get("pass").and_then(|v| v.as_bool()) != Some(true) {
-                errors.push("review.pass is false (set true when all criteria met)".to_string());
-            }
+        if require_global_j4 && review.get("pass").and_then(|v| v.as_bool()) != Some(true) {
+            errors.push("review.pass is false (set true when all criteria met)".to_string());
         }
 
         let pages = review.get("pages").and_then(|p| p.as_object());
@@ -112,16 +113,8 @@ pub fn run_aesthetic_review_scoped(
             validate_page_entry(page, entry, &mut errors);
         }
 
-        if scope.is_none() || scope.is_some_and(|s| s.require_global_j4) {
-            if let Some(j4) = review.get("global_j4") {
-                for key in J4_KEYS {
-                    if j4.get(*key).and_then(|v| v.as_bool()) != Some(true) {
-                        errors.push(format!("global_j4.{key} is not true"));
-                    }
-                }
-            } else {
-                errors.push("missing global_j4".to_string());
-            }
+        if require_global_j4 {
+            check_global_j4(&review, &mut errors);
         }
     }
 
@@ -140,6 +133,19 @@ pub fn run_aesthetic_review_scoped(
             lines.push(format!("  - {e}"));
         }
         Ok((false, lines))
+    }
+}
+
+/// Records every `global_j4` key that is missing or not `true`.
+fn check_global_j4(review: &Value, errors: &mut Vec<String>) {
+    let Some(j4) = review.get("global_j4") else {
+        errors.push("missing global_j4".to_string());
+        return;
+    };
+    for key in J4_KEYS {
+        if j4.get(*key).and_then(|v| v.as_bool()) != Some(true) {
+            errors.push(format!("global_j4.{key} is not true"));
+        }
     }
 }
 

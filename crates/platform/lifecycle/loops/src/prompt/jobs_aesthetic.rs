@@ -66,10 +66,12 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
     parse_review_file(
         &review_path,
         &focus,
-        input.css_ok,
-        input.metrics_ok,
-        input.review_ok,
-        &input.phase,
+        &RoundStatus {
+            css_ok: input.css_ok,
+            metrics_ok: input.metrics_ok,
+            review_ok: input.review_ok,
+            phase: input.phase.clone(),
+        },
         &mut failures,
         &mut priority_pages,
     );
@@ -98,6 +100,58 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
         }
     }
 
+    let lines = build_prompt_body(
+        input,
+        &artifacts,
+        check_log.as_deref(),
+        &failures,
+        &screenshots,
+    );
+
+    let md = lines.join("\n") + "\n";
+    let iter_md = run_dir.join(format!("agent-prompt-{}.md", input.iteration));
+    let iter_json = run_dir.join(format!("agent-prompt-{}.json", input.iteration));
+    std::fs::write(&out_md, &md)?;
+    std::fs::write(&iter_md, &md)?;
+
+    let failure_export: Vec<Value> = failures
+        .iter()
+        .map(|f| {
+            json!({
+                "layer": f.layer,
+                "page": f.page,
+                "error": f.error,
+            })
+        })
+        .collect();
+    let payload = json!({
+        "iteration": input.iteration,
+        "phase": input.phase,
+        "css_ok": input.css_ok,
+        "metrics_ok": input.metrics_ok,
+        "review_ok": input.review_ok,
+        "failures": failure_export,
+        "focus_page": input.focus_page,
+        "completed_pages": input.completed_pages,
+        "priority_pages": unique_priority.iter().take(5).collect::<Vec<_>>(),
+        "screenshots": screenshots,
+        "generated_at": Utc::now().to_rfc3339(),
+    });
+    std::fs::write(&out_json, serde_json::to_string_pretty(&payload)?)?;
+    std::fs::write(&iter_json, serde_json::to_string_pretty(&payload)?)?;
+
+    eprintln!("Generated agent prompt: {}", out_md.display());
+    Ok(out_md)
+}
+
+/// Builds the markdown body of the agent prompt (mission, failures, screenshots, round notes).
+fn build_prompt_body(
+    input: &PromptInput,
+    artifacts: &Path,
+    check_log: Option<&Path>,
+    failures: &[Failure],
+    screenshots: &[String],
+) -> Vec<String> {
     let max_files = if input.phase == "css" { 8 } else { 4 };
     let gate_hint = if !input.css_ok {
         "Gate 1: fix CSS until `cargo run -p burncloud-loops -- gate css-naming` exits 0"
@@ -190,44 +244,10 @@ pub fn build_jobs_aesthetic_prompt(input: &PromptInput) -> anyhow::Result<PathBu
         "- Constraints: crates/platform/lifecycle/loops/acceptance/jobs-aesthetic-agent-prompt.md"
             .to_string(),
     );
-    if let Some(log) = check_log.as_ref() {
+    if let Some(log) = check_log {
         lines.push(format!("- Check log: {}", log.display()));
     }
-
-    let md = lines.join("\n") + "\n";
-    let iter_md = run_dir.join(format!("agent-prompt-{}.md", input.iteration));
-    let iter_json = run_dir.join(format!("agent-prompt-{}.json", input.iteration));
-    std::fs::write(&out_md, &md)?;
-    std::fs::write(&iter_md, &md)?;
-
-    let failure_export: Vec<Value> = failures
-        .iter()
-        .map(|f| {
-            json!({
-                "layer": f.layer,
-                "page": f.page,
-                "error": f.error,
-            })
-        })
-        .collect();
-    let payload = json!({
-        "iteration": input.iteration,
-        "phase": input.phase,
-        "css_ok": input.css_ok,
-        "metrics_ok": input.metrics_ok,
-        "review_ok": input.review_ok,
-        "failures": failure_export,
-        "focus_page": input.focus_page,
-        "completed_pages": input.completed_pages,
-        "priority_pages": unique_priority.iter().take(5).collect::<Vec<_>>(),
-        "screenshots": screenshots,
-        "generated_at": Utc::now().to_rfc3339(),
-    });
-    std::fs::write(&out_json, serde_json::to_string_pretty(&payload)?)?;
-    std::fs::write(&iter_json, serde_json::to_string_pretty(&payload)?)?;
-
-    eprintln!("Generated agent prompt: {}", out_md.display());
-    Ok(out_md)
+    lines
 }
 
 fn latest_check_log(run_dir: &Path) -> Option<PathBuf> {
@@ -494,20 +514,25 @@ fn parse_metrics_file(
     }
 }
 
-fn parse_review_file(
-    path: &Path,
-    focus: &str,
+/// Gate outcome and phase of the round being prompted.
+struct RoundStatus {
     css_ok: bool,
     metrics_ok: bool,
     review_ok: bool,
-    phase: &str,
+    phase: String,
+}
+
+fn parse_review_file(
+    path: &Path,
+    focus: &str,
+    round: &RoundStatus,
     failures: &mut Vec<Failure>,
     priority_pages: &mut Vec<String>,
 ) {
-    if review_ok {
+    if round.review_ok {
         return;
     }
-    let include_review = !review_ok && (metrics_ok || phase == "review");
+    let include_review = !round.review_ok && (round.metrics_ok || round.phase == "review");
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
@@ -522,7 +547,7 @@ fn parse_review_file(
                     for item in p0 {
                         if let Some(s) = item.as_str() {
                             if s == "not-reviewed" {
-                                if css_ok && metrics_ok {
+                                if round.css_ok && round.metrics_ok {
                                     failures.push(Failure {
                                         layer: "j3".into(),
                                         page: focus.to_string(),
@@ -560,7 +585,10 @@ fn parse_review_file(
     }
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "part of this harness crate's public API; no in-crate caller uses it yet"
+)]
 pub fn required_pages() -> &'static [&'static str] {
     GateCategory::JOBS_AESTHETIC_PAGES
 }

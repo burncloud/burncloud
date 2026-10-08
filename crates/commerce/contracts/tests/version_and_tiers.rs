@@ -109,19 +109,28 @@ fn a_version_without_a_minor_part_is_dispatched_by_its_major_number() {
         "\"6\" is below 7, so the nested v1 shape is read"
     );
 
-    // And the two shapes really are different parsers: feeding the **v7 body** under version 6 must not find
-    // the price, which proves the dispatch above is doing something rather than both paths accepting anything.
-    let v7_body_as_v1 = PricingConfig::from_json(&v7_doc("6.0"));
-    let found = v7_body_as_v1
-        .as_ref()
-        .ok()
-        .and_then(|c| c.get_pricing("m", "USD"))
-        .is_some();
-    println!("a v7 body under version 6.0 yields pricing: {found}");
+    // The two shapes really are different parsers, and since #606 the **body** decides which one runs: the
+    // same flat v7 body under a pre-7 version is still read by the v7 parser, because a body that carries
+    // `text` blocks is not something the v1 parser can describe. Mislabelled input is recovered rather than
+    // silently emptied.
+    let flat_body_under_six = PricingConfig::from_json(&v7_doc("6.0"))
+        .unwrap_or_else(|e| panic!("a flat body under 6.0 must parse: {e}"));
+    let found = flat_body_under_six.get_pricing("m", "USD").is_some();
+    println!("a flat body under version 6.0 yields pricing: {found}");
     assert!(
-        !found,
-        "the v1 parser reads `pricing`, not the flat currency block, so a v7 body under a v1 version has no \
-         price; if this found one, the two paths are not actually distinct"
+        found,
+        "the body's `text` block identifies the flat shape, so the price is read even though the version \
+         string says 6.0 -- the layout marker is the fact, the version only breaks a tie (#606)"
+    );
+
+    // A nested v1 body with a v7 version is the mirror case, and it is the one `to_json` produces: read as
+    // v1, so nothing is lost.
+    let nested_body_under_seven = PricingConfig::from_json(&v1_doc("7.0"))
+        .unwrap_or_else(|e| panic!("a nested body under 7.0 must parse: {e}"));
+    assert!(
+        nested_body_under_seven.get_pricing("m", "USD").is_some(),
+        "a nested body must be read as nested whatever the version says, or `to_json` output would lose its \
+         prices again"
     );
 }
 
@@ -130,39 +139,44 @@ fn a_version_without_a_minor_part_is_dispatched_by_its_major_number() {
 // -------------------------------------------------------------------------------------------
 
 #[test]
-fn an_unreadable_version_falls_back_to_v1_rather_than_being_rejected() {
-    // **What "unknown version" actually does.** `version_major` is `split('.').next().parse().unwrap_or(1)`,
-    // so a version that is not a number becomes **1** and the v1 parser runs. There is no error.
+fn an_unreadable_version_still_reads_the_body_when_the_layout_is_recognisable() {
+    // **What "unknown version" does now (#606).** `version_major` is
+    // `split('.').next().parse().unwrap_or(1)`, so a version that is not a number becomes **1**. But the
+    // layout is checked first, so an unreadable version is no longer a way to lose the prices: the body's own
+    // shape decides, and only a body carrying no marker falls back to the v1 reading.
     //
-    // This is worth pinning precisely because both readings are defensible: falling back keeps old documents
-    // working, and silently treating "abc" as v1 means a typo in a generated file routes a v7 payload to a
-    // parser that cannot read it -- losing every price in it without saying so.
+    // Both halves matter. The nested v1 shape keeps parsing, as before.
     for version in ["abc", "", "v7.0", " 7.0", "seven"] {
         let result = PricingConfig::from_json(&v1_doc(version));
         match result {
             Ok(config) => {
                 let found = config.get_pricing("m", "USD").is_some();
-                println!("version {version:?} -> parsed, pricing found: {found}");
+                println!("v1 body, version {version:?} -> parsed, pricing found: {found}");
                 assert!(
                     found,
-                    "version {version:?} fell back to the v1 parser, which read the nested shape"
+                    "a nested v1 body must be read whatever the version string says: {version:?}"
                 );
             }
-            Err(e) => println!("version {version:?} -> rejected: {e}"),
+            Err(e) => println!("v1 body, version {version:?} -> rejected: {e}"),
         }
     }
 
-    // The measurable consequence: a **v7 body** wearing an unreadable version loses its prices, because the
-    // fallback sends it to the v1 parser.
+    // And the flat v7 body is now recovered rather than silently emptied. This is the #606 repair seen from
+    // the other side: a mislabelled document used to lose every price with no error anywhere.
     for version in ["abc", "", "v7.0"] {
         let config = PricingConfig::from_json(&v7_doc(version))
             .unwrap_or_else(|e| panic!("{version}: the document still parses: {e}"));
         let found = config.get_pricing("m", "USD").is_some();
-        println!("a v7 body under {version:?} -> pricing found: {found}");
+        println!("a flat v7 body under {version:?} -> pricing found: {found}");
         assert!(
-            !found,
-            "version {version:?} is not a number, so it becomes 1 and the v1 parser reads a document with no \
-             `pricing` block: the price is silently absent rather than an error"
+            found,
+            "version {version:?} is not readable as 7, but the body's `text` block identifies the flat shape, \
+             so the price must be found rather than silently absent"
+        );
+        assert_eq!(
+            config.get_pricing("m", "USD").unwrap().input_price,
+            THREE_USD,
+            "and with the right value, not a placeholder"
         );
     }
 }
@@ -199,15 +213,28 @@ fn a_version_above_the_known_range_is_treated_as_the_newest_format() {
 }
 
 #[test]
-fn a_document_with_no_version_is_read_as_v1() {
+fn a_document_with_no_version_still_has_its_body_read() {
     // The documented fallback, restated here because the version tests above lean on it: absence is not the
-    // same as a bad value, and both land on v1. `pricing_fixtures.rs` covers this too; it is repeated because a
-    // change to the default would silently alter every test in this file.
+    // same as a bad value, and both read as 1.0. Since #606 the layout is checked first, so an unversioned
+    // **flat** body is still read by the v7 parser instead of being handed to one that cannot describe it.
     let flat = PricingConfig::from_json(&unversioned_v7_doc()).unwrap();
     assert_eq!(flat.version, "1.0", "a missing version reads as 1.0");
-    assert!(
-        flat.get_pricing("m", "USD").is_none(),
-        "and the flat body has no `pricing` block for the v1 parser to read"
+    assert_eq!(
+        flat.get_pricing("m", "USD").unwrap().input_price,
+        THREE_USD,
+        "and the flat body's price is found: an unversioned document must not silently lose its prices just \
+         because the version string is absent"
+    );
+
+    // An unversioned **nested** body keeps the v1 reading, which is the original documented fallback.
+    let nested = r#"{"updated_at":"2026-03-29T00:00:00Z","source":"t",
+                     "models":{"m":{"pricing":{"USD":{"input_price":3.0,"output_price":4.0}}}}}"#;
+    let nested = PricingConfig::from_json(nested).unwrap();
+    assert_eq!(nested.version, "1.0");
+    assert_eq!(
+        nested.get_pricing("m", "USD").unwrap().input_price,
+        THREE_USD,
+        "and a nested body without a version is read as v1, as documented"
     );
 }
 
@@ -366,11 +393,19 @@ fn overlapping_tiers_are_stored_as_written_and_the_first_match_wins() {
             "{version:?} has a numeric major part, so the v7 path is taken"
         );
     }
+    // And the body, not the version string, is what makes a document readable. `"V7.0"` is not numeric, so it
+    // is no longer a way to strip the prices: the flat `text` block identifies the shape and the dollar values
+    // are read. #606 made the layout marker authoritative precisely because a version string was able to
+    // empty a perfectly well-formed body with no error.
     let uppercase = PricingConfig::from_json(&v7_doc("V7.0")).unwrap();
-    assert!(
-        uppercase.get_pricing("m", "USD").is_none(),
-        "\"V7.0\" is not numeric, so it falls back to v1 and the flat block is not read -- the version is used \
-         as written rather than normalised"
+    assert_eq!(
+        uppercase.get_pricing("m", "USD").unwrap().input_price,
+        THREE_USD,
+        "\"V7.0\" is not numeric, but the flat body is still recognised from its `text` block"
+    );
+    assert_eq!(
+        uppercase.version, "V7.0",
+        "and the version string is carried verbatim rather than normalised"
     );
 }
 
