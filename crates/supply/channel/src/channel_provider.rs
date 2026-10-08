@@ -321,7 +321,6 @@ impl ChannelProviderModel {
         is_postgres: bool,
         channel: &Channel,
     ) -> Result<()> {
-
         // 1. Delete existing abilities for this channel
         let sql_delete = adapt_sql(
             is_postgres,
