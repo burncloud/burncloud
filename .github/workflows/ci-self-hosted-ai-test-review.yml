@@ -35,4 +35,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-        run: cargo run --locked --manifest-path .github/tools/gemini-test-review/Cargo.toml
+        run: cargo run --manifest-path .github/tools/gemini-test-review/Cargo.toml
