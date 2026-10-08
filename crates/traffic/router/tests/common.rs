@@ -267,7 +267,11 @@ pub(crate) async fn ensure_channel_tables(pool: &AnyPool) -> anyhow::Result<()> 
             priority BIGINT DEFAULT 0,
             auto_ban INTEGER DEFAULT 1,
             rpm_cap INTEGER,
-            tpm_cap BIGINT
+            tpm_cap BIGINT,
+            param_override TEXT,
+            header_override TEXT,
+            api_version TEXT,
+            pricing_region TEXT
         )
         "#,
     )
