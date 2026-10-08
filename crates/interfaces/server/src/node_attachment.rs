@@ -4,7 +4,7 @@ use burncloud_node_runtime::{
     RuntimePreparer,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
-use burncloud_service_models::{LocalModelUnsupported, ModelResolver};
+use burncloud_supply_model::{LocalModelUnsupported, ModelResolver};
 use std::future::Future;
 
 /// Proof that the exact route attachment was removed before recovery begins.
@@ -205,7 +205,7 @@ mod tests {
         FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
         FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
     };
-    use burncloud_service_models::FakeModelResolver;
+    use burncloud_supply_model::FakeModelResolver;
 
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
