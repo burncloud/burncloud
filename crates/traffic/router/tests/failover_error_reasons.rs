@@ -49,7 +49,9 @@ async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::R
     };
     BillingPriceModel::upsert(db, &input).await?;
     assert!(
-        BillingPriceModel::get(db, model, "USD", None).await?.is_some(),
+        BillingPriceModel::get(db, model, "USD", None)
+            .await?
+            .is_some(),
         "seeded price must be readable through the production lookup"
     );
     Ok(())
@@ -63,11 +65,7 @@ async fn grant_unlimited_quota(pool: &sqlx::AnyPool, key: &str) -> anyhow::Resul
     Ok(())
 }
 
-async fn post_chat(
-    port: u16,
-    token: &str,
-    model: &str,
-) -> anyhow::Result<reqwest::Response> {
+async fn post_chat(port: u16, token: &str, model: &str) -> anyhow::Result<reqwest::Response> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()?;
