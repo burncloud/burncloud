@@ -130,33 +130,17 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
-    let id = "claude-adaptor-test";
-    let name = "claude-3-opus";
-    let base_url = format!("http://localhost:{}", mock_port);
-    let match_path = "/anything";
-    let auth_type = "Claude";
-    let api_key = "sk-ant-mock-key";
-
+    // The Anthropic-native path selects Anthropic Channel candidates.
+    common::ensure_channel_tables(&pool).await?;
     sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            protocol = excluded.protocol
-        "#,
+        "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority) VALUES (75631, 2, ?, 1, 'Claude Adaptor Test', 1, ?, 'claude-3-opus', 'default', 0)",
     )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .bind("claude") // Force protocol to claude
+    .bind("sk-ant-mock-key")
+    .bind(format!("http://127.0.0.1:{mock_port}/anything"))
     .execute(&pool)
     .await?;
+    sqlx::query("INSERT INTO channel_abilities (`group`, model, channel_id, enabled, priority, weight) VALUES ('default', 'claude-3-opus', 75631, 1, 0, 1)")
+        .execute(&pool).await?;
 
     // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(
@@ -170,7 +154,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}/anything", port);
+    let url = format!("http://localhost:{}/v1/messages", port);
 
     let openai_body = json!({
         "model": "claude-3-opus", // Will be passed through or mapped
