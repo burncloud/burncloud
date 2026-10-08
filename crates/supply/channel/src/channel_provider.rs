@@ -83,11 +83,12 @@ impl ChannelProviderModel {
             row.0 as i32
         };
 
+        // Keep the channel ID on the caller unchanged until all database writes commit.
+        let mut pending = channel.clone();
+        pending.id = id;
+        Self::sync_abilities_on(&mut tx, is_postgres, &pending).await?;
         tx.commit().await?;
-
         channel.id = id;
-
-        Self::sync_abilities(db, channel).await?;
 
         Ok(id)
     }
@@ -112,6 +113,7 @@ impl ChannelProviderModel {
             ),
         );
 
+        let mut tx = pool.begin().await?;
         sqlx::query(&sql)
             .bind(channel.type_)
             .bind(&channel.key)
@@ -137,10 +139,11 @@ impl ChannelProviderModel {
             .bind(channel.reservation_yellow)
             .bind(channel.reservation_red)
             .bind(channel.id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
 
-        Self::sync_abilities(db, channel).await?;
+        Self::sync_abilities_on(&mut tx, is_postgres, channel).await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -307,8 +310,17 @@ impl ChannelProviderModel {
 
     pub async fn sync_abilities(db: &Database, channel: &Channel) -> Result<()> {
         let conn = db.get_connection()?;
-        let pool = conn.pool();
-        let is_postgres = db.kind() == "postgres";
+        let mut tx = conn.pool().begin().await?;
+        Self::sync_abilities_on(&mut tx, db.kind() == "postgres", channel).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn sync_abilities_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Any>,
+        is_postgres: bool,
+        channel: &Channel,
+    ) -> Result<()> {
 
         // 1. Delete existing abilities for this channel
         let sql_delete = adapt_sql(
@@ -317,7 +329,7 @@ impl ChannelProviderModel {
         );
         sqlx::query(&sql_delete)
             .bind(channel.id)
-            .execute(pool)
+            .execute(&mut **tx)
             .await?;
 
         // 2. Add new abilities
@@ -381,7 +393,7 @@ impl ChannelProviderModel {
                     .bind(true) // sqlx handles boolean mapping
                     .bind(channel.priority)
                     .bind(channel.weight)
-                    .execute(pool)
+                    .execute(&mut **tx)
                     .await?;
             }
         }
@@ -410,7 +422,7 @@ impl ChannelProviderModel {
                             .bind(true)
                             .bind(channel.priority)
                             .bind(channel.weight)
-                            .execute(pool)
+                            .execute(&mut **tx)
                             .await?;
 
                         // Insert for value (actual model name)
@@ -427,7 +439,7 @@ impl ChannelProviderModel {
                             .bind(true)
                             .bind(channel.priority)
                             .bind(channel.weight)
-                            .execute(pool)
+                            .execute(&mut **tx)
                             .await?;
                     }
                 }
