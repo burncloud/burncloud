@@ -126,30 +126,23 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         start_mock_upstream(listener).await;
     });
 
-    let id = "deepseek-test";
-    let name = "DeepSeek Test";
-    let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
-    let api_key = "sk-deepseek-mock-key";
-    let match_path = "/v1/chat/completions/test-deepseek";
-    let auth_type = "DeepSeek";
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            match_path = excluded.match_path
-        "#,
+    // Current Router routing truth is owned by Supply channels, not router_upstreams.
+    common::insert_test_channel(
+        &pool,
+        75601,
+        "deepseek_proxy fixture",
+        &format!("http://127.0.0.1:{}/anything", mock_port),
+        "sk-deepseek-mock-key",
+        "deepseek-chat",
+        "default",
     )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
+    .await?;
+
+    // Preflight pricing is required before the upstream request is attempted.
+    sqlx::query(
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 1, 1, '')",
+    )
+    .bind("deepseek-chat")
     .execute(&pool)
     .await?;
 
@@ -157,12 +150,12 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}{}", port, match_path);
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
 
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .json(&json!({"content": "deepseek body"}))
+        .json(&json!({"model": "deepseek-chat", "messages": [{"role": "user", "content": "test"}]}))
         .send()
         .await?;
 
@@ -199,30 +192,23 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         start_mock_upstream(listener).await;
     });
 
-    let id = "qwen-test";
-    let name = "Qwen Test";
-    let base_url = format!("http://127.0.0.1:{}/anything", mock_port);
-    let api_key = "sk-qwen-mock-key";
-    let match_path = "/api/v1/services/aigc/text-generation/generation/test-qwen";
-    let auth_type = "Qwen";
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            match_path = excluded.match_path
-        "#,
+    // Current Router routing truth is owned by Supply channels, not router_upstreams.
+    common::insert_test_channel(
+        &pool,
+        75602,
+        "qwen_proxy fixture",
+        &format!("http://127.0.0.1:{}/anything", mock_port),
+        "sk-qwen-mock-key",
+        "qwen-plus",
+        "default",
     )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
+    .await?;
+
+    // Preflight pricing is required before the upstream request is attempted.
+    sqlx::query(
+        "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 1, 1, '')",
+    )
+    .bind("qwen-plus")
     .execute(&pool)
     .await?;
 
@@ -230,12 +216,12 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
     start_test_server(port, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}{}", port, match_path);
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
 
     let resp = client
         .post(&url)
         .header("Authorization", "Bearer sk-burncloud-demo")
-        .json(&json!({"content": "qwen body"}))
+        .json(&json!({"model": "qwen-plus", "messages": [{"role": "user", "content": "test"}]}))
         .send()
         .await?;
 
