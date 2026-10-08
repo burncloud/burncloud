@@ -2,6 +2,7 @@
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 
+mod ai_test_review;
 mod clippy;
 mod init;
 mod plan;
@@ -14,6 +15,7 @@ pub fn command() -> Command {
         .about("Initialize and test the source-code development environment")
         .subcommand_required(true)
         .subcommand(Command::new("init").about("Install local pre-commit quality checks"))
+        .subcommand(Command::new("ai-test-review").about("Review PR Rust test gaps with Gemini"))
         .subcommand(
             Command::new("test")
                 .about("Check changed packages and their transitive workspace consumers")
@@ -84,6 +86,7 @@ pub fn command() -> Command {
 pub fn handle(matches: &ArgMatches) -> Result<()> {
     match matches.subcommand() {
         Some(("init", _)) => Ok(init::init()?),
+        Some(("ai-test-review", _)) => { ai_test_review::run(); Ok(()) },
         Some(("test", options)) => test::run(test::Options {
             all: options.get_flag("all"),
             plan_only: options.get_flag("plan"),
