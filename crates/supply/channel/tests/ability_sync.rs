@@ -566,7 +566,6 @@ async fn deleting_a_channel_also_removes_its_abilities() {
     cleanup(db, path).await;
 }
 
-
 #[tokio::test]
 async fn failed_create_rolls_back_provider_and_all_abilities() {
     let (db, path) = fresh_db("atomic_create").await;
@@ -582,7 +581,9 @@ async fn failed_create_rolls_back_provider_and_all_abilities() {
     );
     let conn = db.get_connection().unwrap();
     let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channel_abilities")
-        .fetch_one(conn.pool()).await.unwrap();
+        .fetch_one(conn.pool())
+        .await
+        .unwrap();
     assert_eq!(row.0, 0, "partial abilities must also be rolled back");
 
     cleanup(db, path).await;
@@ -600,11 +601,16 @@ async fn failed_update_preserves_original_provider_and_abilities() {
     assert!(ChannelProviderModel::update(&db, &ch).await.is_err());
 
     let stored = ChannelProviderModel::get_by_id(&db, id)
-        .await.unwrap().expect("original provider remains");
+        .await
+        .unwrap()
+        .expect("original provider remains");
     assert_eq!(stored.name, "before", "provider UPDATE must roll back");
     assert_eq!(stored.models, "old");
-    assert_eq!(abilities_of(&db, id).await, original_abilities,
-        "ability DELETE and partial INSERT must roll back");
+    assert_eq!(
+        abilities_of(&db, id).await,
+        original_abilities,
+        "ability DELETE and partial INSERT must roll back"
+    );
 
     cleanup(db, path).await;
 }
