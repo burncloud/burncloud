@@ -1,0 +1,142 @@
+name: CI / GitHub-hosted UI Screenshots
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'crates/interfaces/client/**'
+      - '.github/ui-screenshot/**'
+      - '.github/workflows/ci-github-hosted-ui.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-hosted-ui-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: UI Desktop Screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find affected routes
+        id: routes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/ui-changed-files
+          mkdir -p screenshots
+          # Known Dioxus domain route mapping. Screenshot only directly
+          # changed pages; shared UI and locale changes use a representative
+          # smoke route until an explicit route dependency graph is available.
+          awk '
+            /^crates\/interfaces\/client\/src\/domains\/admin\/supply\// { print "/admin/supply" }
+            /^crates\/interfaces\/client\/src\/domains\/admin\/overview\// { print "/admin" }
+            /^crates\/interfaces\/client\/src\/domains\/buyer\/overview\// { print "/buyer" }
+            /^crates\/interfaces\/client\/src\/domains\/supplier\/overview\// { print "/supplier" }
+          ' /tmp/ui-changed-files | sort -u > /tmp/ui-routes
+          if grep -Eq '^crates/interfaces/client/src/(shared/|design/|i18n/|app/router/)' /tmp/ui-changed-files; then
+            echo "/admin/supply" >> /tmp/ui-routes
+            sort -u -o /tmp/ui-routes /tmp/ui-routes
+          fi
+          if [[ ! -s /tmp/ui-routes ]]; then
+            echo "No mapped UI page changed; skipping screenshot."
+            echo "has_routes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_routes=true" >> "$GITHUB_OUTPUT"
+            cat /tmp/ui-routes
+          fi
+
+      - name: Install Rust Web target and Dioxus CLI
+        if: steps.routes.outputs.has_routes == 'true'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install dioxus-cli --version 0.7.0 --locked
+
+      - name: Install Chromium for playwright-rs
+        if: steps.routes.outputs.has_routes == 'true'
+        run: npx playwright@1.60.0 install chromium --with-deps
+
+      - name: Build and serve Dioxus Web
+        if: steps.routes.outputs.has_routes == 'true'
+        run: |
+          set -euo pipefail
+          dx serve --package burncloud-client --platform web --port 8080 -- --no-default-features --features web > /tmp/burncloud-dioxus.log 2>&1 &
+          echo "$!" > /tmp/dioxus.pid
+          for attempt in $(seq 1 180); do
+            if curl --fail --silent http://127.0.0.1:8080/admin/supply > /dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat /tmp/dioxus.pid)" 2>/dev/null; then
+              tail -100 /tmp/burncloud-dioxus.log
+              exit 1
+            fi
+            sleep 2
+          done
+          tail -100 /tmp/burncloud-dioxus.log
+          echo "::error::Dioxus did not start"
+          exit 1
+
+      - name: Capture one desktop PNG per changed route
+        if: steps.routes.outputs.has_routes == 'true'
+        run: |
+          set -euo pipefail
+          while IFS= read -r route; do
+            cargo run --manifest-path .github/ui-screenshot/Cargo.toml -- "$route"
+          done < /tmp/ui-routes
+
+      - name: Write screenshot summary
+        if: always()
+        env:
+          HAS_ROUTES: ${{ steps.routes.outputs.has_routes }}
+        run: |
+          {
+            echo "## BurnCloud desktop UI screenshots"
+            echo
+            echo "PR #${{ github.event.pull_request.number }} · head: \`${{ github.event.pull_request.head.sha }}\`"
+            echo
+            if [[ "$HAS_ROUTES" != "true" ]]; then
+              echo "No mapped UI pages changed."
+            elif compgen -G 'screenshots/*.png' > /dev/null; then
+              echo "Screenshots (1440 × 900):"
+              for file in screenshots/*.png; do
+                echo "- \`$(basename "$file")\`"
+              done
+              echo
+              echo "Download the **ui-desktop-screenshots** artifact below to review PNG files."
+            else
+              echo "Screenshot generation failed; inspect the job logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload desktop screenshots
+        if: always() && steps.routes.outputs.has_routes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-desktop-screenshots
+          path: screenshots/*.png
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Dioxus log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dioxus-debug-log
+          path: /tmp/burncloud-dioxus.log
+          retention-days: 7
+          if-no-files-found: ignore
