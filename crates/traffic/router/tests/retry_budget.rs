@@ -163,13 +163,15 @@ fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
     assert!(src.contains("is_interactive_request(path)"));
     assert!(src.contains("deadline_cancellation_refunds_real_budget_guard"));
     assert!(src.contains("Dropping the timed-out future"));
-    // Both upstream send paths must apply a request-local timeout. Unlike the
-    // outer future deadline, this stays active while response body bytes stream.
+    // Both send paths must apply the remaining total budget through SSE reads.
+    // This also prevents long-task retries from exceeding their aggregate cap.
     assert_eq!(
-        src.matches("req_builder.timeout(timeout)").count(),
+        src.matches("req_builder.timeout(retry_attempt_timeout(path, request_start_time))")
+            .count(),
         2,
-        "both passthrough and adaptor sends must bound interactive SSE body reads"
+        "both passthrough and adaptor requests must bound streaming body reads"
     );
+    assert!(src.contains(".min(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))"));
 
     // OpenAI streaming must not commit TPM before inspecting the first chunk.
     // An errored peek continues to another upstream; Drop must refund its guard.
