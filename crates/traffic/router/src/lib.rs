@@ -4610,6 +4610,8 @@ mod tests {
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
     };
     use burncloud_traffic_contracts::TrafficColor;
+    use axum::http::StatusCode;
+    use burncloud_service_billing::UnifiedUsage;
 
     #[test]
     fn retry_budget_classifies_interactive_and_long_task_endpoints() {
@@ -4672,8 +4674,6 @@ mod tests {
             "cancelling the in-flight proxy future must drop its real BudgetGuard and refund TPM"
         );
     }
-    use axum::http::StatusCode;
-    use burncloud_service_billing::UnifiedUsage;
 
     #[test]
     fn test_veo_billing_extracts_duration() {
