@@ -3,8 +3,7 @@
 Identity 域的 API Credential 能力。负责 Token 生命周期、安全策略、验证以及
 per-credential spend quota 状态。
 
-> 当前 crate 名仍保留历史 `service-token`。是否进一步收敛为 `identity/token`
-> 属于 #734 Phase F，不在 #811 中做机械重命名。
+> #828 已将历史 `identity/service-token` 迁移为 `identity/token`。公开 API 与业务语义保持不变。
 
 ## Owner / Data Truth
 
@@ -61,7 +60,7 @@ burncloud-identity-token
 生产 schema 仍由 Platform migrations 管理。
 
 `TokenService::init` 只保留原有测试/兼容 bootstrap 行为，不替代 Platform migration。
-#811 不修改历史 migration，也不移动 Traffic 的 routing projection SQL。
+#828 不修改历史 migration，也不移动 Traffic 的 routing projection SQL。
 
 ## 行为不变量
 
