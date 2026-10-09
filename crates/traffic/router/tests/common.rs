@@ -478,7 +478,23 @@ pub(crate) async fn start_mock_upstream(listener: TcpListener) {
             "url": uri.to_string(),
             "headers": header_map,
             "data": body,
-            "json": serde_json::from_str::<serde_json::Value>(&body).ok()
+            "json": serde_json::from_str::<serde_json::Value>(&body).ok(),
+            // Model-routed HTTP tests must return a valid OpenAI response. The
+            // original echo fields above remain available for URL/auth checks.
+            // Without a completion/usage, Router's response-quality gate
+            // correctly rejects the mock as malformed (HTTP 502).
+            "id": "chatcmpl-test-upstream",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Mock upstream response"},
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 2,
+                "completion_tokens": 3,
+                "total_tokens": 5
+            }
         })
         .to_string()
     };
