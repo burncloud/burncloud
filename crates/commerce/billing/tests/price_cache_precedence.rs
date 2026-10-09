@@ -53,10 +53,10 @@
 //! the reason above; the tests below pin the reachable half -- that a refresh **replaces** rather than
 //! merges, including for a price that was deleted.
 
+use burncloud_commerce_billing::cache::PriceCache;
+use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use burncloud_commerce_contracts::pricing::Price;
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_billing::{BillingPriceModel, PriceInput};
-use burncloud_service_billing::cache::PriceCache;
 
 /// A fresh SQLite file database with the real migrations applied.
 ///

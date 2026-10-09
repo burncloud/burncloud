@@ -15,8 +15,8 @@
 //! difference directly, removing the old `accumulate` naming trap without
 //! changing Anthropic billing behavior.
 
-use burncloud_service_billing::counter::UnifiedTokenCounter;
-use burncloud_service_billing::types::UnifiedUsage;
+use burncloud_commerce_billing::counter::UnifiedTokenCounter;
+use burncloud_commerce_billing::types::UnifiedUsage;
 
 fn usage(input: i64, output: i64) -> UnifiedUsage {
     UnifiedUsage {

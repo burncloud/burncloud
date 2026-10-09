@@ -1,4 +1,4 @@
-use crate::rows::TieredPriceRow;
+use super::rows::TieredPriceRow;
 use burncloud_commerce_contracts::pricing::{TieredPrice, TieredPriceInput};
 use burncloud_database::{adapt_sql, Database, Result};
 

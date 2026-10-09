@@ -6,7 +6,7 @@
 )]
 //! The billing price store's identity, precision and update scoping (#633, plan section 5 item 16).
 //!
-//! `database-billing` is the persistence layer under the price cache, so a mistake here moves real money.
+//! `commerce/billing` is the persistence layer under the price cache, so a mistake here moves real money.
 //! `tests/sqlite_row_mapping.rs` and the inline tests in `rows.rs` cover reading a row; this file covers what
 //! the plan lists as missing: upsert behaviour, the model/currency/region identity, the region column, 64-bit
 //! round-tripping, tier persistence, filtering and pagination, update scoping, and the two SQL dialects.
@@ -47,9 +47,9 @@
 //! semantics rather than re-enabling the deleted files.
 //!
 
+use burncloud_commerce_billing::{BillingPriceModel, BillingTieredPriceModel};
 use burncloud_commerce_contracts::pricing::{PriceInput, TieredPriceInput};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_billing::{BillingPriceModel, BillingTieredPriceModel};
 use std::error::Error;
 
 /// A fresh database with the real migrations applied.
@@ -845,8 +845,11 @@ fn the_two_dialects_name_the_same_columns() {
     // compares the two dialects' SQL column lists in the source rather than running both. That is a weaker claim
     // and it is stated as such: it catches a column added to one branch and not the other, and it cannot catch a
     // type, constraint or default difference.
-    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/billing_price.rs"))
-        .expect("billing_price.rs is part of this crate");
+    let src = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/repository/billing_price.rs"
+    ))
+    .expect("billing_price.rs is part of this crate");
 
     // Every statement in this module is written twice, once per dialect, inside `adapt_sql`. The parity claim is
     // that the two strings name the same columns -- so a column used in a statement appears at least twice in the

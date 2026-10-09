@@ -16,9 +16,9 @@
 
 mod common;
 
-use burncloud_database_billing::{BillingPriceModel, PriceInput};
+use burncloud_commerce_billing::{BillingError, CostCalculator, PriceCache};
+use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use burncloud_database_router::{RouterDatabase, RouterLog};
-use burncloud_service_billing::{BillingError, CostCalculator, PriceCache};
 use common::setup_db;
 
 /// Build a minimal `RouterLog` for testing. Only `cost_status` varies between

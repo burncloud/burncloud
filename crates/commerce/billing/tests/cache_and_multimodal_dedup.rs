@@ -44,7 +44,7 @@
 //! calculator which convention it is being handed, or normalise in the parser) and choosing belongs to
 //! whoever owns the billing contract. Filed as its own issue, with the failing test that names the contract.
 
-use burncloud_service_billing::types::UnifiedUsage;
+use burncloud_commerce_billing::types::UnifiedUsage;
 
 /// The de-duplication question, expressed on `CostBreakdown` so it does not depend on a database.
 ///
@@ -79,7 +79,7 @@ fn the_openai_parser_reports_only_uncached_tokens_as_input() {
     //
     // The parser now subtracts, so `input_tokens` means for OpenAI what it already meant for Gemini: the
     // uncached input.
-    use burncloud_service_billing::usage::get_parser;
+    use burncloud_commerce_billing::usage::get_parser;
     use burncloud_supply_contracts::ChannelType;
 
     let body = serde_json::json!({
@@ -117,7 +117,7 @@ fn the_openai_parser_reports_only_uncached_tokens_as_input() {
 #[test]
 fn the_gemini_parser_reports_only_uncached_tokens_as_input() {
     // The other side of the contradiction, so the two are documented together.
-    use burncloud_service_billing::usage::get_parser;
+    use burncloud_commerce_billing::usage::get_parser;
     use burncloud_supply_contracts::ChannelType;
 
     let body = serde_json::json!({
@@ -348,7 +348,7 @@ fn a_cache_read_greater_than_the_input_count_is_reported_rather_than_assumed_awa
 #[ignore = "the contract: `input_tokens` must mean the same thing for every provider"]
 #[test]
 fn every_parser_agrees_about_whether_input_includes_cached_tokens() {
-    use burncloud_service_billing::usage::get_parser;
+    use burncloud_commerce_billing::usage::get_parser;
     use burncloud_supply_contracts::ChannelType;
 
     // The same request described in each provider's own shape: 800 cached tokens, 200 fresh ones.

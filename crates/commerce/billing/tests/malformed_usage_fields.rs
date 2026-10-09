@@ -38,7 +38,7 @@
 //! Each names the behaviour and the reason it is or is not acceptable, and the amounts are derived by hand
 //! rather than read off a run -- the plan asks for the expected amount to be independently calculated.
 
-use burncloud_service_billing::usage::get_parser;
+use burncloud_commerce_billing::usage::get_parser;
 use burncloud_supply_contracts::ChannelType;
 use serde_json::json;
 
@@ -343,7 +343,7 @@ fn a_malformed_count_still_becomes_a_zero_charge_at_the_caller() {
     // Recorded as a test rather than as prose because it is the part a reader is most likely to assume was
     // fixed along with the rest. Closing it needs a decision about what the caller should do instead of
     // zero: refuse the request, or bill at an estimate. That is #664's remaining half.
-    use burncloud_service_billing::usage::parse_response_or_default;
+    use burncloud_commerce_billing::usage::parse_response_or_default;
 
     let parser = get_parser(ChannelType::OpenAI);
 
@@ -418,8 +418,8 @@ fn remove_db_files(path: &std::path::Path) {
     }
 }
 
-fn price_input(model: &str, input: i64, output: i64) -> burncloud_database_billing::PriceInput {
-    burncloud_database_billing::PriceInput {
+fn price_input(model: &str, input: i64, output: i64) -> burncloud_commerce_billing::PriceInput {
+    burncloud_commerce_billing::PriceInput {
         model: model.to_string(),
         input_price: input,
         output_price: output,
@@ -463,8 +463,8 @@ async fn a_string_token_count_produces_a_zero_charge_for_a_non_empty_request(
     //
     // The price is chosen so the difference between "charged" and "not charged" is a number that cannot be
     // confused with rounding: 2000 tokens at $1 per million is 2000 nano-dollars.
-    use burncloud_database_billing::BillingPriceModel;
-    use burncloud_service_billing::{CostCalculator, PriceCache};
+    use burncloud_commerce_billing::BillingPriceModel;
+    use burncloud_commerce_billing::{CostCalculator, PriceCache};
 
     let (db, path) = fresh_db("string_zero_charge").await;
 
