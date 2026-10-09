@@ -159,37 +159,9 @@ fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
     assert!(src.contains("StatusCode::GATEWAY_TIMEOUT"));
     assert!(src.contains("retry_deadline_exceeded"));
     assert!(src.contains("error_type: Some(\"timeout\".to_string())"));
+    assert!(src.contains("is_interactive_request(path)"));
+    assert!(src.contains("deadline_cancellation_refunds_real_budget_guard"));
     assert!(src.contains("Dropping the timed-out future"));
-}
-
-/// When a deadline cancels a future, its owned guard is dropped.
-#[tokio::test]
-async fn timeout_cancels_and_releases_owned_reservation() {
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    };
-
-    struct Reservation(Arc<AtomicBool>);
-    impl Drop for Reservation {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::SeqCst);
-        }
-    }
-
-    let released = Arc::new(AtomicBool::new(false));
-    let owned = released.clone();
-    let task = async move {
-        let _guard = Reservation(owned);
-        std::future::pending::<()>().await;
-    };
-
-    assert!(
-        tokio::time::timeout(std::time::Duration::from_millis(10), task)
-            .await
-            .is_err()
-    );
-    assert!(released.load(Ordering::SeqCst));
 }
 
 /// The configured timeouts, so a change to either is visible rather than silent.
