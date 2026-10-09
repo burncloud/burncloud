@@ -69,4 +69,4 @@ Note: a GitHub code-search index can lag the main branch; therefore index result
 
 ## Status
 
-Ownership audit completed. **Rename implementation and CI verification remain outstanding**; do not close #828 or merge the final rename without those steps.
+Owner audit and rename implementation are committed in PR #829. The original Identity credential integration tests are preserved under `identity/token/tests/`. **CI verification is still pending**: keep #828 open and the PR unmerged until all required checks on the latest HEAD pass.
