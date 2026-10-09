@@ -354,7 +354,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
     use burncloud_router::exchange_rate::ExchangeRateService;
     use burncloud_router::model_router::{ModelRouter, RouteInputs, RoutingDecision};
     use burncloud_router::SchedulingRequest;
-    use burncloud_service_billing::PriceCache;
+    use burncloud_commerce_billing::PriceCache;
 
     let (db, pool, _url) = setup_db().await?;
     common::ensure_l6_observability_columns(&pool).await?;
