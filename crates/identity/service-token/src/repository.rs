@@ -81,7 +81,6 @@ pub async fn init(db: &Database) -> Result<()> {
     Ok(())
 }
 
-
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
 #[allow(
