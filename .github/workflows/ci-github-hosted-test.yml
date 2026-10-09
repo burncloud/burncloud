@@ -1,4 +1,4 @@
-name: CI / GitHub-hosted Deny
+name: CI / GitHub-hosted Test
 
 # Keep one independent PR check per Rust quality gate.
 on:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    uses: ./.github/workflows/ci-self-hosted-base.yml
+    uses: ./.github/workflows/ci-github-hosted-base.yml
     with:
-      check: deny
-      check_name: Cargo Deny
+      check: test
+      check_name: Code Test

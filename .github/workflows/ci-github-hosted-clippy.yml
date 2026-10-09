@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    uses: ./.github/workflows/ci-self-hosted-base.yml
+    uses: ./.github/workflows/ci-github-hosted-base.yml
     with:
       check: clippy
       check_name: Cargo Clippy
