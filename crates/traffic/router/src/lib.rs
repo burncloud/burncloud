@@ -261,10 +261,20 @@ fn retry_budget_secs(path: &str) -> u64 {
 ///
 /// Long tasks retain the existing 10-hour maximum on the first attempt, but
 /// late failover attempts cannot extend the configured 20-hour total.
-fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> std::time::Duration {
-    std::time::Duration::from_secs(retry_budget_secs(path))
-        .saturating_sub(request_start_time.elapsed())
+fn remaining_attempt_timeout(
+    total_budget: std::time::Duration,
+    elapsed: std::time::Duration,
+) -> std::time::Duration {
+    total_budget
+        .saturating_sub(elapsed)
         .min(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
+}
+
+fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> std::time::Duration {
+    remaining_attempt_timeout(
+        std::time::Duration::from_secs(retry_budget_secs(path)),
+        request_start_time.elapsed(),
+    )
 }
 
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
@@ -4626,7 +4636,10 @@ async fn proxy_logic(
     reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
-    use super::{inject_video_tokens_if_empty, is_interactive_request, retry_attempt_timeout};
+    use super::{
+        inject_video_tokens_if_empty, is_interactive_request, remaining_attempt_timeout,
+        retry_attempt_timeout,
+    };
     use crate::rate_budget::{
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
     };
@@ -4674,6 +4687,37 @@ mod tests {
             assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
             assert!(timeout > std::time::Duration::from_secs(120));
         }
+    }
+
+    #[test]
+    fn long_task_total_budget_is_not_reset_by_failover() {
+        let hour = std::time::Duration::from_secs(3600);
+        let long = std::time::Duration::from_secs(super::DEFAULT_LONG_TASK_DEADLINE_SECS);
+        assert_eq!(
+            remaining_attempt_timeout(long, std::time::Duration::ZERO),
+            hour * 10,
+            "first attempt retains the legacy ten-hour cap"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, hour * 19),
+            hour,
+            "late failover must not extend the total budget"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, long),
+            std::time::Duration::ZERO,
+            "an exhausted retry budget must never be reset"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, long + hour),
+            std::time::Duration::ZERO,
+            "elapsed time beyond the deadline must saturate to zero"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(std::time::Duration::from_secs(120), hour),
+            std::time::Duration::ZERO,
+            "interactive attempts must also respect the aggregate deadline"
+        );
     }
 
     #[tokio::test]
