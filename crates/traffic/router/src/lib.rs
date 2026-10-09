@@ -293,10 +293,11 @@ fn retry_attempt_timeout(
 /// future is dropped, releasing any uncommitted BudgetGuard it still owns.
 /// This helper is exercised with a hung future in the router unit tests.
 async fn enforce_retry_deadline<T>(
-    remaining: std::time::Duration,
+    _remaining: std::time::Duration,
     operation: impl std::future::Future<Output = T>,
 ) -> Result<T, tokio::time::error::Elapsed> {
-    tokio::time::timeout(remaining, operation).await
+    // Mutation experiment only: deliberately remove the production deadline.
+    Ok(operation.await)
 }
 
 /// A stable, structured timeout error for exhausted routing retry budgets.
