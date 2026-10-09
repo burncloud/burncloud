@@ -845,7 +845,7 @@ fn the_two_dialects_name_the_same_columns() {
     // compares the two dialects' SQL column lists in the source rather than running both. That is a weaker claim
     // and it is stated as such: it catches a column added to one branch and not the other, and it cannot catch a
     // type, constraint or default difference.
-    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/billing_price.rs"))
+    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/repository/billing_price.rs"))
         .expect("billing_price.rs is part of this crate");
 
     // Every statement in this module is written twice, once per dialect, inside `adapt_sql`. The parity claim is
