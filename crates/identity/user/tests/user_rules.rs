@@ -47,8 +47,8 @@
 //! asserting a policy, because the intended outcome is a decision this test cannot make.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_user::{UserDatabase, UserRecharge};
 use burncloud_service_user::{JwtSecret, UserService};
+use burncloud_service_user::{UserDatabase, UserRecharge};
 
 /// A temporary database with the production schema, deleted at the end of the test.
 ///
@@ -710,7 +710,7 @@ async fn the_password_reset_lifecycle_changes_the_password_once(
         .await?;
     println!("reset token: {token}");
     assert!(!token.is_empty(), "a token is issued");
-    let stored = burncloud_database_user::PasswordResetDatabase::get_token(&temp.db, &token)
+    let stored = burncloud_service_user::PasswordResetDatabase::get_token(&temp.db, &token)
         .await?
         .expect("the token is persisted");
     assert_eq!(stored.used_at, None, "and starts unused");
@@ -738,7 +738,7 @@ async fn the_password_reset_lifecycle_changes_the_password_once(
     );
 
     // The token is spent.
-    let spent = burncloud_database_user::PasswordResetDatabase::get_token(&temp.db, &token)
+    let spent = burncloud_service_user::PasswordResetDatabase::get_token(&temp.db, &token)
         .await?
         .expect("still recorded");
     assert!(spent.used_at.is_some(), "the token is marked used");
@@ -827,7 +827,7 @@ async fn every_failed_reset_leaves_the_password_unchanged() -> Result<(), Box<dy
 
     // 3. An expired token. `request_password_reset` always issues a one-hour token, so an expired one is written
     //    directly through the database layer -- the same table, the same shape, a past `expires_at`.
-    burncloud_database_user::PasswordResetDatabase::create_token(
+    burncloud_service_user::PasswordResetDatabase::create_token(
         &temp.db,
         "expired-token",
         UserDatabase::get_user_by_username(&temp.db, "target")

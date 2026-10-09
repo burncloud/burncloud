@@ -15,7 +15,7 @@
 //! databases. On Windows the URL needs the `sqlite:///C:/...` form (see `Database::new`).
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_user::{
+use burncloud_service_user::{
     UserAccount, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput, UserDatabase,
     UserRecharge,
 };
