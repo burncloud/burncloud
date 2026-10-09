@@ -69,7 +69,7 @@ jobs:
 
       - name: Install Chromium for playwright-rs
         if: steps.routes.outputs.has_routes == 'true'
-        run: npx playwright@1.60.0 install chromium --with-deps
+        run: npx playwright@1.60.0 install-deps chromium
 
       - name: Build and serve Dioxus Web
         if: steps.routes.outputs.has_routes == 'true'
