@@ -7,3 +7,6 @@ publish = false
 [dependencies]
 playwright-rs = "=0.15.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+# This CI-only tool is intentionally separate from the product workspace.
+[workspace]
