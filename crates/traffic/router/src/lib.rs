@@ -253,9 +253,15 @@ fn parse_retry_budget_secs(raw: Option<&str>, default: u64) -> u64 {
 
 fn retry_budget_secs(path: &str) -> u64 {
     let (key, default) = if is_interactive_request(path) {
-        ("BURNCLOUD_INTERACTIVE_DEADLINE_SECS", DEFAULT_INTERACTIVE_DEADLINE_SECS)
+        (
+            "BURNCLOUD_INTERACTIVE_DEADLINE_SECS",
+            DEFAULT_INTERACTIVE_DEADLINE_SECS,
+        )
     } else {
-        ("BURNCLOUD_LONG_TASK_DEADLINE_SECS", DEFAULT_LONG_TASK_DEADLINE_SECS)
+        (
+            "BURNCLOUD_LONG_TASK_DEADLINE_SECS",
+            DEFAULT_LONG_TASK_DEADLINE_SECS,
+        )
     };
     parse_retry_budget_secs(std::env::var(key).ok().as_deref(), default)
 }
@@ -4685,7 +4691,10 @@ mod tests {
             "/v1beta/models/gemini-2.5-flash:generateContent",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
         ] {
-            assert!(is_interactive_request(path), "{path} must have the interactive deadline");
+            assert!(
+                is_interactive_request(path),
+                "{path} must have the interactive deadline"
+            );
         }
         for path in [
             "/v1/video/generations",
@@ -4695,7 +4704,10 @@ mod tests {
             "/v1/music/generations",
             "/unknown-long-running-endpoint",
         ] {
-            assert!(!is_interactive_request(path), "{path} must retain long-task headroom");
+            assert!(
+                !is_interactive_request(path),
+                "{path} must retain long-task headroom"
+            );
         }
     }
 
@@ -4708,7 +4720,11 @@ mod tests {
             assert!(timeout <= budget);
             assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
         }
-        for path in ["/v1/video/generations", "/v1/audio/speech", "/v1/music/generations"] {
+        for path in [
+            "/v1/video/generations",
+            "/v1/audio/speech",
+            "/v1/music/generations",
+        ] {
             let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
             let timeout = retry_attempt_timeout(budget, started);
             assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
@@ -4722,8 +4738,14 @@ mod tests {
         assert_eq!(parse_retry_budget_secs(None, default), default);
         assert_eq!(parse_retry_budget_secs(Some(""), default), default);
         assert_eq!(parse_retry_budget_secs(Some("0"), default), default);
-        assert_eq!(parse_retry_budget_secs(Some("not-seconds"), default), default);
-        assert_eq!(parse_retry_budget_secs(Some("18446744073709551615"), default), default);
+        assert_eq!(
+            parse_retry_budget_secs(Some("not-seconds"), default),
+            default
+        );
+        assert_eq!(
+            parse_retry_budget_secs(Some("18446744073709551615"), default),
+            default
+        );
         assert_eq!(parse_retry_budget_secs(Some("45"), default), 45);
         assert_eq!(
             parse_retry_budget_secs(Some("2592000"), default),
@@ -4790,7 +4812,8 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.expect("accept request");
             let mut request = [0_u8; 4096];
-            socket.read(&mut request).await.expect("read request");
+            let bytes_read = socket.read(&mut request).await.expect("read request");
+            assert!(bytes_read > 0, "upstream must receive an HTTP request");
             socket
                 .write_all(
                     b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n",
@@ -4845,7 +4868,10 @@ mod tests {
                 outcome.sourced().expect("admitted reservation source"),
             );
             assert_eq!(
-                budget.snapshot(channel_id).expect("configured").tpm_remaining_yellow,
+                budget
+                    .snapshot(channel_id)
+                    .expect("configured")
+                    .tpm_remaining_yellow,
                 initial.tpm_remaining_yellow - 100
             );
             std::future::pending::<()>().await;
@@ -4861,8 +4887,7 @@ mod tests {
         );
         let final_snapshot = budget.snapshot(channel_id).expect("configured");
         assert_eq!(
-            final_snapshot.tpm_remaining_yellow,
-            initial.tpm_remaining_yellow,
+            final_snapshot.tpm_remaining_yellow, initial.tpm_remaining_yellow,
             "deadline cancellation must drop the real BudgetGuard and refund TPM"
         );
     }
