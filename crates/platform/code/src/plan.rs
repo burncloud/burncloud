@@ -102,8 +102,7 @@ fn apply_root_manifest_change(
                     plan.direct.insert(name.clone());
                 } else {
                     plan.full_reason.get_or_insert_with(|| {
-                        "root package changed but cargo metadata has no root package"
-                            .to_owned()
+                        "root package changed but cargo metadata has no root package".to_owned()
                     });
                 }
             }
