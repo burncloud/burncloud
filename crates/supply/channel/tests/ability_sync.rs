@@ -565,3 +565,85 @@ async fn deleting_a_channel_also_removes_its_abilities() {
 
     cleanup(db, path).await;
 }
+
+#[tokio::test]
+async fn failed_create_rolls_back_provider_and_all_abilities() {
+    let (db, path) = fresh_db("atomic_create").await;
+    let mut ch = channel("atomic-create", "same,same", "default", 1);
+    let before = ChannelProviderModel::list(&db, 1000, 0)
+        .await
+        .unwrap()
+        .len();
+
+    assert!(ChannelProviderModel::create(&db, &mut ch).await.is_err());
+    assert_eq!(
+        ch.created_time, None,
+        "failed creation must not publish an uncommitted timestamp"
+    );
+    assert_eq!(
+        ch.id, 0,
+        "failed creation must not publish an uncommitted ID"
+    );
+    assert_eq!(
+        ChannelProviderModel::list(&db, 1000, 0)
+            .await
+            .unwrap()
+            .len(),
+        before,
+        "provider INSERT must roll back when the second ability INSERT fails"
+    );
+    let conn = db.get_connection().unwrap();
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channel_abilities")
+        .fetch_one(conn.pool())
+        .await
+        .unwrap();
+    assert_eq!(row.0, 0, "partial abilities must also be rolled back");
+
+    cleanup(db, path).await;
+}
+
+#[tokio::test]
+async fn failed_standalone_ability_sync_preserves_existing_rows() {
+    let (db, path) = fresh_db("atomic_sync").await;
+    let mut ch = channel("sync", "original", "default", 1);
+    let id = insert_channel(&db, &mut ch).await;
+    let original = abilities_of(&db, id).await;
+
+    ch.models = "duplicate,duplicate".to_string();
+    assert!(ChannelProviderModel::sync_abilities(&db, &ch)
+        .await
+        .is_err());
+    assert_eq!(
+        abilities_of(&db, id).await,
+        original,
+        "failed standalone sync must preserve the existing abilities"
+    );
+
+    cleanup(db, path).await;
+}
+
+#[tokio::test]
+async fn failed_update_preserves_original_provider_and_abilities() {
+    let (db, path) = fresh_db("atomic_update").await;
+    let mut ch = channel("before", "old", "default", 1);
+    let id = insert_channel(&db, &mut ch).await;
+    let original_abilities = abilities_of(&db, id).await;
+
+    ch.name = "after".to_string();
+    ch.models = "same,same".to_string();
+    assert!(ChannelProviderModel::update(&db, &ch).await.is_err());
+
+    let stored = ChannelProviderModel::get_by_id(&db, id)
+        .await
+        .unwrap()
+        .expect("original provider remains");
+    assert_eq!(stored.name, "before", "provider UPDATE must roll back");
+    assert_eq!(stored.models, "old");
+    assert_eq!(
+        abilities_of(&db, id).await,
+        original_abilities,
+        "ability DELETE and partial INSERT must roll back"
+    );
+
+    cleanup(db, path).await;
+}
