@@ -47,8 +47,8 @@
 //! asserting a policy, because the intended outcome is a decision this test cannot make.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_service_user::{UserDatabase, UserRecharge};
 use burncloud_service_user::{JwtSecret, UserService};
+use burncloud_service_user::{UserDatabase, UserRecharge};
 
 /// A temporary database with the production schema, deleted at the end of the test.
 ///
