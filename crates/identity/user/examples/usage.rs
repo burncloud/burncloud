@@ -9,7 +9,7 @@
 )]
 
 use burncloud_database::create_default_database;
-use burncloud_identity_user::{JwtSecret, UserDatabase, UserService};
+use burncloud_service_user::{JwtSecret, UserDatabase, UserService};
 use uuid::Uuid;
 
 #[tokio::main]
