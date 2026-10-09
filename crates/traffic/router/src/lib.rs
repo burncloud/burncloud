@@ -3522,7 +3522,8 @@ async fn proxy_logic(
 
         // 5. Execute: apply both the remaining total budget and legacy 10-hour
         // per-attempt cap, including any streaming response body reads.
-        let req_builder = req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
+        let req_builder =
+            req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
