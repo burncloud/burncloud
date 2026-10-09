@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ));
     fs::create_dir_all("screenshots")?;
 
+    playwright_rs::install_browsers(Some(&["chromium"])).await?;
     let playwright = Playwright::launch().await?;
     let browser = playwright.chromium().launch().await?;
     let page = browser.new_page().await?;
