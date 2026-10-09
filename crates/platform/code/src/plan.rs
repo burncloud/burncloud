@@ -314,7 +314,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::{known_test_skips, Plan};
+    use super::{global, known_test_skips, Plan};
     use std::collections::BTreeSet;
 
     #[test]
@@ -333,6 +333,15 @@ mod tests {
             "known test baseline changed unexpectedly"
         );
         Ok(())
+    }
+
+    #[test]
+    fn only_truly_global_cargo_inputs_force_workspace() {
+        assert!(!global("Cargo.toml"));
+        assert!(global("Cargo.lock"));
+        assert!(global("rust-toolchain"));
+        assert!(global("rust-toolchain.toml"));
+        assert!(global(".cargo/config.toml"));
     }
 
     #[test]
