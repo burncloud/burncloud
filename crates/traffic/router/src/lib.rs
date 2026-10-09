@@ -4651,8 +4651,8 @@ async fn proxy_logic(
 )]
 mod tests {
     use super::{
-        inject_video_tokens_if_empty, is_interactive_request, remaining_attempt_timeout,
-        retry_attempt_timeout,
+        inject_video_tokens_if_empty, is_interactive_request, parse_retry_budget_secs,
+        remaining_attempt_timeout, retry_attempt_timeout,
     };
     use crate::rate_budget::{
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
@@ -4692,15 +4692,32 @@ mod tests {
     fn attempt_timeout_bounds_sse_and_preserves_long_task_cap() {
         let started = std::time::Instant::now();
         for path in ["/v1/responses", "/v1/chat/completions", "/v1/messages"] {
-            let timeout = retry_attempt_timeout(path, started);
-            assert!(timeout <= std::time::Duration::from_secs(super::retry_budget_secs(path)));
+            let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
+            let timeout = retry_attempt_timeout(budget, started);
+            assert!(timeout <= budget);
             assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
         }
         for path in ["/v1/video/generations", "/v1/audio/speech", "/v1/music/generations"] {
-            let timeout = retry_attempt_timeout(path, started);
+            let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
+            let timeout = retry_attempt_timeout(budget, started);
             assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
             assert!(timeout > std::time::Duration::from_secs(120));
         }
+    }
+
+    #[test]
+    fn retry_budget_config_rejects_zero_malformed_or_overflowing_values() {
+        let default = super::DEFAULT_INTERACTIVE_DEADLINE_SECS;
+        assert_eq!(parse_retry_budget_secs(None, default), default);
+        assert_eq!(parse_retry_budget_secs(Some(""), default), default);
+        assert_eq!(parse_retry_budget_secs(Some("0"), default), default);
+        assert_eq!(parse_retry_budget_secs(Some("not-seconds"), default), default);
+        assert_eq!(parse_retry_budget_secs(Some("18446744073709551615"), default), default);
+        assert_eq!(parse_retry_budget_secs(Some("45"), default), 45);
+        assert_eq!(
+            parse_retry_budget_secs(Some("2592000"), default),
+            super::MAX_RETRY_DEADLINE_SECS
+        );
     }
 
     #[tokio::test]
