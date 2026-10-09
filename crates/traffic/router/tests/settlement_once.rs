@@ -149,8 +149,8 @@ const EXPECTED_COST_NANODOLLARS: i64 = 1_500_000;
 /// `PriceInput` has no `Default`, so every field is named. The unset ones are `None` deliberately: this file
 /// is about settlement, not about which optional prices exist.
 async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::Result<()> {
-    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
     use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
+    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
 
     let input = PriceInput {
         model: model.to_string(),
