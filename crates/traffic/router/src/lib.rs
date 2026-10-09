@@ -255,6 +255,16 @@ fn retry_budget_secs(path: &str) -> u64 {
         .unwrap_or(default)
 }
 
+/// Apply the remaining interactive retry budget to each Reqwest request.
+/// Reqwest also enforces its timeout while a returned SSE body is read, whereas
+/// the outer proxy_logic timeout ends when it returns the response headers.
+fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> Option<std::time::Duration> {
+    is_interactive_request(path).then(|| {
+        std::time::Duration::from_secs(retry_budget_secs(path))
+            .saturating_sub(request_start_time.elapsed())
+    })
+}
+
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
 const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 /// HTTP TCP keepalive interval (seconds).
@@ -2791,6 +2801,14 @@ async fn proxy_logic(
                 apply_header_override(req_builder, upstream.header_override.as_deref());
 
             let req_builder = req_builder.json(&passthrough_body);
+            // Bound SSE body reads as well as the initial upstream request.
+            // Long-running jobs keep their existing ten-hour client timeout.
+            let req_builder =
+                if let Some(timeout) = retry_attempt_timeout(path, request_start_time) {
+                    req_builder.timeout(timeout)
+                } else {
+                    req_builder
+                };
 
             // Execute passthrough request
             match req_builder.send().await {
@@ -3470,7 +3488,13 @@ async fn proxy_logic(
             )
             .await;
 
-        // 5. Execute
+        // 5. Execute: enforce the remaining interactive budget on body reads
+        // even after proxy_logic has returned a streaming Response.
+        let req_builder = if let Some(timeout) = retry_attempt_timeout(path, request_start_time) {
+            req_builder.timeout(timeout)
+        } else {
+            req_builder
+        };
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
@@ -3609,12 +3633,8 @@ async fn proxy_logic(
                                 request_log_data: None,
                             };
                         }
-                        // L2 Shaper success: OpenAI streaming path — keep est_tpm
-                        // (actual_tpm not yet available during stream, audit decision D9).
-                        if let Some(g) = budget_guard.take() {
-                            g.commit(shaper_ctx.est_tpm);
-                        }
-
+                        // Keep the BudgetGuard live until the first chunk
+                        // passes inspection, so cancellation or peek errors refund TPM.
                         // Peek first chunk to detect errors before sending HTTP response
                         // This allows retry on auth errors instead of sending error to user
                         let peek_timeout =
@@ -3717,9 +3737,16 @@ async fn proxy_logic(
                             }
                         };
 
-                        // If peek detected an error, skip this channel and try next
+                        // If peek detected an error, skip this channel and try next.
+                        // The still-live guard refunds this attempted channel.
                         if peek_error_handled {
                             continue;
+                        }
+
+                        // L2 Shaper success: OpenAI streaming path — retain est_tpm
+                        // only after the upstream stream passes first-chunk checks.
+                        if let Some(g) = budget_guard.take() {
+                            g.commit(shaper_ctx.est_tpm);
                         }
 
                         let counter_clone = Arc::clone(&token_counter);
