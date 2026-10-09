@@ -110,7 +110,8 @@ Apfww82b16AoK7qgtPcI8g==
     let param_override = json!({
         "base_url": server.url(),
         "auth_url": format!("{}/auth", server.url())
-    }).to_string();
+    })
+    .to_string();
     sqlx::query(
         "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority, param_override) VALUES (75641, 41, ?, 1, 'Vertex Test', 1, ?, 'gemini-pro', 'default', 0, ?)"
     )
