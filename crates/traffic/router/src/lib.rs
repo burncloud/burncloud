@@ -221,6 +221,96 @@ const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 30;
 /// HTTP request timeout (seconds). Total time for request completion (600 minutes).
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 36000;
+/// Retry budget: upper bound for the entire proxy pipeline, including failover.
+/// Overrides: BURNCLOUD_INTERACTIVE_DEADLINE_SECS and BURNCLOUD_LONG_TASK_DEADLINE_SECS.
+/// An invalid or zero override falls back to the documented defaults.
+/// Long-task policies deliberately retain the existing 10-hour per-request timeout.
+const DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120;
+const DEFAULT_LONG_TASK_DEADLINE_SECS: u64 = 72000;
+/// Reject malformed/unreasonably large retry budget overrides before Tokio
+/// attempts to construct a deadline beyond Instant's supported range.
+const MAX_RETRY_DEADLINE_SECS: u64 = 30 * 24 * 60 * 60;
+
+fn is_interactive_request(path: &str) -> bool {
+    // Explicitly match interactive API families: an unknown endpoint keeps the
+    // long-task budget rather than accidentally truncating video/audio/music jobs.
+    // In particular, OpenAI Responses API must not inherit the 20-hour budget.
+    path.ends_with("/chat/completions")
+        || path.ends_with("/completions")
+        || path.ends_with("/embeddings")
+        || path.ends_with("/responses")
+        || path.ends_with("/messages")
+        || path.ends_with("/moderations")
+        || path.ends_with("/rerank")
+        || path.contains(":generateContent")
+        || path.contains(":streamGenerateContent")
+}
+
+fn parse_retry_budget_secs(raw: Option<&str>, default: u64) -> u64 {
+    raw.and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| (1..=MAX_RETRY_DEADLINE_SECS).contains(v))
+        .unwrap_or(default)
+}
+
+fn retry_budget_secs(path: &str) -> u64 {
+    let (key, default) = if is_interactive_request(path) {
+        (
+            "BURNCLOUD_INTERACTIVE_DEADLINE_SECS",
+            DEFAULT_INTERACTIVE_DEADLINE_SECS,
+        )
+    } else {
+        (
+            "BURNCLOUD_LONG_TASK_DEADLINE_SECS",
+            DEFAULT_LONG_TASK_DEADLINE_SECS,
+        )
+    };
+    parse_retry_budget_secs(std::env::var(key).ok().as_deref(), default)
+}
+
+/// Bound each upstream HTTP request by both its legacy per-attempt limit and
+/// the time left in the request-class retry budget. This remains active while
+/// streaming a response body after proxy_logic returns the response headers.
+///
+/// Long tasks retain the existing 10-hour maximum on the first attempt, but
+/// late failover attempts cannot extend the configured 20-hour total.
+fn remaining_attempt_timeout(
+    total_budget: std::time::Duration,
+    elapsed: std::time::Duration,
+) -> std::time::Duration {
+    total_budget
+        .saturating_sub(elapsed)
+        .min(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
+}
+
+fn retry_attempt_timeout(
+    retry_budget: std::time::Duration,
+    request_start_time: Instant,
+) -> std::time::Duration {
+    remaining_attempt_timeout(retry_budget, request_start_time.elapsed())
+}
+
+/// One cancellable deadline shared by all upstream attempts. A timed-out
+/// future is dropped, releasing any uncommitted BudgetGuard it still owns.
+/// This helper is exercised with a hung future in the router unit tests.
+async fn enforce_retry_deadline<T>(
+    remaining: std::time::Duration,
+    operation: impl std::future::Future<Output = T>,
+) -> Result<T, tokio::time::error::Elapsed> {
+    tokio::time::timeout(remaining, operation).await
+}
+
+/// A stable, structured timeout error for exhausted routing retry budgets.
+fn retry_deadline_error_response() -> Response {
+    build_response_with_header(
+        StatusCode::GATEWAY_TIMEOUT,
+        "content-type",
+        "application/json",
+        Body::from(
+            r#"{"error":{"message":"Router retry budget deadline exceeded","type":"upstream_error","code":"retry_deadline_exceeded"}}"#,
+        ),
+    )
+}
+
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
 const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 /// HTTP TCP keepalive interval (seconds).
@@ -1802,8 +1892,15 @@ async fn proxy_handler(
     // Create unified token counter for streaming response parsing
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
-    // Perform Proxy Logic
-    let result = proxy_logic(
+    // Enforce one deadline across all failover attempts, rather than resetting
+    // a full client timeout for every upstream. Dropping the timed-out future
+    // also drops any live BudgetGuard, refunding uncommitted TPM reservations.
+    let retry_budget_secs = retry_budget_secs(&path);
+    // Snapshot the policy once: a runtime config change must not extend a
+    // response stream beyond the deadline assigned when it was admitted.
+    let retry_budget = std::time::Duration::from_secs(retry_budget_secs);
+    let remaining = retry_budget.saturating_sub(start_time.elapsed());
+    let proxy_future = proxy_logic(
         &state,
         method,
         uri,
@@ -1817,8 +1914,32 @@ async fn proxy_handler(
         token_counter.clone(),
         model_name.as_deref(),
         start_time,
-    )
-    .await;
+        retry_budget,
+    );
+    let result = match enforce_retry_deadline(remaining, proxy_future).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!(
+                request_id = %request_id,
+                path = %path,
+                retry_budget_secs,
+                elapsed_ms = start_time.elapsed().as_millis() as u64,
+                "Router retry budget deadline exceeded; abandoning failover"
+            );
+            ProxyResult {
+                response: retry_deadline_error_response(),
+                upstream_id: None,
+                final_status: StatusCode::GATEWAY_TIMEOUT,
+                pricing_region: None,
+                video_task_id: None,
+                shaper_outcome: None,
+                routing_decision: None,
+                sched_request_color: TrafficColor::Yellow,
+                error_type: Some("timeout".to_string()),
+                request_log_data: None,
+            }
+        }
+    };
 
     // Save video task mapping asynchronously (fire-and-forget)
     if let Some(task_id) = result.video_task_id {
@@ -2143,6 +2264,7 @@ async fn proxy_logic(
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
+    retry_budget: std::time::Duration,
 ) -> ProxyResult {
     // Initialize request log data collection (Issue #334)
     // Only collect detailed data when storage policy is not 'none'
@@ -2727,6 +2849,10 @@ async fn proxy_logic(
                 apply_header_override(req_builder, upstream.header_override.as_deref());
 
             let req_builder = req_builder.json(&passthrough_body);
+            // Enforce the remaining total budget through SSE body reads as
+            // well as request setup, without extending the legacy 10-hour cap.
+            let req_builder =
+                req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
 
             // Execute passthrough request
             match req_builder.send().await {
@@ -3406,7 +3532,10 @@ async fn proxy_logic(
             )
             .await;
 
-        // 5. Execute
+        // 5. Execute: apply both the remaining total budget and legacy 10-hour
+        // per-attempt cap, including any streaming response body reads.
+        let req_builder =
+            req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
@@ -3545,12 +3674,8 @@ async fn proxy_logic(
                                 request_log_data: None,
                             };
                         }
-                        // L2 Shaper success: OpenAI streaming path — keep est_tpm
-                        // (actual_tpm not yet available during stream, audit decision D9).
-                        if let Some(g) = budget_guard.take() {
-                            g.commit(shaper_ctx.est_tpm);
-                        }
-
+                        // Keep the BudgetGuard live until the first chunk
+                        // passes inspection, so cancellation or peek errors refund TPM.
                         // Peek first chunk to detect errors before sending HTTP response
                         // This allows retry on auth errors instead of sending error to user
                         let peek_timeout =
@@ -3653,9 +3778,16 @@ async fn proxy_logic(
                             }
                         };
 
-                        // If peek detected an error, skip this channel and try next
+                        // If peek detected an error, skip this channel and try next.
+                        // The still-live guard refunds this attempted channel.
                         if peek_error_handled {
                             continue;
+                        }
+
+                        // L2 Shaper success: OpenAI streaming path — retain est_tpm
+                        // only after the upstream stream passes first-chunk checks.
+                        if let Some(g) = budget_guard.take() {
+                            g.commit(shaper_ctx.est_tpm);
                         }
 
                         let counter_clone = Arc::clone(&token_counter);
@@ -4541,9 +4673,230 @@ async fn proxy_logic(
     reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
-    use super::inject_video_tokens_if_empty;
+    use super::{
+        enforce_retry_deadline, inject_video_tokens_if_empty, is_interactive_request,
+        parse_retry_budget_secs, remaining_attempt_timeout, retry_attempt_timeout,
+    };
+    use crate::rate_budget::{
+        BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
+    };
     use axum::http::StatusCode;
     use burncloud_service_billing::UnifiedUsage;
+    use burncloud_traffic_contracts::TrafficColor;
+
+    #[test]
+    fn retry_budget_classifies_interactive_and_long_task_endpoints() {
+        for path in [
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/responses",
+            "/v1/embeddings",
+            "/v1/messages",
+            "/v1/moderations",
+            "/v1/rerank",
+            "/v1beta/models/gemini-2.5-flash:generateContent",
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+        ] {
+            assert!(
+                is_interactive_request(path),
+                "{path} must have the interactive deadline"
+            );
+        }
+        for path in [
+            "/v1/video/generations",
+            "/v1/videos",
+            "/v1/audio/speech",
+            "/v1/audio/generations",
+            "/v1/music/generations",
+            "/unknown-long-running-endpoint",
+        ] {
+            assert!(
+                !is_interactive_request(path),
+                "{path} must retain long-task headroom"
+            );
+        }
+    }
+
+    #[test]
+    fn attempt_timeout_bounds_sse_and_preserves_long_task_cap() {
+        let started = std::time::Instant::now();
+        for path in ["/v1/responses", "/v1/chat/completions", "/v1/messages"] {
+            let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
+            let timeout = retry_attempt_timeout(budget, started);
+            assert!(timeout <= budget);
+            assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
+        }
+        for path in [
+            "/v1/video/generations",
+            "/v1/audio/speech",
+            "/v1/music/generations",
+        ] {
+            let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
+            let timeout = retry_attempt_timeout(budget, started);
+            assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
+            assert!(timeout > std::time::Duration::from_secs(120));
+        }
+    }
+
+    #[test]
+    fn retry_budget_config_rejects_zero_malformed_or_overflowing_values() {
+        let default = super::DEFAULT_INTERACTIVE_DEADLINE_SECS;
+        assert_eq!(parse_retry_budget_secs(None, default), default);
+        assert_eq!(parse_retry_budget_secs(Some(""), default), default);
+        assert_eq!(parse_retry_budget_secs(Some("0"), default), default);
+        assert_eq!(
+            parse_retry_budget_secs(Some("not-seconds"), default),
+            default
+        );
+        assert_eq!(
+            parse_retry_budget_secs(Some("18446744073709551615"), default),
+            default
+        );
+        assert_eq!(parse_retry_budget_secs(Some("45"), default), 45);
+        assert_eq!(
+            parse_retry_budget_secs(Some("2592000"), default),
+            super::MAX_RETRY_DEADLINE_SECS
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_deadline_returns_structured_gateway_timeout() {
+        let response = super::retry_deadline_error_response();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("timeout response body is readable");
+        let decoded: serde_json::Value =
+            serde_json::from_slice(&body).expect("timeout response is valid JSON");
+        assert_eq!(decoded["error"]["code"], "retry_deadline_exceeded");
+        assert_eq!(decoded["error"]["type"], "upstream_error");
+    }
+
+    #[test]
+    fn long_task_total_budget_is_not_reset_by_failover() {
+        let hour = std::time::Duration::from_secs(3600);
+        let long = std::time::Duration::from_secs(super::DEFAULT_LONG_TASK_DEADLINE_SECS);
+        assert_eq!(
+            remaining_attempt_timeout(long, std::time::Duration::ZERO),
+            hour * 10,
+            "first attempt retains the legacy ten-hour cap"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, hour * 19),
+            hour,
+            "late failover must not extend the total budget"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, long),
+            std::time::Duration::ZERO,
+            "an exhausted retry budget must never be reset"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, long + hour),
+            std::time::Duration::ZERO,
+            "elapsed time beyond the deadline must saturate to zero"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(std::time::Duration::from_secs(120), hour),
+            std::time::Duration::ZERO,
+            "interactive attempts must also respect the aggregate deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn interactive_sse_body_stops_when_request_deadline_expires() {
+        use futures::StreamExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // Local HTTP server sends response headers and one chunk, then stalls.
+        // The outer proxy_logic timer is no longer active after headers, so
+        // Reqwest's request-scoped timeout must end the pending body read.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local upstream");
+        let addr = listener.local_addr().expect("local address");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let mut request = [0_u8; 4096];
+            let bytes_read = socket.read(&mut request).await.expect("read request");
+            assert!(bytes_read > 0, "upstream must receive an HTTP request");
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n",
+                )
+                .await
+                .expect("send first SSE body chunk");
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        });
+
+        let started = std::time::Instant::now();
+        let timeout = retry_attempt_timeout(std::time::Duration::from_millis(800), started);
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/v1/chat/completions"))
+            .timeout(timeout)
+            .send()
+            .await
+            .expect("receive upstream headers");
+        let mut body = response.bytes_stream();
+        let first = body
+            .next()
+            .await
+            .expect("initial chunk")
+            .expect("first chunk readable");
+        assert_eq!(first.as_ref(), b"hello");
+        let stalled = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+            .await
+            .expect("stream must not hang beyond watchdog");
+        let error = stalled
+            .expect("the stalled body must produce an error")
+            .expect_err("response body must terminate on request timeout");
+        assert!(error.is_timeout(), "expected the real Reqwest timeout");
+        server.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn deadline_cancellation_refunds_real_budget_guard() {
+        let budget = InMemoryBudget::new();
+        let channel_id = 680;
+        budget.configure(channel_id, 100, 1000, ChannelReservation::default());
+        let initial = budget.snapshot(channel_id).expect("configured channel");
+
+        // Drive the very same deadline helper that proxy_handler uses. The
+        // outer timeout prevents a removed/broken deadline from hanging CI.
+        let hung_upstream = async {
+            let outcome = budget.try_consume(channel_id, TrafficColor::Yellow, 100);
+            assert_eq!(outcome, ConsumeOutcome::OwnBucket);
+            let _guard = BudgetGuard::with_source(
+                &budget,
+                channel_id,
+                TrafficColor::Yellow,
+                100,
+                outcome.sourced().expect("admitted reservation source"),
+            );
+            assert_eq!(
+                budget
+                    .snapshot(channel_id)
+                    .expect("configured")
+                    .tpm_remaining_yellow,
+                initial.tpm_remaining_yellow - 100
+            );
+            std::future::pending::<()>().await;
+        };
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            enforce_retry_deadline(std::time::Duration::from_secs(1), hung_upstream),
+        )
+        .await;
+        assert!(
+            matches!(outcome, Ok(Err(_))),
+            "a stalled upstream must fail at its configured retry deadline"
+        );
+        let final_snapshot = budget.snapshot(channel_id).expect("configured");
+        assert_eq!(
+            final_snapshot.tpm_remaining_yellow, initial.tpm_remaining_yellow,
+            "deadline cancellation must drop the real BudgetGuard and refund TPM"
+        );
+    }
 
     #[test]
     fn test_veo_billing_extracts_duration() {
