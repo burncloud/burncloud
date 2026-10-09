@@ -4609,9 +4609,9 @@ mod tests {
     use crate::rate_budget::{
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
     };
-    use burncloud_traffic_contracts::TrafficColor;
     use axum::http::StatusCode;
     use burncloud_service_billing::UnifiedUsage;
+    use burncloud_traffic_contracts::TrafficColor;
 
     #[test]
     fn retry_budget_classifies_interactive_and_long_task_endpoints() {
