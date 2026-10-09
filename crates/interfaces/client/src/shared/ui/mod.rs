@@ -410,6 +410,37 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .admin-supply-attestation { color: #047857; font: 600 12px/16px var(--mono); }
 .admin-supply-table td:last-child { text-align: right; font-family: var(--sans); }
 .admin-supply-status { overflow: visible !important; color: #111827; font: 500 12px/16px var(--sans); letter-spacing: -.025em; }
+.admin-capacity-stack { display: flex; flex-direction: column; gap: 0; padding-bottom: 0; animation: page-in 300ms ease-out both; }
+.admin-capacity-header { margin-bottom: 16px; }
+.admin-capacity-autopilot { display: inline-flex; height: 34px; min-height: 34px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid #27272a; border-radius: 12px; color: #fff; background: #09090b; box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 1px rgba(255,255,255,.12); cursor: default; font: 500 12px/16px var(--sans); letter-spacing: -.025em; }
+.admin-capacity-conclusion { margin: 0 0 28px; }
+.admin-capacity-metrics { gap: 16px; margin-bottom: 24px; }
+.admin-capacity-metrics .metric-card { min-height: 130px; padding: 24px; border-color: rgba(229,231,235,.8); border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.02); }
+.admin-capacity-metrics .metric-label { display: none; }
+.admin-capacity-metrics .metric-card:nth-child(4) .metric-label-row { justify-content: flex-end; }
+.admin-capacity-metrics .metric-value-row { padding-top: 2px; }
+.admin-capacity-metrics .metric-value-row strong { font-size: 30px; }
+.admin-capacity-metrics .metric-subtitle:empty { display: none; }
+.admin-capacity-metrics .metric-meta { padding-top: 2px; }
+.admin-capacity-models-panel.panel { min-height: 260px; padding: 24px; }
+.admin-capacity-table-scroll { width: 100%; margin-top: 16px; overflow-x: auto; }
+.admin-capacity-table { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: auto; font: 400 12px/16px var(--mono); text-align: left; }
+.admin-capacity-table-head { visibility: visible; height: auto; }
+.admin-capacity-table-head th { height: auto; padding: 0 0 12px; border: 0; font: 600 10px/13.3333px var(--mono); }
+.admin-capacity-table td { padding: 14px 0; border-bottom: 0; vertical-align: middle; white-space: nowrap; }
+.admin-capacity-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+.admin-capacity-table tbody tr:last-child { border-bottom: 0; }
+.admin-capacity-table tbody tr:hover { background: rgba(249,250,251,.82); }
+.admin-capacity-table td:last-child { padding-right: 0; text-align: right; }
+.admin-capacity-model { color: #111827; font: 700 12px/16px var(--sans); }
+.admin-capacity-provisioned, .admin-capacity-latency, .admin-capacity-action { color: #6b7280; }
+.admin-capacity-action { font-family: var(--sans); }
+.admin-capacity-active { color: #111827; }
+.admin-capacity-headroom { color: #047857; font-weight: 700; }
+.admin-capacity-headroom-degraded { color: #b45309; }
+.admin-capacity-status { overflow: visible !important; color: #111827; font: 500 12px/16px var(--sans); letter-spacing: -.025em; }
+.admin-capacity-status-degraded { color: #92400e; }
+.admin-capacity-status-degraded .status-dot { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.15); }
 .admin-overview-stack { display: flex; flex-direction: column; gap: 28px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
 .admin-overview-header { margin-bottom: -12px; }
 .admin-overview-actions { gap: 10px; }
@@ -798,6 +829,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 @media (max-width: 800px) { .sidebar { position: fixed; inset: 0 auto 0 0; width: 240px; flex-basis: auto; box-shadow: 20px 0 45px rgba(0,0,0,.12); transform: translateX(-105%); transition: transform 220ms ease; } .sidebar.open { transform: translateX(0); } .sidebar-close { position: absolute; z-index: 2; top: 6px; right: 6px; display: inline-flex; border: 1px solid #e5e7eb; background: #fff; } .mobile-scrim { position: fixed; z-index: 25; inset: 0; border: 0; background: rgba(17,24,39,.28); backdrop-filter: blur(2px); } .mobile-menu-button { display: inline-flex; flex: 0 0 auto; } .global-search { max-width: none; } }
 @media (max-width: 639px) { .topbar { gap: 10px; } .autopilot { display: none; } .page-header { align-items: flex-start; flex-direction: column; } .page-viewport { padding: 24px; } .page-heading-copy h1 { font-size: 24px; line-height: 1.333333; } .page-heading-copy p { font-size: 14px; } .metric-grid { grid-template-columns: 1fr; gap: 14px; } .metric-card { min-height: 142px; padding: 20px; } .metric-value-row strong { font-size: 24px; } .attention { align-items: stretch; flex-direction: column; } .panel { padding: 24px; } .admin-overview-lower-grid { grid-template-columns: 1fr; gap: 14px; } .admin-overview-events-panel { padding: 20px 16px; } .admin-overview-metrics .metric-card { padding: 20px; } .admin-event-item { flex-direction: column; gap: 12px; } .admin-event-heading { align-items: flex-start; flex-wrap: wrap; } }
 @media (max-width: 639px) { .admin-supply-nodes-panel.panel { padding: 24px; } .admin-supply-table { min-width: 900px; } .admin-supply-metrics .metric-card { padding: 20px; } .admin-supply-metrics .metric-subtitle { overflow: visible; } }
+@media (max-width: 639px) { .admin-capacity-models-panel.panel { padding: 24px; } .admin-capacity-table { min-width: 900px; } .admin-capacity-metrics .metric-card { padding: 20px; } .admin-capacity-autopilot { align-self: flex-start; } }
 @media (max-width: 639px) { .supplier-page-header-row { align-items: flex-start; } .supplier-page-header .page-heading-copy { min-width: 0; } .supplier-page-actions { flex: 0 0 auto; } .supplier-cluster-alert { padding: 16px; } .supplier-nodes-panel { padding: 20px 16px 8px; } .supplier-node-table { min-width: 820px; } .supplier-install-modal { padding: 20px; } }
 @media (max-width: 639px) { .supplier-resource-grid { grid-template-columns: 1fr; gap: 14px; } .supplier-resource-card { padding: 20px; } .supplier-resource-card-header { gap: 10px; } .supplier-resource-name-row { align-items: flex-start; flex-direction: column; gap: 4px; } .supplier-resource-earnings { font-size: 14px; line-height: 20px; } .supplier-drain-modal { padding: 20px; } }
 @media (max-width: 639px) { .supplier-deployments-panel { padding: 20px 16px 8px; } .supplier-deployments-card-header { align-items: flex-start; flex-direction: column; } .supplier-deployments-table { min-width: 850px; } }
