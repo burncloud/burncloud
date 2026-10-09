@@ -130,33 +130,27 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
-    let id = "claude-adaptor-test";
+    // The model router uses channel_providers/channel_abilities, not the
+    // legacy router_upstreams table. Preserve the Claude adaptor behavior by
+    // seeding a real Anthropic channel (ChannelType::Anthropic = 14).
+    let channel_id = 3014;
     let name = "claude-3-opus";
-    let base_url = format!("http://localhost:{}", mock_port);
-    let match_path = "/anything";
-    let auth_type = "Claude";
+    let base_url = format!("http://localhost:{mock_port}");
     let api_key = "sk-ant-mock-key";
-
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, protocol)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET 
-            api_key = excluded.api_key,
-            base_url = excluded.base_url,
-            auth_type = excluded.auth_type,
-            protocol = excluded.protocol
-        "#,
+    common::insert_test_channel(
+        &pool,
+        channel_id,
+        name,
+        &base_url,
+        api_key,
+        "claude-3-opus",
+        "default",
     )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .bind("claude") // Force protocol to claude
-    .execute(&pool)
     .await?;
+    sqlx::query("UPDATE channel_providers SET type = 14 WHERE id = ?")
+        .bind(channel_id)
+        .execute(&pool)
+        .await?;
 
     // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(

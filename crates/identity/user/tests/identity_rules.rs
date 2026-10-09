@@ -17,7 +17,7 @@
 //! explicit close-then-wait-then-delete cleanup, because on Windows dropping a `Database` leaves the file locked.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_user::{
+use burncloud_service_user::{
     PasswordResetDatabase, UserAccount, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput,
     UserDatabase,
 };
@@ -702,7 +702,7 @@ async fn updating_one_field_leaves_the_others_alone() {
     // A plain async fn rather than a closure: `Database` is deliberately not `Clone`, and a closure that
     // returns a future over borrowed arguments does not satisfy the borrow checker here. The first version
     // cloned the database and the second used a closure; both failed to compile.
-    async fn read(db: &Database, key: &str) -> burncloud_database_user::UserApiKey {
+    async fn read(db: &Database, key: &str) -> burncloud_service_user::UserApiKey {
         UserApiKeyModel::get_by_key(db, key)
             .await
             .expect("readable")

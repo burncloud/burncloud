@@ -1,4 +1,4 @@
-use crate::common::current_timestamp;
+use super::common::current_timestamp;
 use burncloud_database::{adapt_sql, Database, Result};
 use rand::Rng;
 use serde::{Deserialize, Serialize};

@@ -55,14 +55,14 @@ fn global(path: &str) -> bool {
     ) || path.starts_with(".cargo/")
 }
 
-/// Apply the root manifest's scoped workspace impact without changing the
-/// ordinary changed-file ownership or dependency traversal in `select`.
+/// Resolve root-workspace manifest changes separately from ordinary file
+/// ownership so neither branch inflates the selection planner's complexity.
 fn apply_root_manifest_change(
     root: &Path,
     directories: &BTreeMap<PathBuf, String>,
     packages: &[Package],
-    root_manifest: Option<&RootManifestChange>,
     plan: &mut Plan,
+    root_manifest: Option<&RootManifestChange>,
 ) {
     let Some(change) = root_manifest else {
         plan.full_reason.get_or_insert_with(|| {
@@ -157,7 +157,7 @@ pub(crate) fn select(
             continue;
         }
         if file == "Cargo.toml" {
-            apply_root_manifest_change(&root, &directories, &packages, root_manifest, &mut plan);
+            apply_root_manifest_change(&root, &directories, &packages, &mut plan, root_manifest);
             continue;
         }
         if global(file) {
