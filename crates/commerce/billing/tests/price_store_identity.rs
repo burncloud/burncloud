@@ -47,9 +47,9 @@
 //! semantics rather than re-enabling the deleted files.
 //!
 
+use burncloud_commerce_billing::{BillingPriceModel, BillingTieredPriceModel};
 use burncloud_commerce_contracts::pricing::{PriceInput, TieredPriceInput};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_commerce_billing::{BillingPriceModel, BillingTieredPriceModel};
 use std::error::Error;
 
 /// A fresh database with the real migrations applied.

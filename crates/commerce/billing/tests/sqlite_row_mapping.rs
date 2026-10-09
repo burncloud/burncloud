@@ -22,9 +22,9 @@
 //! The row structs are crate-private, so nothing here can reach them directly -- which is the point:
 //! the tests observe exactly what an outside caller observes.
 
+use burncloud_commerce_billing::{BillingPriceModel, BillingTieredPriceModel};
 use burncloud_commerce_contracts::pricing::{PriceInput, TieredPriceInput};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_commerce_billing::{BillingPriceModel, BillingTieredPriceModel};
 
 /// Build a fresh SQLite database in a temporary file and run the real migrations.
 ///
