@@ -1,4 +1,5 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
+use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
@@ -245,7 +246,7 @@ pub fn AdminSupply() -> Element {
 }
 #[component]
 pub fn AdminCapacity() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Capacity & Autoscale".to_string(), role: Role::Admin } }
+    rsx! { AdminCapacityPage {} }
 }
 #[component]
 pub fn AdminDemand() -> Element {

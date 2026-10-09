@@ -181,6 +181,17 @@ fn nav_label(locale: Locale, copy: &LocaleStrings, key: NavKey) -> &'static str 
     }
 }
 
+fn nav_badge(locale: Locale, item: NavItem) -> Option<&'static str> {
+    if item.key != NavKey::Capacity {
+        return item.badge;
+    }
+    Some(match locale {
+        Locale::Zh => "自动",
+        Locale::ZhTw | Locale::Ja => "自動",
+        Locale::En => "AUTO",
+    })
+}
+
 fn role_metric_label(locale: Locale, role: Role, copy: &LocaleStrings) -> &'static str {
     match (locale, role) {
         (_, Role::Buyer) => copy.prepaid_balance,
@@ -225,7 +236,7 @@ fn SideNavLink(
             span { class: "nav-label", Icon { name: item.icon, size: 16 } span { {nav_label(locale, copy, item.key)} } }
             if item.key == NavKey::Playground {
                 span { class: "nav-badge", {copy.live} }
-            } else if let Some(badge) = item.badge {
+            } else if let Some(badge) = nav_badge(locale, item) {
                 span { class: "nav-badge", {badge} }
             }
         }
