@@ -3,5 +3,6 @@ pub mod components;
 pub mod model;
 pub mod page;
 pub mod state;
+pub use page::AdminSupply;
 #[cfg(test)]
 mod tests;

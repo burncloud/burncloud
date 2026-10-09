@@ -55,6 +55,72 @@ fn global(path: &str) -> bool {
     ) || path.starts_with(".cargo/")
 }
 
+/// Resolve root-workspace manifest changes separately from ordinary file
+/// ownership so neither branch inflates the selection planner's complexity.
+fn apply_root_manifest_change(
+    root: &Path,
+    directories: &BTreeMap<PathBuf, String>,
+    packages: &[Package],
+    plan: &mut Plan,
+    root_manifest: Option<&RootManifestChange>,
+) {
+    let Some(change) = root_manifest else {
+        plan.full_reason.get_or_insert_with(|| {
+            "root Cargo.toml changed but its previous version is unavailable".to_owned()
+        });
+        return;
+    };
+    match manifest::analyze(change) {
+        Impact::Full(reason) => {
+            plan.full_reason.get_or_insert_with(|| {
+                format!("root Cargo.toml requires full workspace: {reason}")
+            });
+        }
+        Impact::Scoped {
+            added_members,
+            changed_workspace_dependencies,
+            root_package_changed,
+        } => {
+            for member in added_members {
+                let member_path = root.join(&member);
+                let owner = member_path
+                    .canonicalize()
+                    .ok()
+                    .and_then(|directory| directories.get(&directory));
+                if let Some(name) = owner {
+                    plan.direct.insert(name.clone());
+                } else {
+                    plan.full_reason.get_or_insert_with(|| {
+                        format!(
+                            "root Cargo.toml added workspace member that cannot be mapped safely: {member}"
+                        )
+                    });
+                }
+            }
+            if root_package_changed {
+                if let Some(name) = directories.get(root) {
+                    plan.direct.insert(name.clone());
+                } else {
+                    plan.full_reason.get_or_insert_with(|| {
+                        "root package changed but cargo metadata has no root package".to_owned()
+                    });
+                }
+            }
+            for dependency in changed_workspace_dependencies {
+                for package in packages {
+                    if package
+                        .dependencies
+                        .iter()
+                        .any(|candidate| candidate.manifest_name() == dependency)
+                    {
+                        plan.direct.insert(package.name.clone());
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn select(
     root: &Path,
     files: &BTreeSet<String>,
@@ -91,62 +157,7 @@ pub(crate) fn select(
             continue;
         }
         if file == "Cargo.toml" {
-            let Some(change) = root_manifest else {
-                plan.full_reason.get_or_insert_with(|| {
-                    "root Cargo.toml changed but its previous version is unavailable".to_owned()
-                });
-                continue;
-            };
-            match manifest::analyze(change) {
-                Impact::Full(reason) => {
-                    plan.full_reason.get_or_insert_with(|| {
-                        format!("root Cargo.toml requires full workspace: {reason}")
-                    });
-                }
-                Impact::Scoped {
-                    added_members,
-                    changed_workspace_dependencies,
-                    root_package_changed,
-                } => {
-                    for member in added_members {
-                        let member_path = root.join(&member);
-                        let owner = member_path
-                            .canonicalize()
-                            .ok()
-                            .and_then(|directory| directories.get(&directory));
-                        if let Some(name) = owner {
-                            plan.direct.insert(name.clone());
-                        } else {
-                            plan.full_reason.get_or_insert_with(|| {
-                                format!(
-                                    "root Cargo.toml added workspace member that cannot be mapped safely: {member}"
-                                )
-                            });
-                        }
-                    }
-                    if root_package_changed {
-                        if let Some(name) = directories.get(&root) {
-                            plan.direct.insert(name.clone());
-                        } else {
-                            plan.full_reason.get_or_insert_with(|| {
-                                "root package changed but cargo metadata has no root package"
-                                    .to_owned()
-                            });
-                        }
-                    }
-                    for dependency in changed_workspace_dependencies {
-                        for package in &packages {
-                            if package
-                                .dependencies
-                                .iter()
-                                .any(|candidate| candidate.manifest_name() == dependency)
-                            {
-                                plan.direct.insert(package.name.clone());
-                            }
-                        }
-                    }
-                }
-            }
+            apply_root_manifest_change(&root, &directories, &packages, &mut plan, root_manifest);
             continue;
         }
         if global(file) {
