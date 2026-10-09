@@ -54,8 +54,7 @@
 //! caller treats that as "not authenticated" and a **denylist that reports "allowed"**. Both are quiet.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_router::{RouterDatabase, RouterToken, RouterTokenValidationResult};
-use burncloud_service_token::TokenService;
+use burncloud_service_token::{RouterToken, RouterTokenValidationResult, TokenService};
 use tempfile::NamedTempFile;
 
 /// A seeded database in a temporary file, with a second connection for breaking the schema.
@@ -73,7 +72,7 @@ async fn test_db(tag: &str) -> (Database, Database, NamedTempFile) {
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("create database at {url}: {e}"));
-    RouterDatabase::init(&db)
+    TokenService::init(&db)
         .await
         .unwrap_or_else(|e| panic!("create router tables: {e}"));
 

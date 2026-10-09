@@ -9,6 +9,79 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+async fn best_effort_execute(pool: &sqlx::AnyPool, sql: &str) {
+    // Existing columns are expected on databases already initialized by migrations.
+    sqlx::query(sql).execute(pool).await.ok();
+}
+
+/// Initialize the Identity-owned credential table for isolated callers/tests.
+///
+/// Platform migrations remain the canonical production schema path. This helper
+/// preserves the old RouterDatabase::init bootstrap behavior while keeping token
+/// persistence under the Identity owner.
+pub async fn init(db: &Database) -> Result<()> {
+    let conn = db.get_connection()?;
+    let kind = db.kind();
+
+    let tokens_sql = match kind.as_str() {
+        "sqlite" => {
+            r#"
+            CREATE TABLE IF NOT EXISTS router_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                quota_limit INTEGER NOT NULL DEFAULT -1,
+                used_quota INTEGER NOT NULL DEFAULT 0,
+                expired_time INTEGER NOT NULL DEFAULT -1,
+                accessed_time INTEGER NOT NULL DEFAULT 0
+            );
+        "#
+        }
+        "postgres" => {
+            r#"
+            CREATE TABLE IF NOT EXISTS router_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                quota_limit BIGINT NOT NULL DEFAULT -1,
+                used_quota BIGINT NOT NULL DEFAULT 0,
+                expired_time BIGINT NOT NULL DEFAULT -1,
+                accessed_time BIGINT NOT NULL DEFAULT 0
+            );
+        "#
+        }
+        _ => unreachable!("Unsupported database kind"),
+    };
+
+    sqlx::query(tokens_sql).execute(conn.pool()).await?;
+
+    if kind == "sqlite" {
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
+        )
+        .await;
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0",
+        )
+        .await;
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN expired_time INTEGER NOT NULL DEFAULT -1",
+        )
+        .await;
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN accessed_time INTEGER NOT NULL DEFAULT 0",
+        )
+        .await;
+    }
+
+    Ok(())
+}
+
+
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
 #[allow(

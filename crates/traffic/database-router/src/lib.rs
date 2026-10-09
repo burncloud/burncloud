@@ -4,15 +4,23 @@
 //! database initialization functionality.
 //!
 //! # Modules
-//! - [`token`] - Token management (RouterToken, RouterTokenModel)
+//! - [`token`] - Compatibility exports for Identity-owned token management
 //! - [`log`] - Router logs, usage stats and balance deduction (RouterLog, RouterLogModel, BalanceModel)
 //! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
 use burncloud_database::{adapt_sql, phs, Database, Result};
+use burncloud_service_token::TokenService;
 
 pub mod log;
 pub mod router_video_task;
-pub mod token;
+/// Compatibility surface for callers that still import token types through
+/// `burncloud-database-router`. The implementation is owned by Identity.
+pub mod token {
+    pub use burncloud_service_token::{
+        RouterToken, RouterTokenModel, RouterTokenRepository, RouterTokenValidationResult,
+        TokenRotationResult,
+    };
+}
 
 // Re-export common types.
 pub use log::{
@@ -72,64 +80,10 @@ pub struct RouterDatabase;
 impl RouterDatabase {
     /// Initialize router database tables
     pub async fn init(db: &Database) -> Result<()> {
-        let conn = db.get_connection()?;
-        let kind = db.kind();
+        TokenService::init(db).await?;
 
-        // Only create router_tokens table (router_upstreams, router_groups removed)
-        let tokens_sql = match kind.as_str() {
-            "sqlite" => {
-                r#"
-                CREATE TABLE IF NOT EXISTS router_tokens (
-                    token TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    quota_limit INTEGER NOT NULL DEFAULT -1,
-                    used_quota INTEGER NOT NULL DEFAULT 0,
-                    expired_time INTEGER NOT NULL DEFAULT -1,
-                    accessed_time INTEGER NOT NULL DEFAULT 0
-                );
-            "#
-            }
-            "postgres" => {
-                r#"
-                CREATE TABLE IF NOT EXISTS router_tokens (
-                    token TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    quota_limit BIGINT NOT NULL DEFAULT -1,
-                    used_quota BIGINT NOT NULL DEFAULT 0,
-                    expired_time BIGINT NOT NULL DEFAULT -1,
-                    accessed_time BIGINT NOT NULL DEFAULT 0
-                );
-            "#
-            }
-            _ => unreachable!("Unsupported database kind"),
-        };
-
-        sqlx::query(tokens_sql).execute(conn.pool()).await?;
-
-        // Migrations for router_tokens (best-effort: the column usually exists)
-        if kind == "sqlite" {
-            best_effort_execute(
-                conn.pool(),
-                "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
-            )
-            .await;
-            best_effort_execute(
-                conn.pool(),
-                "ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0",
-            )
-            .await;
-            best_effort_execute(
-                conn.pool(),
-                "ALTER TABLE router_tokens ADD COLUMN expired_time INTEGER NOT NULL DEFAULT -1",
-            )
-            .await;
-            best_effort_execute(
-                conn.pool(),
-                "ALTER TABLE router_tokens ADD COLUMN accessed_time INTEGER NOT NULL DEFAULT 0",
-            )
-            .await;
+        if db.kind() == "sqlite" {
+            let conn = db.get_connection()?;
             best_effort_execute(
                 conn.pool(),
                 "ALTER TABLE router_logs ADD COLUMN cost REAL NOT NULL DEFAULT 0",
@@ -140,41 +94,41 @@ impl RouterDatabase {
         Ok(())
     }
 
-    // ============== Token delegations ==============
+    // ============== Token compatibility delegations ==============
 
     pub async fn list_tokens(db: &Database) -> Result<Vec<RouterToken>> {
-        RouterTokenModel::list(db).await
+        TokenService::list(db).await
     }
 
     pub async fn create_token(db: &Database, t: &RouterToken) -> Result<()> {
-        RouterTokenModel::create(db, t).await
+        TokenService::create(db, t).await
     }
 
     pub async fn delete_token(db: &Database, token: &str) -> Result<()> {
-        RouterTokenModel::delete(db, token).await
+        TokenService::delete(db, token).await
     }
 
     pub async fn update_token_status(db: &Database, token: &str, status: &str) -> Result<()> {
-        RouterTokenModel::update_status(db, token, status).await
+        TokenService::update_status(db, token, status).await
     }
 
     pub async fn validate_token(db: &Database, token: &str) -> Result<Option<RouterToken>> {
-        RouterTokenModel::validate(db, token).await
+        TokenService::validate(db, token).await
     }
 
     pub async fn validate_token_detailed(
         db: &Database,
         token: &str,
     ) -> Result<RouterTokenValidationResult> {
-        RouterTokenModel::validate_detailed(db, token).await
+        TokenService::validate_detailed(db, token).await
     }
 
     pub async fn update_token_accessed_time(db: &Database, token: &str) -> Result<()> {
-        RouterTokenModel::update_accessed_time(db, token).await
+        TokenService::update_accessed_time(db, token).await
     }
 
     pub async fn check_quota(db: &Database, token: &str, cost: i64) -> Result<bool> {
-        RouterTokenModel::check_quota(db, token, cost).await
+        TokenService::check_quota(db, token, cost).await
     }
 
     pub async fn deduct_quota(
@@ -183,7 +137,7 @@ impl RouterDatabase {
         token: &str,
         cost: i64,
     ) -> Result<bool> {
-        RouterTokenModel::deduct_quota(db, token, cost).await
+        TokenService::deduct_quota(db, token, cost).await
     }
 
     /// Validates a token and returns the [`TokenValidationInfo`] payload
