@@ -166,7 +166,7 @@ fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
     // Both send paths must apply the remaining total budget through SSE reads.
     // This also prevents long-task retries from exceeding their aggregate cap.
     assert_eq!(
-        src.matches("req_builder.timeout(retry_attempt_timeout(path, request_start_time))")
+        src.matches("retry_attempt_timeout(retry_budget, request_start_time)")
             .count(),
         2,
         "both passthrough and adaptor requests must bound streaming body reads"
