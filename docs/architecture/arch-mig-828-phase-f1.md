@@ -77,9 +77,10 @@ Note: a GitHub code-search index can lag the main branch; therefore index result
 - [ ] Verify migrated tests are discovered and all behavior/SQL/auth/quota invariants remain intact; publish test counts and affected-consumer results.
 - [ ] Verify `cargo run -- code test` plans the correct affected packages, including a rename-only move; no hidden skip or test-selection regression.
 - [ ] Verify Cargo Fmt, Code Test, Clippy, Deny and all configured required checks pass on the **same latest HEAD**.
-- [ ] Confirm source-level writer audit: Identity exclusively writes credential/quota state; Traffic exclusively owns `order_type` / `price_cap_nanodollars`; Commerce only calculates costs.
+- [x] Source-level writer audit identified an existing cross-domain write in `traffic/database-router/src/log.rs` (`RouterLogModel::insert` updates `router_tokens.used_quota` by raw prompt+completion token count). This conflicts with Identity's ownership; tracked as **#830**. No unsafe behavior change is part of #829.
+- [ ] Resolve #830 separately before asserting *single-writer* architectural compliance. The rename-only PR is not a fix for that existing behavior.
 - [ ] Confirm no schema/migration, public HTTP/JSON/error semantics, or Protected Zone logic changed.
 
 ## Status
 
-Implementation is present but final evidence is incomplete. **PR #829 must remain draft and issue #828 open until every outstanding verification above has positive evidence.**
+The source audit exposed an independent pre-existing Data Truth issue, #830. Implementation is present but final evidence is incomplete. **PR #829 must remain draft and issue #828 open until every outstanding verification above has positive evidence.**
