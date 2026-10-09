@@ -1,4 +1,4 @@
-use burncloud_service_models::{filter_gguf_files, get_model_files};
+use burncloud_supply_model::{filter_gguf_files, get_model_files};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

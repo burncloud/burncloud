@@ -90,66 +90,19 @@ jobs:
           # to fail whenever a test is removed. See the "Known-failing checks" table in
           # `.github/README.md` for how the number moves when tests are added.
           MIN_EXECUTED_TESTS: "300"
-          # Six tests in `burncloud-router`'s HTTP integration suite that cannot pass in this
-          # repository's current state, plus one in `service-user`. They are skipped **by name** so the
-          # rest of their suites still run -- `adaptor_tests` alone contributes 19 passing tests. This
-          # is a deliberate, visible hole in the gate rather than a silent one, and every entry is a
-          # defect to fix rather than expected behaviour.
-          #
-          # All six router failures are the same fault: the test posts to a stub upstream and receives
-          # the router's own 404 "No matching channel found" (`lib.rs:2333`), which is the error
-          # returned when channel selection finds nothing.
-          #
-          #   test_claude_adaptor        tests/adaptor_tests.rs:191
-          #   test_deepseek_proxy        tests/auth_tests.rs:167
-          #   test_qwen_proxy            tests/auth_tests.rs:240
-          #   test_round_robin_balancer  tests/balancer_tests.rs:113
-          #   test_failover              tests/failover_tests.rs
-          #   test_vertex_full_flow      tests/vertex_full_test.rs
-          #
-          # Evidence that this is the tests and not the environment: `test_deepseek_proxy` and
-          # `test_qwen_proxy` fail on their own (0 passed, 1 failed, 2 filtered out), 5/5 and 3/3
-          # repeat runs fail, and their neighbours in the same files and with the same helpers
-          # **pass** -- `test_bedrock_proxy` in `auth_tests`, and 19 of 20 in `adaptor_tests`. The
-          # three that insert a `router_upstreams` row without the `protocol` column are all in this
-          # list, which is the thread to pull first.
-          #
-          # Deciding which side is wrong is a change to routing behaviour, not to triggers: asserting
-          # the 404 would freeze a defect as the contract, which this repository forbids. Each skip
-          # keeps that signal visible in a local `cargo test`, which still runs all of them and fails.
-          #
-          #   test_login_user_success    `crates/identity/service-user/src/lib.rs` removes a temporary
-          #                              SQLite file 200 ms after closing the pool and Windows has not
-          #                              always released the handle (`os error 32`). Intermittent, seen
-          #                              only in a full-suite run, never in isolation (4/4 passed).
-          #
-          # Latent, not yet observed: `boundary_tests.rs` and `token_expiry_tests.rs` both bind ports
-          # 3030-3033, so they collide if cargo ever runs those two binaries at once. They are
-          # sequential today and neither has failed. Named here so the next person sees it before
-          # spending an afternoon on "flaky router tests".
-          #
-          # When any of these is fixed, remove it from `.github/test-plan/known-test-baseline.txt`.
+          # No known-failure baseline is allowed here. Every discovered test runs,
+          # and any real failure fails the release quality gate.
         run: |
           set -o pipefail
 
-          SKIP_TESTS="$(awk -F'|' '!/^[[:space:]]*(#|$)/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); printf "%s ", $1}' .github/test-plan/known-test-baseline.txt)"
-          echo "known failing tests: ${SKIP_TESTS:-none}"
-          skips=""
-          for name in $SKIP_TESTS; do
-            skips="$skips --skip $name"
-          done
-
-          # `--skip` is a libtest argument, not a cargo one: it has to come after `--` or cargo rejects
-          # the invocation (`unexpected argument '--skip' found`). Everything after `--` is passed to
-          # every test binary cargo runs, which is what makes one list cover the whole workspace.
-          cargo test --workspace --no-default-features -- $skips 2>&1 | tee /tmp/workspace-tests.log
+          cargo test --workspace --no-default-features 2>&1 | tee /tmp/workspace-tests.log
 
           # awk rather than `grep | paste | bc`: bc is not installed on the runner, so a pipeline
           # through it would fail with "command not found" instead of reporting the discovery problem
           # it exists to catch. Sums the passed count across every `test result: ok.` line -- the
           # per-package unit, integration and doc summaries -- and prints 0 for an empty log.
           executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/workspace-tests.log)
-          echo "executed $executed test(s) across the workspace (skipped by name: ${SKIP_TESTS:-none})"
+          echo "executed $executed test(s) across the workspace"
           if [ "${executed:-0}" -lt "${MIN_EXECUTED_TESTS}" ]; then
             echo "::error::expected at least ${MIN_EXECUTED_TESTS} tests across the workspace, found ${executed:-0}."
             echo "A zero count means the tests were not discovered at all; check that the workspace"
