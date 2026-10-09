@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test -p burncloud-database-user --test postgres_round_trip -- --nocapture 2>&1 \
+          cargo test -p burncloud-identity-user --test postgres_round_trip -- --nocapture 2>&1 \
             | tee /tmp/postgres-contract.log
 
           if grep -q "SKIPPED: BURNCLOUD_TEST_POSTGRES_URL is not set" /tmp/postgres-contract.log; then
