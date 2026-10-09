@@ -40,7 +40,10 @@ fn sections(text: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
         if current.is_empty() {
             return Err(format!("content outside a TOML section: {line}"));
         }
-        result.entry(current.clone()).or_default().push(line.to_owned());
+        result
+            .entry(current.clone())
+            .or_default()
+            .push(line.to_owned());
     }
 
     Ok(result)
@@ -134,13 +137,18 @@ fn dependency_entries(lines: &[String]) -> Result<BTreeMap<String, String>, Stri
     let mut entries = BTreeMap::new();
     for line in lines {
         let Some((key, value)) = line.split_once('=') else {
-            return Err(format!("unsupported multi-line workspace dependency: {line}"));
+            return Err(format!(
+                "unsupported multi-line workspace dependency: {line}"
+            ));
         };
         let key = key.trim().trim_matches('"').to_owned();
         if key.is_empty() {
             return Err("empty workspace dependency key".to_owned());
         }
-        if entries.insert(key.clone(), value.trim().to_owned()).is_some() {
+        if entries
+            .insert(key.clone(), value.trim().to_owned())
+            .is_some()
+        {
             return Err(format!("duplicate workspace dependency: {key}"));
         }
     }
