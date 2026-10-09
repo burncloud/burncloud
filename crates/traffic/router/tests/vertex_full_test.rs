@@ -59,11 +59,7 @@ async fn test_vertex_full_flow() -> anyhow::Result<()> {
         .expect(2) // Expect 2 calls (Non-Stream + Stream)
         .create_async().await;
 
-    // 2. Configure Upstream
-    let id = "vertex-test";
-    let name = "Vertex Test";
-    let base_url = "https://ignored-but-required.com";
-
+    // 2. Configure the Vertex channel fixture.
     let private_key = r#"-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDaJKsOxgH3D2ah
 v8vbh9n99AvHPOoIuJur/sV7tHZ9/bzMvnzVsQxxciagrVFve+XaE1mQjzNbRKB3
