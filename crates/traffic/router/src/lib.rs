@@ -255,14 +255,16 @@ fn retry_budget_secs(path: &str) -> u64 {
         .unwrap_or(default)
 }
 
-/// Apply the remaining interactive retry budget to each Reqwest request.
-/// Reqwest also enforces its timeout while a returned SSE body is read, whereas
-/// the outer proxy_logic timeout ends when it returns the response headers.
-fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> Option<std::time::Duration> {
-    is_interactive_request(path).then(|| {
-        std::time::Duration::from_secs(retry_budget_secs(path))
-            .saturating_sub(request_start_time.elapsed())
-    })
+/// Bound each upstream HTTP request by both its legacy per-attempt limit and
+/// the time left in the request-class retry budget. This remains active while
+/// streaming a response body after proxy_logic returns the response headers.
+///
+/// Long tasks retain the existing 10-hour maximum on the first attempt, but
+/// late failover attempts cannot extend the configured 20-hour total.
+fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> std::time::Duration {
+    std::time::Duration::from_secs(retry_budget_secs(path))
+        .saturating_sub(request_start_time.elapsed())
+        .min(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
 }
 
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
@@ -2801,14 +2803,10 @@ async fn proxy_logic(
                 apply_header_override(req_builder, upstream.header_override.as_deref());
 
             let req_builder = req_builder.json(&passthrough_body);
-            // Bound SSE body reads as well as the initial upstream request.
-            // Long-running jobs keep their existing ten-hour client timeout.
+            // Enforce the remaining total budget through SSE body reads as
+            // well as request setup, without extending the legacy 10-hour cap.
             let req_builder =
-                if let Some(timeout) = retry_attempt_timeout(path, request_start_time) {
-                    req_builder.timeout(timeout)
-                } else {
-                    req_builder
-                };
+                req_builder.timeout(retry_attempt_timeout(path, request_start_time));
 
             // Execute passthrough request
             match req_builder.send().await {
@@ -3488,13 +3486,9 @@ async fn proxy_logic(
             )
             .await;
 
-        // 5. Execute: enforce the remaining interactive budget on body reads
-        // even after proxy_logic has returned a streaming Response.
-        let req_builder = if let Some(timeout) = retry_attempt_timeout(path, request_start_time) {
-            req_builder.timeout(timeout)
-        } else {
-            req_builder
-        };
+        // 5. Execute: apply both the remaining total budget and legacy 10-hour
+        // per-attempt cap, including any streaming response body reads.
+        let req_builder = req_builder.timeout(retry_attempt_timeout(path, request_start_time));
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
@@ -4668,18 +4662,17 @@ mod tests {
     }
 
     #[test]
-    fn interactive_attempt_timeout_bounds_sse_and_keeps_long_task_timeout() {
+    fn attempt_timeout_bounds_sse_and_preserves_long_task_cap() {
         let started = std::time::Instant::now();
         for path in ["/v1/responses", "/v1/chat/completions", "/v1/messages"] {
-            let timeout = retry_attempt_timeout(path, started)
-                .expect("interactive requests need an attempt deadline");
+            let timeout = retry_attempt_timeout(path, started);
             assert!(timeout <= std::time::Duration::from_secs(super::retry_budget_secs(path)));
+            assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
         }
         for path in ["/v1/video/generations", "/v1/audio/speech", "/v1/music/generations"] {
-            assert!(
-                retry_attempt_timeout(path, started).is_none(),
-                "{path} must retain the existing 10-hour per-request timeout"
-            );
+            let timeout = retry_attempt_timeout(path, started);
+            assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
+            assert!(timeout > std::time::Duration::from_secs(120));
         }
     }
 
