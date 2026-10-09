@@ -1,6 +1,6 @@
 //! Example usage of the UserService
 //!
-//! This example demonstrates how to use the service-user crate
+//! This example demonstrates how to use the unified identity/user crate
 //! for user registration, login, and token management.
 
 #![allow(
@@ -9,8 +9,7 @@
 )]
 
 use burncloud_database::create_default_database;
-use burncloud_database_user::UserDatabase;
-use burncloud_service_user::{JwtSecret, UserService};
+use burncloud_service_user::{JwtSecret, UserDatabase, UserService};
 use uuid::Uuid;
 
 #[tokio::main]
