@@ -178,6 +178,90 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     Ok(())
 }
 
+// ============================================================================
+// Gemini 2.5 Pro API Tests
+// ============================================================================
+
+const GEMINI_25_PRO_MODEL: &str = "gemini-2.5-pro";
+
+/// Setup helper for gemini-2.5-pro tests with unique port
+/// Returns None if TEST_GOOGLE_AI_KEY is not set
+async fn setup_gemini_25_pro_with_port(
+    port: u16,
+) -> anyhow::Result<Option<(burncloud_database::Database, sqlx::AnyPool)>> {
+    let env_key = env::var("TEST_GOOGLE_AI_KEY").unwrap_or_default();
+    if env_key.is_empty() {
+        println!("Skipping Gemini 2.5 Pro tests: TEST_GOOGLE_AI_KEY not set.");
+        return Ok(None);
+    }
+
+    let (db, pool, db_url) = setup_db().await?;
+
+    let id = format!("gemini-25-pro-test-{}", port);
+    let name = "gemini-2.5-pro";
+    let base_url = "https://generativelanguage.googleapis.com";
+    let match_path = "/v1/chat/completions"; // Use OpenAI-compatible endpoint
+    let auth_type = "GoogleAI";
+
+    sqlx::query(
+        r#"
+        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            api_key = excluded.api_key,
+            base_url = excluded.base_url,
+            auth_type = excluded.auth_type
+        "#,
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(base_url)
+    .bind(&env_key)
+    .bind(match_path)
+    .bind(auth_type)
+    .execute(&pool)
+    .await?;
+
+    // Setup pricing for gemini-2.5-pro (nanodollars)
+    // Standard tier (<=200K context): $1.25 input / $10 output per 1M tokens
+    let price_input = PriceInput {
+        model: GEMINI_25_PRO_MODEL.to_string(),
+        input_price: dollars_to_nano(1.25),
+        output_price: dollars_to_nano(10.0),
+        currency: "USD".to_string(),
+        cache_read_input_price: None,
+        cache_creation_input_price: None,
+        batch_input_price: None,
+        batch_output_price: None,
+        priority_input_price: None,
+        priority_output_price: None,
+        audio_input_price: None,
+        audio_output_price: None,
+        reasoning_price: None,
+        embedding_price: None,
+        image_price: None,
+        video_price: None,
+        music_price: None,
+        source: Some("test".to_string()),
+        region: Some("international".to_string()),
+        context_window: None,
+        max_output_tokens: None,
+        supports_vision: Some(true),
+        supports_function_calling: None,
+        voices_pricing: None,
+        video_pricing: None,
+        asr_pricing: None,
+        realtime_pricing: None,
+        model_type: None,
+    };
+    BillingPriceModel::upsert(&db, &price_input).await?;
+
+    start_test_server(port, &db_url).await;
+
+    Ok(Some((db, pool)))
+}
+
+/// Test 1: Basic request - "What is 2+2?"
 #[tokio::test]
 async fn test_gemini_25_pro_basic() -> anyhow::Result<()> {
     let port: u16 = 3021;
