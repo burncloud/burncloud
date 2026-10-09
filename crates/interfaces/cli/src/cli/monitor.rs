@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use burncloud_database::{ph, sqlx, Database};
-use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_channel::ChannelProviderModel;
 use clap::ArgMatches;
 use serde::Serialize;
 use std::process::Command as StdCommand;

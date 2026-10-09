@@ -4,7 +4,7 @@ use anyhow::Result;
 use burncloud_database::placeholder::ph;
 use burncloud_database::sqlx;
 use burncloud_database::Database;
-use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_channel::ChannelProviderModel;
 use burncloud_supply_contracts::Channel;
 
 use crate::affinity::{self, AffinityCache};

@@ -12,7 +12,7 @@
 //! the nullable columns added by later migrations.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_channel::ChannelProviderModel;
 use burncloud_supply_contracts::{Channel, ChannelType};
 
 /// A fresh SQLite file database with the real migrations applied.
@@ -239,7 +239,7 @@ async fn ability_rows_round_trip_through_the_real_table() {
         .expect("real INSERT into channel_abilities");
 
     let abilities =
-        burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
+        burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
             .await
             .expect("real SELECT with the dialect-specific `group` alias");
     // The stored row carries `model_mapping`, so re-syncing from the database must reproduce both
@@ -269,7 +269,7 @@ async fn ability_rows_round_trip_through_the_real_table() {
     ChannelProviderModel::sync_abilities(&db, &disabled)
         .await
         .unwrap();
-    let after = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
+    let after = burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
         .await
         .unwrap();
     assert!(

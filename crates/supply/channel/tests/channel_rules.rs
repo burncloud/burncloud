@@ -42,7 +42,7 @@
 //!   channel-keyed config and did not compile.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::{
+use burncloud_supply_channel::{
     ChannelAbilityInput, ChannelAbilityModel, ChannelProtocolConfigInput,
     ChannelProtocolConfigModel, ChannelProviderModel,
 };

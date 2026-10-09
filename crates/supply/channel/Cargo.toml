@@ -9,7 +9,7 @@ edition = "2021"
 # Preserve the existing Rust import name during the structural migration. Renaming the
 # library target is a separate compatibility change; the Cargo package/Owner boundary is
 # `burncloud-supply-channel` from this migration onward.
-name = "burncloud_database_channel"
+name = "burncloud_supply_channel"
 
 [dependencies]
 burncloud-database.workspace = true
