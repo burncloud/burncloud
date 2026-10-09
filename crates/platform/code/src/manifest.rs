@@ -282,6 +282,35 @@ members = [
     }
 
     #[test]
+    fn identity_token_crate_move_selects_new_member_and_both_dependency_keys() {
+        let impact = analyze(&change(
+            r#"[workspace]
+members = ["crates/identity/service-token"]
+
+[workspace.dependencies]
+burncloud-service-token = { path = "crates/identity/service-token" }
+"#,
+            r#"[workspace]
+members = ["crates/identity/token"]
+
+[workspace.dependencies]
+burncloud-identity-token = { path = "crates/identity/token" }
+"#,
+        ));
+        assert_eq!(
+            impact,
+            Impact::Scoped {
+                added_members: BTreeSet::from(["crates/identity/token".to_owned()]),
+                changed_workspace_dependencies: BTreeSet::from([
+                    "burncloud-identity-token".to_owned(),
+                    "burncloud-service-token".to_owned(),
+                ]),
+                root_package_changed: false,
+            }
+        );
+    }
+
+    #[test]
     fn workspace_dependency_change_reports_only_changed_keys() {
         let impact = analyze(&change(
             r#"[workspace.dependencies]
