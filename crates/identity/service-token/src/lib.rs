@@ -7,8 +7,7 @@ use burncloud_database::Database;
 mod repository;
 
 pub use repository::{
-    RouterToken, RouterTokenModel, RouterTokenRepository, RouterTokenValidationResult,
-    TokenRotationResult,
+    RouterToken, RouterTokenModel, RouterTokenValidationResult, TokenRotationResult,
 };
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;

@@ -3,7 +3,6 @@
 //! This crate handles all database operations related to API tokens,
 //! including validation, spend-quota tracking, CRUD operations, and key rotation.
 
-use burncloud_common::CrudRepository;
 use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -19,7 +18,7 @@ async fn best_effort_execute(pool: &sqlx::AnyPool, sql: &str) {
 /// Platform migrations remain the canonical production schema path. This helper
 /// preserves the old RouterDatabase::init bootstrap behavior while keeping token
 /// persistence under the Identity owner.
-pub async fn init(db: &Database) -> Result<()> {
+pub(crate) async fn init(db: &Database) -> Result<()> {
     let conn = db.get_connection()?;
     let kind = db.kind();
 
@@ -669,48 +668,3 @@ impl RouterTokenModel {
     }
 }
 
-/// Repository wrapper that implements the standard [`CrudRepository`] contract for tokens.
-///
-/// The token string itself serves as the record ID.
-/// `update` replaces the full token record: delete + re-insert with the caller-provided
-/// `id` as the token value, keeping the rest of `input` intact.
-pub struct RouterTokenRepository<'a>(pub &'a Database);
-
-#[async_trait::async_trait]
-impl<'a> CrudRepository<RouterToken, String, DatabaseError> for RouterTokenRepository<'a> {
-    async fn find_by_id(&self, id: &String) -> Result<Option<RouterToken>> {
-        RouterTokenModel::find_by_token(self.0, id).await
-    }
-
-    async fn list(&self) -> Result<Vec<RouterToken>> {
-        RouterTokenModel::list(self.0).await
-    }
-
-    async fn create(&self, input: &RouterToken) -> Result<RouterToken> {
-        RouterTokenModel::create(self.0, input).await?;
-        self.find_by_id(&input.token)
-            .await?
-            .ok_or_else(|| DatabaseError::Query("token disappeared after insert".to_string()))
-    }
-
-    async fn update(&self, id: &String, input: &RouterToken) -> Result<bool> {
-        let exists = self.find_by_id(id).await?.is_some();
-        if !exists {
-            return Ok(false);
-        }
-        // Delete old token, then insert the new record with the canonical id.
-        RouterTokenModel::delete(self.0, id).await?;
-        let mut record = input.clone();
-        record.token = id.clone();
-        RouterTokenModel::create(self.0, &record).await?;
-        Ok(true)
-    }
-
-    async fn delete(&self, id: &String) -> Result<bool> {
-        let exists = self.find_by_id(id).await?.is_some();
-        if exists {
-            RouterTokenModel::delete(self.0, id).await?;
-        }
-        Ok(exists)
-    }
-}

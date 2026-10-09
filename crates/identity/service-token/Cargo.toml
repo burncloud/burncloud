@@ -6,8 +6,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait.workspace = true
-burncloud-common.workspace = true
 burncloud-database.workspace = true
 hex.workspace = true
 md5.workspace = true
