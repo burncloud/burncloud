@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/interfaces/common",
-    "crates/identity/service-token",
+    "crates/identity/token",
     "crates/identity/user",
     "crates/traffic/contracts",
     "crates/supply/contracts",
@@ -194,7 +194,7 @@ burncloud-service-monitor = { path = "crates/platform/observability/monitor" }
 burncloud-service-setting = { path = "crates/platform/configuration/setting" }
 burncloud-service-inference = { path = "crates/trust/inference" }
 burncloud-identity-user = { path = "crates/identity/user" }
-burncloud-service-token = { path = "crates/identity/service-token" }
+burncloud-identity-token = { path = "crates/identity/token" }
 burncloud-service-router-log = { path = "crates/traffic/service-router-log" }
 burncloud-supply-channel = { path = "crates/supply/channel" }
 burncloud-supply-model = { path = "crates/supply/model" }
