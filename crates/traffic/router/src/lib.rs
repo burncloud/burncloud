@@ -2287,10 +2287,9 @@ async fn proxy_logic(
 
                         // Skip channel if path format does not match channel type
                         if is_openai_path
-                            && !matches!(
-                                channel_type,
-                                ChannelType::OpenAI | ChannelType::Zai | ChannelType::VertexAi
-                            )
+                            && !matches!(channel_type, ChannelType::OpenAI | ChannelType::Zai)
+                            && !(channel_type == ChannelType::VertexAi
+                                && path.starts_with("/v1/chat/completions"))
                         {
                             tracing::debug!(
                                 "Skipping {:?} channel for OpenAI format path: {}",
