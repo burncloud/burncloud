@@ -26,10 +26,10 @@
 //! Rates are set explicitly rather than through the fallbacks, so a field reading the
 //! wrong rate shows up as a wrong number rather than as a coincidence.
 
-use burncloud_database::{create_database_with_url, Database};
-use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use burncloud_commerce_billing::types::{CostBreakdown, UnifiedUsage};
+use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use burncloud_commerce_billing::{CostCalculator, PriceCache};
+use burncloud_database::{create_database_with_url, Database};
 use std::error::Error;
 
 /// One nano-dollar per token for input, so every other rate is a readable multiple.

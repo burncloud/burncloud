@@ -30,7 +30,7 @@ pub use cache::PriceCache;
 pub use calculator::{CostCalculator, RequestOptions};
 pub use counter::UnifiedTokenCounter;
 pub use error::{BillingError, ParseError};
-pub use repository::{BillingPriceModel, BillingTieredPriceModel, current_timestamp};
+pub use repository::{current_timestamp, BillingPriceModel, BillingTieredPriceModel};
 pub use types::{CostBreakdown, CostResult, UnifiedUsage};
 pub use usage::{get_parser, parse_chunk_or_default, parse_response_or_default, UsageParser};
 

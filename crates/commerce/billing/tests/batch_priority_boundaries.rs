@@ -44,10 +44,10 @@
 //! makes each per-token component equal to its price divided by ten thousand, so a wrong rate shows up as a
 //! recognisable multiple rather than a similar-looking number.
 
-use burncloud_database::{create_database_with_url, Database};
-use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use burncloud_commerce_billing::types::{CostBreakdown, UnifiedUsage};
+use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use burncloud_commerce_billing::{CostCalculator, PriceCache};
+use burncloud_database::{create_database_with_url, Database};
 use std::error::Error;
 
 async fn fresh_db(tag: &str) -> Result<(Database, std::path::PathBuf), Box<dyn Error>> {

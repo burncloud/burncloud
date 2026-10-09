@@ -1,6 +1,6 @@
+use crate::BillingPriceModel;
 use burncloud_commerce_contracts::pricing::Price;
 use burncloud_database::Database;
-use crate::BillingPriceModel;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
