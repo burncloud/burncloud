@@ -32,10 +32,26 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
 
     // Model-based routing now reads Supply-owned channel data.
     let model = "round-robin-test-model";
-    common::insert_test_channel(&pool, 75611, "Upstream 1",
-        &format!("http://127.0.0.1:{mock_port}/anything/u1"), "key1", model, "default").await?;
-    common::insert_test_channel(&pool, 75612, "Upstream 2",
-        &format!("http://127.0.0.1:{mock_port}/anything/u2"), "key2", model, "default").await?;
+    common::insert_test_channel(
+        &pool,
+        75611,
+        "Upstream 1",
+        &format!("http://127.0.0.1:{mock_port}/anything/u1"),
+        "key1",
+        model,
+        "default",
+    )
+    .await?;
+    common::insert_test_channel(
+        &pool,
+        75612,
+        "Upstream 2",
+        &format!("http://127.0.0.1:{mock_port}/anything/u2"),
+        "key2",
+        model,
+        "default",
+    )
+    .await?;
     sqlx::query("INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 1, 1, '')")
         .bind(model).execute(&pool).await?;
 
