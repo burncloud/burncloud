@@ -277,6 +277,18 @@ fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> std::time::
     )
 }
 
+/// A stable, structured timeout error for exhausted routing retry budgets.
+fn retry_deadline_error_response() -> Response {
+    build_response_with_header(
+        StatusCode::GATEWAY_TIMEOUT,
+        "content-type",
+        "application/json",
+        Body::from(
+            r#"{"error":{"message":"Router retry budget deadline exceeded","type":"upstream_error","code":"retry_deadline_exceeded"}}"#,
+        ),
+    )
+}
+
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
 const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 /// HTTP TCP keepalive interval (seconds).
@@ -1890,14 +1902,7 @@ async fn proxy_handler(
                 "Router retry budget deadline exceeded; abandoning failover"
             );
             ProxyResult {
-                response: build_response_with_header(
-                    StatusCode::GATEWAY_TIMEOUT,
-                    "content-type",
-                    "application/json",
-                    Body::from(
-                        r#"{"error":{"message":"Router retry budget deadline exceeded","type":"upstream_error","code":"retry_deadline_exceeded"}}"#,
-                    ),
-                ),
+                response: retry_deadline_error_response(),
                 upstream_id: None,
                 final_status: StatusCode::GATEWAY_TIMEOUT,
                 pricing_region: None,
@@ -4687,6 +4692,19 @@ mod tests {
             assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
             assert!(timeout > std::time::Duration::from_secs(120));
         }
+    }
+
+    #[tokio::test]
+    async fn retry_deadline_returns_structured_gateway_timeout() {
+        let response = super::retry_deadline_error_response();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("timeout response body is readable");
+        let decoded: serde_json::Value =
+            serde_json::from_slice(&body).expect("timeout response is valid JSON");
+        assert_eq!(decoded["error"]["code"], "retry_deadline_exceeded");
+        assert_eq!(decoded["error"]["type"], "upstream_error");
     }
 
     #[test]
