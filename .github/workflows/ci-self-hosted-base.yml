@@ -22,9 +22,12 @@ concurrency:
 jobs:
   check:
     name: ${{ inputs.check_name }}
+    # Both the PR author and the source repository must be trusted for automatic execution.
+    # A trusted maintainer's APPROVE review retains the manual authorization path.
+    # Configure repository variables SELF_HOSTED_CI_USERS and SELF_HOSTED_CI_REPOS as JSON arrays.
     env:
-      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
-    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 90
 
     steps:
