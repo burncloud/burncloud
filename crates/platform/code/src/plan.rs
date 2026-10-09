@@ -145,8 +145,9 @@ pub(crate) fn select(
             };
             match manifest::analyze(change) {
                 Impact::Full(reason) => {
-                    plan.full_reason
-                        .get_or_insert_with(|| format!("root Cargo.toml requires full workspace: {reason}"));
+                    plan.full_reason.get_or_insert_with(|| {
+                        format!("root Cargo.toml requires full workspace: {reason}")
+                    });
                 }
                 Impact::Scoped {
                     added_members,
@@ -174,7 +175,8 @@ pub(crate) fn select(
                             plan.direct.insert(name.clone());
                         } else {
                             plan.full_reason.get_or_insert_with(|| {
-                                "root package changed but cargo metadata has no root package".to_owned()
+                                "root package changed but cargo metadata has no root package"
+                                    .to_owned()
                             });
                         }
                     }
