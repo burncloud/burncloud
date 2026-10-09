@@ -27,4 +27,4 @@ src/
 
 ## 依赖
 
-- `burncloud-database` — 数据库基础设施\n- `burncloud-service-token` — Identity-owned credential public API
+- `burncloud-database` — 数据库基础设施\n- `burncloud-identity-token` — Identity-owned credential public API
