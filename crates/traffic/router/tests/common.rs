@@ -409,11 +409,7 @@ pub(crate) async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
 
 #[allow(
     dead_code,
-    reason = "shared test helper: each file in `tests/` is its own crate, so a helper used only by a sibling test binary is dead code in this one"
-)]
-#[allow(
-    dead_code,
-    reason = "shared helper: test crates using pre-bound listeners need not call the fixed-port wrapper"
+    reason = "shared test helper: each integration test binary uses either a pre-bound listener or the fixed-port wrapper"
 )]
 pub(crate) async fn start_test_server(port: u16, db_url: &str) {
     let listener = TcpListener::bind(format!("0.0.0.0:{port}"))
