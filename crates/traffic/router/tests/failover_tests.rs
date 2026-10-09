@@ -17,8 +17,8 @@ use reqwest::Client;
 use std::{
     hash::{Hash, Hasher},
     sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     },
 };
 
@@ -95,8 +95,7 @@ async fn test_failover() -> anyhow::Result<()> {
                 channel_id.hash(&mut hasher);
                 hasher.finish()
             };
-            score(75621) > score(75622)
-                && score(75621).saturating_sub(score(75622)) > u64::MAX / 3
+            score(75621) > score(75622) && score(75621).saturating_sub(score(75622)) > u64::MAX / 3
         })
         .ok_or_else(|| anyhow::anyhow!("No session preferring the failed channel"))?;
 
@@ -122,7 +121,9 @@ async fn test_failover() -> anyhow::Result<()> {
         let body: serde_json::Value = resp.json().await?;
         assert_eq!(status, 200, "Request {request_number} failed: {body}");
         assert!(
-            body["url"].as_str().is_some_and(|url| url.contains("/healthy")),
+            body["url"]
+                .as_str()
+                .is_some_and(|url| url.contains("/healthy")),
             "Request {request_number} was not answered by the healthy channel: {body}"
         );
 
