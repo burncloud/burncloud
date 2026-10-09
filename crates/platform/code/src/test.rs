@@ -201,13 +201,7 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     let metadata: Metadata =
         serde_json::from_slice(&raw.stdout).context("Invalid Cargo workspace metadata")?;
     let root_manifest = root_manifest_change(root, &options, &files)?;
-    let plan = plan::select(
-        root,
-        &files,
-        metadata,
-        options.all,
-        root_manifest.as_ref(),
-    )?;
+    let plan = plan::select(root, &files, metadata, options.all, root_manifest.as_ref())?;
     if let Some(reason) = &plan.full_reason {
         println!("Selection: full workspace ({reason})");
     } else {
