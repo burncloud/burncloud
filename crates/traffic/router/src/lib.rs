@@ -226,6 +226,9 @@ const HTTP_REQUEST_TIMEOUT_SECS: u64 = 36000;
 /// Long-task policies deliberately retain the existing 10-hour per-request timeout.
 const DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120;
 const DEFAULT_LONG_TASK_DEADLINE_SECS: u64 = 72000;
+/// Reject malformed/unreasonably large retry budget overrides before Tokio
+/// attempts to construct a deadline beyond Instant's supported range.
+const MAX_RETRY_DEADLINE_SECS: u64 = 30 * 24 * 60 * 60;
 
 fn is_interactive_request(path: &str) -> bool {
     // Explicitly match interactive API families: an unknown endpoint keeps the
@@ -242,17 +245,19 @@ fn is_interactive_request(path: &str) -> bool {
         || path.contains(":streamGenerateContent")
 }
 
+fn parse_retry_budget_secs(raw: Option<&str>, default: u64) -> u64 {
+    raw.and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| (1..=MAX_RETRY_DEADLINE_SECS).contains(v))
+        .unwrap_or(default)
+}
+
 fn retry_budget_secs(path: &str) -> u64 {
     let (key, default) = if is_interactive_request(path) {
         ("BURNCLOUD_INTERACTIVE_DEADLINE_SECS", DEFAULT_INTERACTIVE_DEADLINE_SECS)
     } else {
         ("BURNCLOUD_LONG_TASK_DEADLINE_SECS", DEFAULT_LONG_TASK_DEADLINE_SECS)
     };
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .filter(|v| *v > 0)
-        .unwrap_or(default)
+    parse_retry_budget_secs(std::env::var(key).ok().as_deref(), default)
 }
 
 /// Bound each upstream HTTP request by both its legacy per-attempt limit and
@@ -270,11 +275,11 @@ fn remaining_attempt_timeout(
         .min(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
 }
 
-fn retry_attempt_timeout(path: &str, request_start_time: Instant) -> std::time::Duration {
-    remaining_attempt_timeout(
-        std::time::Duration::from_secs(retry_budget_secs(path)),
-        request_start_time.elapsed(),
-    )
+fn retry_attempt_timeout(
+    retry_budget: std::time::Duration,
+    request_start_time: Instant,
+) -> std::time::Duration {
+    remaining_attempt_timeout(retry_budget, request_start_time.elapsed())
 }
 
 /// A stable, structured timeout error for exhausted routing retry budgets.
@@ -1874,8 +1879,10 @@ async fn proxy_handler(
     // a full client timeout for every upstream. Dropping the timed-out future
     // also drops any live BudgetGuard, refunding uncommitted TPM reservations.
     let retry_budget_secs = retry_budget_secs(&path);
-    let remaining = std::time::Duration::from_secs(retry_budget_secs)
-        .saturating_sub(start_time.elapsed());
+    // Snapshot the policy once: a runtime config change must not extend a
+    // response stream beyond the deadline assigned when it was admitted.
+    let retry_budget = std::time::Duration::from_secs(retry_budget_secs);
+    let remaining = retry_budget.saturating_sub(start_time.elapsed());
     let proxy_future = proxy_logic(
         &state,
         method,
@@ -1890,6 +1897,7 @@ async fn proxy_handler(
         token_counter.clone(),
         model_name.as_deref(),
         start_time,
+        retry_budget,
     );
     let result = match tokio::time::timeout(remaining, proxy_future).await {
         Ok(result) => result,
@@ -2239,6 +2247,7 @@ async fn proxy_logic(
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
+    retry_budget: std::time::Duration,
 ) -> ProxyResult {
     // Initialize request log data collection (Issue #334)
     // Only collect detailed data when storage policy is not 'none'
@@ -2821,7 +2830,7 @@ async fn proxy_logic(
             // Enforce the remaining total budget through SSE body reads as
             // well as request setup, without extending the legacy 10-hour cap.
             let req_builder =
-                req_builder.timeout(retry_attempt_timeout(path, request_start_time));
+                req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
 
             // Execute passthrough request
             match req_builder.send().await {
@@ -3503,7 +3512,7 @@ async fn proxy_logic(
 
         // 5. Execute: apply both the remaining total budget and legacy 10-hour
         // per-attempt cap, including any streaming response body reads.
-        let req_builder = req_builder.timeout(retry_attempt_timeout(path, request_start_time));
+        let req_builder = req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
