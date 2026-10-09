@@ -250,7 +250,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn known_test_baseline_is_the_reviewed_seven() -> anyhow::Result<()> {
+    fn known_test_baseline_is_the_reviewed_six() -> anyhow::Result<()> {
         anyhow::ensure!(
             known_test_skips()?
                 == vec![
@@ -260,7 +260,6 @@ mod tests {
                     "test_round_robin_balancer",
                     "test_failover",
                     "test_vertex_full_flow",
-                    "test_login_user_success",
                 ],
             "known test baseline changed unexpectedly"
         );
