@@ -199,7 +199,9 @@ async fn failed_channel_writes_roll_back_atomically_on_postgres() {
         failed.models = "same,same".to_string();
 
         assert!(
-            ChannelProviderModel::create(&db, &mut failed).await.is_err(),
+            ChannelProviderModel::create(&db, &mut failed)
+                .await
+                .is_err(),
             "duplicate abilities must keep returning an error"
         );
         assert_eq!(
@@ -248,10 +250,9 @@ async fn failed_channel_writes_roll_back_atomically_on_postgres() {
         );
         assert_eq!(stored.models, "old");
 
-        let abilities =
-            burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
-                .await
-                .expect("read abilities after failed update");
+        let abilities = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
+            .await
+            .expect("read abilities after failed update");
         assert_eq!(abilities.len(), 1);
         assert_eq!(abilities[0].group, "pg-vip");
         assert_eq!(
