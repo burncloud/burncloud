@@ -12,8 +12,7 @@ members = [
     "crates/traffic/router-aws",
     "crates/traffic/service-router-log",
     "crates/commerce/contracts",
-    "crates/commerce/database-billing",
-    "crates/commerce/service-billing",
+    "crates/commerce/billing",
     "crates/trust/inference",
     "crates/platform/configuration/setting",
     "crates/platform/lifecycle/installer",
@@ -179,7 +178,7 @@ burncloud-client = { path = "crates/interfaces/client", default-features = false
 burncloud-commerce-contracts = { path = "crates/commerce/contracts" }
 burncloud-common = { path = "crates/interfaces/common" }
 burncloud-database = { path = "crates/platform/storage/database" }
-burncloud-database-billing = { path = "crates/commerce/database-billing" }
+burncloud-commerce-billing = { path = "crates/commerce/billing" }
 burncloud-database-router = { path = "crates/traffic/database-router" }
 burncloud-database-sys = { path = "crates/platform/storage/database-sys" }
 burncloud-download = { path = "crates/platform/storage/download" }
@@ -197,7 +196,6 @@ burncloud-service-inference = { path = "crates/trust/inference" }
 burncloud-identity-user = { path = "crates/identity/user" }
 burncloud-service-token = { path = "crates/identity/service-token" }
 burncloud-service-router-log = { path = "crates/traffic/service-router-log" }
-burncloud-service-billing = { path = "crates/commerce/service-billing" }
 burncloud-supply-channel = { path = "crates/supply/channel" }
 burncloud-supply-model = { path = "crates/supply/model" }
 burncloud-supply-contracts = { path = "crates/supply/contracts" }
@@ -238,7 +236,7 @@ hex.workspace = true
 
 burncloud-auto-update.workspace = true
 burncloud-database.workspace = true
-burncloud-database-billing.workspace = true
+burncloud-commerce-billing.workspace = true
 burncloud-supply-channel.workspace = true
 burncloud-database-router.workspace = true
 burncloud-database-sys.workspace = true

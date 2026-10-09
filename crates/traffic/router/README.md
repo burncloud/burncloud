@@ -36,7 +36,7 @@ Use source search rather than this list as an exhaustive module index.
 
 Current `Cargo.toml` has two explicitly whitelisted cross-domain implementation dependencies:
 
-- `burncloud-service-billing`
+- `burncloud-commerce-billing`
 - `burncloud-identity-user`
 
 `crates/traffic/router/scripts/check-router-deps.sh` enforces this compatibility whitelist. Adding another cross-domain implementation dependency requires deliberate architecture review and an explicit whitelist update.

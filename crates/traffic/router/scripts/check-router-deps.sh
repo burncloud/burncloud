@@ -30,7 +30,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ── Whitelist: service crates that router is allowed to depend on ──
 ALLOWED_CROSS_DOMAIN_CRATES=(
-  burncloud-service-billing
+  burncloud-commerce-billing
   burncloud-identity-user
 )
 

@@ -122,7 +122,6 @@ crate = "burncloud-common"
 wrappers = [
     "burncloud",
     "burncloud-client",
-    "burncloud-database-billing",
     "burncloud-database-router",
     "burncloud-router",
     "burncloud-server",
@@ -139,15 +138,14 @@ wrappers = [
 ]
 reason = "Supply Model owns model capability persistence and model resolution/discovery; new consumers require architecture review"
 
-# burncloud-database-billing — billing_ domain (prices, tiered prices, exchange rates)
+# burncloud-commerce-billing — Commerce-owned Billing implementation.
 [[bans.deny]]
-crate = "burncloud-database-billing"
+crate = "burncloud-commerce-billing"
 wrappers = [
-    "burncloud-service-billing",
     "burncloud",
     "burncloud-router",
 ]
-reason = "Billing DB access must go through burncloud-service-billing"
+reason = "Commerce Billing owns price persistence, usage normalization and cost calculation; new consumers require architecture review and should prefer burncloud-commerce-contracts when only DTOs are needed"
 
 # burncloud-supply-channel — Supply-owned Channel implementation.
 [[bans.deny]]
