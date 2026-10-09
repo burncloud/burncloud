@@ -348,13 +348,13 @@ async fn t5b_layer_decision_and_traffic_color_db_roundtrip() -> anyhow::Result<(
     reason = "single end-to-end scenario: the fixture seeding, two routing calls, and the observability round-trip are one narrative"
 )]
 async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
+    use burncloud_commerce_billing::PriceCache;
     use burncloud_database::sqlx;
     use burncloud_router::affinity::AffinityCache;
     use burncloud_router::channel_state::ChannelStateTracker;
     use burncloud_router::exchange_rate::ExchangeRateService;
     use burncloud_router::model_router::{ModelRouter, RouteInputs, RoutingDecision};
     use burncloud_router::SchedulingRequest;
-    use burncloud_commerce_billing::PriceCache;
 
     let (db, pool, _url) = setup_db().await?;
     common::ensure_l6_observability_columns(&pool).await?;

@@ -14,8 +14,8 @@ use common::{insert_router_token, insert_test_channel, setup_db, start_test_serv
 use std::time::Duration;
 
 async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::Result<()> {
-    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
     use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
+    use burncloud_commerce_contracts::price_u64::dollars_to_nano;
 
     let input = PriceInput {
         model: model.to_string(),
