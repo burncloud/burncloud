@@ -55,14 +55,10 @@ fn global(path: &str) -> bool {
     ) || path.starts_with(".cargo/")
 }
 
-pub(crate) fn select(
+fn workspace_packages(
     root: &Path,
-    files: &BTreeSet<String>,
     metadata: Metadata,
-    all: bool,
-    root_manifest: Option<&RootManifestChange>,
-) -> Result<Plan> {
-    let root = root.canonicalize()?;
+) -> Result<(BTreeMap<PathBuf, String>, Vec<Package>)> {
     let mut directories = BTreeMap::new();
     let mut packages = Vec::new();
     for package in metadata.packages {
@@ -81,107 +77,111 @@ pub(crate) fn select(
         !packages.is_empty(),
         "Cargo metadata contains no workspace packages"
     );
-    let mut plan = Plan {
-        full_reason: all.then(|| "--all requested".to_owned()),
-        direct: BTreeSet::new(),
-        affected: BTreeSet::new(),
+    Ok((directories, packages))
+}
+
+fn mark_full(plan: &mut Plan, reason: String) {
+    if plan.full_reason.is_none() {
+        plan.full_reason = Some(reason);
+    }
+}
+
+fn apply_root_manifest_impact(
+    plan: &mut Plan,
+    root: &Path,
+    directories: &BTreeMap<PathBuf, String>,
+    packages: &[Package],
+    root_manifest: Option<&RootManifestChange>,
+) {
+    let Some(change) = root_manifest else {
+        mark_full(
+            plan,
+            "root Cargo.toml changed but its previous version is unavailable".to_owned(),
+        );
+        return;
     };
-    for file in files {
-        if no_test_impact(file) {
-            continue;
+
+    let Impact::Scoped {
+        added_members,
+        changed_workspace_dependencies,
+        root_package_changed,
+    } = manifest::analyze(change)
+    else {
+        if let Impact::Full(reason) = manifest::analyze(change) {
+            mark_full(
+                plan,
+                format!("root Cargo.toml requires full workspace: {reason}"),
+            );
         }
-        if file == "Cargo.toml" {
-            let Some(change) = root_manifest else {
-                plan.full_reason.get_or_insert_with(|| {
-                    "root Cargo.toml changed but its previous version is unavailable".to_owned()
-                });
-                continue;
-            };
-            match manifest::analyze(change) {
-                Impact::Full(reason) => {
-                    plan.full_reason.get_or_insert_with(|| {
-                        format!("root Cargo.toml requires full workspace: {reason}")
-                    });
-                }
-                Impact::Scoped {
-                    added_members,
-                    changed_workspace_dependencies,
-                    root_package_changed,
-                } => {
-                    for member in added_members {
-                        let member_path = root.join(&member);
-                        let owner = member_path
-                            .canonicalize()
-                            .ok()
-                            .and_then(|directory| directories.get(&directory));
-                        if let Some(name) = owner {
-                            plan.direct.insert(name.clone());
-                        } else {
-                            plan.full_reason.get_or_insert_with(|| {
-                                format!(
-                                    "root Cargo.toml added workspace member that cannot be mapped safely: {member}"
-                                )
-                            });
-                        }
-                    }
-                    if root_package_changed {
-                        if let Some(name) = directories.get(&root) {
-                            plan.direct.insert(name.clone());
-                        } else {
-                            plan.full_reason.get_or_insert_with(|| {
-                                "root package changed but cargo metadata has no root package"
-                                    .to_owned()
-                            });
-                        }
-                    }
-                    for dependency in changed_workspace_dependencies {
-                        for package in &packages {
-                            if package
-                                .dependencies
-                                .iter()
-                                .any(|candidate| candidate.manifest_name() == dependency)
-                            {
-                                plan.direct.insert(package.name.clone());
-                            }
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-        if global(file) {
-            plan.full_reason
-                .get_or_insert_with(|| format!("shared configuration changed: {file}"));
-            continue;
-        }
-        // Component-aware, longest-prefix ownership handles nested workspace packages.
-        let path = root.join(file);
-        let owner = directories
-            .iter()
-            .filter(|(dir, _)| **dir != root && path.starts_with(dir))
-            .max_by_key(|(dir, _)| dir.components().count())
-            .map(|(_, name)| name);
-        let owner = owner.or_else(|| {
-            (file.starts_with("crates/interfaces/cli/") || file.starts_with("src/"))
-                .then(|| directories.get(&root))
-                .flatten()
-        });
+        return;
+    };
+
+    for member in added_members {
+        let owner = root
+            .join(&member)
+            .canonicalize()
+            .ok()
+            .and_then(|directory| directories.get(&directory));
         if let Some(name) = owner {
             plan.direct.insert(name.clone());
         } else {
-            plan.full_reason
-                .get_or_insert_with(|| format!("unclassified path: {file}"));
+            mark_full(
+                plan,
+                format!(
+                    "root Cargo.toml added workspace member that cannot be mapped safely: {member}"
+                ),
+            );
         }
     }
-    if plan.full_reason.is_some() {
-        plan.affected
-            .extend(packages.iter().map(|p| p.name.clone()));
-        return Ok(plan);
+
+    if root_package_changed {
+        if let Some(name) = directories.get(root) {
+            plan.direct.insert(name.clone());
+        } else {
+            mark_full(
+                plan,
+                "root package changed but cargo metadata has no root package".to_owned(),
+            );
+        }
     }
-    // Dependency paths identify renamed packages without confusing registry crates
-    // that happen to share their names. Do not filter by current host or features.
-    let mut consumers: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for package in &packages {
+
+    for dependency in changed_workspace_dependencies {
+        for package in packages {
+            if package
+                .dependencies
+                .iter()
+                .any(|candidate| candidate.manifest_name() == dependency)
+            {
+                plan.direct.insert(package.name.clone());
+            }
+        }
+    }
+}
+
+fn owner_for_file<'a>(
+    root: &Path,
+    directories: &'a BTreeMap<PathBuf, String>,
+    file: &str,
+) -> Option<&'a String> {
+    let path = root.join(file);
+    let owner = directories
+        .iter()
+        .filter(|(dir, _)| **dir != root && path.starts_with(dir))
+        .max_by_key(|(dir, _)| dir.components().count())
+        .map(|(_, name)| name);
+    owner.or_else(|| {
+        (file.starts_with("crates/interfaces/cli/") || file.starts_with("src/"))
+            .then(|| directories.get(root))
+            .flatten()
+    })
+}
+
+fn consumers(
+    directories: &BTreeMap<PathBuf, String>,
+    packages: &[Package],
+) -> Result<BTreeMap<String, BTreeSet<String>>> {
+    let mut consumers = BTreeMap::<String, BTreeSet<String>>::new();
+    for package in packages {
         for dependency in &package.dependencies {
             if let Some(path) = &dependency.path {
                 let directory = path
@@ -196,6 +196,10 @@ pub(crate) fn select(
             }
         }
     }
+    Ok(consumers)
+}
+
+fn expand_affected(plan: &mut Plan, consumers: &BTreeMap<String, BTreeSet<String>>) {
     plan.affected = plan.direct.clone();
     let mut pending: Vec<_> = plan.direct.iter().cloned().collect();
     while let Some(name) = pending.pop() {
@@ -207,6 +211,59 @@ pub(crate) fn select(
             }
         }
     }
+}
+
+pub(crate) fn select(
+    root: &Path,
+    files: &BTreeSet<String>,
+    metadata: Metadata,
+    all: bool,
+    root_manifest: Option<&RootManifestChange>,
+) -> Result<Plan> {
+    let root = root.canonicalize()?;
+    let (directories, packages) = workspace_packages(&root, metadata)?;
+    let mut plan = Plan {
+        full_reason: all.then(|| "--all requested".to_owned()),
+        direct: BTreeSet::new(),
+        affected: BTreeSet::new(),
+    };
+
+    for file in files {
+        if no_test_impact(file) {
+            continue;
+        }
+        if file == "Cargo.toml" {
+            apply_root_manifest_impact(
+                &mut plan,
+                &root,
+                &directories,
+                &packages,
+                root_manifest,
+            );
+            continue;
+        }
+        if global(file) {
+            mark_full(
+                &mut plan,
+                format!("shared configuration changed: {file}"),
+            );
+            continue;
+        }
+        if let Some(name) = owner_for_file(&root, &directories, file) {
+            plan.direct.insert(name.clone());
+        } else {
+            mark_full(&mut plan, format!("unclassified path: {file}"));
+        }
+    }
+
+    if plan.full_reason.is_some() {
+        plan.affected
+            .extend(packages.iter().map(|package| package.name.clone()));
+        return Ok(plan);
+    }
+
+    let consumers = consumers(&directories, &packages)?;
+    expand_affected(&mut plan, &consumers);
     Ok(plan)
 }
 
