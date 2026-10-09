@@ -98,7 +98,7 @@ fn apply_root_manifest_change(
                 }
             }
             if root_package_changed {
-                if let Some(name) = directories.get(&root) {
+                if let Some(name) = directories.get(root) {
                     plan.direct.insert(name.clone());
                 } else {
                     plan.full_reason.get_or_insert_with(|| {
@@ -108,7 +108,7 @@ fn apply_root_manifest_change(
                 }
             }
             for dependency in changed_workspace_dependencies {
-                for package in &packages {
+                for package in packages {
                     if package
                         .dependencies
                         .iter()
