@@ -81,11 +81,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
         let h1 = hash(75611);
         let h2 = hash(75612);
         // Prefer distinct, strong affinity keys to avoid marginal ties.
-        let (winner, high, low) = if h1 > h2 {
-            (0, h1, h2)
-        } else {
-            (1, h2, h1)
-        };
+        let (winner, high, low) = if h1 > h2 { (0, h1, h2) } else { (1, h2, h1) };
         if counts[winner] < 2 && high.saturating_sub(low) > u64::MAX / 3 {
             sessions.push(session);
             counts[winner] += 1;
