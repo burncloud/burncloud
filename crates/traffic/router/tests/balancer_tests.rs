@@ -13,7 +13,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_mock_upstream, start_test_server};
+use common::{setup_db, start_mock_upstream, start_test_server_on};
 use reqwest::Client;
 use serde_json::Value;
 use std::hash::{Hash, Hasher};
@@ -23,10 +23,8 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
-    let mock_port = 3022;
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
-        .await
-        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let mock_port = listener.local_addr()?.port();
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
@@ -57,8 +55,9 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
         .bind(model).execute(&pool).await?;
 
     // 4. Start Server
-    let port = 3014;
-    start_test_server(port, &db_url).await;
+    let server_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = server_listener.local_addr()?.port();
+    start_test_server_on(server_listener, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{}/v1/chat/completions", port);

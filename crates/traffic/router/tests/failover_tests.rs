@@ -12,7 +12,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_mock_upstream, start_test_server};
+use common::{setup_db, start_mock_upstream, start_test_server_on};
 use reqwest::Client;
 use std::{
     hash::{Hash, Hasher},
@@ -99,8 +99,9 @@ async fn test_failover() -> anyhow::Result<()> {
         })
         .ok_or_else(|| anyhow::anyhow!("No session preferring the failed channel"))?;
 
-    let port = 3015;
-    start_test_server(port, &db_url).await;
+    let server_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = server_listener.local_addr()?.port();
+    start_test_server_on(server_listener, &db_url).await;
 
     let client = Client::new();
     let url = format!("http://localhost:{port}/v1/chat/completions");
