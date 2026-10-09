@@ -282,6 +282,16 @@ fn retry_attempt_timeout(
     remaining_attempt_timeout(retry_budget, request_start_time.elapsed())
 }
 
+/// One cancellable deadline shared by all upstream attempts. A timed-out
+/// future is dropped, releasing any uncommitted BudgetGuard it still owns.
+/// This helper is exercised with a hung future in the router unit tests.
+async fn enforce_retry_deadline<T>(
+    remaining: std::time::Duration,
+    operation: impl std::future::Future<Output = T>,
+) -> Result<T, tokio::time::error::Elapsed> {
+    tokio::time::timeout(remaining, operation).await
+}
+
 /// A stable, structured timeout error for exhausted routing retry budgets.
 fn retry_deadline_error_response() -> Response {
     build_response_with_header(
@@ -1899,7 +1909,7 @@ async fn proxy_handler(
         start_time,
         retry_budget,
     );
-    let result = match tokio::time::timeout(remaining, proxy_future).await {
+    let result = match enforce_retry_deadline(remaining, proxy_future).await {
         Ok(result) => result,
         Err(_) => {
             tracing::warn!(
@@ -4651,8 +4661,8 @@ async fn proxy_logic(
 )]
 mod tests {
     use super::{
-        inject_video_tokens_if_empty, is_interactive_request, parse_retry_budget_secs,
-        remaining_attempt_timeout, retry_attempt_timeout,
+        enforce_retry_deadline, inject_video_tokens_if_empty, is_interactive_request,
+        parse_retry_budget_secs, remaining_attempt_timeout, retry_attempt_timeout,
     };
     use crate::rate_budget::{
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
@@ -4764,38 +4774,45 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn deadline_cancellation_refunds_real_budget_guard() {
         let budget = InMemoryBudget::new();
         let channel_id = 680;
         budget.configure(channel_id, 100, 1000, ChannelReservation::default());
         let initial = budget.snapshot(channel_id).expect("configured channel");
-        let timed_out = tokio::time::timeout(
-            std::time::Duration::from_millis(10),
-            async {
-                let outcome = budget.try_consume(channel_id, TrafficColor::Yellow, 100);
-                assert_eq!(outcome, ConsumeOutcome::OwnBucket);
-                let _guard = BudgetGuard::with_source(
-                    &budget,
-                    channel_id,
-                    TrafficColor::Yellow,
-                    100,
-                    outcome.sourced().expect("admitted reservation source"),
-                );
-                assert_eq!(
-                    budget.snapshot(channel_id).expect("configured").tpm_remaining_yellow,
-                    initial.tpm_remaining_yellow - 100
-                );
-                std::future::pending::<()>().await;
-            },
+
+        // Drive the very same deadline helper that proxy_handler uses. The
+        // outer timeout prevents a removed/broken deadline from hanging CI.
+        let hung_upstream = async {
+            let outcome = budget.try_consume(channel_id, TrafficColor::Yellow, 100);
+            assert_eq!(outcome, ConsumeOutcome::OwnBucket);
+            let _guard = BudgetGuard::with_source(
+                &budget,
+                channel_id,
+                TrafficColor::Yellow,
+                100,
+                outcome.sourced().expect("admitted reservation source"),
+            );
+            assert_eq!(
+                budget.snapshot(channel_id).expect("configured").tpm_remaining_yellow,
+                initial.tpm_remaining_yellow - 100
+            );
+            std::future::pending::<()>().await;
+        };
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            enforce_retry_deadline(std::time::Duration::from_secs(1), hung_upstream),
         )
         .await;
-        assert!(timed_out.is_err(), "the request must actually time out");
+        assert!(
+            matches!(outcome, Ok(Err(_))),
+            "a stalled upstream must fail at its configured retry deadline"
+        );
         let final_snapshot = budget.snapshot(channel_id).expect("configured");
         assert_eq!(
             final_snapshot.tpm_remaining_yellow,
             initial.tpm_remaining_yellow,
-            "cancelling the in-flight proxy future must drop its real BudgetGuard and refund TPM"
+            "deadline cancellation must drop the real BudgetGuard and refund TPM"
         );
     }
 
