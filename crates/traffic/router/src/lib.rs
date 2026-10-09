@@ -227,13 +227,23 @@ const HTTP_REQUEST_TIMEOUT_SECS: u64 = 36000;
 const DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120;
 const DEFAULT_LONG_TASK_DEADLINE_SECS: u64 = 72000;
 
-fn retry_budget_secs(path: &str) -> u64 {
-    let interactive = path.contains("/chat/completions")
-        || path.contains("/embeddings")
+fn is_interactive_request(path: &str) -> bool {
+    // Explicitly match interactive API families: an unknown endpoint keeps the
+    // long-task budget rather than accidentally truncating video/audio/music jobs.
+    // In particular, OpenAI Responses API must not inherit the 20-hour budget.
+    path.ends_with("/chat/completions")
+        || path.ends_with("/completions")
+        || path.ends_with("/embeddings")
+        || path.ends_with("/responses")
         || path.ends_with("/messages")
+        || path.ends_with("/moderations")
+        || path.ends_with("/rerank")
         || path.contains(":generateContent")
-        || path.contains(":streamGenerateContent");
-    let (key, default) = if interactive {
+        || path.contains(":streamGenerateContent")
+}
+
+fn retry_budget_secs(path: &str) -> u64 {
+    let (key, default) = if is_interactive_request(path) {
         ("BURNCLOUD_INTERACTIVE_DEADLINE_SECS", DEFAULT_INTERACTIVE_DEADLINE_SECS)
     } else {
         ("BURNCLOUD_LONG_TASK_DEADLINE_SECS", DEFAULT_LONG_TASK_DEADLINE_SECS)
@@ -4595,7 +4605,73 @@ async fn proxy_logic(
     reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
-    use super::inject_video_tokens_if_empty;
+    use super::{inject_video_tokens_if_empty, is_interactive_request};
+    use crate::rate_budget::{
+        BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
+    };
+    use burncloud_traffic_contracts::TrafficColor;
+
+    #[test]
+    fn retry_budget_classifies_interactive_and_long_task_endpoints() {
+        for path in [
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/responses",
+            "/v1/embeddings",
+            "/v1/messages",
+            "/v1/moderations",
+            "/v1/rerank",
+            "/v1beta/models/gemini-2.5-flash:generateContent",
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+        ] {
+            assert!(is_interactive_request(path), "{path} must have the interactive deadline");
+        }
+        for path in [
+            "/v1/video/generations",
+            "/v1/videos",
+            "/v1/audio/speech",
+            "/v1/audio/generations",
+            "/v1/music/generations",
+            "/unknown-long-running-endpoint",
+        ] {
+            assert!(!is_interactive_request(path), "{path} must retain long-task headroom");
+        }
+    }
+
+    #[tokio::test]
+    async fn deadline_cancellation_refunds_real_budget_guard() {
+        let budget = InMemoryBudget::new();
+        let channel_id = 680;
+        budget.configure(channel_id, 100, 1000, ChannelReservation::default());
+        let initial = budget.snapshot(channel_id).expect("configured channel");
+        let timed_out = tokio::time::timeout(
+            std::time::Duration::from_millis(10),
+            async {
+                let outcome = budget.try_consume(channel_id, TrafficColor::Yellow, 100);
+                assert_eq!(outcome, ConsumeOutcome::OwnBucket);
+                let _guard = BudgetGuard::with_source(
+                    &budget,
+                    channel_id,
+                    TrafficColor::Yellow,
+                    100,
+                    outcome.sourced().expect("admitted reservation source"),
+                );
+                assert_eq!(
+                    budget.snapshot(channel_id).expect("configured").tpm_remaining_yellow,
+                    initial.tpm_remaining_yellow - 100
+                );
+                std::future::pending::<()>().await;
+            },
+        )
+        .await;
+        assert!(timed_out.is_err(), "the request must actually time out");
+        let final_snapshot = budget.snapshot(channel_id).expect("configured");
+        assert_eq!(
+            final_snapshot.tpm_remaining_yellow,
+            initial.tpm_remaining_yellow,
+            "cancelling the in-flight proxy future must drop its real BudgetGuard and refund TPM"
+        );
+    }
     use axum::http::StatusCode;
     use burncloud_service_billing::UnifiedUsage;
 
