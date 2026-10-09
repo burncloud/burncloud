@@ -24,7 +24,7 @@ identity/service-token -> platform/storage/database
 
 The dependency reversal implemented in #822 is present: Identity does not depend on Traffic's database crate. `traffic/database-router` still provides historical compatibility re-exports for credential types; their implementation belongs to Identity.
 
-## Rename-only target (separate implementation stage)
+## Implemented crate move / package rename
 
 ```text
 crates/identity/service-token  -> crates/identity/token
@@ -34,15 +34,15 @@ burncloud_service_token       -> burncloud_identity_token
 
 No changes to the `TokenService`, `RouterToken`, `RouterTokenModel`, `RouterTokenValidationResult`, `TokenRotationResult` API shapes, SQL, authorization behavior, quotas, or HTTP contracts.
 
-Known references requiring atomic update:
+References migrated in PR #829 (verify from PR diff):
 - `Cargo.toml` workspace membership and dependency declaration
 - `crates/traffic/database-router/{Cargo.toml,src/lib.rs,README.md}`
 - `crates/interfaces/server/{Cargo.toml,src/api/token.rs,tests/security_invariants.rs}`
 - `crates/interfaces/service/{Cargo.toml,src/lib.rs}`
 - `crates/identity/service-token/{Cargo.toml,README.md,src/lib.rs,tests/token_credentials.rs,tests/token_service_entries.rs}`
 - `.github/workflows/ci-quality.yml`: preserve the credential-test floor of 20; rename the package being tested, **never lower the floor**
-- all other callers discovered by full repository search and `cargo metadata`
-- lockfile package entry if tracked, plus architecture/dependency deny rules if needed
+- all other callers must be verified against the **branch tree**, not the default-branch code search index
+- no tracked root `Cargo.lock` was found; verify dependency rules against current repo and CI
 
 Note: a GitHub code-search index can lag the main branch; therefore index results alone are not adequate proof that every reference was migrated.
 
@@ -67,6 +67,19 @@ Note: a GitHub code-search index can lag the main branch; therefore index result
 - Validate `cargo fmt --all -- --check`, focused tests for affected packages, strict Clippy, `cargo deny check`, and `cargo run -- code test`.
 - Check all actual required PR CI statuses on the current HEAD. A documentation-only pass is not evidence the implementation is ready.
 
+## Acceptance evidence / outstanding verification
+
+- [x] Identity / Traffic / Commerce Owner ownership matrix is documented above.
+- [x] Crate rename, Cargo consumer updates and the original two credential integration test files are committed in PR #829.
+- [x] Traffic router and router log implementation files were not modified in the PR.
+- [x] Credential test discovery floor remains **20**; package target was renamed, floor not relaxed.
+- [ ] Verify the complete branch tree contains **zero** remaining references to the retired package name/path, including examples, scripts, docs and architecture/deny checks. GitHub code search may reflect the old default branch and is insufficient.
+- [ ] Verify migrated tests are discovered and all behavior/SQL/auth/quota invariants remain intact; publish test counts and affected-consumer results.
+- [ ] Verify `cargo run -- code test` plans the correct affected packages, including a rename-only move; no hidden skip or test-selection regression.
+- [ ] Verify Cargo Fmt, Code Test, Clippy, Deny and all configured required checks pass on the **same latest HEAD**.
+- [ ] Confirm source-level writer audit: Identity exclusively writes credential/quota state; Traffic exclusively owns `order_type` / `price_cap_nanodollars`; Commerce only calculates costs.
+- [ ] Confirm no schema/migration, public HTTP/JSON/error semantics, or Protected Zone logic changed.
+
 ## Status
 
-Owner audit and rename implementation are committed in PR #829. The original Identity credential integration tests are preserved under `identity/token/tests/`. **CI verification is still pending**: keep #828 open and the PR unmerged until all required checks on the latest HEAD pass.
+Implementation is present but final evidence is incomplete. **PR #829 must remain draft and issue #828 open until every outstanding verification above has positive evidence.**
