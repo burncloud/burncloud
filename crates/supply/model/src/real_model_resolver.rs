@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use burncloud_node_runtime::HardwareProfile;
 
 use crate::{
-    ModelManifest, ModelResolutionError, ModelResolutionOutcome, ModelResolutionRequest,
-    ModelResolver, Variant,
+    LocalModelUnsupported, LocalModelUnsupportedReason, ModelManifest, ModelResolutionError,
+    ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel, Variant,
 };
 
 /// Manifest-backed resolver foundation.
@@ -73,6 +73,47 @@ impl RealModelResolver {
             })
             .cloned()
             .collect()
+    }
+
+    /// Resolves a model using the supplied machine capabilities.
+    ///
+    /// The existing [`ModelResolver::resolve`] contract is intentionally kept
+    /// unchanged, so this capability-aware entry point carries the complete
+    /// inputs needed by the local decision flow. It applies both filters and
+    /// returns the first compatible variant without ranking or sorting.
+    pub fn resolve_with_capabilities(
+        &self,
+        model: &str,
+        hardware: &HardwareProfile,
+        supported_runtimes: &[String],
+    ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
+        let manifest = self
+            .manifests
+            .iter()
+            .find(|manifest| manifest.model_name == model)
+            .ok_or_else(|| {
+                ModelResolutionError::ResolutionFailed(format!(
+                    "NO_MODEL_MANIFEST: model '{model}'"
+                ))
+            })?;
+
+        let hardware_compatible = Self::filter_by_hardware(&manifest.variants, hardware);
+        let compatible = Self::filter_by_runtime(&hardware_compatible, supported_runtimes);
+
+        let Some(variant) = compatible.first() else {
+            return Ok(ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
+                model: model.into(),
+                reason: LocalModelUnsupportedReason::NoCompatibleVariant,
+            }));
+        };
+
+        Ok(ModelResolutionOutcome::Local(ResolvedModel {
+            model: manifest.model_name.clone(),
+            artifact_source: variant.artifact_uri.clone(),
+            artifact_digest: Some(variant.checksum.clone()),
+            runtime: variant.backend.clone(),
+            runtime_version: None,
+        }))
     }
 }
 
@@ -222,5 +263,54 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["llama"]
         );
+    }
+
+    #[test]
+    fn capability_resolution_applies_hardware_and_runtime_filters() {
+        let resolver = RealModelResolver::new(vec![manifest(
+            "deepseek-r1",
+            vec![
+                variant("too-large", "llama.cpp", 8, 16),
+                variant("unsupported-runtime", "vllm", 8, 4),
+                variant("compatible", "llama.cpp", 8, 4),
+            ],
+        )]);
+        let supported_runtimes = vec!["llama.cpp".into()];
+
+        let result = resolver
+            .resolve_with_capabilities("deepseek-r1", &hardware(8, Some(8)), &supported_runtimes)
+            .unwrap();
+
+        match result {
+            ModelResolutionOutcome::Local(resolved) => {
+                assert_eq!(resolved.model, "deepseek-r1");
+                assert!(resolved.artifact_source.ends_with("compatible.gguf"));
+                assert_eq!(resolved.runtime, "llama.cpp");
+            }
+            ModelResolutionOutcome::Unsupported(reason) => {
+                panic!("expected a compatible variant, got {reason:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn capability_resolution_returns_no_compatible_variant() {
+        let resolver = RealModelResolver::new(vec![manifest(
+            "deepseek-r1",
+            vec![variant("too-large", "llama.cpp", 8, 16)],
+        )]);
+        let supported_runtimes = vec!["llama.cpp".into()];
+
+        let result = resolver
+            .resolve_with_capabilities("deepseek-r1", &hardware(8, Some(8)), &supported_runtimes)
+            .unwrap();
+
+        assert!(matches!(
+            result,
+            ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
+                reason: LocalModelUnsupportedReason::NoCompatibleVariant,
+                ..
+            })
+        ));
     }
 }
