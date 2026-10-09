@@ -6,7 +6,7 @@
 //! The effective retry budget of the failover loop (#633, plan section 5 item 12).
 //!
 //! The plan lists "retry budget" among the behaviours to cover for this crate. There is **no such concept in
-//! the code**: a search for `retry_budget`, `max_retries`, `attempt_budget`, `retries_left` and similar across
+//! the pre-fix code**: a search for `retry_budget`, `max_retries`, `attempt_budget`, `retries_left` and similar across
 //! `crates/traffic` returns nothing, and neither `config.rs` nor `state.rs` has a retry setting. What the
 //! failover loop has instead is a count derived from two places, and this file pins both so the effective
 //! budget is a documented number rather than an emergent one:
@@ -17,14 +17,14 @@
 //!                                                        -> one attempt per candidate, no repeats
 //! ```
 //!
-//! So the budget is **five attempts**, it is not configurable, and it is the same constant that the module
-//! documentation calls the "top-5 failover list".
+//! Before #680 the budget was **five attempts** with no time bound; the routing candidate limit itself remains a
+//! constant that the module documentation calls the "top-5 failover list".
 //!
 //! ## Why the number matters
 //!
 //! Each attempt runs under the shared HTTP client's timeout, `HTTP_REQUEST_TIMEOUT_SECS = 36000`
 //! (`lib.rs:205`), whose own comment says "Total time for request completion (600 minutes)" -- ten hours, which
-//! is deliberate for long-running work such as video generation. Nothing bounds the **total**: `elapsed()` is
+//! is deliberate for long-running work such as video generation. Before #680 nothing bounded the **total**: `elapsed()` was
 //! only ever read to record a latency; #680 adds an aggregate deadline around proxy_logic.
 //!
 //! The pre-fix worst case for one client request was five attempts of up to ten hours each. That is the
@@ -133,8 +133,7 @@ fn the_effective_budget_is_the_candidate_count_capped_at_five() {
     let http_timeout_secs: u64 = 36000;
     let worst_case = http_timeout_secs * 5;
     println!(
-        "worst case for one client request: {worst_case} seconds ({} hours) across five attempts, with no \
-         overall deadline",
+        "pre-fix worst case: {worst_case} seconds ({} hours) across five attempts; #680 adds an aggregate deadline",
         worst_case / 3600
     );
     assert_eq!(
@@ -150,8 +149,10 @@ fn the_effective_budget_is_the_candidate_count_capped_at_five() {
 fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
     let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
         .expect("router source exists");
-    assert!(src.contains("tokio::time::timeout(remaining, proxy_future)"),
-        "removing the aggregate deadline must fail this regression");
+    assert!(
+        src.contains("tokio::time::timeout(remaining, proxy_future)"),
+        "removing the aggregate deadline must fail this regression"
+    );
     assert!(src.contains("BURNCLOUD_INTERACTIVE_DEADLINE_SECS"));
     assert!(src.contains("BURNCLOUD_LONG_TASK_DEADLINE_SECS"));
     assert!(src.contains("DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120"));
