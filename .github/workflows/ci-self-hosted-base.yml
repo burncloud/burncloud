@@ -326,6 +326,7 @@ jobs:
           CHECK_SKIPPED: ${{ needs.check.outputs.deny_skipped }}
           CHECK_NAME: ${{ inputs.check_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             const outcome = process.env.CHECK_RESULT;
@@ -344,5 +345,5 @@ jobs:
               state,
               context: 'BurnCloud / ' + process.env.CHECK_NAME,
               description,
-              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              target_url: process.env.REPORT_URL,
             });
