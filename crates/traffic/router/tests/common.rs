@@ -412,6 +412,20 @@ pub(crate) async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     reason = "shared test helper: each file in `tests/` is its own crate, so a helper used only by a sibling test binary is dead code in this one"
 )]
 pub(crate) async fn start_test_server(port: u16, db_url: &str) {
+    let listener = TcpListener::bind(format!("0.0.0.0:{port}"))
+        .await
+        .unwrap_or_else(|e| panic!("Failed to bind port {port}: {e}"));
+    start_test_server_on(listener, db_url).await;
+}
+
+/// Start a test Router using a pre-bound listener, permitting the OS to
+/// allocate an unused port before creating mock channel URLs. Tests that
+/// launch concurrent integration servers should prefer this over fixed ports.
+#[allow(
+    dead_code,
+    reason = "shared test helper: each integration test file is compiled independently"
+)]
+pub(crate) async fn start_test_server_on(listener: TcpListener, db_url: &str) {
     // Ensure MASTER_KEY is set for tests that need encryption (e.g. upstream API keys).
     // Use a fixed 64-hex-char test key; does not affect production.
     if std::env::var("MASTER_KEY").is_err() {
@@ -439,9 +453,6 @@ pub(crate) async fn start_test_server(port: u16, db_url: &str) {
     let app = internal_app.merge(app);
 
     tokio::spawn(async move {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
-            .await
-            .unwrap_or_else(|e| panic!("Failed to bind port {port}: {e}"));
         axum::serve(listener, app)
             .await
             .unwrap_or_else(|e| panic!("Server error: {e}"));
