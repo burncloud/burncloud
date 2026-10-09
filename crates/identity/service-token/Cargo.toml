@@ -6,8 +6,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burncloud-database-router.workspace = true
 burncloud-database.workspace = true
+hex.workspace = true
+md5.workspace = true
+rand.workspace = true
+serde.workspace = true
+sqlx.workspace = true
 
 [dev-dependencies]
 # The credential tests exercise the real schema on an isolated temporary SQLite file, so they need the

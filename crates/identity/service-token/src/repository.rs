@@ -3,11 +3,82 @@
 //! This crate handles all database operations related to API tokens,
 //! including validation, spend-quota tracking, CRUD operations, and key rotation.
 
-use burncloud_common::CrudRepository;
 use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+
+async fn best_effort_execute(pool: &sqlx::AnyPool, sql: &str) {
+    // Existing columns are expected on databases already initialized by migrations.
+    sqlx::query(sql).execute(pool).await.ok();
+}
+
+/// Initialize the Identity-owned credential table for isolated callers/tests.
+///
+/// Platform migrations remain the canonical production schema path. This helper
+/// preserves the old RouterDatabase::init bootstrap behavior while keeping token
+/// persistence under the Identity owner.
+pub(crate) async fn init(db: &Database) -> Result<()> {
+    let conn = db.get_connection()?;
+    let kind = db.kind();
+
+    let tokens_sql = match kind.as_str() {
+        "sqlite" => {
+            r#"
+            CREATE TABLE IF NOT EXISTS router_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                quota_limit INTEGER NOT NULL DEFAULT -1,
+                used_quota INTEGER NOT NULL DEFAULT 0,
+                expired_time INTEGER NOT NULL DEFAULT -1,
+                accessed_time INTEGER NOT NULL DEFAULT 0
+            );
+        "#
+        }
+        "postgres" => {
+            r#"
+            CREATE TABLE IF NOT EXISTS router_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                quota_limit BIGINT NOT NULL DEFAULT -1,
+                used_quota BIGINT NOT NULL DEFAULT 0,
+                expired_time BIGINT NOT NULL DEFAULT -1,
+                accessed_time BIGINT NOT NULL DEFAULT 0
+            );
+        "#
+        }
+        _ => unreachable!("Unsupported database kind"),
+    };
+
+    sqlx::query(tokens_sql).execute(conn.pool()).await?;
+
+    if kind == "sqlite" {
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN quota_limit INTEGER NOT NULL DEFAULT -1",
+        )
+        .await;
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN used_quota INTEGER NOT NULL DEFAULT 0",
+        )
+        .await;
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN expired_time INTEGER NOT NULL DEFAULT -1",
+        )
+        .await;
+        best_effort_execute(
+            conn.pool(),
+            "ALTER TABLE router_tokens ADD COLUMN accessed_time INTEGER NOT NULL DEFAULT 0",
+        )
+        .await;
+    }
+
+    Ok(())
+}
 
 /// Token validation result that distinguishes between invalid and expired tokens
 #[derive(Debug, Clone)]
@@ -594,51 +665,5 @@ impl RouterTokenModel {
                 Ok(false)
             }
         }
-    }
-}
-
-/// Repository wrapper that implements the standard [`CrudRepository`] contract for tokens.
-///
-/// The token string itself serves as the record ID.
-/// `update` replaces the full token record: delete + re-insert with the caller-provided
-/// `id` as the token value, keeping the rest of `input` intact.
-pub struct RouterTokenRepository<'a>(pub &'a Database);
-
-#[async_trait::async_trait]
-impl<'a> CrudRepository<RouterToken, String, DatabaseError> for RouterTokenRepository<'a> {
-    async fn find_by_id(&self, id: &String) -> Result<Option<RouterToken>> {
-        RouterTokenModel::find_by_token(self.0, id).await
-    }
-
-    async fn list(&self) -> Result<Vec<RouterToken>> {
-        RouterTokenModel::list(self.0).await
-    }
-
-    async fn create(&self, input: &RouterToken) -> Result<RouterToken> {
-        RouterTokenModel::create(self.0, input).await?;
-        self.find_by_id(&input.token)
-            .await?
-            .ok_or_else(|| DatabaseError::Query("token disappeared after insert".to_string()))
-    }
-
-    async fn update(&self, id: &String, input: &RouterToken) -> Result<bool> {
-        let exists = self.find_by_id(id).await?.is_some();
-        if !exists {
-            return Ok(false);
-        }
-        // Delete old token, then insert the new record with the canonical id.
-        RouterTokenModel::delete(self.0, id).await?;
-        let mut record = input.clone();
-        record.token = id.clone();
-        RouterTokenModel::create(self.0, &record).await?;
-        Ok(true)
-    }
-
-    async fn delete(&self, id: &String) -> Result<bool> {
-        let exists = self.find_by_id(id).await?.is_some();
-        if exists {
-            RouterTokenModel::delete(self.0, id).await?;
-        }
-        Ok(exists)
     }
 }

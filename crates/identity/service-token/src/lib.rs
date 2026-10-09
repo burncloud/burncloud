@@ -4,9 +4,11 @@
 //! including validation, quota tracking, CRUD operations, and key rotation.
 
 use burncloud_database::Database;
-use burncloud_database_router::token::{RouterTokenModel, TokenRotationResult};
+mod repository;
 
-pub use burncloud_database_router::token::{RouterToken, RouterTokenValidationResult};
+pub use repository::{
+    RouterToken, RouterTokenModel, RouterTokenValidationResult, TokenRotationResult,
+};
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 
@@ -14,6 +16,11 @@ type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 pub struct TokenService;
 
 impl TokenService {
+    /// Initialize the Identity-owned token persistence surface.
+    pub async fn init(db: &Database) -> Result<()> {
+        repository::init(db).await
+    }
+
     /// List all tokens
     pub async fn list(db: &Database) -> Result<Vec<RouterToken>> {
         RouterTokenModel::list(db).await

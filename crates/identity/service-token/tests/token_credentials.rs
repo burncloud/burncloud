@@ -43,8 +43,7 @@
 //! unambiguous.
 
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::{RouterDatabase, RouterToken, RouterTokenValidationResult};
-use burncloud_service_token::TokenService;
+use burncloud_service_token::{RouterToken, RouterTokenValidationResult, TokenService};
 use tempfile::NamedTempFile;
 
 /// Optional behaviour of a credential, so each test states its intent instead of setting 14 fields.
@@ -112,7 +111,7 @@ async fn test_db() -> (burncloud_database::Database, NamedTempFile) {
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("create database at {url}: {e}"));
-    RouterDatabase::init(&db)
+    TokenService::init(&db)
         .await
         .unwrap_or_else(|e| panic!("create router tables: {e}"));
     (db, tmp)
