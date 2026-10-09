@@ -30,10 +30,26 @@ async fn test_failover() -> anyhow::Result<()> {
 
     // Both candidates belong to the same model in current Channel truth.
     let model = "failover-test-model";
-    common::insert_test_channel(&pool, 75621, "Dead Node",
-        "http://127.0.0.1:1/anything", "k1", model, "default").await?;
-    common::insert_test_channel(&pool, 75622, "Alive Node",
-        &format!("http://127.0.0.1:{mock_port}/anything"), "k2", model, "default").await?;
+    common::insert_test_channel(
+        &pool,
+        75621,
+        "Dead Node",
+        "http://127.0.0.1:1/anything",
+        "k1",
+        model,
+        "default",
+    )
+    .await?;
+    common::insert_test_channel(
+        &pool,
+        75622,
+        "Alive Node",
+        &format!("http://127.0.0.1:{mock_port}/anything"),
+        "k2",
+        model,
+        "default",
+    )
+    .await?;
     sqlx::query("INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 1, 1, '')")
         .bind(model).execute(&pool).await?;
 
