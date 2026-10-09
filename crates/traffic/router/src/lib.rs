@@ -213,6 +213,7 @@ const SEEDANCE_DEFAULT_RESOLUTION: &str = "720p";
 const PROTOCOL_OPENAI: &str = "openai";
 const PROTOCOL_CLAUDE: &str = "claude";
 const PROTOCOL_GEMINI: &str = "gemini";
+const PROTOCOL_VERTEX: &str = "vertex";
 const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
@@ -2286,7 +2287,10 @@ async fn proxy_logic(
 
                         // Skip channel if path format does not match channel type
                         if is_openai_path
-                            && !matches!(channel_type, ChannelType::OpenAI | ChannelType::Zai)
+                            && !matches!(
+                                channel_type,
+                                ChannelType::OpenAI | ChannelType::Zai | ChannelType::VertexAi
+                            )
                         {
                             tracing::debug!(
                                 "Skipping {:?} channel for OpenAI format path: {}",
@@ -2309,8 +2313,11 @@ async fn proxy_logic(
                             ChannelType::Anthropic => {
                                 (AuthType::Claude, PROTOCOL_CLAUDE.to_string())
                             }
-                            ChannelType::Gemini | ChannelType::VertexAi => {
+                            ChannelType::Gemini => {
                                 (AuthType::GoogleAI, PROTOCOL_GEMINI.to_string())
+                            }
+                            ChannelType::VertexAi => {
+                                (AuthType::GoogleAI, PROTOCOL_VERTEX.to_string())
                             }
                             ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
                             _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
