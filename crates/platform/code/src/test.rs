@@ -4,6 +4,7 @@ use std::process::{Command, Output};
 
 use anyhow::{Context, Result};
 
+use crate::manifest::RootManifestChange;
 use crate::plan::{self, Metadata};
 use crate::report;
 
@@ -45,6 +46,56 @@ fn paths(result: &str, files: &mut BTreeSet<String>) {
     );
 }
 
+fn comparison_base(root: &Path, options: &Options) -> Result<Option<String>> {
+    if let Some(reference) = &options.base {
+        let commit = git(
+            root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                &format!("{reference}^{{commit}}"),
+            ],
+        )?;
+        return Ok(Some(
+            git(root, &["merge-base", commit.trim(), "HEAD"])?
+                .trim()
+                .to_owned(),
+        ));
+    }
+
+    let head = Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD"])
+        .current_dir(root)
+        .output()?;
+    Ok(head.status.success().then(|| "HEAD".to_owned()))
+}
+
+pub(crate) fn root_manifest_change(
+    root: &Path,
+    options: &Options,
+    files: &BTreeSet<String>,
+) -> Result<Option<RootManifestChange>> {
+    if !files.contains("Cargo.toml") {
+        return Ok(None);
+    }
+    let Some(base) = comparison_base(root, options)? else {
+        return Ok(None);
+    };
+    let object = format!("{base}:Cargo.toml");
+    let exists = Command::new("git")
+        .args(["cat-file", "-e", &object])
+        .current_dir(root)
+        .status()?;
+    if !exists.success() {
+        return Ok(None);
+    }
+    let before = git(root, &["show", &object])?;
+    let after = std::fs::read_to_string(root.join("Cargo.toml"))
+        .context("Cannot read current root Cargo.toml")?;
+    Ok(Some(RootManifestChange { before, after }))
+}
+
 pub(crate) fn changes(root: &Path, options: &Options) -> Result<BTreeSet<String>> {
     let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
     if options.staged {
@@ -78,29 +129,7 @@ pub(crate) fn changes(root: &Path, options: &Options) -> Result<BTreeSet<String>
             &mut files,
         );
     } else {
-        let base = if let Some(reference) = &options.base {
-            let commit = git(
-                root,
-                &[
-                    "rev-parse",
-                    "--verify",
-                    "--end-of-options",
-                    &format!("{reference}^{{commit}}"),
-                ],
-            )?;
-            Some(
-                git(root, &["merge-base", commit.trim(), "HEAD"])?
-                    .trim()
-                    .to_owned(),
-            )
-        } else {
-            // symbolic-ref/HEAD may be unborn in a freshly initialized repository.
-            let head = Command::new("git")
-                .args(["rev-parse", "--verify", "HEAD"])
-                .current_dir(root)
-                .output()?;
-            head.status.success().then(|| "HEAD".to_owned())
-        };
+        let base = comparison_base(root, options)?;
         if let Some(base) = base {
             paths(
                 &git(
@@ -171,7 +200,8 @@ fn run_in_root(root: &Path, options: Options) -> Result<()> {
     )?;
     let metadata: Metadata =
         serde_json::from_slice(&raw.stdout).context("Invalid Cargo workspace metadata")?;
-    let plan = plan::select(root, &files, metadata, options.all)?;
+    let root_manifest = root_manifest_change(root, &options, &files)?;
+    let plan = plan::select(root, &files, metadata, options.all, root_manifest.as_ref())?;
     if let Some(reason) = &plan.full_reason {
         println!("Selection: full workspace ({reason})");
     } else {

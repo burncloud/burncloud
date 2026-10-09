@@ -1,5 +1,5 @@
 use burncloud_download::DownloadManager;
-use burncloud_service_models::{build_download_url, get_data_dir};
+use burncloud_supply_model::{build_download_url, get_data_dir};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

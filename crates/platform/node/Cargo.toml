@@ -15,5 +15,5 @@ tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-burncloud-service-models.workspace = true
+burncloud-supply-model.workspace = true
 tokio.workspace = true
