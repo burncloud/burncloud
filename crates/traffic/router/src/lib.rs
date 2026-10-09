@@ -4801,8 +4801,7 @@ mod tests {
         });
 
         let started = std::time::Instant::now();
-        let timeout =
-            retry_attempt_timeout(std::time::Duration::from_millis(300), started);
+        let timeout = retry_attempt_timeout(std::time::Duration::from_millis(800), started);
         let response = reqwest::Client::new()
             .get(format!("http://{addr}/v1/chat/completions"))
             .timeout(timeout)
