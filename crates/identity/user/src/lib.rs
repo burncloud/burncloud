@@ -9,12 +9,13 @@ use burncloud_database::Database;
 use burncloud_traffic_contracts::TrafficColor;
 use dashmap::DashMap;
 
-pub use repository::{
-    PasswordResetDatabase, PasswordResetToken, UserAccount, UserAccountInput, UserAccountModel,
-    UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput, UserDatabase, UserRecharge,
-};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+pub use repository::{
+    PasswordResetDatabase, PasswordResetToken, UserAccount, UserAccountInput, UserAccountModel,
+    UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput, UserDatabase,
+    UserRecharge,
+};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
