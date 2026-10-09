@@ -1,18 +1,15 @@
-name: CI / Self-hosted Fmt
+name: CI / GitHub-hosted Fmt
 
-# The trigger stays here so GitHub exposes an independent check for this gate.
-# Execution and self-hosted security policy live in ci-self-hosted-base.yml.
+# Keep one independent PR check per Rust quality gate.
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_review:
-    types: [submitted]
+
+permissions:
+  contents: read
 
 jobs:
   check:
-    permissions:
-      contents: read
-      statuses: write
     uses: ./.github/workflows/ci-self-hosted-base.yml
     with:
       check: fmt
