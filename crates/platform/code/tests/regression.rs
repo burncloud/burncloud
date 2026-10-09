@@ -616,7 +616,7 @@ fn test_selection_ignores_non_test_config_and_scopes_package_manifests() -> Resu
     let f = Fixture::new()?;
     f.seed()?;
 
-    f.write(".github/notes.txt", "changed")?;
+    f.write(".github/README.md", "changed")?;
     f.write("deny.toml", "changed")?;
     let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
     assert!(text.contains("No test-relevant changes selected; no tests executed."));
