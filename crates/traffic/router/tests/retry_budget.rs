@@ -163,6 +163,30 @@ fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
     assert!(src.contains("is_interactive_request(path)"));
     assert!(src.contains("deadline_cancellation_refunds_real_budget_guard"));
     assert!(src.contains("Dropping the timed-out future"));
+    // Both upstream send paths must apply a request-local timeout. Unlike the
+    // outer future deadline, this stays active while response body bytes stream.
+    assert_eq!(
+        src.matches("req_builder.timeout(timeout)").count(),
+        2,
+        "both passthrough and adaptor sends must bound interactive SSE body reads"
+    );
+
+    // OpenAI streaming must not commit TPM before inspecting the first chunk.
+    // An errored peek continues to another upstream; Drop must refund its guard.
+    let openai_peek = src
+        .find("// Keep the BudgetGuard live until the first chunk")
+        .expect("OpenAI guard lifecycle explanation");
+    let openai_stream = &src[openai_peek..];
+    let failure_exit = openai_stream
+        .find("if peek_error_handled {")
+        .expect("OpenAI first-chunk error exit");
+    let commit = openai_stream
+        .find("g.commit(shaper_ctx.est_tpm)")
+        .expect("OpenAI successful stream commits its reservation");
+    assert!(
+        commit > failure_exit,
+        "OpenAI first-chunk errors must refund rather than commit the reservation"
+    );
 }
 
 /// The configured timeouts, so a change to either is visible rather than silent.
