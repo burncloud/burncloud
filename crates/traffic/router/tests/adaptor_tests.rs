@@ -112,7 +112,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         axum::serve(
             listener,
             axum::Router::new().route(
-                "/anything",
+                "/v1/messages",
                 axum::routing::post(|body: String| async move {
                     // Echo back in a format that looks like what we might expect, or just return success
                     // For Claude adaptor verification, we want to see the request body was transformed.
@@ -136,7 +136,7 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
         "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority) VALUES (75631, 14, ?, 1, 'Claude Adaptor Test', 1, ?, 'claude-3-opus', 'default', 0)",
     )
     .bind("sk-ant-mock-key")
-    .bind(format!("http://127.0.0.1:{mock_port}/anything"))
+    .bind(format!("http://127.0.0.1:{mock_port}"))
     .execute(&pool)
     .await?;
     sqlx::query("INSERT INTO channel_abilities (`group`, model, channel_id, enabled, priority, weight) VALUES ('default', 'claude-3-opus', 75631, 1, 0, 1)")
