@@ -159,8 +159,13 @@ async fn test_deepseek_proxy() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
+    let status = resp.status();
+    let response_text = resp.text().await?;
+    assert_eq!(
+        status, 200,
+        "Proxy should reach its mock upstream; Router response: {response_text}"
+    );
+    let json: serde_json::Value = serde_json::from_str(&response_text)?;
 
     let headers = json
         .get("headers")
@@ -225,8 +230,13 @@ async fn test_qwen_proxy() -> anyhow::Result<()> {
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await?;
+    let status = resp.status();
+    let response_text = resp.text().await?;
+    assert_eq!(
+        status, 200,
+        "Proxy should reach its mock upstream; Router response: {response_text}"
+    );
+    let json: serde_json::Value = serde_json::from_str(&response_text)?;
 
     let headers = json
         .get("headers")
