@@ -1,5 +1,6 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
+use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
     overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
@@ -240,7 +241,7 @@ pub fn AdminOverview() -> Element {
 }
 #[component]
 pub fn AdminSupply() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Supply Fleet".to_string(), role: Role::Admin } }
+    rsx! { AdminSupplyPage {} }
 }
 #[component]
 pub fn AdminCapacity() -> Element {
