@@ -150,8 +150,12 @@ fn interactive_retry_budget_has_a_real_deadline_and_long_tasks_are_preserved() {
     let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
         .expect("router source exists");
     assert!(
-        src.contains("tokio::time::timeout(remaining, proxy_future)"),
-        "removing the aggregate deadline must fail this regression"
+        src.contains("enforce_retry_deadline(remaining, proxy_future)"),
+        "the proxy handler must enforce the aggregate deadline"
+    );
+    assert!(
+        src.contains("tokio::time::timeout(remaining, operation)"),
+        "removing the deadline from the shared helper must fail this regression"
     );
     assert!(src.contains("BURNCLOUD_INTERACTIVE_DEADLINE_SECS"));
     assert!(src.contains("BURNCLOUD_LONG_TASK_DEADLINE_SECS"));
