@@ -155,7 +155,7 @@ jobs:
             fi
           }
 
-          check_floor burncloud-service-token 20
+          check_floor burncloud-identity-token 20
           check_floor burncloud-identity-user 12
 
   clippy:
