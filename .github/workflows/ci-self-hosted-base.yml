@@ -12,6 +12,8 @@ on:
         required: true
         type: string
 
+# The build job keeps only read permissions. A separate GitHub-hosted job
+# receives statuses: write to report results to the actual PR head commit.
 permissions:
   contents: read
 
@@ -22,12 +24,14 @@ concurrency:
 jobs:
   check:
     name: ${{ inputs.check_name }}
+    outputs:
+      deny_skipped: ${{ inputs.check == 'deny' && steps.deny_scope.outputs.run == 'false' }}
     # Both the PR author and the source repository must be trusted for automatic execution.
     # A trusted maintainer's APPROVE review retains the manual authorization path.
     # Configure repository variables SELF_HOSTED_CI_USERS and SELF_HOSTED_CI_REPOS as JSON arrays.
     env:
-      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
-    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+      RUN_SELF_HOSTED: ${{ (github.event_name == 'pull_request_target' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login)) }}
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request_target' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.pull_request.user.login)) || (github.event_name == 'pull_request_review' && github.event.review.state == 'approved' && contains(fromJSON(vars.SELF_HOSTED_CI_REPOS || '["burncloud/burncloud"]'), github.event.pull_request.head.repo.full_name) && contains(fromJSON(vars.SELF_HOSTED_CI_USERS || '["rustburn"]'), github.event.review.user.login))) && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 90
 
     steps:
@@ -302,3 +306,44 @@ jobs:
           else
             echo "Cargo target cache is within the limit."
           fi
+
+  # pull_request_target executes at the default-branch GITHUB_SHA. Its native
+  # workflow check is therefore not necessarily attached to the PR head.
+  # Publish a named commit status on head.sha without running any PR code
+  # in this privileged GitHub-hosted job. The build job remains read-only.
+  report:
+    name: Report ${{ inputs.check_name }} to PR head
+    needs: check
+    if: ${{ always() && github.event.pull_request.head.sha != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Publish PR head commit status
+        uses: actions/github-script@v7
+        env:
+          CHECK_RESULT: ${{ needs.check.result }}
+          CHECK_SKIPPED: ${{ needs.check.outputs.deny_skipped }}
+          CHECK_NAME: ${{ inputs.check_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const outcome = process.env.CHECK_RESULT;
+            const state = outcome === 'success'
+              ? 'success'
+              : outcome === 'cancelled' ? 'error' : 'failure';
+            const description = outcome === 'success'
+              ? (process.env.CHECK_SKIPPED === 'true'
+                  ? 'Cargo Deny skipped: no dependency-policy changes'
+                  : 'Self-hosted check completed successfully')
+              : 'Self-hosted check ' + outcome + '; inspect workflow logs';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.PR_HEAD_SHA,
+              state,
+              context: 'BurnCloud / ' + process.env.CHECK_NAME,
+              description,
+              target_url: process.env.REPORT_URL,
+            });
