@@ -98,61 +98,47 @@ async fn test_gemini_adaptor() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_claude_adaptor() -> anyhow::Result<()> {
-    // Test Claude Adaptor Transformation (OpenAI -> Claude)
-    // Uses HttpBin to inspect the converted request body
-
     let (_db, pool, db_url) = setup_db().await?;
 
-    // Start Mock Upstream
-    let mock_port = 3014;
+    // A successful HTTP status alone could be produced by an unintended
+    // upstream. Count requests to verify this Anthropic Channel is selected.
+    let mock_hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mock_hits_handler = std::sync::Arc::clone(&mock_hits);
+    let mock_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let mock_port = mock_listener.local_addr()?.port();
     tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
-            .await
-            .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
-        axum::serve(
-            listener,
-            axum::Router::new().route(
-                "/anything",
-                axum::routing::post(|body: String| async move {
-                    // Echo back in a format that looks like what we might expect, or just return success
-                    // For Claude adaptor verification, we want to see the request body was transformed.
-                    // But we can't easily assert here unless we use a shared state or print.
-                    println!("MOCK RECEIVED: {}", body);
-                    // Return a dummy Claude-like response so conversion doesn't fail
+        let app = axum::Router::new().route(
+            "/v1/messages",
+            axum::routing::post(move |body: String| {
+                let hits = std::sync::Arc::clone(&mock_hits_handler);
+                async move {
+                    hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    assert!(!body.is_empty(), "upstream must receive a request body");
                     serde_json::json!({
-                        "content": [ { "text": "Mock Claude Response" } ]
+                        "content": [{ "text": "Mock Claude Response" }]
                     })
                     .to_string()
-                }),
-            ),
-        )
-        .await
-        .unwrap_or_else(|e| panic!("Mock server error: {e}"));
+                }
+            }),
+        );
+        axum::serve(mock_listener, app)
+            .await
+            .unwrap_or_else(|e| panic!("Mock server error: {e}"));
     });
 
-    // The model router uses channel_providers/channel_abilities, not the
-    // legacy router_upstreams table. Preserve the Claude adaptor behavior by
-    // seeding a real Anthropic channel (ChannelType::Anthropic = 14).
-    let channel_id = 3014;
-    let name = "claude-3-opus";
-    let base_url = format!("http://localhost:{mock_port}");
-    let api_key = "sk-ant-mock-key";
-    common::insert_test_channel(
-        &pool,
-        channel_id,
-        name,
-        &base_url,
-        api_key,
-        "claude-3-opus",
-        "default",
+    // Current native Anthropic routing reads Supply-owned Channel records.
+    common::ensure_channel_tables(&pool).await?;
+    sqlx::query(
+        "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority) VALUES (75631, 14, ?, 1, 'Claude Adaptor Test', 1, ?, 'claude-3-opus', 'default', 0)",
     )
+    .bind("sk-ant-mock-key")
+    .bind(format!("http://127.0.0.1:{mock_port}"))
+    .execute(&pool)
     .await?;
-    sqlx::query("UPDATE channel_providers SET type = 14 WHERE id = ?")
-        .bind(channel_id)
+    sqlx::query("INSERT INTO channel_abilities (`group`, model, channel_id, enabled, priority, weight) VALUES ('default', 'claude-3-opus', 75631, 1, 0, 1)")
         .execute(&pool)
         .await?;
 
-    // Seed a price for claude-3-opus so the preflight billing check passes.
     sqlx::query(
         "INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) \
          VALUES ('claude-3-opus', 'USD', 1, 1, '')",
@@ -160,69 +146,35 @@ async fn test_claude_adaptor() -> anyhow::Result<()> {
     .execute(&pool)
     .await?;
 
-    let port = 3013;
-    start_test_server(port, &db_url).await;
+    let server_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = server_listener.local_addr()?.port();
+    common::start_test_server_on(server_listener, &db_url).await;
 
-    let client = Client::new();
-    let url = format!("http://localhost:{}/anything", port);
-
-    let openai_body = json!({
-        "model": "claude-3-opus", // Will be passed through or mapped
+    let request_body = json!({
+        "model": "claude-3-opus",
         "messages": [
             { "role": "system", "content": "You are a helpful assistant." },
             { "role": "user", "content": "Hello Claude" }
         ],
         "max_tokens": 100
     });
-
-    // 1. Send OpenAI Request with Adaptor Header
-    let resp = client
-        .post(&url)
+    let resp = Client::new()
+        .post(format!("http://127.0.0.1:{port}/v1/messages"))
         .header("Authorization", "Bearer sk-burncloud-demo")
         .header("x-use-adaptor", "true")
-        .json(&openai_body)
+        .json(&request_body)
         .send()
         .await?;
 
-    assert_eq!(resp.status(), 200);
-
-    // 2. Inspect what HttpBin received (The Converted Claude Request)
-    // Note: Since HttpBin echoes the request, and Router logic for `Claude` adaptor
-    // tries to parse the response as Claude Response JSON, this might fail conversion
-    // if HttpBin response doesn't match expected Claude response schema.
-    //
-    // However, our `convert_response` function in `claude.rs` uses safe `get` calls
-    // and defaults to empty string if fields missing. So it shouldn't panic.
-    //
-    // BUT, we can't see the request body sent to upstream easily if the response conversion
-    // produces a valid OpenAI response from HttpBin's output.
-    // HttpBin output has "json": { ... body sent ... }
-    // So `claude_resp` will be the HttpBin JSON.
-    // `convert_response` looks for `content` array. HttpBin response doesn't have `content` array usually at top level.
-    //
-    // To properly test request conversion without a real Claude API, we might need to
-    // rely on the fact that `convert_response` returns an empty content if schema mismatch,
-    // OR we trust unit tests for `ClaudeAdaptor` (which we should add).
-    //
-    // Actually, for Integration Test of Adaptor logic, using a Real API is best.
-    // Since we don't have a key, let's stick to Unit Tests for the `ClaudeAdaptor` logic itself,
-    // and use integration test just to check routing + header injection (which `auth_tests` covers,
-    // but we want to cover the `if use_adaptor` branch).
-    //
-    // Let's try to verify the Request Body transformation by parsing the response?
-    // The `convert_response` returns `openai_resp`.
-    // If we send to HttpBin, the response from HttpBin is the JSON of the request we sent.
-    // `convert_response` will try to find `content` in it. It won't find it.
-    // So it returns empty content.
-    //
-    // This integration test mainly proves the ROUTER accepts `x-use-adaptor` and tries to convert.
-    // It doesn't prove the conversion result is correct unless we inspect logs or use a smarter mock.
-    //
-    // Let's stick to this for now: it ensures no panic and correct path.
-    // We should add a unit test for `ClaudeAdaptor` logic separately if we want to be strict.
-
-    let _json: serde_json::Value = resp.json().await?;
-    // Verification limited here without real upstream response structure.
+    let status = resp.status();
+    let response_body = resp.text().await?;
+    assert_eq!(status, 200, "Claude request failed: {response_body}");
+    let _: serde_json::Value = serde_json::from_str(&response_body)?;
+    assert_eq!(
+        mock_hits.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "Claude Channel should send exactly one HTTP request to the matching mock endpoint"
+    );
     Ok(())
 }
 
