@@ -213,6 +213,7 @@ const SEEDANCE_DEFAULT_RESOLUTION: &str = "720p";
 const PROTOCOL_OPENAI: &str = "openai";
 const PROTOCOL_CLAUDE: &str = "claude";
 const PROTOCOL_GEMINI: &str = "gemini";
+const PROTOCOL_VERTEX: &str = "vertex";
 const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
@@ -2287,6 +2288,8 @@ async fn proxy_logic(
                         // Skip channel if path format does not match channel type
                         if is_openai_path
                             && !matches!(channel_type, ChannelType::OpenAI | ChannelType::Zai)
+                            && !(channel_type == ChannelType::VertexAi
+                                && path.starts_with("/v1/chat/completions"))
                         {
                             tracing::debug!(
                                 "Skipping {:?} channel for OpenAI format path: {}",
@@ -2309,8 +2312,11 @@ async fn proxy_logic(
                             ChannelType::Anthropic => {
                                 (AuthType::Claude, PROTOCOL_CLAUDE.to_string())
                             }
-                            ChannelType::Gemini | ChannelType::VertexAi => {
+                            ChannelType::Gemini => {
                                 (AuthType::GoogleAI, PROTOCOL_GEMINI.to_string())
+                            }
+                            ChannelType::VertexAi => {
+                                (AuthType::GoogleAI, PROTOCOL_VERTEX.to_string())
                             }
                             ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
                             _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
@@ -4715,11 +4721,25 @@ fn check_response_quality(
     // Detect response quality using the detector
     let detector = crate::response_quality::ResponseQualityDetector::new();
 
-    // Determine channel_type based on upstream protocol
-    let channel_type = match upstream.protocol.as_str() {
-        "claude" | "anthropic" => "anthropic",
-        "gemini" | "vertex" => "gemini",
-        _ => "openai",
+    // Vertex conversion returns an OpenAI chat completion even though the
+    // upstream protocol is Vertex/Gemini. Validate the *returned* format,
+    // not the provider's native protocol, or a valid converted completion
+    // is incorrectly rejected as malformed (HTTP 502).
+    let normalized_vertex_completion = upstream.protocol == PROTOCOL_VERTEX
+        && serde_json::from_str::<serde_json::Value>(response_body)
+            .ok()
+            .is_some_and(|json| {
+                json.get("object").and_then(|v| v.as_str()) == Some("chat.completion")
+                    && json.get("choices").and_then(|v| v.as_array()).is_some()
+            });
+    let channel_type = if normalized_vertex_completion {
+        "openai"
+    } else {
+        match upstream.protocol.as_str() {
+            "claude" | "anthropic" => "anthropic",
+            "gemini" | "vertex" => "gemini",
+            _ => "openai",
+        }
     };
 
     let quality = detector.detect(http_status, headers, response_body, 0, false, channel_type);

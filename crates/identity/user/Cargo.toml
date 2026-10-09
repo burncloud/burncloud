@@ -1,0 +1,38 @@
+[package]
+publish.workspace = true
+license.workspace = true
+name = "burncloud-identity-user"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# Preserve the existing service-side Rust import surface during the structural
+# migration. Canonical import renaming is a separate mechanical cleanup.
+name = "burncloud_service_user"
+
+[dependencies]
+burncloud-traffic-contracts.workspace = true
+burncloud-database.workspace = true
+bcrypt.workspace = true
+dashmap.workspace = true
+uuid.workspace = true
+jsonwebtoken.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+sqlx.workspace = true
+rand = { workspace = true, features = ["std_rng"] }
+
+[dev-dependencies]
+tokio.workspace = true
+anyhow.workspace = true
+base64.workspace = true
+serde_json.workspace = true
+
+[[example]]
+name = "identity-user-usage"
+path = "examples/usage.rs"
+
+[lints]
+workspace = true

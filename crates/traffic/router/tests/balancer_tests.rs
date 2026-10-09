@@ -13,102 +13,94 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_mock_upstream, start_test_server};
+use common::{setup_db, start_mock_upstream, start_test_server_on};
 use reqwest::Client;
 use serde_json::Value;
+use std::hash::{Hash, Hasher};
 
 #[tokio::test]
 async fn test_round_robin_balancer() -> anyhow::Result<()> {
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream
-    let mock_port = 3022;
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", mock_port))
-        .await
-        .unwrap_or_else(|e| panic!("Failed to bind mock port {mock_port}: {e}"));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let mock_port = listener.local_addr()?.port();
     tokio::spawn(async move {
         start_mock_upstream(listener).await;
     });
 
-    // 1. Create Upstreams
-    let u1_id = "u1";
-    let u1_url = format!("http://127.0.0.1:{}/anything/u1", mock_port);
-
-    let u2_id = "u2";
-    let u2_url = format!("http://127.0.0.1:{}/anything/u2", mock_port);
-
-    // Insert Upstreams
-    // Note: We set match_path to something that won't match directly to ensure they are only reached via group
-    // Or we can set them to distinct paths.
-    sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type)
-        VALUES
-        (?, 'Upstream 1', ?, 'key1', '/u1-direct', 'Bearer'),
-        (?, 'Upstream 2', ?, 'key2', '/u2-direct', 'Bearer')
-        ON CONFLICT(id) DO UPDATE SET
-            base_url = excluded.base_url,
-            name = excluded.name,
-            api_key = excluded.api_key,
-            match_path = excluded.match_path,
-            auth_type = excluded.auth_type
-        "#,
+    // Model-based routing now reads Supply-owned channel data.
+    let model = "round-robin-test-model";
+    common::insert_test_channel(
+        &pool,
+        75611,
+        "Upstream 1",
+        &format!("http://127.0.0.1:{mock_port}/anything/u1"),
+        "key1",
+        model,
+        "default",
     )
-    .bind(u1_id)
-    .bind(u1_url)
-    .bind(u2_id)
-    .bind(u2_url)
-    .execute(&pool)
     .await?;
-
-    // 2. Create Group
-    let group_id = "g1";
-    let match_path = "/group-test";
-
-    sqlx::query(
-        "INSERT INTO router_groups (id, name, strategy, match_path) VALUES (?, 'Test Group', 'round_robin', ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, strategy=excluded.strategy, match_path=excluded.match_path"
+    common::insert_test_channel(
+        &pool,
+        75612,
+        "Upstream 2",
+        &format!("http://127.0.0.1:{mock_port}/anything/u2"),
+        "key2",
+        model,
+        "default",
     )
-    .bind(group_id).bind(match_path)
-    .execute(&pool).await?;
-
-    // 3. Bind Upstreams to Group
-    // For many-to-many, we might need to delete old ones or use upsert if ID exists?
-    // router_group_members usually has (group_id, upstream_id) as PK or unique?
-    // Let's assume we can delete first or ignore.
-    // Or just Try Insert.
-    // Let's first delete to be safe if we are reusing DB.
-    sqlx::query("DELETE FROM router_group_members WHERE group_id = ?")
-        .bind(group_id)
-        .execute(&pool)
-        .await?;
-
-    sqlx::query(
-        "INSERT INTO router_group_members (group_id, upstream_id, weight) VALUES (?, ?, 1), (?, ?, 1)"
-    )
-    .bind(group_id).bind(u1_id)
-    .bind(group_id).bind(u2_id)
-    .execute(&pool).await?;
+    .await?;
+    sqlx::query("INSERT OR IGNORE INTO billing_prices (model, currency, input_price, output_price, region) VALUES (?, 'USD', 1, 1, '')")
+        .bind(model).execute(&pool).await?;
 
     // 4. Start Server
-    let port = 3014;
-    start_test_server(port, &db_url).await;
+    let server_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = server_listener.local_addr()?.port();
+    start_test_server_on(server_listener, &db_url).await;
 
     let client = Client::new();
-    let url = format!("http://localhost:{}{}", port, match_path);
+    let url = format!("http://localhost:{}/v1/chat/completions", port);
+
+    // The retired router_groups round_robin strategy is not used by Channel
+    // routing. Current L3 session affinity uses deterministic HRW, so choose
+    // distinct conversation IDs that select each provider twice. This keeps
+    // the original four HTTP 200 and 2/2 distribution assertions meaningful
+    // without changing the production scheduler or forcing legacy fixtures.
+    let mut sessions = Vec::new();
+    let mut counts = [0_u32; 2];
+    for i in 0..1_024 {
+        let session = format!("distribution-session-{i}");
+        let hash = |channel: i32| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            session.hash(&mut h);
+            channel.hash(&mut h);
+            h.finish()
+        };
+        let h1 = hash(75611);
+        let h2 = hash(75612);
+        // Prefer distinct, strong affinity keys to avoid marginal ties.
+        let (winner, high, low) = if h1 > h2 { (0, h1, h2) } else { (1, h2, h1) };
+        if counts[winner] < 2 && high.saturating_sub(low) > u64::MAX / 3 {
+            sessions.push(session);
+            counts[winner] += 1;
+        }
+        if counts == [2, 2] {
+            break;
+        }
+    }
+    assert_eq!(counts, [2, 2], "test needs two strong HRW keys per channel");
 
     // 5. Send Requests
     let mut hits_u1 = 0;
     let mut hits_u2 = 0;
+    let mut selected_urls = Vec::new();
 
-    for i in 0..4 {
-        // Must send JSON body because ProxyLogic expects it, or at least handles it nicely
-        // But ProxyLogic only fails if body is invalid JSON *AND* it needs to parse it?
-        // Actually, previous debugging showed it returned 502 with "Invalid JSON body".
-        // So we MUST send valid JSON.
+    for (i, session) in sessions.iter().enumerate() {
         let resp = client
-            .get(&url)
+            .post(&url)
             .header("Authorization", "Bearer sk-burncloud-demo")
-            .json(&serde_json::json!({"test": "data"}))
+            .json(&serde_json::json!({"model": model, "conversation_id": session, "messages": [{"role": "user", "content": "data"}]}))
             .send()
             .await?;
 
@@ -119,6 +111,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
             .unwrap_or_else(|| panic!("Expected url in response"));
 
         println!("Request {} hit: {}", i, target_url);
+        selected_urls.push(target_url.to_owned());
 
         if target_url.contains("/u1") {
             hits_u1 += 1;
@@ -128,9 +121,30 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     }
 
     // 6. Verify Distribution
-    // Round Robin should be exactly equal for 4 requests with 2 members
+    // The original HTTP distribution assertion remains strict (two each).
     assert_eq!(hits_u1, 2, "Should hit Upstream 1 twice");
     assert_eq!(hits_u2, 2, "Should hit Upstream 2 twice");
+
+    // A repeated conversation must retain the same upstream. The legacy
+    // test name is kept for #756, but current Channel routing uses HRW
+    // affinity, not the retired router_groups round_robin strategy.
+    let sticky_response = client
+        .post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .json(&serde_json::json!({
+            "model": model,
+            "conversation_id": sessions[0],
+            "messages": [{"role": "user", "content": "sticky follow-up"}]
+        }))
+        .send()
+        .await?;
+    assert_eq!(sticky_response.status(), 200);
+    let sticky_json: Value = sticky_response.json().await?;
+    assert_eq!(
+        sticky_json["url"].as_str(),
+        selected_urls.first().map(String::as_str),
+        "A repeated conversation must remain on the same upstream"
+    );
 
     Ok(())
 }

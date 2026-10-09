@@ -70,9 +70,10 @@ struct FixturePackage {
 
 #[derive(Default, Deserialize, Serialize)]
 struct FixtureDependency {
+    name: String,
     path: PathBuf,
     #[serde(default)]
-    rename: String,
+    rename: Option<String>,
     #[serde(default)]
     kind: String,
     #[serde(default)]
@@ -156,7 +157,13 @@ impl Fixture {
         let package = |name: &str, directory: &str, dependencies: &[&str]| {
             json!({
                 "id": name, "name": name, "manifest_path": fixture.repo.join(directory).join("Cargo.toml"),
-                "dependencies": dependencies.iter().map(|path| json!({"path":fixture.repo.join(path)})).collect::<Vec<_>>()
+                "dependencies": dependencies
+                    .iter()
+                    .map(|path| json!({
+                        "name": Path::new(path).file_name().and_then(|name| name.to_str()).unwrap_or(path),
+                        "path": fixture.repo.join(path)
+                    }))
+                    .collect::<Vec<_>>()
             })
         };
         let metadata = json!({"workspace_members":["burncloud","a","b","c"],"packages":[
@@ -616,7 +623,7 @@ fn test_selection_ignores_non_test_config_and_scopes_package_manifests() -> Resu
     let f = Fixture::new()?;
     f.seed()?;
 
-    f.write(".github/test-plan/known-test-baseline.txt", "changed")?;
+    f.write(".github/README.md", "changed")?;
     f.write("deny.toml", "changed")?;
     let text = String::from_utf8(f.run(&["test", "--plan"])?.stdout)?;
     assert!(text.contains("No test-relevant changes selected; no tests executed."));
@@ -730,14 +737,16 @@ fn renamed_optional_target_and_dev_edges_are_included() -> Result<()> {
     let file = f.base.join("metadata.json");
     let mut metadata: FixtureMetadata = serde_json::from_slice(&fs::read(&file)?)?;
     metadata.packages[3].dependencies = vec![FixtureDependency {
+        name: "a".into(),
         path: f.repo.join("crates/a"),
-        rename: "alias".into(),
+        rename: Some("alias".into()),
         kind: "dev".into(),
         optional: true,
         target: Some("cfg(windows)".into()),
     }];
     // A cycle must terminate without duplicate selections.
     metadata.packages[1].dependencies = vec![FixtureDependency {
+        name: "b".into(),
         path: f.repo.join("crates/b"),
         ..Default::default()
     }];

@@ -26,14 +26,13 @@ tower = { version = "0.5", features = ["util"] }
 burncloud-database = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-database-router = { workspace = true }
-burncloud-database-user = { workspace = true }
+burncloud-identity-user = { workspace = true }
 burncloud-node-runtime = { workspace = true }
 burncloud-router = { workspace = true }
-burncloud-service-models = { workspace = true }
+burncloud-supply-model = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }
 burncloud-service-monitor = { workspace = true }
-burncloud-service-user = { workspace = true }
 burncloud-service-token = { workspace = true }
 burncloud-service-router-log = { workspace = true }
 burncloud-supply-channel = { workspace = true }
@@ -47,7 +46,6 @@ sha2.workspace = true
 async-trait.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 tempfile = { workspace = true }
-burncloud-service-user = { workspace = true }
 
 [lints]
 workspace = true

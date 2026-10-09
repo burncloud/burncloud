@@ -577,6 +577,10 @@ async fn failed_create_rolls_back_provider_and_all_abilities() {
 
     assert!(ChannelProviderModel::create(&db, &mut ch).await.is_err());
     assert_eq!(
+        ch.created_time, None,
+        "failed creation must not publish an uncommitted timestamp"
+    );
+    assert_eq!(
         ch.id, 0,
         "failed creation must not publish an uncommitted ID"
     );
@@ -594,6 +598,26 @@ async fn failed_create_rolls_back_provider_and_all_abilities() {
         .await
         .unwrap();
     assert_eq!(row.0, 0, "partial abilities must also be rolled back");
+
+    cleanup(db, path).await;
+}
+
+#[tokio::test]
+async fn failed_standalone_ability_sync_preserves_existing_rows() {
+    let (db, path) = fresh_db("atomic_sync").await;
+    let mut ch = channel("sync", "original", "default", 1);
+    let id = insert_channel(&db, &mut ch).await;
+    let original = abilities_of(&db, id).await;
+
+    ch.models = "duplicate,duplicate".to_string();
+    assert!(ChannelProviderModel::sync_abilities(&db, &ch)
+        .await
+        .is_err());
+    assert_eq!(
+        abilities_of(&db, id).await,
+        original,
+        "failed standalone sync must preserve the existing abilities"
+    );
 
     cleanup(db, path).await;
 }

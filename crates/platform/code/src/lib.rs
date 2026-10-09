@@ -4,6 +4,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 
 mod clippy;
 mod init;
+mod manifest;
 mod plan;
 mod report;
 mod test;

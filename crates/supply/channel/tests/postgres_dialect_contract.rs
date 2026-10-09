@@ -208,6 +208,10 @@ async fn failed_channel_writes_roll_back_atomically_on_postgres() {
             failed.id, 0,
             "failed creation must not publish the rolled-back PostgreSQL id"
         );
+        assert_eq!(
+            failed.created_time, None,
+            "failed creation must leave the caller timestamp unchanged"
+        );
         assert!(
             ChannelProviderModel::list(&db, 100, 0)
                 .await

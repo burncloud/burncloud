@@ -40,7 +40,8 @@ impl ChannelProviderModel {
         };
 
         let now = current_timestamp();
-        channel.created_time = Some(now);
+        let mut pending = channel.clone();
+        pending.created_time = Some(now);
 
         // Use transaction to ensure last_insert_rowid works on the same connection
         let mut tx = pool.begin().await?;
@@ -59,7 +60,7 @@ impl ChannelProviderModel {
             .bind(&channel.other_info)
             .bind(&channel.tag)
             .bind(&channel.setting)
-            .bind(channel.created_time)
+            .bind(pending.created_time)
             .bind(&channel.param_override)
             .bind(&channel.header_override)
             .bind(&channel.remark)
@@ -83,12 +84,12 @@ impl ChannelProviderModel {
             row.0 as i32
         };
 
-        // Keep the channel ID on the caller unchanged until all database writes commit.
-        let mut pending = channel.clone();
+        // Do not publish ID or timestamp until every database write commits.
         pending.id = id;
         Self::sync_abilities_on(&mut tx, is_postgres, &pending).await?;
         tx.commit().await?;
         channel.id = id;
+        channel.created_time = Some(now);
 
         Ok(id)
     }
