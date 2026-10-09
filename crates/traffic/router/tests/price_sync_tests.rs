@@ -39,7 +39,7 @@ fn sqlite_url(path: &str) -> String {
     }
 }
 
-use burncloud_database_billing::{
+use burncloud_commerce_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
 use burncloud_database_router::RouterDatabase;

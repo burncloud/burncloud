@@ -15,7 +15,7 @@ use std::time::Duration;
 
 async fn seed_price(db: &burncloud_database::Database, model: &str) -> anyhow::Result<()> {
     use burncloud_commerce_contracts::price_u64::dollars_to_nano;
-    use burncloud_database_billing::{BillingPriceModel, PriceInput};
+    use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 
     let input = PriceInput {
         model: model.to_string(),
