@@ -4775,6 +4775,57 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn interactive_sse_body_stops_when_request_deadline_expires() {
+        use futures::StreamExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // Local HTTP server sends response headers and one chunk, then stalls.
+        // The outer proxy_logic timer is no longer active after headers, so
+        // Reqwest's request-scoped timeout must end the pending body read.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local upstream");
+        let addr = listener.local_addr().expect("local address");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let mut request = [0_u8; 4096];
+            socket.read(&mut request).await.expect("read request");
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n",
+                )
+                .await
+                .expect("send first SSE body chunk");
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        });
+
+        let started = std::time::Instant::now();
+        let timeout =
+            retry_attempt_timeout(std::time::Duration::from_millis(300), started);
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/v1/chat/completions"))
+            .timeout(timeout)
+            .send()
+            .await
+            .expect("receive upstream headers");
+        let mut body = response.bytes_stream();
+        let first = body
+            .next()
+            .await
+            .expect("initial chunk")
+            .expect("first chunk readable");
+        assert_eq!(first.as_ref(), b"hello");
+        let stalled = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+            .await
+            .expect("stream must not hang beyond watchdog");
+        let error = stalled
+            .expect("the stalled body must produce an error")
+            .expect_err("response body must terminate on request timeout");
+        assert!(error.is_timeout(), "expected the real Reqwest timeout");
+        server.abort();
+    }
+
     #[tokio::test(start_paused = true)]
     async fn deadline_cancellation_refunds_real_budget_guard() {
         let budget = InMemoryBudget::new();
