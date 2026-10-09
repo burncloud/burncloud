@@ -13,36 +13,10 @@
 mod common;
 
 use burncloud_database::sqlx;
-use common::{setup_db, start_test_server};
+use common::{setup_db, start_mock_upstream, start_test_server};
 use reqwest::Client;
 use serde_json::json;
 use std::env;
-
-async fn start_mock_upstream(listener: tokio::net::TcpListener) {
-    let handler = |headers: axum::http::HeaderMap, body: String| async move {
-        // Return a structure similar to HttpBin's response for verification
-        let mut header_map = serde_json::Map::new();
-        for (k, v) in headers {
-            if let Some(key) = k {
-                header_map.insert(
-                    key.to_string(),
-                    serde_json::Value::String(v.to_str().unwrap_or_default().to_string()),
-                );
-            }
-        }
-
-        serde_json::json!({
-            "headers": header_map,
-            "data": body,
-            "json": serde_json::from_str::<serde_json::Value>(&body).ok()
-        })
-        .to_string()
-    };
-
-    axum::serve(listener, axum::Router::new().fallback(handler))
-        .await
-        .unwrap_or_else(|e| panic!("Mock upstream server error: {e}"));
-}
 
 #[tokio::test]
 async fn test_bedrock_proxy() -> anyhow::Result<()> {
