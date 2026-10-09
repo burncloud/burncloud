@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::manifest::{self, Impact, RootManifestChange};
+
 const KNOWN_TEST_BASELINE: &str =
     include_str!("../../../../.github/test-plan/known-test-baseline.txt");
 
@@ -24,7 +26,15 @@ struct Package {
 #[derive(Deserialize)]
 struct Dependency {
     // Includes normal, build, dev, optional and target-specific dependencies.
+    name: String,
+    rename: Option<String>,
     path: Option<PathBuf>,
+}
+
+impl Dependency {
+    fn manifest_name(&self) -> &str {
+        self.rename.as_deref().unwrap_or(&self.name)
+    }
 }
 
 pub(crate) struct Plan {
@@ -44,7 +54,7 @@ pub(crate) fn no_test_impact(path: &str) -> bool {
 fn global(path: &str) -> bool {
     matches!(
         path,
-        "Cargo.toml" | "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml"
+        "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml"
     ) || path.starts_with(".cargo/")
 }
 
@@ -96,6 +106,7 @@ pub(crate) fn select(
     files: &BTreeSet<String>,
     metadata: Metadata,
     all: bool,
+    root_manifest: Option<&RootManifestChange>,
 ) -> Result<Plan> {
     let root = root.canonicalize()?;
     let mut directories = BTreeMap::new();
@@ -123,6 +134,65 @@ pub(crate) fn select(
     };
     for file in files {
         if no_test_impact(file) {
+            continue;
+        }
+        if file == "Cargo.toml" {
+            let Some(change) = root_manifest else {
+                plan.full_reason.get_or_insert_with(|| {
+                    "root Cargo.toml changed but its previous version is unavailable".to_owned()
+                });
+                continue;
+            };
+            match manifest::analyze(change) {
+                Impact::Full(reason) => {
+                    plan.full_reason.get_or_insert_with(|| {
+                        format!("root Cargo.toml requires full workspace: {reason}")
+                    });
+                }
+                Impact::Scoped {
+                    added_members,
+                    changed_workspace_dependencies,
+                    root_package_changed,
+                } => {
+                    for member in added_members {
+                        let member_path = root.join(&member);
+                        let owner = member_path
+                            .canonicalize()
+                            .ok()
+                            .and_then(|directory| directories.get(&directory));
+                        if let Some(name) = owner {
+                            plan.direct.insert(name.clone());
+                        } else {
+                            plan.full_reason.get_or_insert_with(|| {
+                                format!(
+                                    "root Cargo.toml added workspace member that cannot be mapped safely: {member}"
+                                )
+                            });
+                        }
+                    }
+                    if root_package_changed {
+                        if let Some(name) = directories.get(&root) {
+                            plan.direct.insert(name.clone());
+                        } else {
+                            plan.full_reason.get_or_insert_with(|| {
+                                "root package changed but cargo metadata has no root package"
+                                    .to_owned()
+                            });
+                        }
+                    }
+                    for dependency in changed_workspace_dependencies {
+                        for package in &packages {
+                            if package
+                                .dependencies
+                                .iter()
+                                .any(|candidate| candidate.manifest_name() == dependency)
+                            {
+                                plan.direct.insert(package.name.clone());
+                            }
+                        }
+                    }
+                }
+            }
             continue;
         }
         if global(file) {
@@ -246,7 +316,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::{known_test_skips, Plan};
+    use super::{global, known_test_skips, Plan};
     use std::collections::BTreeSet;
 
     #[test]
@@ -265,6 +335,15 @@ mod tests {
             "known test baseline changed unexpectedly"
         );
         Ok(())
+    }
+
+    #[test]
+    fn only_truly_global_cargo_inputs_force_workspace() {
+        assert!(!global("Cargo.toml"));
+        assert!(global("Cargo.lock"));
+        assert!(global("rust-toolchain"));
+        assert!(global("rust-toolchain.toml"));
+        assert!(global(".cargo/config.toml"));
     }
 
     #[test]
