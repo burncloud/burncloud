@@ -95,6 +95,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     // 5. Send Requests
     let mut hits_u1 = 0;
     let mut hits_u2 = 0;
+    let mut selected_urls = Vec::new();
 
     for (i, session) in sessions.iter().enumerate() {
         let resp = client
@@ -111,6 +112,7 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
             .unwrap_or_else(|| panic!("Expected url in response"));
 
         println!("Request {} hit: {}", i, target_url);
+        selected_urls.push(target_url.to_owned());
 
         if target_url.contains("/u1") {
             hits_u1 += 1;
@@ -123,6 +125,27 @@ async fn test_round_robin_balancer() -> anyhow::Result<()> {
     // The original HTTP distribution assertion remains strict (two each).
     assert_eq!(hits_u1, 2, "Should hit Upstream 1 twice");
     assert_eq!(hits_u2, 2, "Should hit Upstream 2 twice");
+
+    // A repeated conversation must retain the same upstream. The legacy
+    // test name is kept for #756, but current Channel routing uses HRW
+    // affinity, not the retired router_groups round_robin strategy.
+    let sticky_response = client
+        .post(&url)
+        .header("Authorization", "Bearer sk-burncloud-demo")
+        .json(&serde_json::json!({
+            "model": model,
+            "conversation_id": sessions[0],
+            "messages": [{"role": "user", "content": "sticky follow-up"}]
+        }))
+        .send()
+        .await?;
+    assert_eq!(sticky_response.status(), 200);
+    let sticky_json: Value = sticky_response.json().await?;
+    assert_eq!(
+        sticky_json["url"].as_str(),
+        selected_urls.first().map(String::as_str),
+        "A repeated conversation must remain on the same upstream"
+    );
 
     Ok(())
 }
