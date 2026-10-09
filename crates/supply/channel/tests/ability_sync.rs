@@ -570,12 +570,21 @@ async fn deleting_a_channel_also_removes_its_abilities() {
 async fn failed_create_rolls_back_provider_and_all_abilities() {
     let (db, path) = fresh_db("atomic_create").await;
     let mut ch = channel("atomic-create", "same,same", "default", 1);
-    let before = ChannelProviderModel::list(&db, 1000, 0).await.unwrap().len();
+    let before = ChannelProviderModel::list(&db, 1000, 0)
+        .await
+        .unwrap()
+        .len();
 
     assert!(ChannelProviderModel::create(&db, &mut ch).await.is_err());
-    assert_eq!(ch.id, 0, "failed creation must not publish an uncommitted ID");
     assert_eq!(
-        ChannelProviderModel::list(&db, 1000, 0).await.unwrap().len(),
+        ch.id, 0,
+        "failed creation must not publish an uncommitted ID"
+    );
+    assert_eq!(
+        ChannelProviderModel::list(&db, 1000, 0)
+            .await
+            .unwrap()
+            .len(),
         before,
         "provider INSERT must roll back when the second ability INSERT fails"
     );
