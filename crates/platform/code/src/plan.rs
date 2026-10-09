@@ -101,20 +101,25 @@ fn apply_root_manifest_impact(
         return;
     };
 
-    let Impact::Scoped {
-        added_members,
-        changed_workspace_dependencies,
-        root_package_changed,
-    } = manifest::analyze(change)
-    else {
-        if let Impact::Full(reason) = manifest::analyze(change) {
-            mark_full(
-                plan,
-                format!("root Cargo.toml requires full workspace: {reason}"),
-            );
-        }
-        return;
-    };
+    let (added_members, changed_workspace_dependencies, root_package_changed) =
+        match manifest::analyze(change) {
+            Impact::Full(reason) => {
+                mark_full(
+                    plan,
+                    format!("root Cargo.toml requires full workspace: {reason}"),
+                );
+                return;
+            }
+            Impact::Scoped {
+                added_members,
+                changed_workspace_dependencies,
+                root_package_changed,
+            } => (
+                added_members,
+                changed_workspace_dependencies,
+                root_package_changed,
+            ),
+        };
 
     for member in added_members {
         let owner = root
