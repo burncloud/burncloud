@@ -16,11 +16,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use burncloud_commerce_contracts::pricing::{CurrencyPricing, ModelPricing, PricingConfig};
-use burncloud_database::placeholder::adapt_sql;
 use burncloud_database::{sqlx, Database};
 use burncloud_database_billing::{
     BillingPriceModel, BillingTieredPriceModel, DatabaseError, Price, PriceInput, TieredPriceInput,
 };
+use burncloud_database_model::{ModelCapabilityInput, ModelCapabilityModel};
 use burncloud_service_billing::PriceCache;
 
 /// HTTP client timeout for price sync API calls (seconds).
@@ -803,22 +803,17 @@ impl PriceSyncService {
 
     /// Sync model capabilities to the local database
     ///
-    /// Returns the number of capabilities updated/inserted
+    /// Returns the number of capabilities updated/inserted.
+    ///
+    /// Traffic owns the projection from the pricing document; Supply owns persistence and SQL.
     pub async fn sync_capabilities(&self) -> anyhow::Result<usize> {
         let text = self.fetch_remote_config().await?;
         let config = PricingConfig::from_json(&text)?;
         let mut updated_count = 0;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-
-        let conn = self.db.get_connection()?;
-        let pool = conn.pool();
-        let is_postgres = self.db.kind() == "postgres";
 
         for (model_name, model_pricing) in &config.models {
-            // Get pricing info for capabilities table
+            // The historical mixed table keeps a USD price snapshot for compatibility. Commerce's
+            // billing tables remain the canonical pricing truth.
             let (input_price, output_price) = model_pricing
                 .pricing
                 .get("USD")
@@ -830,7 +825,6 @@ impl PriceSyncService {
                 })
                 .unwrap_or((None, None));
 
-            // Get metadata
             let (context_window, max_output_tokens, supports_vision, supports_function_calling) =
                 model_pricing
                     .metadata
@@ -845,40 +839,18 @@ impl PriceSyncService {
                     })
                     .unwrap_or((None, None, false, false));
 
-            // Build the SQL — single template adapted per dialect.
-            // EXCLUDED keyword is case-insensitive in both SQLite and PostgreSQL.
-            let sql = adapt_sql(
-                is_postgres,
-                r#"
-                INSERT INTO model_capabilities (model, context_window, max_output_tokens, supports_vision, supports_function_calling, input_price, output_price, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(model) DO UPDATE SET
-                    context_window = EXCLUDED.context_window,
-                    max_output_tokens = EXCLUDED.max_output_tokens,
-                    supports_vision = EXCLUDED.supports_vision,
-                    supports_function_calling = EXCLUDED.supports_function_calling,
-                    input_price = EXCLUDED.input_price,
-                    output_price = EXCLUDED.output_price,
-                    synced_at = EXCLUDED.synced_at
-                "#,
-            );
+            let input = ModelCapabilityInput {
+                model: model_name.clone(),
+                context_window,
+                max_output_tokens,
+                supports_vision,
+                supports_function_calling,
+                input_price,
+                output_price,
+            };
 
-            let result = sqlx::query(&sql)
-                .bind(model_name)
-                .bind(context_window)
-                .bind(max_output_tokens)
-                .bind(supports_vision)
-                .bind(supports_function_calling)
-                .bind(input_price)
-                .bind(output_price)
-                .bind(now)
-                .execute(pool)
-                .await;
-
-            match result {
-                Ok(_) => {
-                    updated_count += 1;
-                }
+            match ModelCapabilityModel::upsert(self.db.as_ref(), &input).await {
+                Ok(()) => updated_count += 1,
                 Err(e) => {
                     tracing::error!("Failed to sync capabilities for {}: {}", model_name, e);
                 }

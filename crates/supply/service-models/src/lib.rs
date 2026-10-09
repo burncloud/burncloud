@@ -1,6 +1,8 @@
 //! # BurnCloud Service Models
 //!
-//! 模型服务层，提供简洁的增删改查接口
+//! Supply-side model resolution, manifest handling, downloads and HuggingFace discovery.
+//! This crate deliberately exposes no database CRUD for HuggingFace metadata; the former CRUD
+//! facade was backed only by no-op methods and was removed by #621.
 
 mod manifest;
 mod resolver;
@@ -11,11 +13,8 @@ pub use resolver::{
     ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
 };
 
-use burncloud_database_model::ModelDatabase;
 use burncloud_service_setting::{SettingDatabase, SettingService};
 use serde::Deserialize;
-
-type Result<T> = std::result::Result<T, burncloud_database_model::DatabaseError>;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HfApiModel {
@@ -47,108 +46,13 @@ pub struct HfFileItem {
     pub path: String,
 }
 
-/// 模型服务
-pub struct ModelService {
-    db: ModelDatabase,
-}
+/// HuggingFace discovery service.
+///
+/// The former database-backed CRUD surface was removed by #621 because its persistence adapter
+/// contained only no-op methods and no migrated table matched its HuggingFace-shaped row type.
+pub struct ModelService;
 
 impl ModelService {
-    /// 创建新的模型服务实例
-    pub async fn new() -> Result<Self> {
-        Ok(Self {
-            db: ModelDatabase::new().await?,
-        })
-    }
-
-    /// 添加模型
-    pub async fn create(&self, model: &burncloud_database_model::ModelInfo) -> Result<()> {
-        self.db.add_model(model).await
-    }
-
-    /// 删除模型
-    pub async fn delete(&self, model_id: &str) -> Result<()> {
-        // 尝试清理物理文件
-        if let Ok(Some(model)) = self.get(model_id).await {
-            // File cleanup is best-effort: the database record must still be removable when the file is
-            // already gone or the filesystem is temporarily unavailable. `drop` makes that policy explicit
-            // instead of silently binding a #[must_use] Result to `_`.
-            drop(
-                self.cleanup_files(model_id, model.filename.as_deref())
-                    .await,
-            );
-        }
-        self.db.delete(model_id).await
-    }
-
-    /// 清理文件辅助函数
-    async fn cleanup_files(
-        &self,
-        model_id: &str,
-        filename: Option<&str>,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let base_dir = get_data_dir().await?;
-        let model_dir = std::path::Path::new(&base_dir).join(model_id);
-        if !model_dir.exists() {
-            return Ok(());
-        }
-        if let Some(fname) = filename {
-            if fname.trim().is_empty() {
-                return Ok(());
-            }
-            let prefix = if fname.to_lowercase().ends_with(".gguf") {
-                &fname[..fname.len() - 5]
-            } else {
-                fname
-            };
-            if prefix.is_empty() {
-                return Ok(());
-            }
-            let mut entries = tokio::fs::read_dir(&model_dir).await?;
-            while let Some(entry) = entries.next_entry().await? {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.starts_with(prefix) {
-                            tokio::fs::remove_file(&path).await?;
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// 更新模型（使用 add_model 的 INSERT OR REPLACE 逻辑）
-    pub async fn update(&self, model: &burncloud_database_model::ModelInfo) -> Result<()> {
-        self.db.add_model(model).await
-    }
-    /// 根据ID查询模型
-    pub async fn get(&self, model_id: &str) -> Result<Option<burncloud_database_model::ModelInfo>> {
-        self.db.get_model(model_id).await
-    }
-    /// 查询所有模型
-    pub async fn list(&self) -> Result<Vec<burncloud_database_model::ModelInfo>> {
-        self.db.list_models().await
-    }
-    /// 根据管道类型搜索
-    pub async fn search_by_pipeline(
-        &self,
-        pipeline_tag: &str,
-    ) -> Result<Vec<burncloud_database_model::ModelInfo>> {
-        self.db.search_by_pipeline(pipeline_tag).await
-    }
-    /// 获取热门模型
-    pub async fn get_popular(
-        &self,
-        limit: i64,
-    ) -> Result<Vec<burncloud_database_model::ModelInfo>> {
-        self.db.get_popular_models(limit).await
-    }
-    /// 关闭服务
-    pub async fn close(self) -> Result<()> {
-        self.db.close().await
-    }
-
     /// 从 HuggingFace API 获取模型列表
     pub async fn fetch_from_huggingface(
     ) -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {

@@ -1,23 +1,37 @@
 # burncloud-database-model
 
-`model_` 业务域数据库 crate，管理模型能力元数据（`model_capabilities` 表）。
+Supply-owned persistence for model capability truth.
 
-## 关键类型
+## Data truth
 
-| 类型 | 说明 |
-|------|------|
-| `ModelDatabase` | Crate 控制器，占位实现（HuggingFace 风格元数据） |
-| `ModelInfo`     | 模型元数据行类型 |
+The runtime table is `model_capabilities`:
 
-## 目录结构
+| Column | Meaning |
+| --- | --- |
+| `id` | persistence identifier |
+| `model` | unique model name |
+| `context_window` | maximum context tokens |
+| `max_output_tokens` | maximum output tokens |
+| `supports_vision` | vision input capability |
+| `supports_function_calling` | function/tool calling capability |
+| `input_price` / `output_price` | legacy USD price projection kept for schema compatibility |
+| `synced_at` | last projection timestamp |
 
-```
-src/
-├── lib.rs               — 聚合器 + re-exports
-├── common.rs            — current_timestamp() 工具
-└── model_capability.rs  — ModelInfo / ModelDatabase
-```
+Canonical pricing remains in Commerce. The two price columns above are not a second pricing truth;
+they remain only because the historical migration created a mixed table. A future data migration may
+physically split them, but #621 does not rewrite migration history.
 
-## 依赖
+## Public API
 
-- `burncloud-database` — 核心抽象
+- `ModelCapability` — row type matching the real table.
+- `ModelCapabilityInput` — write projection accepted by the adapter.
+- `ModelCapabilityModel::get` — read one row.
+- `ModelCapabilityModel::upsert` — the single production write entrance.
+
+The old HuggingFace-shaped `ModelInfo` / `ModelDatabase` API was removed. It described a different
+unmigrated `models` design and all seven CRUD methods were no-ops.
+
+## Boundary
+
+Traffic may call this crate to persist a capability projection. It must not execute raw SQL against
+`model_capabilities` itself.
