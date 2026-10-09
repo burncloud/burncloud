@@ -34,12 +34,12 @@ Use source search rather than this list as an exhaustive module index.
 
 ## Dependency boundary
 
-Current `Cargo.toml` directly depends on database/common crates and currently two `burncloud-service-*` crates:
+Current `Cargo.toml` has two explicitly whitelisted cross-domain implementation dependencies:
 
 - `burncloud-service-billing`
-- `burncloud-service-user`
+- `burncloud-identity-user`
 
-`crates/traffic/router/scripts/check-router-deps.sh` enforces these two service crates as the current whitelist. Adding another direct `burncloud-service-*` dependency requires deliberate architecture review and updating the enforced rule if accepted.
+`crates/traffic/router/scripts/check-router-deps.sh` enforces this compatibility whitelist. Adding another cross-domain implementation dependency requires deliberate architecture review and an explicit whitelist update.
 
 ## Passthrough and conversion
 

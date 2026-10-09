@@ -29,7 +29,7 @@ burncloud-supply-contracts = { workspace = true }
 burncloud-traffic-contracts = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-service-billing = { workspace = true }
-burncloud-service-user = { workspace = true }
+burncloud-identity-user = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 jsonwebtoken = { workspace = true }
 once_cell = { workspace = true }
