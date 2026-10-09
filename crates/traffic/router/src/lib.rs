@@ -4632,7 +4632,7 @@ async fn proxy_logic(
     reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
-    use super::{inject_video_tokens_if_empty, is_interactive_request};
+    use super::{inject_video_tokens_if_empty, is_interactive_request, retry_attempt_timeout};
     use crate::rate_budget::{
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
     };
@@ -4664,6 +4664,22 @@ mod tests {
             "/unknown-long-running-endpoint",
         ] {
             assert!(!is_interactive_request(path), "{path} must retain long-task headroom");
+        }
+    }
+
+    #[test]
+    fn interactive_attempt_timeout_bounds_sse_and_keeps_long_task_timeout() {
+        let started = std::time::Instant::now();
+        for path in ["/v1/responses", "/v1/chat/completions", "/v1/messages"] {
+            let timeout = retry_attempt_timeout(path, started)
+                .expect("interactive requests need an attempt deadline");
+            assert!(timeout <= std::time::Duration::from_secs(super::retry_budget_secs(path)));
+        }
+        for path in ["/v1/video/generations", "/v1/audio/speech", "/v1/music/generations"] {
+            assert!(
+                retry_attempt_timeout(path, started).is_none(),
+                "{path} must retain the existing 10-hour per-request timeout"
+            );
         }
     }
 
