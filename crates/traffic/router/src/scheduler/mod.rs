@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::str::FromStr;
 
-use burncloud_service_billing::PriceCache;
+use burncloud_commerce_billing::PriceCache;
 use burncloud_supply_contracts::Channel;
 use burncloud_traffic_contracts::TrafficColor;
 use serde::{Deserialize, Serialize};

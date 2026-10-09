@@ -66,7 +66,7 @@ pub struct RouteInputs<'a> {
     pub group: &'a str,
     pub model: &'a str,
     pub state_tracker: &'a ChannelStateTracker,
-    pub price_cache: &'a burncloud_service_billing::PriceCache,
+    pub price_cache: &'a burncloud_commerce_billing::PriceCache,
     pub exchange_rate: &'a ExchangeRateService,
     pub scheduler_kind: Option<&'a SchedulerKind>,
     pub request: &'a SchedulingRequest,

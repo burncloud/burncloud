@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use burncloud_commerce_contracts::pricing::{CurrencyPricing, ModelPricing, PricingConfig};
 use burncloud_database::{sqlx, Database};
-use burncloud_database_billing::{
+use burncloud_commerce_billing::{
     BillingPriceModel, BillingTieredPriceModel, DatabaseError, Price, PriceInput, TieredPriceInput,
 };
-use burncloud_service_billing::PriceCache;
+use burncloud_commerce_billing::PriceCache;
 use burncloud_supply_model::{ModelCapabilityInput, ModelCapabilityModel};
 
 /// HTTP client timeout for price sync API calls (seconds).

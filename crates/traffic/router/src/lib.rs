@@ -164,7 +164,7 @@ use burncloud_database_router::{
     CandidateInfo, FailoverAttempt, RouterDatabase, RouterLog, RouterRequestLog,
     RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel, StoragePolicy,
 };
-use burncloud_service_billing::{
+use burncloud_commerce_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
 };
 use burncloud_service_user::UserService;
@@ -952,13 +952,13 @@ pub async fn create_router_app_with_route_miss(
     // API Version Detector for handling deprecated versions
     let api_version_detector = Arc::new(adaptor::detector::ApiVersionDetector::new(db.clone()));
     // Price cache + cost calculator (loaded at startup; refreshed on POST /api/v1/prices)
-    let price_cache = burncloud_service_billing::PriceCache::load(&db)
+    let price_cache = burncloud_commerce_billing::PriceCache::load(&db)
         .await
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to load price cache at startup: {e} — using empty cache");
-            burncloud_service_billing::PriceCache::empty()
+            burncloud_commerce_billing::PriceCache::empty()
         });
-    let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
+    let cost_calculator = burncloud_commerce_billing::CostCalculator::new(price_cache.clone());
 
     // Exchange Rate Service for multi-currency cost calculations
     let exchange_rate_service = Arc::new(exchange_rate::ExchangeRateService::new(db.clone()));
@@ -1427,10 +1427,10 @@ fn normalize_doubled_path(path: &str) -> String {
 /// Exposed as `pub(crate)` so unit tests can call it without a running server.
 pub(crate) fn inject_video_tokens_if_empty(
     status: axum::http::StatusCode,
-    mut usage: burncloud_service_billing::UnifiedUsage,
+    mut usage: burncloud_commerce_billing::UnifiedUsage,
     video_tokens: i64,
     source: &str,
-) -> burncloud_service_billing::UnifiedUsage {
+) -> burncloud_commerce_billing::UnifiedUsage {
     if status.is_success() && usage.is_empty() && video_tokens > 0 {
         usage.video_tokens = video_tokens;
         tracing::info!(
@@ -2008,7 +2008,7 @@ async fn proxy_handler(
                     let total = result.usd_amount_nano;
                     (total, result.breakdown, Some("ok".to_string()))
                 }
-                Err(burncloud_service_billing::BillingError::PriceNotFound(m)) => {
+                Err(burncloud_commerce_billing::BillingError::PriceNotFound(m)) => {
                     tracing::warn!(model = %m, "PriceNotFound — no price configured for this model");
                     state
                         .billing_post_settle_price_missing_count
@@ -4681,7 +4681,7 @@ mod tests {
         BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
     };
     use axum::http::StatusCode;
-    use burncloud_service_billing::UnifiedUsage;
+    use burncloud_commerce_billing::UnifiedUsage;
     use burncloud_traffic_contracts::TrafficColor;
 
     #[test]
