@@ -238,10 +238,9 @@ async fn ability_rows_round_trip_through_the_real_table() {
         .await
         .expect("real INSERT into channel_abilities");
 
-    let abilities =
-        burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
-            .await
-            .expect("real SELECT with the dialect-specific `group` alias");
+    let abilities = burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, channel_id)
+        .await
+        .expect("real SELECT with the dialect-specific `group` alias");
     // The stored row carries `model_mapping`, so re-syncing from the database must reproduce both
     // mapping names as well as the explicit model list.
     let mut models: Vec<&str> = abilities.iter().map(|a| a.model.as_str()).collect();
