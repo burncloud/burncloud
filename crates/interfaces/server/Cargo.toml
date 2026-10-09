@@ -33,7 +33,7 @@ burncloud-supply-model = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 burncloud-client = { workspace = true, features = ["liveview"] }
 burncloud-service-monitor = { workspace = true }
-burncloud-service-token = { workspace = true }
+burncloud-identity-token = { workspace = true }
 burncloud-service-router-log = { workspace = true }
 burncloud-supply-channel = { workspace = true }
 jsonwebtoken = { workspace = true }
