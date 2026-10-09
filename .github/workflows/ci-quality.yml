@@ -122,13 +122,13 @@ jobs:
       # `tests/` directory was renamed, emptied or excluded from the workspace would silently stop
       # being verified while the job stayed green. The two packages below carry the credential,
       # quota-settlement and rotation rules (`service-token`) and the registration, login and JWT
-      # rules (`service-user`); these floors were asserted per suite by the job this workflow
+      # rules (`identity-user`); these floors were asserted per suite by the job this workflow
       # replaced, and they are kept here so the workspace-wide run does not lose that guard.
       #
       # Both packages isolate themselves in temporary SQLite files, which is what makes them runnable
       # on a hosted runner at all. Each is run as a package rather than with `--test <file>`, so the
       # floor covers every integration target the package currently has:
-      # `service-token` has `token_credentials.rs` + `token_service_entries.rs`, and `service-user`
+      # `service-token` has `token_credentials.rs` + `token_service_entries.rs`, and `identity-user`
       # has `user_rules.rs` + `no_default_database.rs`. Splitting the floor per file would let a
       # deleted file pass as long as another one still had enough tests.
       - name: Identity test discovery floors
@@ -138,7 +138,7 @@ jobs:
 
           # Floors measured on a green run of this exact command, with a small margin. `service-token`
           # currently reports 22 across `token_credentials.rs` (18) and `token_service_entries.rs` (4);
-          # `service-user` reports 14 across its unit tests (10) and `user_rules.rs` (4). The margin is
+          # `identity-user` reports 14 across its unit tests (10) and `user_rules.rs` (4). The margin is
           # deliberate: the point is to catch a suite that was never discovered, not to fail whenever
           # a single test is temporarily removed.
           check_floor() {
@@ -156,7 +156,7 @@ jobs:
           }
 
           check_floor burncloud-service-token 20
-          check_floor burncloud-service-user 12
+          check_floor burncloud-identity-user 12
 
   clippy:
     name: Clippy
