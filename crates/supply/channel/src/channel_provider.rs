@@ -178,7 +178,7 @@ impl ChannelProviderModel {
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region,
-                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
+                    rpm_cap, tpm_cap, reservation_green::DOUBLE PRECISION AS reservation_green, reservation_yellow::DOUBLE PRECISION AS reservation_yellow, reservation_red::DOUBLE PRECISION AS reservation_red
                 FROM channel_providers WHERE id = {}
             "#,
                 ph(is_postgres, 1)
@@ -218,7 +218,7 @@ impl ChannelProviderModel {
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region,
-                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
+                    rpm_cap, tpm_cap, reservation_green::DOUBLE PRECISION AS reservation_green, reservation_yellow::DOUBLE PRECISION AS reservation_yellow, reservation_red::DOUBLE PRECISION AS reservation_red
                 FROM channel_providers ORDER BY id DESC LIMIT {} OFFSET {}
             "#,
                 ph(is_postgres, 1),
@@ -274,7 +274,7 @@ impl ChannelProviderModel {
                     response_time, base_url, models, "group", used_quota, model_mapping,
                     priority, auto_ban, other_info, tag, setting, param_override,
                     header_override, remark, api_version, pricing_region,
-                    rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red
+                    rpm_cap, tpm_cap, reservation_green::DOUBLE PRECISION AS reservation_green, reservation_yellow::DOUBLE PRECISION AS reservation_yellow, reservation_red::DOUBLE PRECISION AS reservation_red
                 FROM channel_providers WHERE id IN ({})
                 "#,
                 placeholders
