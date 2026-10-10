@@ -357,11 +357,14 @@ impl RouterDatabase {
         exchange_rate_nano: i64,
     ) -> Result<bool> {
         BalanceModel::deduct_dual_currency_router_legacy(
-            db, user_id, cost_nano, cost_currency, exchange_rate_nano,
+            db,
+            user_id,
+            cost_nano,
+            cost_currency,
+            exchange_rate_nano,
         )
         .await
     }
-
 }
 
 /// Get aggregated usage statistics by token key over a time period.
