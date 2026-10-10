@@ -20,7 +20,6 @@ pub struct UserApiKey {
     pub expired_time: i64,
 }
 
-
 // Keep the secret in the internal model for authentication and persistence.
 // Generic Serialize and Debug are always safe to expose to presentation paths.
 fn serialize_masked_key<S>(key: &str, serializer: S) -> std::result::Result<S::Ok, S::Error>

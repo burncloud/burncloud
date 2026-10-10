@@ -106,7 +106,10 @@ async fn accounts_round_trip_through_the_real_schema() {
     // through the generic Serialize boundary.
     assert_eq!(stored.password_hash.as_deref(), Some("$2b$12$notarealhash"));
     let json = serde_json::to_value(&stored).unwrap();
-    assert!(json.get("password_hash").is_none(), "password hash is secret");
+    assert!(
+        json.get("password_hash").is_none(),
+        "password hash is secret"
+    );
     assert_eq!(json["username"], serde_json::json!("alice"));
     // Balance is projected into JSON under the same names (Commerce-facing projection).
     // `json!` is used rather than naming `serde_json::Value`: the workspace's type gate disallows that
@@ -285,7 +288,10 @@ async fn api_keys_round_trip_and_updates_are_partial() {
         .unwrap()
         .expect("lookup by key");
     assert_eq!(fetched.id, created.id);
-    assert_eq!(fetched.key, created.key, "authentication lookup retains the raw key");
+    assert_eq!(
+        fetched.key, created.key,
+        "authentication lookup retains the raw key"
+    );
     assert_eq!(fetched.remain_quota, 1_000_000);
 
     // A partial update must leave the untouched fields alone.
@@ -321,7 +327,10 @@ async fn api_keys_round_trip_and_updates_are_partial() {
         .await
         .unwrap();
     assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].key, created.key, "listing must not mutate stored keys");
+    assert_eq!(
+        listed[0].key, created.key,
+        "listing must not mutate stored keys"
+    );
     let projected = serde_json::to_value(&listed).unwrap();
     assert_eq!(projected[0]["key"], serde_json::json!(created.masked_key()));
     assert!(!projected.to_string().contains(&created.key));
