@@ -8,7 +8,7 @@
 //! This test lives in `burncloud-server` rather than next to the database crate on purpose.
 //! `deny.toml` bans `burncloud-supply-channel` as a dependency of `burncloud-database` and
 //! allows only a fixed wrapper list (which includes `burncloud-server`). Asserting the
-//! owner-seeded state here is what keeps Platform free of any dependency edge to the owners â€”
+//! owner-seeded state here is what keeps Platform free of any dependency edge to the owners Ã¢â‚¬â€
 //! the one-way direction #842 requires. Platform's own half of the contract (the factories
 //! create no domain records) is asserted in
 //! `crates/platform/storage/database/tests/initialization_boundary.rs`.
@@ -18,12 +18,12 @@
 //!
 //! Verified on SQLite and on real PostgreSQL 16:
 //! 1. the schema-only factory really does start empty;
-//! 2. the owner calls reproduce the historical startup state exactly â€” one demo account,
+//! 2. the owner calls reproduce the historical startup state exactly Ã¢â‚¬â€ one demo account,
 //!    one demo key, four protocol configs;
 //! 3. both owner calls are idempotent, so a restart over an existing database neither
 //!    duplicates nor removes a row.
 use burncloud_database::create_database_with_url;
-use burncloud_database::sqlx::{self as db_sqlx, Database};
+use burncloud_database::Database;
 use burncloud_service_user::UserDatabase;
 use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::error::Error;
@@ -31,7 +31,7 @@ use std::error::Error;
 /// Read the three seeded row counts with direct `COUNT(*)` queries.
 ///
 /// Counting, rather than reading whole rows, is deliberate: it detects duplicates as well as
-/// absences. It also avoids a real portability trap â€” PostgreSQL returns `user_api_keys.key` as
+/// absences. It also avoids a real portability trap Ã¢â‚¬â€ PostgreSQL returns `user_api_keys.key` as
 /// `bpchar`, which the `Any` driver cannot decode, so listing credentials fails outright on the
 /// real-PostgreSQL run. `select id, username from user_accounts` succeeds, so only the
 /// credential table has this problem.
@@ -44,11 +44,11 @@ use std::error::Error;
 async fn seed_counts(db: &Database) -> Result<(i64, i64, i64), Box<dyn Error>> {
     let pool = db.get_connection()?.pool();
     let demo_users: i64 =
-        db_sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'")
+        burncloud_database::sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'")
             .fetch_one(pool)
             .await?;
     let demo_tokens: i64 =
-        db_sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'")
+        burncloud_database::sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'")
             .fetch_one(pool)
             .await?;
     // `ChannelProtocolConfigModel::list` projects `is_default::INTEGER` on PostgreSQL, so it
@@ -157,7 +157,10 @@ impl Drop for DisposablePostgres {
 #[tokio::test]
 async fn owner_seeds_reproduce_the_startup_records_on_real_postgres() -> Result<(), Box<dyn Error>>
 {
-    use burncloud_database::sqlx::{ConnectOptions, Executor};
+    // Imported as `_` so the traits are in scope for their methods without binding any name
+    // that could shadow `std::error::Error` (see the import note at the top of this file).
+    use burncloud_database::sqlx::ConnectOptions as _;
+    use burncloud_database::sqlx::Executor as _;
     use std::str::FromStr;
 
     if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
@@ -207,7 +210,7 @@ async fn owner_seeds_reproduce_the_startup_records_on_real_postgres() -> Result<
         .map(|(_, number)| number)
         .ok_or("PostgreSQL container did not publish its port")?;
     let admin_url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
-    let options = db_sqlx::postgres::PgConnectOptions::from_str(&admin_url)?;
+    let options = burncloud_database::sqlx::postgres::PgConnectOptions::from_str(&admin_url)?;
     let mut ready = false;
     for _ in 0..40 {
         ready = tokio::time::timeout(std::time::Duration::from_secs(3), async {
