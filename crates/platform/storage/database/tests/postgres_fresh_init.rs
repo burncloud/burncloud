@@ -54,7 +54,11 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
     )
     .fetch_one(conn.pool())
     .await?;
-    ensure_eq(user_type.as_str(), "text", "subscription FK must match users.id")?;
+    ensure_eq(
+        user_type.as_str(),
+        "text",
+        "subscription FK must match users.id",
+    )?;
 
     let seeded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
         .bind("demo-user")
