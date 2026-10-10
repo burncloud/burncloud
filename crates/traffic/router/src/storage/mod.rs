@@ -48,10 +48,6 @@ pub struct TokenValidationInfo {
     pub price_cap: Option<i64>,
 }
 
-/// Tuple shape of the SELECT inside [`RouterDatabase::validate_token_and_get_info`].
-/// Aliased so the row type does not trip `clippy::type_complexity`.
-type TokenValidationRow = (String, String, i64, i64, Option<String>, Option<i64>);
-
 /// Run a migration statement whose failure must not abort initialization.
 ///
 /// `ALTER TABLE ... ADD COLUMN` fails once the column already exists —
@@ -142,44 +138,31 @@ impl RouterDatabase {
         db: &Database,
         token: &str,
     ) -> Result<Option<TokenValidationInfo>> {
-        let conn = db.get_connection()?;
-        let group_col = if db.kind() == "postgres" {
-            "\"group\""
-        } else {
-            "`group`"
+        let identity = match TokenService::active_api_key_identity(db, token).await? {
+            Some(identity) => identity,
+            None => return Ok(None),
         };
 
-        let placeholder = if db.kind() == "postgres" { "$1" } else { "?" };
-
-        let query = format!(
-            r#"
-            SELECT u.id, u.{}, t.remain_quota, t.used_quota,
-                   rt.order_type, rt.price_cap_nanodollars
-            FROM user_api_keys t
-            JOIN user_accounts u ON t.user_id = u.id
-            LEFT JOIN router_tokens rt ON rt.token = t.key
-            WHERE t.key = {} AND t.status = 1 AND u.status = 1
-            "#,
-            group_col, placeholder
+        // Only the two Traffic-owned routing projection columns are read here.
+        // Absence of a router_tokens row retains historical None/None defaults.
+        let conn = db.get_connection()?;
+        let sql = adapt_sql(
+            db.kind() == "postgres",
+            "SELECT order_type, price_cap_nanodollars FROM router_tokens WHERE token = ?",
         );
-
-        let row: Option<TokenValidationRow> = sqlx::query_as(&query)
+        let projection: Option<(Option<String>, Option<i64>)> = sqlx::query_as(&sql)
             .bind(token)
             .fetch_optional(conn.pool())
             .await?;
-
-        Ok(row.map(
-            |(user_id, group, remain_quota, used_quota, order_type, price_cap)| {
-                TokenValidationInfo {
-                    user_id,
-                    group,
-                    remain_quota,
-                    used_quota,
-                    order_type,
-                    price_cap,
-                }
-            },
-        ))
+        let (order_type, price_cap) = projection.unwrap_or((None, None));
+        Ok(Some(TokenValidationInfo {
+            user_id: identity.user_id,
+            group: identity.group,
+            remain_quota: identity.remain_quota,
+            used_quota: identity.used_quota,
+            order_type,
+            price_cap,
+        }))
     }
 
     // ============== Log delegations ==============
@@ -317,17 +300,7 @@ pub async fn get_usage_stats_by_token(
     token_key: &str,
     period: &str,
 ) -> Result<Option<(String, UsageStats)>> {
-    let conn = db.get_connection()?;
-    let is_postgres = db.kind() == "postgres";
-
-    let sql = adapt_sql(
-        is_postgres,
-        "SELECT user_id FROM user_api_keys WHERE key = ? AND status = 1",
-    );
-    let user_id: Option<String> = sqlx::query_scalar(&sql)
-        .bind(token_key)
-        .fetch_optional(conn.pool())
-        .await?;
+    let user_id = TokenService::active_api_key_user_id(db, token_key).await?;
 
     match user_id {
         None => Ok(None),
