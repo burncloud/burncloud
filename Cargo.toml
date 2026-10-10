@@ -67,10 +67,8 @@ dbg_macro = "deny"
 
 # Async/must-use correctness hazards.
 let_underscore_future = "deny"
-# Historical storage migrations contain explicit best-effort `let _ = Result`
-# paths. Keep them visible until #629 classifies/removes them, then promote this
-# lint back to `deny`.
-let_underscore_must_use = "warn"
+# Discarded must-use values are correctness hazards and may not be hidden.
+let_underscore_must_use = "deny"
 await_holding_lock = "deny"
 await_holding_refcell_ref = "deny"
 
