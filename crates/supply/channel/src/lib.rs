@@ -353,7 +353,9 @@ mod migration_invariants {
             "candidate query must keep only enabled abilities at the highest priority with weights",
         )?;
         verify(
-            candidates.iter().all(|ability| ability.channel_id != low_id),
+            candidates
+                .iter()
+                .all(|ability| ability.channel_id != low_id),
             "lower-priority abilities must not leak into Traffic candidate selection",
         )?;
 
