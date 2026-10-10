@@ -1,17 +1,21 @@
 # GitHub Actions workflows
 
-- PR Rust gates: `ci-github-hosted-fmt.yml`, `ci-github-hosted-test.yml`,
-  `ci-github-hosted-clippy.yml`, and `ci-github-hosted-deny.yml`.
-  They share `ci-github-hosted-base.yml` and check the PR merge commit.
+- Main PR gate: `ci-required.yml` runs four independent Rust checks from
+  `ci-github-hosted-base.yml` and aggregates their conclusions into the
+  stable `CI Required` check. All four jobs must succeed. A failed, cancelled,
+  skipped, or unavailable job fails the gate.
+- `Cargo Deny` may explicitly skip its *step* when no dependency-policy files
+  changed, but the Deny job must still finish successfully.
 - Architecture-only manual checks: `ci-architecture.yml`.
-- Release tagging: `maintenance-version-tag.yml` performs **full-workspace**
+- Release tagging: `maintenance-version-tag.yml` performs full-workspace
   Fmt, Test, Clippy and Deny validation before creating a new version tag.
 - Release packaging and publishing: `cd-release.yml`.
 
-The former `ci-quality.yml`, `ci-integration.yml` and `ci-client.yml`
-workflows were intentionally retired. The dedicated real-PostgreSQL integration
-job and manual multi-platform client checks are no longer provided by those
-workflows; do not assume the PR Rust checks replace that coverage.
+The four former independent `ci-github-hosted-{fmt,test,clippy,deny}.yml`
+workflows have been replaced by the single PR entry point to avoid executing
+the expensive checks twice. It preserves the reusable check implementation.
+The dedicated real-PostgreSQL integration job and manual multi-platform client
+checks are not supplied by this PR gate.
 
-To change shared PR checks, edit `ci-github-hosted-base.yml`. To change the
-release-only full-workspace gate, edit `maintenance-version-tag.yml`.
+To change PR checks, edit `ci-github-hosted-base.yml`. Keep the GitHub status
+check name `CI Required` stable once it is made mandatory.
