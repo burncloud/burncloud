@@ -18,9 +18,9 @@ burncloud-common.workspace = true
 burncloud-database.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
 ssh2 = "0.9"
-hmac = "0.12"
+hmac.workspace = true
 sha1 = "0.10"
-base64 = "0.22"
+base64.workspace = true
 chrono = { workspace = true }
 
 [[test]]

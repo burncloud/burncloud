@@ -99,10 +99,9 @@ ignore = true
 # (windows-sys, rand, getrandom, GTK chains). Keep that baseline allowed here.
 multiple-versions = "allow"
 
-# Internal workspace dependencies are currently path-only and cargo-deny treats
-# their `workspace = true` uses as wildcard dependencies. Normalizing that model,
-# plus current duplicate/unused workspace declarations, is tracked by #627.
-wildcards = "allow"
+# Workspace path dependencies are declared with both path and version.
+# No global wildcard or path-only exemption is needed (see #627).
+wildcards = "deny"
 
 # systray@0.4 pulls in a full set of old GTK crates (gtk 0.8, gdk 0.12, etc.)
 # while dioxus-desktop pulls in the newer GTK 0.18 series. Both are transitive
@@ -111,6 +110,13 @@ wildcards = "allow"
 skip-tree = [
     { crate = "systray@0.4.0", reason = "old GTK dep chain conflicts with dioxus-desktop; upgrade blocked by systray API" },
 ]
+
+# Fail on direct dependency declarations that bypass an existing workspace owner,
+# or workspace dependencies no member consumes. Path dependencies participate too.
+[bans.workspace-dependencies]
+duplicates = "deny"
+include-path-dependencies = true
+unused = "deny"
 
 # burncloud-common is now a compatibility/interface layer, not a domain owner.
 # Freeze the current direct consumers so a new domain crate cannot start routing
