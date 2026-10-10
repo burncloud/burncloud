@@ -40,12 +40,9 @@ pub(crate) fn current_timestamp() -> i64 {
 pub struct Schema;
 
 impl Schema {
-    /// Run data migrations and seed initial records.
-    ///
-    /// This is called **after** [`crate::migration::MigrationRunner::run`] has
-    /// applied all DDL migrations, so all tables and columns are guaranteed to
-    /// exist when this function runs.
-    pub async fn init(db: &Database) -> Result<()> {
+    /// Run historical data fixups without creating application-owned seed records.
+    /// Called after versioned schema migrations.
+    pub async fn init_infrastructure(db: &Database) -> Result<()> {
         let pool = db.get_connection()?.pool();
         let kind = db.kind();
 
@@ -55,8 +52,18 @@ impl Schema {
 
         router::migrate_router_logs(pool, &kind).await?;
         price::migrate_prices(pool, &kind).await?;
-        user::migrate_users_and_seed(pool, &kind).await?;
+        user::migrate_users(pool, &kind).await?;
 
         Ok(())
+    }    
+    /// Preserve the existing public database-factory initialization behavior.
+    /// This compatibility entry point will be replaced by an application facade
+    /// once Identity and Supply own their respective default records.
+    pub async fn init(db: &Database) -> Result<()> {
+        Self::init_infrastructure(db).await?;
+        let pool = db.get_connection()?.pool();
+        user::seed_legacy_defaults(pool, &db.kind()).await?;
+        Ok(())
     }
+
 }
