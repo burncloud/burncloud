@@ -8,7 +8,7 @@
 //! This test lives in `burncloud-server` rather than next to the database crate on purpose.
 //! `deny.toml` bans `burncloud-supply-channel` as a dependency of `burncloud-database` and
 //! allows only a fixed wrapper list (which includes `burncloud-server`). Asserting the
-//! owner-seeded state here is what keeps Platform free of any dependency edge to the owners Ã¢â‚¬â€
+//! owner-seeded state here is what keeps Platform free of any dependency edge to the owners:
 //! the one-way direction #842 requires. Platform's own half of the contract (the factories
 //! create no domain records) is asserted in
 //! `crates/platform/storage/database/tests/initialization_boundary.rs`.
@@ -18,7 +18,7 @@
 //!
 //! Verified on SQLite and on real PostgreSQL 16:
 //! 1. the schema-only factory really does start empty;
-//! 2. the owner calls reproduce the historical startup state exactly Ã¢â‚¬â€ one demo account,
+//! 2. the owner calls reproduce the historical startup state exactly: one demo account,
 //!    one demo key, four protocol configs;
 //! 3. both owner calls are idempotent, so a restart over an existing database neither
 //!    duplicates nor removes a row.
@@ -31,7 +31,7 @@ use std::error::Error;
 /// Read the three seeded row counts with direct `COUNT(*)` queries.
 ///
 /// Counting, rather than reading whole rows, is deliberate: it detects duplicates as well as
-/// absences. It also avoids a real portability trap Ã¢â‚¬â€ PostgreSQL returns `user_api_keys.key` as
+/// absences. It also avoids a real portability trap: PostgreSQL returns `user_api_keys.key` as
 /// `bpchar`, which the `Any` driver cannot decode, so listing credentials fails outright on the
 /// real-PostgreSQL run. `select id, username from user_accounts` succeeds, so only the
 /// credential table has this problem.
@@ -43,14 +43,19 @@ use std::error::Error;
 /// that discrepancy is debugged.
 async fn seed_counts(db: &Database) -> Result<(i64, i64, i64), Box<dyn Error>> {
     let pool = db.get_connection()?.pool();
-    let demo_users: i64 =
-        burncloud_database::sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'")
-            .fetch_one(pool)
-            .await?;
-    let demo_tokens: i64 =
-        burncloud_database::sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'")
-            .fetch_one(pool)
-            .await?;
+    // Unbound literal predicates, matching how Platform's boundary test asserts the same counts.
+    // A bound `query_scalar` around `COUNT(*)` reported 1 here where the identical literal query
+    // reported 0 on the same connection, so the literal form is the one used.
+    let demo_users: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'",
+    )
+    .fetch_one(pool)
+    .await?;
+    let demo_tokens: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT COUNT(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'",
+    )
+    .fetch_one(pool)
+    .await?;
     // `ChannelProtocolConfigModel::list` projects `is_default::INTEGER` on PostgreSQL, so it
     // decodes on both backends; it is also the owner's own read path.
     let protocols = ChannelProtocolConfigModel::list(db, 1_000, 0).await?.len() as i64;
@@ -64,40 +69,46 @@ async fn seed_like_startup(db: &Database) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Compare and fail with a described error rather than panicking: these helpers are called
-/// from `Result`-returning test functions, and `clippy::panic_in_result_fn` is part of this
-/// workspace's lint set.
-fn check(actual: i64, expected: i64, what: &str) -> Result<(), Box<dyn Error>> {
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(std::io::Error::other(format!("{what}: expected {expected}, got {actual}")).into())
-    }
-}
-
+/// Compare the observed counts and report **all three** numbers together.
+///
+/// The label identifies which call site failed: three assertions share this shape, and an
+/// earlier revision reused one message for all of them, which made a failure impossible to
+/// attribute to a specific step.
 async fn assert_seed_counts(
     db: &Database,
     users: i64,
     tokens: i64,
     protocols: i64,
+    step: &str,
 ) -> Result<(), Box<dyn Error>> {
     let actual = seed_counts(db).await?;
-    check(actual.0, users, "demo account count")?;
-    check(actual.1, tokens, "demo API key count")?;
-    check(actual.2, protocols, "default protocol config count")?;
+    if (actual.0, actual.1, actual.2) != (users, tokens, protocols) {
+        return Err(std::io::Error::other(format!(
+            "step {step}: expected (users, tokens, protocols) = ({users}, {tokens}, {protocols}), \
+             got ({}, {}, {})",
+            actual.0, actual.1, actual.2
+        ))
+        .into());
+    }
     Ok(())
 }
 
 /// A uniquely-named SQLite file for one test.
 ///
-/// The name must be unique per test: `tempfile::tempdir()` gives each test its own directory,
-/// but a *fixed* file name inside it is not enough if two tests were ever pointed at one
-/// directory, and cargo runs the tests in one binary concurrently. The first version of this
-/// suite used a constant `owner-seed.sqlite`; the two tests then shared one database and one
-/// test's seed made the other's "starts empty" assertion fail.
+/// The path must be unique beyond any doubt. An earlier revision used a constant
+/// `owner-seed.sqlite` inside a per-test temp directory, which was not enough: the test then
+/// observed a seeded demo account on a database it had just created, which only makes sense if
+/// the file was not actually fresh. The name now includes the process id and a nanosecond
+/// timestamp as well as the tag, so no two runs and no two tests share a path even if the temp
+/// directory were reused.
 fn sqlite_url_for(tag: &str) -> Result<(tempfile::TempDir, String), Box<dyn Error>> {
     let dir = tempfile::tempdir()?;
-    let path = dir.path().join(format!("owner-seed-{tag}.sqlite"));
+    let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+    let path = dir.path().join(format!(
+        "owner-seed-{tag}-{}-{}.sqlite",
+        std::process::id(),
+        unique.as_nanos()
+    ));
     let url = format!(
         "sqlite:///{}?mode=rwc",
         path.to_string_lossy().replace('\\', "/")
@@ -113,27 +124,27 @@ async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent() -> Resul
     let (_dir, url) = sqlite_url_for("idempotent")?;
 
     let db = create_database_with_url(&url).await?;
-    assert_seed_counts(&db, 0, 0, 0).await?;
+    assert_seed_counts(&db, 0, 0, 0, "fresh create").await?;
 
     // Identity's half: the account and its key appear, Supply's configs do not yet.
     UserDatabase::seed_demo_defaults(&db).await?;
-    assert_seed_counts(&db, 1, 1, 0).await?;
+    assert_seed_counts(&db, 1, 1, 0, "identity half").await?;
 
     // Supply's half completes the startup state.
     ChannelProtocolConfigModel::seed_default_protocol_configs(&db).await?;
-    assert_seed_counts(&db, 1, 1, 4).await?;
+    assert_seed_counts(&db, 1, 1, 4, "both halves").await?;
 
     // Re-running both phases (a restart) must not duplicate anything.
     seed_like_startup(&db).await?;
-    assert_seed_counts(&db, 1, 1, 4).await?;
+    assert_seed_counts(&db, 1, 1, 4, "both halves").await?;
     db.close().await?;
 
     // A genuinely reopened database starts empty again and reaches the same state from the
     // owner calls alone.
     let reopened = create_database_with_url(&url).await?;
-    assert_seed_counts(&reopened, 0, 0, 0).await?;
+    assert_seed_counts(&reopened, 0, 0, 0, "fresh reopen").await?;
     seed_like_startup(&reopened).await?;
-    assert_seed_counts(&reopened, 1, 1, 4).await?;
+    assert_seed_counts(&reopened, 1, 1, 4, "reopened seeded").await?;
     reopened.close().await?;
     Ok(())
 }
@@ -243,17 +254,17 @@ async fn owner_seeds_reproduce_the_startup_records_on_real_postgres() -> Result<
     let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/{name}");
 
     let db = create_database_with_url(&url).await?;
-    assert_seed_counts(&db, 0, 0, 0).await?;
+    assert_seed_counts(&db, 0, 0, 0, "pg fresh create").await?;
     seed_like_startup(&db).await?;
-    assert_seed_counts(&db, 1, 1, 4).await?;
+    assert_seed_counts(&db, 1, 1, 4, "pg seeded").await?;
     // Idempotence on PostgreSQL exercises the ON CONFLICT DO NOTHING branches.
     seed_like_startup(&db).await?;
-    assert_seed_counts(&db, 1, 1, 4).await?;
+    assert_seed_counts(&db, 1, 1, 4, "pg seeded").await?;
     db.close().await?;
 
     let reopened = create_database_with_url(&url).await?;
     seed_like_startup(&reopened).await?;
-    assert_seed_counts(&reopened, 1, 1, 4).await?;
+    assert_seed_counts(&reopened, 1, 1, 4, "pg reopened").await?;
     reopened.close().await?;
 
     admin
