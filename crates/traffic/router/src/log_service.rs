@@ -3,8 +3,8 @@
 //! Router log service layer providing business logic for router logs,
 //! usage statistics, and balance deductions.
 
-use burncloud_database::Database;
 use crate::storage::{BalanceModel, RouterDatabase, RouterLogModel};
+use burncloud_database::Database;
 
 pub use crate::storage::{
     BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, UsageStats,

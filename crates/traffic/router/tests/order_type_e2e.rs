@@ -22,10 +22,10 @@
 
 mod common;
 
-use burncloud_router::{RouterDatabase, RouterLog};
 use burncloud_router::affinity::pick_hrw;
 use burncloud_router::order_type::OrderType;
 use burncloud_router::SchedulingRequest;
+use burncloud_router::{RouterDatabase, RouterLog};
 use burncloud_service_user::UserService;
 use burncloud_supply_contracts::Channel;
 use burncloud_traffic_contracts::TrafficColor;

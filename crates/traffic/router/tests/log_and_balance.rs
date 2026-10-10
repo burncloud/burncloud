@@ -40,9 +40,7 @@
 //!   query is an error rather than an empty result. Dropping the table does.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_router::{
-    BalanceService, RouterLog, RouterLogService, UsageStatsService,
-};
+use burncloud_router::{BalanceService, RouterLog, RouterLogService, UsageStatsService};
 use std::error::Error;
 
 /// A router database with the tables this crate needs.
@@ -459,8 +457,7 @@ async fn no_rows_is_a_zero_report_but_a_broken_query_is_an_error() -> Result<(),
         "no rows means no groups, not one group of zeroes"
     );
 
-    let summary =
-        burncloud_router::BillingService::get_billing_summary(&db, None, None).await?;
+    let summary = burncloud_router::BillingService::get_billing_summary(&db, None, None).await?;
     println!(
         "no rows: {} models, total {}",
         summary.models.len(),
@@ -781,8 +778,7 @@ async fn the_time_window_bounds_the_summary() -> Result<(), Box<dyn Error>> {
         insert_log_at(&db, id, "u1", "gpt-4o", 10_000_000, when).await?;
     }
 
-    let all =
-        burncloud_router::BillingService::get_billing_summary(&db, None, None).await?;
+    let all = burncloud_router::BillingService::get_billing_summary(&db, None, None).await?;
     let january = burncloud_router::BillingService::get_billing_summary(
         &db,
         Some("2026-01-01"),
@@ -796,9 +792,8 @@ async fn the_time_window_bounds_the_summary() -> Result<(), Box<dyn Error>> {
     )
     .await?;
 
-    let requests = |s: &burncloud_router::BillingSummary| {
-        s.models.iter().map(|m| m.requests).sum::<i64>()
-    };
+    let requests =
+        |s: &burncloud_router::BillingSummary| s.models.iter().map(|m| m.requests).sum::<i64>();
     println!(
         "all {}, january {}, quarter {}",
         requests(&all),
@@ -906,9 +901,8 @@ async fn a_summary_for_one_user_excludes_another_users_rows() -> Result<(), Box<
     )
     .await?;
 
-    let requests = |s: &burncloud_router::BillingSummary| {
-        s.models.iter().map(|m| m.requests).sum::<i64>()
-    };
+    let requests =
+        |s: &burncloud_router::BillingSummary| s.models.iter().map(|m| m.requests).sum::<i64>();
     println!(
         "alice {}, everyone {}",
         requests(&scoped),
