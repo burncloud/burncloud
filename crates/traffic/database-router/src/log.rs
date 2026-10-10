@@ -267,7 +267,7 @@ pub async fn get_usage_stats(db: &Database, user_id: &str, period: &str) -> Resu
             COUNT(*) as total_requests,
             COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
             COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
-            COALESCE(SUM(cost), 0) as total_cost
+            CAST(COALESCE(SUM(cost), 0) AS BIGINT) as total_cost
         FROM router_logs
         WHERE user_id = {} AND created_at IS NOT NULL AND {}
         "#,
@@ -333,7 +333,7 @@ pub async fn get_usage_stats_by_model(
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
             COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
             COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost
+            CAST(COALESCE(SUM(cost), 0) AS BIGINT) as cost
         FROM router_logs
         WHERE user_id = {} AND created_at IS NOT NULL AND {}
         GROUP BY model
@@ -545,7 +545,7 @@ pub async fn get_billing_summary(
             COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
             COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost_nano
+            CAST(COALESCE(SUM(cost), 0) AS BIGINT) as cost_nano
         FROM router_logs
         WHERE model IS NOT NULL {}
         GROUP BY model
@@ -614,7 +614,7 @@ pub async fn get_billing_summary_for_user(
             COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
             COALESCE(SUM(completion_tokens), 0) as completion_tokens,
             COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
-            COALESCE(SUM(cost), 0) as cost_nano
+            CAST(COALESCE(SUM(cost), 0) AS BIGINT) as cost_nano
         FROM router_logs
         WHERE model IS NOT NULL AND user_id = {} {}
         GROUP BY model
