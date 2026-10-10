@@ -94,18 +94,8 @@ impl BalanceModel {
         Ok(rows_affected > 0)
     }
 
-    /// Deduct cost from dual-currency wallet.
-    /// Uses the primary currency first (based on cost_currency), then converts from secondary if needed.
-    ///
-    /// # Arguments
-    /// * `db` - Database connection
-    /// * `user_id` - User ID to deduct from
-    /// * `cost_nano` - Cost in nanodollars (i64)
-    /// * `cost_currency` - Currency of the cost ("USD" or "CNY")
-    /// * `exchange_rate_nano` - Exchange rate scaled by 10^9 (e.g., 7.24 CNY/USD = 7_240_000_000)
-    ///
-    /// # Returns
-    /// Ok(true) if deduction successful, Ok(false) if insufficient balance across both currencies.
+    /// Deduct from the primary currency, then the secondary currency if required.
+    /// A missing user is an error on the service-facing path.
     pub async fn deduct_dual_currency(
         db: &Database,
         user_id: &str,
@@ -113,123 +103,19 @@ impl BalanceModel {
         cost_currency: &str,
         exchange_rate_nano: i64,
     ) -> Result<bool> {
-        if cost_nano <= 0 {
-            return Ok(true);
-        }
-
-        let conn = db.get_connection()?;
-        let is_postgres = db.kind() == "postgres";
-
-        // Get current balances
-        let balances_sql = adapt_sql(
-            is_postgres,
-            "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?",
-        );
-        let balances: Option<(i64, i64)> = sqlx::query_as(&balances_sql)
-            .bind(user_id)
-            .fetch_optional(conn.pool())
-            .await?;
-
-        let (balance_usd, balance_cny) = balances
-            .ok_or_else(|| DatabaseError::Query(format!("user account not found: {}", user_id)))?;
-
-        if cost_currency == "CNY" {
-            // CNY model: prioritize CNY balance
-            if balance_cny >= cost_nano {
-                // Sufficient CNY balance
-                return Self::deduct_cny(db, user_id, cost_nano).await;
-            }
-
-            // Need to convert USD to CNY
-            let required_cny = cost_nano - balance_cny;
-            let required_usd: i128 =
-                (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
-
-            if required_usd > balance_usd as i128 {
-                return Ok(false);
-            }
-
-            // Deduct from both currencies atomically
-            let mut tx = conn.pool().begin().await?;
-
-            let clear_cny_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?",
-            );
-
-            if balance_cny > 0 {
-                sqlx::query(&clear_cny_sql)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
-            let usd_to_deduct = required_usd as i64;
-            let deduct_usd_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?",
-            );
-            sqlx::query(&deduct_usd_sql)
-                .bind(usd_to_deduct)
-                .bind(user_id)
-                .bind(usd_to_deduct)
-                .execute(&mut *tx)
-                .await?;
-
-            tx.commit().await?;
-            Ok(true)
-        } else {
-            // USD model (default): prioritize USD balance
-            if balance_usd >= cost_nano {
-                return Self::deduct_usd(db, user_id, cost_nano).await;
-            }
-
-            // Need to convert CNY to USD
-            let required_usd = cost_nano - balance_usd;
-            let required_cny: i128 =
-                (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
-
-            if required_cny > balance_cny as i128 {
-                return Ok(false);
-            }
-
-            // Deduct from both currencies atomically
-            let mut tx = conn.pool().begin().await?;
-
-            let clear_usd_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?",
-            );
-
-            if balance_usd > 0 {
-                sqlx::query(&clear_usd_sql)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
-            let cny_to_deduct = required_cny as i64;
-            let deduct_cny_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?",
-            );
-            sqlx::query(&deduct_cny_sql)
-                .bind(cny_to_deduct)
-                .bind(user_id)
-                .bind(cny_to_deduct)
-                .execute(&mut *tx)
-                .await?;
-
-            tx.commit().await?;
-            Ok(true)
-        }
+        Self::deduct_dual_atomic(
+            db,
+            user_id,
+            cost_nano,
+            cost_currency,
+            exchange_rate_nano,
+            false,
+        )
+        .await
     }
-}
 
-impl BalanceModel {
-    /// Legacy RouterDatabase debit semantics (a missing account behaves like
-    /// a zero-balance account). Unlike the service path, this historically
-    /// returns Ok(false) for a positive cost on a missing user.
+    /// RouterDatabase historically returns Ok(false) for a missing user.
+    /// Keep that distinct error contract while using the same atomic settlement.
     pub async fn deduct_dual_currency_router_legacy(
         db: &Database,
         user_id: &str,
@@ -237,118 +123,157 @@ impl BalanceModel {
         cost_currency: &str,
         exchange_rate_nano: i64,
     ) -> Result<bool> {
+        Self::deduct_dual_atomic(
+            db,
+            user_id,
+            cost_nano,
+            cost_currency,
+            exchange_rate_nano,
+            true,
+        )
+        .await
+    }
+
+    /// Hold one wallet transaction for the balance read and every debit.
+    /// PostgreSQL locks the wallet row so concurrent spenders cannot both
+    /// budget from the same snapshot. SQLite detects conflicting writers;
+    /// neither driver is permitted to commit a partial successful charge.
+    async fn deduct_dual_atomic(
+        db: &Database,
+        user_id: &str,
+        cost_nano: i64,
+        cost_currency: &str,
+        exchange_rate_nano: i64,
+        missing_as_insufficient: bool,
+    ) -> Result<bool> {
+        // Historical semantics: zero and negative charges do not mutate data.
         if cost_nano <= 0 {
             return Ok(true);
         }
 
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
-
-        // Get current balances
-        let balances_sql = adapt_sql(is_postgres, "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?");
-        let balances: Option<(i64, i64)> = sqlx::query_as(&balances_sql)
+        let mut tx = conn.pool().begin().await?;
+        let select_sql = if is_postgres {
+            adapt_sql(
+                true,
+                "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ? FOR UPDATE",
+            )
+        } else {
+            adapt_sql(
+                false,
+                "SELECT COALESCE(balance_usd, 0), COALESCE(balance_cny, 0) FROM user_accounts WHERE id = ?",
+            )
+        };
+        let balances: Option<(i64, i64)> = sqlx::query_as(&select_sql)
             .bind(user_id)
-            .fetch_optional(conn.pool())
+            .fetch_optional(&mut *tx)
             .await?;
 
-        let (balance_usd, balance_cny) = balances.unwrap_or((0, 0));
-
-        if cost_currency == "CNY" {
-            // CNY model: prioritize CNY balance
-            if balance_cny >= cost_nano {
-                // Sufficient CNY balance
-                return Self::deduct_cny(db, user_id, cost_nano).await;
+        let (balance_usd, balance_cny) = match balances {
+            Some(balances) => balances,
+            None if missing_as_insufficient => return Ok(false),
+            None => {
+                return Err(DatabaseError::Query(format!(
+                    "user account not found: {user_id}"
+                )));
             }
-
-            // Need to convert USD to CNY
-            // Required CNY = cost_nano - balance_cny
-            // Required USD in nanodollars = required_cny * 10^9 / exchange_rate_nano
-            // Using i128 for intermediate calculation to avoid overflow
-            let required_cny = cost_nano - balance_cny;
-            let required_usd: i128 =
-                (required_cny as i128 * 1_000_000_000) / exchange_rate_nano as i128;
-
-            if required_usd > balance_usd as i128 {
-                // Insufficient total balance
-                return Ok(false);
-            }
-
-            // Deduct from both currencies atomically
-            let mut tx = conn.pool().begin().await?;
-
-            let clear_cny_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_cny = 0 WHERE id = ?",
-            );
-
-            // Deduct remaining CNY
-            if balance_cny > 0 {
-                sqlx::query(&clear_cny_sql)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
-            // Deduct required USD (already integer, no need to round)
-            let usd_to_deduct = required_usd as i64;
-            let deduct_usd_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?");
-            sqlx::query(&deduct_usd_sql)
-                .bind(usd_to_deduct)
-                .bind(user_id)
-                .bind(usd_to_deduct)
-                .execute(&mut *tx)
-                .await?;
-
-            tx.commit().await?;
-            Ok(true)
-        } else {
-            // USD model (default): prioritize USD balance
-            if balance_usd >= cost_nano {
-                // Sufficient USD balance
-                return Self::deduct_usd(db, user_id, cost_nano).await;
-            }
-
-            // Need to convert CNY to USD
-            // Required USD = cost_nano - balance_usd
-            // Required CNY in nanodollars = required_usd * exchange_rate_nano / 10^9
-            // Using i128 for intermediate calculation to avoid overflow
-            let required_usd = cost_nano - balance_usd;
-            let required_cny: i128 =
-                (required_usd as i128 * exchange_rate_nano as i128) / 1_000_000_000;
-
-            if required_cny > balance_cny as i128 {
-                // Insufficient total balance
-                return Ok(false);
-            }
-
-            // Deduct from both currencies atomically
-            let mut tx = conn.pool().begin().await?;
-
-            let clear_usd_sql = adapt_sql(
-                is_postgres,
-                "UPDATE user_accounts SET balance_usd = 0 WHERE id = ?",
-            );
-
-            // Deduct remaining USD
-            if balance_usd > 0 {
-                sqlx::query(&clear_usd_sql)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
-            // Deduct required CNY (already integer, no need to round)
-            let cny_to_deduct = required_cny as i64;
-            let deduct_cny_sql = adapt_sql(is_postgres, "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?");
-            sqlx::query(&deduct_cny_sql)
-                .bind(cny_to_deduct)
-                .bind(user_id)
-                .bind(cny_to_deduct)
-                .execute(&mut *tx)
-                .await?;
-
-            tx.commit().await?;
-            Ok(true)
+        };
+        if balance_usd < 0 || balance_cny < 0 {
+            return Err(DatabaseError::InvalidData {
+                message: "wallet cannot be charged with a negative currency balance".into(),
+            });
         }
+
+        let cny_primary = cost_currency == "CNY";
+        let primary_balance = if cny_primary {
+            balance_cny
+        } else {
+            balance_usd
+        };
+        if primary_balance >= cost_nano {
+            // The single-currency path also stays inside this transaction.
+            let debit_sql = if cny_primary {
+                "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
+            } else {
+                "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
+            };
+            let affected = sqlx::query(&adapt_sql(is_postgres, debit_sql))
+                .bind(cost_nano)
+                .bind(user_id)
+                .bind(cost_nano)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            if affected != 1 {
+                return Ok(false);
+            }
+            tx.commit().await?;
+            return Ok(true);
+        }
+
+        // A conversion rate is only needed when primary funds are insufficient.
+        if exchange_rate_nano <= 0 {
+            return Err(DatabaseError::InvalidData {
+                message: "exchange rate must be positive for cross-currency debit".into(),
+            });
+        }
+
+        let missing_primary = i128::from(cost_nano) - i128::from(primary_balance);
+        let secondary_required = if cny_primary {
+            (missing_primary * 1_000_000_000) / i128::from(exchange_rate_nano)
+        } else {
+            (missing_primary * i128::from(exchange_rate_nano)) / 1_000_000_000
+        };
+        let secondary_available = if cny_primary {
+            balance_usd
+        } else {
+            balance_cny
+        };
+        if secondary_required > i128::from(secondary_available)
+            || secondary_required > i128::from(i64::MAX)
+        {
+            return Ok(false);
+        }
+        // Positive inputs and a positive exchange rate guarantee a
+        // nonnegative result. Division intentionally retains the original
+        // integer truncation rule in nanodollars.
+        let secondary_to_debit = secondary_required as i64;
+
+        if primary_balance > 0 {
+            let clear_sql = if cny_primary {
+                "UPDATE user_accounts SET balance_cny = 0 WHERE id = ? AND balance_cny = ?"
+            } else {
+                "UPDATE user_accounts SET balance_usd = 0 WHERE id = ? AND balance_usd = ?"
+            };
+            let cleared = sqlx::query(&adapt_sql(is_postgres, clear_sql))
+                .bind(user_id)
+                .bind(primary_balance)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            if cleared != 1 {
+                return Ok(false);
+            }
+        }
+
+        let secondary_sql = if cny_primary {
+            "UPDATE user_accounts SET balance_usd = balance_usd - ? WHERE id = ? AND balance_usd >= ?"
+        } else {
+            "UPDATE user_accounts SET balance_cny = balance_cny - ? WHERE id = ? AND balance_cny >= ?"
+        };
+        let debited = sqlx::query(&adapt_sql(is_postgres, secondary_sql))
+            .bind(secondary_to_debit)
+            .bind(user_id)
+            .bind(secondary_to_debit)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        if debited != 1 {
+            // Dropping the transaction rolls back the primary clear too.
+            return Ok(false);
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 }
