@@ -83,9 +83,18 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
     }
     let started = std::process::Command::new("docker")
         .args([
-            "run", "--rm", "-d", "-e", "POSTGRES_PASSWORD=postgres",
-            "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_DB=postgres",
-            "-p", "127.0.0.1::5432", "postgres:16",
+            "run",
+            "--rm",
+            "-d",
+            "-e",
+            "POSTGRES_PASSWORD=postgres",
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_DB=postgres",
+            "-p",
+            "127.0.0.1::5432",
+            "postgres:16",
         ])
         .output()?;
     assert!(
@@ -132,7 +141,9 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
         .as_nanos();
     let name = format!("bc_init845_{}_{}", std::process::id(), stamp);
     let mut admin = options.connect().await?;
-    admin.execute(format!("CREATE DATABASE {name}").as_str()).await?;
+    admin
+        .execute(format!("CREATE DATABASE {name}").as_str())
+        .await?;
     let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/{name}");
 
     let infrastructure = create_infrastructure_database_with_url(&url).await?;
@@ -150,7 +161,9 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
     let legacy_again = create_database_with_url(&url).await?;
     assert_seeds(&legacy_again, 1, 1, 4).await?;
     legacy_again.close().await?;
-    admin.execute(format!("DROP DATABASE {name} WITH (FORCE)").as_str()).await?;
+    admin
+        .execute(format!("DROP DATABASE {name} WITH (FORCE)").as_str())
+        .await?;
     println!("Real PostgreSQL 16: infrastructure and legacy seed contracts PASS");
     Ok(())
 }
