@@ -180,7 +180,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --workspace --no-default-features 2>&1 | tee /tmp/workspace-tests.log
-          executed=$(awk '/^test result: ok\\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/workspace-tests.log)
+          executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/workspace-tests.log)
           echo "Executed $executed workspace tests"
           if [ "$executed" -lt 300 ]; then
             echo "::error::expected at least 300 workspace tests, got $executed"
@@ -189,7 +189,7 @@ jobs:
           check_floor() {
             package="$1"; minimum="$2"
             cargo test -p "$package" --no-default-features 2>&1 | tee "/tmp/discovery-$package.log"
-            count=$(awk '/^test result: ok\\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' "/tmp/discovery-$package.log")
+            count=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' "/tmp/discovery-$package.log")
             echo "$package executed $count tests"
             if [ "$count" -lt "$minimum" ]; then
               echo "::error::expected at least $minimum tests in $package, got $count"
