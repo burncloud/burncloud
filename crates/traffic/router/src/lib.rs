@@ -185,7 +185,7 @@ pub use storage::{
     get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
     get_usage_stats_by_token, BalanceModel, BillingModelSummary, BillingSummary, CandidateInfo,
     FailoverAttempt, ModelUsageStats, RouterDatabase, RouterLog, RouterLogModel, RouterRequestLog,
-    RouterRequestLogModel, RouterToken, RouterTokenModel, RouterTokenRepository,
+    RouterRequestLogModel, RouterToken, RouterTokenModel,
     RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel, StoragePolicy,
     TokenRotationResult, TokenValidationInfo, UsageStats,
 };
