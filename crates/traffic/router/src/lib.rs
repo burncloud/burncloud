@@ -14,6 +14,7 @@ mod config;
 pub mod exchange_rate;
 mod limiter;
 pub mod local_attachment;
+pub mod log_service;
 pub mod model_router;
 pub mod order_type;
 pub mod passthrough;
@@ -23,6 +24,7 @@ pub mod response_parser;
 pub mod response_quality;
 mod scheduler;
 mod state;
+pub mod storage;
 pub mod stream_parser;
 mod stream_peek;
 pub mod token_counter;
@@ -162,10 +164,6 @@ use burncloud_commerce_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
 };
 use burncloud_database::Database;
-use burncloud_database_router::{
-    CandidateInfo, FailoverAttempt, RouterDatabase, RouterLog, RouterRequestLog,
-    RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel, StoragePolicy,
-};
 use burncloud_service_user::UserService;
 use burncloud_supply_channel::ChannelProviderModel;
 use burncloud_traffic_contracts::OpenAIChatRequest;
@@ -176,12 +174,21 @@ use config::{AuthType, Upstream};
 use futures::stream::StreamExt;
 use http_body_util::BodyExt;
 use limiter::RateLimiter;
+pub use log_service::{BalanceService, BillingService, RouterLogService, UsageStatsService};
 use model_router::ModelRouter;
 use order_type::OrderType;
 use reqwest::Client;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Instant;
+pub use storage::{
+    get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
+    get_usage_stats_by_token, BalanceModel, BillingModelSummary, BillingSummary, CandidateInfo,
+    FailoverAttempt, ModelUsageStats, RouterDatabase, RouterLog, RouterLogModel, RouterRequestLog,
+    RouterRequestLogModel, RouterToken, RouterTokenModel, RouterTokenValidationResult,
+    RouterVideoTask, RouterVideoTaskModel, StoragePolicy, TokenRotationResult, TokenValidationInfo,
+    UsageStats,
+};
 use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -1324,7 +1331,7 @@ async fn usage_handler(State(state): State<AppState>, headers: axum::http::Heade
         Err(resp) => return *resp,
     };
 
-    match burncloud_database_router::get_usage_stats(&state.db, &user_id, "month").await {
+    match crate::storage::get_usage_stats(&state.db, &user_id, "month").await {
         Ok(stats) => build_response_with_header(
             StatusCode::OK,
             "content-type",
@@ -1356,7 +1363,7 @@ async fn usage_models_handler(
         Err(resp) => return *resp,
     };
 
-    match burncloud_database_router::get_usage_stats_by_model(&state.db, &user_id, "month").await {
+    match crate::storage::get_usage_stats_by_model(&state.db, &user_id, "month").await {
         Ok(rows) => build_response_with_header(
             StatusCode::OK,
             "content-type",

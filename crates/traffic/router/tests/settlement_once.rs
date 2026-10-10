@@ -25,7 +25,7 @@
 
 mod common;
 
-use burncloud_database_router::RouterDatabase;
+use burncloud_router::RouterDatabase;
 use common::{insert_router_token, insert_test_channel, setup_db};
 use std::{
     sync::{

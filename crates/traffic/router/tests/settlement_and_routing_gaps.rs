@@ -17,7 +17,7 @@
 //! reports exhaustion, so the two are separate facts and both are asserted.
 
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::{
+use burncloud_router::{
     RouterDatabase, RouterLog, RouterLogModel, RouterToken, RouterTokenModel, RouterVideoTask,
     RouterVideoTaskModel,
 };

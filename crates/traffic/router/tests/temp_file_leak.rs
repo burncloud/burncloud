@@ -32,7 +32,7 @@
 //! dedicated thread — which keeps the original guarantee that removal work is joined before the test ends.
 
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::RouterDatabase;
+use burncloud_router::RouterDatabase;
 use tempfile::{Builder, NamedTempFile};
 
 const LEAK_GUARD_PREFIX: &str = "bc_router_cleanup_";

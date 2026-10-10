@@ -42,8 +42,8 @@ fn sqlite_url(path: &str) -> String {
 use burncloud_commerce_billing::{
     BillingPriceModel, BillingTieredPriceModel, PriceInput, TieredPriceInput,
 };
-use burncloud_database_router::RouterDatabase;
 use burncloud_router::price_sync::{PriceSyncConfig, PriceSyncService};
+use burncloud_router::RouterDatabase;
 use common::setup_db;
 use std::collections::HashMap;
 use std::sync::Arc;

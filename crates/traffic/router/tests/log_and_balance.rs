@@ -6,7 +6,7 @@
 )]
 //! The service layer over the router log and balance tables (#633, plan section 5 item 14).
 //!
-//! `service-router-log` is a 139-line facade: every method forwards to `burncloud_database_router`, so these
+//! `service-router-log` is a 139-line facade: every method forwards to `burncloud_router`, so these
 //! tests drive **that** behaviour through the four service entry points the plan names -- `RouterLogService`,
 //! `UsageStatsService`, `BalanceService` and `BillingService`. Testing the facade for its own sake would only
 //! assert that a forwarding call forwards.
@@ -40,9 +40,7 @@
 //!   query is an error rather than an empty result. Dropping the table does.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_service_router_log::{
-    BalanceService, RouterLog, RouterLogService, UsageStatsService,
-};
+use burncloud_router::{BalanceService, RouterLog, RouterLogService, UsageStatsService};
 use std::error::Error;
 
 /// A router database with the tables this crate needs.
@@ -61,7 +59,7 @@ async fn fresh_db(tag: &str) -> Result<(Database, std::path::PathBuf), Box<dyn E
     std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let db = create_database_with_url(&format!("sqlite:///{}?mode=rwc", normalized)).await?;
-    burncloud_database_router::RouterDatabase::init(&db).await?;
+    burncloud_router::RouterDatabase::init(&db).await?;
     Ok((db, path))
 }
 
@@ -143,7 +141,7 @@ fn log(request_id: &str, user_id: &str, model: &str, cost: i64, when: &str) -> R
 /// `CURRENT_TIMESTAMP` (`0001_initial_schema.sql:119`). A historical row therefore cannot be written through
 /// the service at all, and any test of a time window would only ever see "now".
 ///
-/// `crates/traffic/database-router/tests/usage_stats_tests.rs:39` inserts directly for the same reason -- an
+/// `crates/traffic/router/tests/usage_stats_tests.rs:39` inserts directly for the same reason -- an
 /// independent confirmation that this is the existing workaround rather than something invented here.
 /// `the_service_insert_discards_the_timestamp_it_is_given` below records the defect itself.
 async fn insert_log_at(
@@ -267,7 +265,7 @@ async fn the_service_insert_discards_the_timestamp_it_is_given() -> Result<(), B
     // The consequence is not cosmetic: **a historical row cannot be written through the service at all**, so
     // every row carries the moment it was inserted. Anything that backfills, imports, replays or corrects a log
     // after the fact appears to have happened now -- and the time-windowed queries in this file, and in
-    // `crates/traffic/database-router/tests/usage_stats_tests.rs`, have to bypass the service to test a window
+    // `crates/traffic/router/tests/usage_stats_tests.rs`, have to bypass the service to test a window
     // at all. That the existing suite already bypasses it is the independent confirmation.
     let (db, path) = fresh_db("created_at_dropped").await?;
 
@@ -459,8 +457,7 @@ async fn no_rows_is_a_zero_report_but_a_broken_query_is_an_error() -> Result<(),
         "no rows means no groups, not one group of zeroes"
     );
 
-    let summary =
-        burncloud_service_router_log::BillingService::get_billing_summary(&db, None, None).await?;
+    let summary = burncloud_router::BillingService::get_billing_summary(&db, None, None).await?;
     println!(
         "no rows: {} models, total {}",
         summary.models.len(),
@@ -520,7 +517,7 @@ async fn no_rows_is_a_zero_report_but_a_broken_query_is_an_error() -> Result<(),
         "the per-model grouping must fail rather than report no usage"
     );
     assert!(
-        burncloud_service_router_log::BillingService::get_billing_summary(&db, None, None)
+        burncloud_router::BillingService::get_billing_summary(&db, None, None)
             .await
             .is_err(),
         "the billing summary must fail rather than report zero"
@@ -781,24 +778,22 @@ async fn the_time_window_bounds_the_summary() -> Result<(), Box<dyn Error>> {
         insert_log_at(&db, id, "u1", "gpt-4o", 10_000_000, when).await?;
     }
 
-    let all =
-        burncloud_service_router_log::BillingService::get_billing_summary(&db, None, None).await?;
-    let january = burncloud_service_router_log::BillingService::get_billing_summary(
+    let all = burncloud_router::BillingService::get_billing_summary(&db, None, None).await?;
+    let january = burncloud_router::BillingService::get_billing_summary(
         &db,
         Some("2026-01-01"),
         Some("2026-01-31"),
     )
     .await?;
-    let quarter = burncloud_service_router_log::BillingService::get_billing_summary(
+    let quarter = burncloud_router::BillingService::get_billing_summary(
         &db,
         Some("2026-01-01"),
         Some("2026-03-31"),
     )
     .await?;
 
-    let requests = |s: &burncloud_service_router_log::BillingSummary| {
-        s.models.iter().map(|m| m.requests).sum::<i64>()
-    };
+    let requests =
+        |s: &burncloud_router::BillingSummary| s.models.iter().map(|m| m.requests).sum::<i64>();
     println!(
         "all {}, january {}, quarter {}",
         requests(&all),
@@ -892,23 +887,22 @@ async fn a_summary_for_one_user_excludes_another_users_rows() -> Result<(), Box<
     .await?;
     insert_log_at(&db, "b", "bob", "gpt-4o", 20_000_000, "2026-01-11 00:00:00").await?;
 
-    let scoped = burncloud_service_router_log::BillingService::get_billing_summary_for_user(
+    let scoped = burncloud_router::BillingService::get_billing_summary_for_user(
         &db,
         "alice",
         Some("2026-01-01"),
         Some("2026-01-31"),
     )
     .await?;
-    let unscoped = burncloud_service_router_log::BillingService::get_billing_summary(
+    let unscoped = burncloud_router::BillingService::get_billing_summary(
         &db,
         Some("2026-01-01"),
         Some("2026-01-31"),
     )
     .await?;
 
-    let requests = |s: &burncloud_service_router_log::BillingSummary| {
-        s.models.iter().map(|m| m.requests).sum::<i64>()
-    };
+    let requests =
+        |s: &burncloud_router::BillingSummary| s.models.iter().map(|m| m.requests).sum::<i64>();
     println!(
         "alice {}, everyone {}",
         requests(&scoped),

@@ -6,12 +6,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+burncloud-router.workspace = true
 burncloud-service-ip.workspace = true
 # burncloud-supply-model.workspace = true  # TEMP: broken dep chain
 burncloud-service-monitor.workspace = true
 burncloud-service-inference.workspace = true
 burncloud-identity-token.workspace = true
-burncloud-service-router-log.workspace = true
 
 [lints]
 workspace = true

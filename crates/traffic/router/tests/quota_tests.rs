@@ -12,7 +12,7 @@
 mod common;
 
 use burncloud_database::sqlx;
-use burncloud_database_router::RouterDatabase;
+use burncloud_router::RouterDatabase;
 use common::setup_db;
 use std::time::Duration;
 

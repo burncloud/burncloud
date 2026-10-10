@@ -17,7 +17,7 @@
 
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_router::{
+use burncloud_router::{
     get_usage_stats, RouterDatabase, RouterLog, RouterLogModel, RouterVideoTask,
     RouterVideoTaskModel,
 };

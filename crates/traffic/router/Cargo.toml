@@ -20,7 +20,6 @@ dashmap.workspace = true
 log = { workspace = true }
 
 burncloud-database = { workspace = true }
-burncloud-database-router = { workspace = true }
 burncloud-supply-model = { workspace = true }
 burncloud-supply-channel = { workspace = true }
 burncloud-commerce-contracts = { workspace = true }
@@ -29,6 +28,9 @@ burncloud-traffic-contracts = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-commerce-billing = { workspace = true }
 burncloud-identity-user = { workspace = true }
+burncloud-identity-token = { workspace = true }
+sqlx.workspace = true
+aes-gcm.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 jsonwebtoken = { workspace = true }
 once_cell = { workspace = true }

@@ -9,9 +9,7 @@
 /// - V2: deduct_usd/deduct_cny error propagation (fetch_optional + ok_or_else)
 /// - B5: get_usage_stats_by_model period parameter (no longer ignored)
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::{
-    get_usage_stats, get_usage_stats_by_model, BalanceModel, RouterDatabase,
-};
+use burncloud_router::{get_usage_stats, get_usage_stats_by_model, BalanceModel, RouterDatabase};
 use tempfile::NamedTempFile;
 
 /// An isolated SQLite database plus the router tables.

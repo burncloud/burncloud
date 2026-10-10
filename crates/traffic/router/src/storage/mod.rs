@@ -1,10 +1,9 @@
 //! Database operations for router configuration
 //!
-//! This crate aggregates all router-related database operations and provides
+//! This module aggregates all router-related database operations and provides
 //! database initialization functionality.
 //!
 //! # Modules
-//! - [`token`] - Compatibility exports for Identity-owned token management
 //! - [`log`] - Router logs, usage stats and balance deduction (RouterLog, RouterLogModel, BalanceModel)
 //! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
@@ -13,62 +12,10 @@ use burncloud_identity_token::TokenService;
 
 pub mod log;
 pub mod router_video_task;
-/// Compatibility surface for callers that still import token types through
-/// `burncloud-database-router`. The implementation is owned by Identity.
-pub mod token {
-    use burncloud_common::CrudRepository;
-    use burncloud_database::{Database, DatabaseError, Result};
-
-    pub use burncloud_identity_token::{
-        RouterToken, RouterTokenModel, RouterTokenValidationResult, TokenRotationResult,
-    };
-
-    /// Compatibility wrapper for the historical database-router CRUD surface.
-    ///
-    /// Token persistence itself is owned by Identity; this type only preserves
-    /// the old public path while delegating every operation to the Identity model.
-    pub struct RouterTokenRepository<'a>(pub &'a Database);
-
-    #[async_trait::async_trait]
-    impl<'a> CrudRepository<RouterToken, String, DatabaseError> for RouterTokenRepository<'a> {
-        async fn find_by_id(&self, id: &String) -> Result<Option<RouterToken>> {
-            RouterTokenModel::find_by_token(self.0, id).await
-        }
-
-        async fn list(&self) -> Result<Vec<RouterToken>> {
-            RouterTokenModel::list(self.0).await
-        }
-
-        async fn create(&self, input: &RouterToken) -> Result<RouterToken> {
-            RouterTokenModel::create(self.0, input).await?;
-            self.find_by_id(&input.token)
-                .await?
-                .ok_or_else(|| DatabaseError::Query("token disappeared after insert".to_string()))
-        }
-
-        async fn update(&self, id: &String, input: &RouterToken) -> Result<bool> {
-            let exists = self.find_by_id(id).await?.is_some();
-            if !exists {
-                return Ok(false);
-            }
-            RouterTokenModel::delete(self.0, id).await?;
-            let mut record = input.clone();
-            record.token = id.clone();
-            RouterTokenModel::create(self.0, &record).await?;
-            Ok(true)
-        }
-
-        async fn delete(&self, id: &String) -> Result<bool> {
-            let exists = self.find_by_id(id).await?.is_some();
-            if exists {
-                RouterTokenModel::delete(self.0, id).await?;
-            }
-            Ok(exists)
-        }
-    }
-}
-
 // Re-export common types.
+pub use burncloud_identity_token::{
+    RouterToken, RouterTokenModel, RouterTokenValidationResult, TokenRotationResult,
+};
 pub use log::{
     get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
     BalanceModel, BillingModelSummary, BillingSummary, CandidateInfo, FailoverAttempt,
@@ -76,10 +23,6 @@ pub use log::{
     StoragePolicy, UsageStats,
 };
 pub use router_video_task::{RouterVideoTask, RouterVideoTaskModel};
-pub use token::{
-    RouterToken, RouterTokenModel, RouterTokenRepository, RouterTokenValidationResult,
-    TokenRotationResult,
-};
 
 /// Result of [`RouterDatabase::validate_token_and_get_info`].
 ///
@@ -140,7 +83,7 @@ impl RouterDatabase {
         Ok(())
     }
 
-    // ============== Token compatibility delegations ==============
+    // ============== Identity-owned Token capability delegations ==============
 
     pub async fn list_tokens(db: &Database) -> Result<Vec<RouterToken>> {
         TokenService::list(db).await

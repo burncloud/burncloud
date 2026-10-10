@@ -32,7 +32,7 @@
 //! Measured, for one credential present in both tables:
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_router::{
+use burncloud_router::{
     RouterDatabase, RouterLog, RouterToken, RouterTokenModel, RouterVideoTask, RouterVideoTaskModel,
 };
 
@@ -262,7 +262,7 @@ async fn the_two_validation_paths_disagree_about_a_disabled_account(
         via_model.is_some(),
         matches!(
             detailed,
-            burncloud_database_router::RouterTokenValidationResult::Valid(_)
+            burncloud_router::RouterTokenValidationResult::Valid(_)
         )
     );
 
@@ -278,7 +278,7 @@ async fn the_two_validation_paths_disagree_about_a_disabled_account(
     assert!(
         matches!(
             detailed,
-            burncloud_database_router::RouterTokenValidationResult::Valid(_)
+            burncloud_router::RouterTokenValidationResult::Valid(_)
         ),
         "and so does `validate_detailed`, which is the entry point callers are likelier to reach for"
     );
@@ -338,11 +338,11 @@ async fn the_model_path_still_honours_expiry_and_credential_status(
     println!("disabled: {disabled:?}");
     assert!(matches!(
         expired,
-        burncloud_database_router::RouterTokenValidationResult::Expired
+        burncloud_router::RouterTokenValidationResult::Expired
     ));
     assert!(matches!(
         disabled,
-        burncloud_database_router::RouterTokenValidationResult::Invalid
+        burncloud_router::RouterTokenValidationResult::Invalid
     ));
 
     // Never-expiring sentinels: `-1` and `0` both mean "no expiry", because the check is `> 0 && now > it`.

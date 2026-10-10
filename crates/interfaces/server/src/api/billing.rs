@@ -13,7 +13,7 @@ use axum::{
     routing::get,
     Router,
 };
-use burncloud_service_router_log::BillingService;
+use burncloud_router::BillingService;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

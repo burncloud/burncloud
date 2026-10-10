@@ -3,10 +3,10 @@
 //! Router log service layer providing business logic for router logs,
 //! usage statistics, and balance deductions.
 
+use crate::storage::{BalanceModel, RouterDatabase, RouterLogModel};
 use burncloud_database::Database;
-use burncloud_database_router::{BalanceModel, RouterDatabase, RouterLogModel};
 
-pub use burncloud_database_router::{
+pub use crate::storage::{
     BillingModelSummary, BillingSummary, ModelUsageStats, RouterLog, UsageStats,
 };
 
@@ -51,7 +51,7 @@ impl UsageStatsService {
     /// Get aggregated usage statistics for a user over a time period
     /// Period can be: "day", "week", "month"
     pub async fn get_stats(db: &Database, user_id: &str, period: &str) -> Result<UsageStats> {
-        burncloud_database_router::get_usage_stats(db, user_id, period).await
+        crate::storage::get_usage_stats(db, user_id, period).await
     }
 
     /// Get usage statistics grouped by model for a user over a time period
@@ -60,7 +60,7 @@ impl UsageStatsService {
         user_id: &str,
         period: &str,
     ) -> Result<Vec<ModelUsageStats>> {
-        burncloud_database_router::get_usage_stats_by_model(db, user_id, period).await
+        crate::storage::get_usage_stats_by_model(db, user_id, period).await
     }
 }
 
@@ -123,7 +123,7 @@ impl BillingService {
         start: Option<&str>,
         end: Option<&str>,
     ) -> Result<BillingSummary> {
-        burncloud_database_router::get_billing_summary(db, start, end).await
+        crate::storage::get_billing_summary(db, start, end).await
     }
 
     /// Get per-model billing summary filtered by user_id.
@@ -133,6 +133,6 @@ impl BillingService {
         start: Option<&str>,
         end: Option<&str>,
     ) -> Result<BillingSummary> {
-        burncloud_database_router::get_billing_summary_for_user(db, user_id, start, end).await
+        crate::storage::get_billing_summary_for_user(db, user_id, start, end).await
     }
 }

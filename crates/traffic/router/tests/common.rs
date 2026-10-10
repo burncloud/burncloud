@@ -10,7 +10,7 @@
 )]
 
 use burncloud_database::{create_database_with_url, sqlx, Database};
-use burncloud_database_router::RouterDatabase;
+use burncloud_router::RouterDatabase;
 use sqlx::AnyPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;

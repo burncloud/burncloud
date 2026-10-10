@@ -1,5 +1,5 @@
 use burncloud_database::{create_default_database, sqlx};
-use burncloud_database_router::RouterDatabase;
+use burncloud_router::RouterDatabase;
 use sqlx::Row;
 
 #[tokio::main]
