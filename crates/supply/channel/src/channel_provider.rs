@@ -287,12 +287,18 @@ impl ChannelProviderModel {
     /// List only the provider rate-cap projection needed by Traffic's in-memory shaper.
     pub async fn list_rate_caps(db: &Database) -> Result<Vec<ChannelRateCap>> {
         let conn = db.get_connection()?;
-        let rows = sqlx::query_as::<_, ChannelRateCapRow>(
+        let sql = if db.kind() == "postgres" {
+            "SELECT id, rpm_cap, tpm_cap, \
+             reservation_green::DOUBLE PRECISION AS reservation_green, \
+             reservation_yellow::DOUBLE PRECISION AS reservation_yellow, \
+             reservation_red::DOUBLE PRECISION AS reservation_red FROM channel_providers"
+        } else {
             "SELECT id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red \
-             FROM channel_providers",
-        )
-        .fetch_all(conn.pool())
-        .await?;
+             FROM channel_providers"
+        };
+        let rows = sqlx::query_as::<_, ChannelRateCapRow>(sql)
+            .fetch_all(conn.pool())
+            .await?;
 
         Ok(rows
             .into_iter()
