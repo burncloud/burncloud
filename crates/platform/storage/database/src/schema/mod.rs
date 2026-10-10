@@ -55,15 +55,20 @@ impl Schema {
         user::migrate_users(pool, &kind).await?;
 
         Ok(())
-    }    
+    }
+
     /// Preserve the existing public database-factory initialization behavior.
     /// This compatibility entry point will be replaced by an application facade
     /// once Identity and Supply own their respective default records.
     pub async fn init(db: &Database) -> Result<()> {
         Self::init_infrastructure(db).await?;
+        Self::init_legacy_defaults(db).await
+    }
+
+    /// Run only the legacy default-record phase after infrastructure migration.
+    pub async fn init_legacy_defaults(db: &Database) -> Result<()> {
         let pool = db.get_connection()?.pool();
-        user::seed_legacy_defaults(pool, &db.kind()).await?;
-        Ok(())
+        user::seed_legacy_defaults(pool, &db.kind()).await
     }
 
 }
