@@ -21,7 +21,7 @@
 //! below rather than assumed.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::{ChannelAbilityModel, ChannelProviderModel};
+use burncloud_supply_channel::{ChannelAbilityModel, ChannelProviderModel};
 use burncloud_supply_contracts::Channel;
 
 /// A fresh SQLite file database with the real migrations applied.

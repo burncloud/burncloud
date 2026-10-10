@@ -162,12 +162,12 @@ use burncloud_commerce_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
 };
 use burncloud_database::Database;
-use burncloud_database_channel::ChannelProviderModel;
 use burncloud_database_router::{
     CandidateInfo, FailoverAttempt, RouterDatabase, RouterLog, RouterRequestLog,
     RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel, StoragePolicy,
 };
 use burncloud_service_user::UserService;
+use burncloud_supply_channel::ChannelProviderModel;
 use burncloud_traffic_contracts::OpenAIChatRequest;
 use burncloud_traffic_contracts::TrafficColor;
 use channel_state::ChannelStateTracker;
@@ -1230,7 +1230,7 @@ async fn circuit_breaker_trip_all_handler(State(state): State<AppState>) -> Resp
 async fn models_handler(State(state): State<AppState>) -> Response {
     // Fetch all distinct models from channel_abilities
     // This shows models that have at least one enabled channel
-    use burncloud_database_channel::ChannelAbilityModel;
+    use burncloud_supply_channel::ChannelAbilityModel;
 
     let mut model_entries = Vec::new();
     let current_time = std::time::SystemTime::now()

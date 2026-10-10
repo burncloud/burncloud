@@ -16,7 +16,7 @@
 
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::{
+use burncloud_supply_channel::{
     ChannelProtocolConfigInput, ChannelProtocolConfigModel, ChannelProviderModel,
 };
 use burncloud_supply_contracts::{Channel, ChannelType};
@@ -179,7 +179,7 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
         assert_eq!(stored.tpm_cap, Some(200_000));
         assert_eq!(stored.api_version.as_deref(), Some("2024-02-01"));
 
-        let abilities = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
+        let abilities = burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, id)
             .await
             .expect(
                 "ability rows created by ChannelProviderModel::create must decode on PostgreSQL",
@@ -254,7 +254,7 @@ async fn failed_channel_writes_roll_back_atomically_on_postgres() {
         );
         assert_eq!(stored.models, "old");
 
-        let abilities = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
+        let abilities = burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, id)
             .await
             .expect("read abilities after failed update");
         assert_eq!(abilities.len(), 1);

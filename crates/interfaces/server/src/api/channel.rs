@@ -7,8 +7,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_database_channel::{Channel, ChannelService};
 use burncloud_service_user::UserDatabase;
+use burncloud_supply_channel::{Channel, ChannelService};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

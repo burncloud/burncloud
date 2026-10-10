@@ -3,7 +3,7 @@ use crate::local_attachment::{
 };
 use async_trait::async_trait;
 use burncloud_database::{adapt_sql, sqlx, Database};
-use burncloud_database_channel::ChannelProviderModel;
+use burncloud_supply_channel::ChannelProviderModel;
 use burncloud_supply_contracts::{Channel, ChannelType};
 use std::sync::Arc;
 
