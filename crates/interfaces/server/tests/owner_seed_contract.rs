@@ -23,26 +23,20 @@
 //! 3. both owner calls are idempotent, so a restart over an existing database neither
 //!    duplicates nor removes a row.
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_service_user::{UserApiKeyModel, UserDatabase};
+use burncloud_service_user::UserDatabase;
 use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::error::Error;
 
 /// Read the three seeded row counts through the owning crates' public APIs.
+///
+/// Counting, rather than reading whole rows, is deliberate: it detects duplicates as well as
+/// absences, and PostgreSQL returns `user_api_keys.key` as `bpchar`, which the `Any` driver
+/// cannot decode — so listing credentials fails outright on the real-PostgreSQL run.
 async fn seed_counts(db: &Database) -> Result<(i64, i64, i64), Box<dyn Error>> {
-    // `count_users` deliberately excludes the demo account, so it cannot be used here;
-    // `list_users` returns every account and the demo one is identified by its username.
-    let demo_users = UserDatabase::list_users(db)
-        .await?
-        .iter()
-        .filter(|user| user.username == "demo-user")
-        .count() as i64;
-    let keys = UserApiKeyModel::list(db, 1_000, 0, Some("demo-user")).await?;
-    let demo_tokens = keys
-        .iter()
-        .filter(|key| key.key == "sk-burncloud-demo")
-        .count() as i64;
+    let (demo_users, demo_tokens) = UserDatabase::count_seeded_demo_defaults(db).await?;
+    // `ChannelProtocolConfigModel::list` projects `is_default::INTEGER` on PostgreSQL, so it
+    // decodes on both backends.
     let protocols = ChannelProtocolConfigModel::list(db, 1_000, 0).await?.len() as i64;
-
     Ok((demo_users, demo_tokens, protocols))
 }
 
@@ -60,10 +54,7 @@ fn check(actual: i64, expected: i64, what: &str) -> Result<(), Box<dyn Error>> {
     if actual == expected {
         Ok(())
     } else {
-        Err(std::io::Error::other(format!(
-            "{what}: expected {expected}, got {actual}"
-        ))
-        .into())
+        Err(std::io::Error::other(format!("{what}: expected {expected}, got {actual}")).into())
     }
 }
 

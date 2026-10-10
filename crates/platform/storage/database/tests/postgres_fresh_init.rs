@@ -29,10 +29,10 @@ fn ensure_eq<T: std::fmt::Debug + PartialEq>(
     if actual == expected {
         Ok(())
     } else {
-        Err(std::io::Error::other(format!(
-            "{context}: expected {expected:?}, got {actual:?}"
-        ))
-        .into())
+        Err(
+            std::io::Error::other(format!("{context}: expected {expected:?}, got {actual:?}"))
+                .into(),
+        )
     }
 }
 

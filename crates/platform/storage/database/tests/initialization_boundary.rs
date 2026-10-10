@@ -33,10 +33,7 @@ fn check(actual: i64, expected: i64, what: &str) -> Result<(), Box<dyn Error>> {
     if actual == expected {
         Ok(())
     } else {
-        Err(std::io::Error::other(format!(
-            "{what}: expected {expected}, got {actual}"
-        ))
-        .into())
+        Err(std::io::Error::other(format!("{what}: expected {expected}, got {actual}")).into())
     }
 }
 

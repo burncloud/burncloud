@@ -20,7 +20,7 @@ pub use user_account::{UserAccount, UserAccountInput};
 pub use user_api_key::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 pub use user_recharge::UserRecharge;
 
-use burncloud_database::{Database, Result};
+use burncloud_database::{adapt_sql, Database, Result};
 use sqlx::Row;
 
 pub struct UserDatabase;
@@ -531,6 +531,36 @@ impl UserDatabase {
         let sql = "SELECT COUNT(*) FROM user_accounts WHERE username != 'demo-user'";
         let count: i64 = sqlx::query(sql).fetch_one(conn.pool()).await?.get(0);
         Ok(count)
+    }
+
+    /// Count the rows created by [`Self::seed_demo_defaults`]: the demo account and the demo
+    /// API key.
+    ///
+    /// Exists so a bootstrap or contract test can verify the seed is present — or, after a
+    /// reset, absent — without decoding full rows. Reading whole rows to answer that question
+    /// is not portable here: PostgreSQL returns the `key` column as `bpchar`, which the
+    /// `Any` driver cannot decode, so listing credentials is the wrong probe. Counting is
+    /// also the stronger assertion, because it detects duplicates that a lookup would miss.
+    pub async fn count_seeded_demo_defaults(db: &Database) -> Result<(i64, i64)> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let accounts_sql = adapt_sql(
+            is_postgres,
+            "SELECT COUNT(*) FROM user_accounts WHERE id = ?",
+        );
+        let accounts: i64 = sqlx::query_scalar(&accounts_sql)
+            .bind("demo-user")
+            .fetch_one(conn.pool())
+            .await?;
+        let keys_sql = adapt_sql(
+            is_postgres,
+            "SELECT COUNT(*) FROM user_api_keys WHERE key = ? AND status = 1",
+        );
+        let keys: i64 = sqlx::query_scalar(&keys_sql)
+            .bind("sk-burncloud-demo")
+            .fetch_one(conn.pool())
+            .await?;
+        Ok((accounts, keys))
     }
 
     /// Check whether any real user (excluding seed/demo accounts) has the
