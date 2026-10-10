@@ -6,6 +6,18 @@ use burncloud_database::{adapt_sql, Database, Result};
 pub struct BillingPriceModel;
 
 impl BillingPriceModel {
+    /// Count distinct model names in the canonical Commerce price store.
+    ///
+    /// Regions and currencies may create multiple rows for one model; callers using this as an
+    /// availability signal need model cardinality rather than row cardinality.
+    pub async fn count_distinct_models(db: &Database) -> Result<usize> {
+        let conn = db.get_connection()?;
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(DISTINCT model) FROM billing_prices")
+            .fetch_one(conn.pool())
+            .await?;
+        Ok(count as usize)
+    }
+
     /// Get price for a model in a specific currency and region
     /// Falls back to USD if the requested currency is not found.
     ///
