@@ -118,11 +118,7 @@ async fn distinct_model_count_ignores_region_row_multiplicity() -> Result<(), Bo
     let (db, path) = fresh_db("distinct_model_count").await?;
 
     BillingPriceModel::upsert(&db, &price("model-a", "USD", None, 1, 2)).await?;
-    BillingPriceModel::upsert(
-        &db,
-        &price("model-a", "USD", Some("us-east-1"), 3, 4),
-    )
-    .await?;
+    BillingPriceModel::upsert(&db, &price("model-a", "USD", Some("us-east-1"), 3, 4)).await?;
     BillingPriceModel::upsert(&db, &price("model-b", "USD", None, 5, 6)).await?;
 
     assert_eq!(
