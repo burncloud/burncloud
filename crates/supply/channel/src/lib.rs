@@ -326,6 +326,11 @@ mod migration_invariants {
         let mut high_a = sample_channel("high-a", "shared-model", "routing", 1);
         high_a.priority = 9;
         high_a.weight = 4;
+        high_a.rpm_cap = Some(120);
+        high_a.tpm_cap = Some(50_000);
+        high_a.reservation_green = Some(0.5);
+        high_a.reservation_yellow = Some(0.3);
+        high_a.reservation_red = Some(0.2);
         let high_a_id = ChannelService::create(&db, &mut high_a).await?;
 
         let mut high_b = sample_channel("high-b", "shared-model", "routing", 1);
@@ -350,6 +355,20 @@ mod migration_invariants {
         verify(
             candidates.iter().all(|ability| ability.channel_id != low_id),
             "lower-priority abilities must not leak into Traffic candidate selection",
+        )?;
+
+        let rate_caps = ChannelService::list_rate_caps(&db).await?;
+        let high_cap = rate_caps
+            .iter()
+            .find(|row| row.id == high_a_id)
+            .ok_or_else(|| std::io::Error::other("rate-cap projection omitted channel"))?;
+        verify(
+            high_cap.rpm_cap == Some(120)
+                && high_cap.tpm_cap == Some(50_000)
+                && high_cap.reservation_green == Some(0.5)
+                && high_cap.reservation_yellow == Some(0.3)
+                && high_cap.reservation_red == Some(0.2),
+            "rate-cap projection must preserve all shaper fields",
         )?;
 
         ChannelService::update_api_version(&db, high_a_id, "2026-10-owner").await?;
