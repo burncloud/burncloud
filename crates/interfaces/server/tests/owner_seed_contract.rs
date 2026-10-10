@@ -53,6 +53,20 @@ async fn seed_like_startup(db: &Database) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Compare and fail with a described error rather than panicking: these helpers are called
+/// from `Result`-returning test functions, and `clippy::panic_in_result_fn` is part of this
+/// workspace's lint set.
+fn check(actual: i64, expected: i64, what: &str) -> Result<(), Box<dyn Error>> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "{what}: expected {expected}, got {actual}"
+        ))
+        .into())
+    }
+}
+
 async fn assert_seed_counts(
     db: &Database,
     users: i64,
@@ -60,23 +74,35 @@ async fn assert_seed_counts(
     protocols: i64,
 ) -> Result<(), Box<dyn Error>> {
     let actual = seed_counts(db).await?;
-    assert_eq!(actual.0, users, "demo account count");
-    assert_eq!(actual.1, tokens, "demo API key count");
-    assert_eq!(actual.2, protocols, "default protocol config count");
+    check(actual.0, users, "demo account count")?;
+    check(actual.1, tokens, "demo API key count")?;
+    check(actual.2, protocols, "default protocol config count")?;
     Ok(())
+}
+
+/// A uniquely-named SQLite file for one test.
+///
+/// The name must be unique per test: `tempfile::tempdir()` gives each test its own directory,
+/// but a *fixed* file name inside it is not enough if two tests were ever pointed at one
+/// directory, and cargo runs the tests in one binary concurrently. The first version of this
+/// suite used a constant `owner-seed.sqlite`; the two tests then shared one database and one
+/// test's seed made the other's "starts empty" assertion fail.
+fn sqlite_url_for(tag: &str) -> Result<(tempfile::TempDir, String), Box<dyn Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join(format!("owner-seed-{tag}.sqlite"));
+    let url = format!(
+        "sqlite:///{}?mode=rwc",
+        path.to_string_lossy().replace('\\', "/")
+    );
+    Ok((dir, url))
 }
 
 /// The bootstrap order is significant: the demo key references `user_id = 'demo-user'`, so
 /// the account must exist first. This asserts the intervening state as well as the final one.
 #[tokio::test]
-async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent(
-) -> Result<(), Box<dyn Error>> {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("owner-seed.sqlite");
-    let url = format!(
-        "sqlite:///{}?mode=rwc",
-        path.to_string_lossy().replace('\\', "/")
-    );
+async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent() -> Result<(), Box<dyn Error>>
+{
+    let (_dir, url) = sqlite_url_for("idempotent")?;
 
     let db = create_database_with_url(&url).await?;
     assert_seed_counts(&db, 0, 0, 0).await?;
@@ -121,7 +147,8 @@ impl Drop for DisposablePostgres {
 /// (`ON CONFLICT DO NOTHING` versus `INSERT OR IGNORE`, `$n` versus `?` placeholders) and this
 /// suite needs PostgreSQL server administration, so neither is covered by the SQLite test.
 #[tokio::test]
-async fn owner_seeds_reproduce_the_startup_records_on_real_postgres() -> Result<(), Box<dyn Error>> {
+async fn owner_seeds_reproduce_the_startup_records_on_real_postgres() -> Result<(), Box<dyn Error>>
+{
     use burncloud_database::sqlx::{self, ConnectOptions, Executor};
     use std::str::FromStr;
 

@@ -27,17 +27,31 @@ async fn count(
         .await?)
 }
 
+/// Fail with a described error rather than panicking: these helpers return `Result`, and
+/// `clippy::panic_in_result_fn` is part of this workspace's lint set.
+fn check(actual: i64, expected: i64, what: &str) -> Result<(), Box<dyn Error>> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "{what}: expected {expected}, got {actual}"
+        ))
+        .into())
+    }
+}
+
 /// Assert that no domain default record exists.
 async fn assert_no_seeds(db: &burncloud_database::Database) -> Result<(), Box<dyn Error>> {
     let users = count(db, "user_accounts", "id = 'demo-user'").await?;
     let tokens = count(db, "user_api_keys", "key = 'sk-burncloud-demo'").await?;
     let protocols = count(db, "channel_protocol_configs", "1 = 1").await?;
-    assert_eq!(users, 0, "Platform must not create the demo account");
-    assert_eq!(tokens, 0, "Platform must not create the demo API key");
-    assert_eq!(
-        protocols, 0,
-        "Platform must not create default protocol configs"
-    );
+    check(users, 0, "Platform must not create the demo account")?;
+    check(tokens, 0, "Platform must not create the demo API key")?;
+    check(
+        protocols,
+        0,
+        "Platform must not create default protocol configs",
+    )?;
     Ok(())
 }
 
@@ -73,11 +87,11 @@ async fn database_factories_create_schema_without_domain_default_records(
 
     let reopened = create_infrastructure_database_with_url(&url).await?;
     assert_no_seeds(&reopened).await?;
-    assert_eq!(
+    check(
         count(&reopened, "user_accounts", "id = 'kept-user'").await?,
         1,
-        "re-initialization must not remove an existing row"
-    );
+        "re-initialization must not remove an existing row",
+    )?;
     reopened.close().await?;
     Ok(())
 }
@@ -199,11 +213,11 @@ async fn postgres_fresh_init_creates_schema_without_domain_default_records(
 
     let reopened = create_infrastructure_database_with_url(&url).await?;
     assert_no_seeds(&reopened).await?;
-    assert_eq!(
+    check(
         count(&reopened, "user_accounts", "id = 'kept-user'").await?,
         1,
-        "re-initialization must not remove an existing row"
-    );
+        "re-initialization must not remove an existing row",
+    )?;
     reopened.close().await?;
 
     admin

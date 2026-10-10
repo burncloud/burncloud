@@ -18,18 +18,22 @@ use std::{error::Error, str::FromStr};
 
 const ENV: &str = "BURNCLOUD_TEST_POSTGRES_URL";
 
+/// Compare and fail with a described error rather than panicking: this helper is used from
+/// `Result`-returning functions, and `clippy::panic_in_result_fn` is in this workspace's lint
+/// set.
 fn ensure_eq<T: std::fmt::Debug + PartialEq>(
     actual: T,
     expected: T,
     context: &str,
 ) -> Result<(), Box<dyn Error>> {
-    if actual != expected {
-        return Err(std::io::Error::other(format!(
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
             "{context}: expected {expected:?}, got {actual:?}"
         ))
-        .into());
+        .into())
     }
-    Ok(())
 }
 
 #[tokio::test]
