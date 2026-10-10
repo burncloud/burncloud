@@ -11,9 +11,15 @@ GitHub Ruleset for `main`:
 - `check / Cargo Clippy` (workflow: `ci-github-hosted-clippy.yml`)
 - `check / Cargo Deny` (workflow: `ci-github-hosted-deny.yml`)
 
-**Verify exact GitHub check names in the PR checks UI/API before enabling the
-Ruleset**; reusable-workflow jobs may display as `check / …` and only exact
-names should be configured. Never guess check names or configure retired names.
+**Exact names verified** against GitHub Actions job API on PR #856, commit
+`081310397ceb624ad1b1b9939539067e7b26fb8e` (2026-10-10): all four jobs
+returned `success` in their independent workflows. Examples:
+- Fmt: https://github.com/burncloud/burncloud/actions/runs/38050465892
+- Test: https://github.com/burncloud/burncloud/actions/runs/38050465894
+- Clippy: https://github.com/burncloud/burncloud/actions/runs/38050465903
+- Deny: https://github.com/burncloud/burncloud/actions/runs/38050465889
+
+Only configure the verified exact names. Revalidate after future renames.
 All four checks must be present and successful for the latest PR revision.
 The Deny job may finish successfully without running the cargo-deny step when
 no dependency-policy files change; do not require that optional step separately.
