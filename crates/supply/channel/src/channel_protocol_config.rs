@@ -50,9 +50,14 @@ impl ChannelProtocolConfigModel {
     ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        let is_default_column = if is_postgres {
+            "is_default::INTEGER AS is_default"
+        } else {
+            "is_default"
+        };
         let sql = format!(
             r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -78,10 +83,15 @@ impl ChannelProtocolConfigModel {
     ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        let is_default_column = if is_postgres {
+            "is_default::INTEGER AS is_default"
+        } else {
+            "is_default"
+        };
         let sql = if is_postgres {
             format!(
                 r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -92,7 +102,7 @@ impl ChannelProtocolConfigModel {
         } else {
             format!(
                 r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -118,9 +128,14 @@ impl ChannelProtocolConfigModel {
     ) -> Result<Vec<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        let is_default_column = if is_postgres {
+            "is_default::INTEGER AS is_default"
+        } else {
+            "is_default"
+        };
         let sql = format!(
             r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
