@@ -1,0 +1,56 @@
+name: Temporary / #830 PostgreSQL Contract
+
+# One-time proof on PR #832 only; remove after collecting CI evidence.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-830:
+    name: Real PostgreSQL quota isolation (#830)
+    if: github.event.pull_request.number == 832
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BURNCLOUD_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: isolated-postgresql-830
+      - name: Install PostgreSQL client and OpenSSL requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config postgresql-client
+      - name: Verify the real PostgreSQL service is available
+        run: pg_isready -h 127.0.0.1 -p 5432 -U postgres
+      - name: Test real PostgreSQL log and Identity quota isolation
+        run: >-
+          cargo test -p burncloud-database-router
+          --test postgres_dialect_contract
+          --no-default-features
+          legacy_log_insert_does_not_write_identity_credential_spend_on_postgres
+          -- --exact --nocapture
