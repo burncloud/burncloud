@@ -109,6 +109,103 @@ where
     drop_database(&server_url, &name).await;
 }
 
+/// GitHub-hosted Rust CI has Docker but intentionally no permanent PostgreSQL
+/// workflow. Exercise every PostgreSQL-only test against a disposable Postgres
+/// 16 container instead of treating the opt-in tests' SKIPPED result as proof.
+/// Local developers can continue to set BURNCLOUD_TEST_POSTGRES_URL themselves.
+struct TestPostgresContainer(String);
+
+impl Drop for TestPostgresContainer {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("docker")
+            .args(["rm", "-f", &self.0])
+            .output();
+    }
+}
+
+#[test]
+fn github_actions_runs_real_postgres_dialect_contracts() {
+    if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
+        println!("Real PostgreSQL CI runner is GitHub Actions only. Set {SERVER_URL_ENV} to run the individual PostgreSQL contracts locally.");
+        return;
+    }
+
+    let run = std::process::Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "-d",
+            "-e",
+            "POSTGRES_PASSWORD=postgres",
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_DB=postgres",
+            "-p",
+            "127.0.0.1::5432",
+            "postgres:16",
+        ])
+        .output()
+        .expect("GitHub-hosted runner must provide Docker for the real PostgreSQL contract");
+    assert!(
+        run.status.success(),
+        "could not start PostgreSQL 16: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let id = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    assert!(!id.is_empty(), "Docker must return a container ID");
+    let _cleanup = TestPostgresContainer(id.clone());
+
+    let mut ready = false;
+    for _ in 0..120 {
+        if std::process::Command::new("docker")
+            .args(["exec", &id, "pg_isready", "-U", "postgres", "-d", "postgres"])
+            .output()
+            .is_ok_and(|out| out.status.success())
+        {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    assert!(ready, "PostgreSQL 16 did not become ready");
+
+    let port_output = std::process::Command::new("docker")
+        .args(["port", &id, "5432/tcp"])
+        .output()
+        .expect("read the published PostgreSQL port");
+    assert!(port_output.status.success(), "Docker port lookup failed");
+    let port_line = String::from_utf8_lossy(&port_output.stdout);
+    let port = port_line
+        .lines()
+        .next()
+        .and_then(|line| line.rsplit_once(':'))
+        .map(|(_, port)| port)
+        .expect("expected a published PostgreSQL port");
+    let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
+    let runner = std::env::current_exe().expect("find the current integration test binary");
+
+    for test in [
+        "router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch",
+        "legacy_log_insert_does_not_write_identity_credential_spend_on_postgres",
+        "token_info_join_quotes_group_and_preserves_the_left_join_on_postgres",
+        "video_task_conflict_keeps_the_first_mapping_on_postgres",
+    ] {
+        let result = std::process::Command::new(&runner)
+            .args(["--exact", test, "--nocapture"])
+            .env(SERVER_URL_ENV, &url)
+            .output()
+            .expect("launch isolated PostgreSQL integration test");
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            result.status.success() && stdout.contains("1 passed; 0 failed"),
+            "real PostgreSQL contract {test} did not pass:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+        println!("Real PostgreSQL 16: {test}: PASS");
+    }
+}
+
 #[tokio::test]
 async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch() {
     with_postgres("log", |db| async move {
