@@ -230,13 +230,19 @@ async fn identity_credential_and_traffic_projection_compose_without_changing_quo
         .expect("same active Identity key validates with a Traffic projection");
     assert_eq!(with_projection.user_id, without_projection.user_id);
     assert_eq!(with_projection.group, without_projection.group);
-    assert_eq!(with_projection.remain_quota, without_projection.remain_quota);
+    assert_eq!(
+        with_projection.remain_quota,
+        without_projection.remain_quota
+    );
     assert_eq!(with_projection.used_quota, without_projection.used_quota);
     assert_eq!(with_projection.order_type.as_deref(), Some("budget"));
     assert_eq!(with_projection.price_cap, Some(123_456_789));
 
     let usage = burncloud_router::get_usage_stats_by_token(&temp.db, "sk-split", "day").await?;
-    assert_eq!(usage.map(|(user_id, _)| user_id), Some("usr_split".to_string()));
+    assert_eq!(
+        usage.map(|(user_id, _)| user_id),
+        Some("usr_split".to_string())
+    );
     temp.cleanup().await;
     Ok(())
 }
