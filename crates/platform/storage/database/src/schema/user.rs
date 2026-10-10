@@ -1,9 +1,15 @@
-//! User, token and protocol-config data migrations and seed data.
+//! User and token data migrations.
 //!
 //! Handles:
 //! - Migrating `user_api_keys.unlimited_quota` from BOOLEAN to INTEGER (SQLite only)
 //! - Migrating legacy `quota` column values to `balance_usd`
-//! - Seeding the demo user, demo token and default protocol configs
+//!
+//! Default business records are **not** created here. Since #842 the demo account and demo
+//! API key are seeded by `identity/user` (`UserDatabase::seed_demo_defaults`) and the default
+//! protocol configs by `supply/channel`
+//! (`ChannelProtocolConfigModel::seed_default_protocol_configs`). The application bootstrap
+//! sequences those owner calls; Platform writes no domain rows itself, which is what keeps
+//! the dependency direction one-way.
 
 use crate::Result;
 use sqlx::AnyPool;
@@ -12,15 +18,6 @@ use sqlx::AnyPool;
 pub(super) async fn migrate_users(pool: &AnyPool, kind: &str) -> Result<()> {
     migrate_tokens_unlimited_quota(pool, kind).await?;
     migrate_quota_to_balance(pool).await?;
-    Ok(())
-}
-
-/// Legacy initialization contract, retained until domain-owned bootstrap
-/// replaces it without changing callers' expected initialization semantics.
-pub(super) async fn seed_legacy_defaults(pool: &AnyPool, kind: &str) -> Result<()> {
-    seed_demo_user(pool, kind).await?;
-    seed_demo_token(pool, kind).await?;
-    seed_protocol_configs(pool, kind).await?;
     Ok(())
 }
 
@@ -181,163 +178,5 @@ async fn migrate_quota_to_balance(pool: &AnyPool) -> Result<()> {
         .execute(pool)
         .await?;
     }
-    Ok(())
-}
-
-/// Ensure the demo user exists (required by validate_token_and_get_info JOIN).
-async fn seed_demo_user(pool: &AnyPool, kind: &str) -> Result<()> {
-    // PostgreSQL does not implement SQLite's INSERT OR IGNORE syntax. Preserve
-    // the existing fallback from the canonical to the legacy user table.
-    let insert = if kind == "postgres" {
-        "INSERT INTO user_accounts (id, username, password_hash, status) \
-         VALUES ('demo-user', 'demo-user', 'no-login', 1) ON CONFLICT DO NOTHING"
-    } else {
-        "INSERT OR IGNORE INTO user_accounts (id, username, password_hash, status) \
-         VALUES ('demo-user', 'demo-user', 'no-login', 1)"
-    };
-    if sqlx::query(insert).execute(pool).await.is_err() {
-        let fallback = if kind == "postgres" {
-            "INSERT INTO users (id, username, password_hash, status) \
-             VALUES ('demo-user', 'demo-user', 'no-login', 1) ON CONFLICT DO NOTHING"
-        } else {
-            "INSERT OR IGNORE INTO users (id, username, password_hash, status) \
-             VALUES ('demo-user', 'demo-user', 'no-login', 1)"
-        };
-        sqlx::query(fallback).execute(pool).await?;
-    }
-    Ok(())
-}
-
-/// Insert the default demo token if it does not yet exist.
-async fn seed_demo_token(pool: &AnyPool, kind: &str) -> Result<()> {
-    let t_count: i64 = match sqlx::query_scalar(
-        "SELECT count(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'",
-    )
-    .fetch_one(pool)
-    .await
-    {
-        Ok(n) => n,
-        Err(_) => return Ok(()),
-    };
-
-    if t_count != 0 {
-        return Ok(());
-    }
-
-    let now = crate::schema::current_timestamp();
-    let insert_sql = match kind {
-        "sqlite" => {
-            "INSERT INTO user_api_keys \
-             (user_id, key, status, name, remain_quota, unlimited_quota, \
-              used_quota, created_time, accessed_time, expired_time) \
-             VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', \
-                     -1, 1, 0, ?, ?, -1)"
-        }
-        "postgres" => {
-            "INSERT INTO user_api_keys \
-             (user_id, key, status, name, remain_quota, unlimited_quota, \
-              used_quota, created_time, accessed_time, expired_time) \
-             VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', \
-                     -1, 1, 0, $1, $2, -1)"
-        }
-        _ => return Ok(()),
-    };
-
-    sqlx::query(insert_sql)
-        .bind(now)
-        .bind(now)
-        .execute(pool)
-        .await?;
-    tracing::info!("Initialized demo token: sk-burncloud-demo");
-    Ok(())
-}
-
-/// Insert the four default protocol configs if the table is empty.
-async fn seed_protocol_configs(pool: &AnyPool, kind: &str) -> Result<()> {
-    let pc_count: i64 = match sqlx::query_scalar("SELECT count(*) FROM channel_protocol_configs")
-        .fetch_one(pool)
-        .await
-    {
-        Ok(n) => n,
-        Err(_) => return Ok(()),
-    };
-
-    if pc_count != 0 {
-        return Ok(());
-    }
-
-    let now = crate::schema::current_timestamp();
-    type ProtocolConfig<'a> = (
-        i32,
-        &'a str,
-        bool,
-        Option<&'a str>,
-        Option<&'a str>,
-        Option<&'a str>,
-    );
-
-    let default_protocols: [ProtocolConfig; 4] = [
-        (
-            1,
-            "default",
-            true,
-            Some("/v1/chat/completions"),
-            Some("/v1/embeddings"),
-            Some("/v1/models"),
-        ),
-        (2, "2023-06-01", true, Some("/v1/messages"), None, None),
-        (
-            3,
-            "2024-02-01",
-            true,
-            Some("/deployments/{deployment_id}/chat/completions"),
-            Some("/deployments/{deployment_id}/embeddings"),
-            Some("/deployments?api-version=2024-02-01"),
-        ),
-        (
-            4,
-            "v1",
-            true,
-            Some("/v1/models/{model}:generateContent"),
-            Some("/v1/models/{model}:embedContent"),
-            Some("/v1/models"),
-        ),
-    ];
-
-    let insert_sql = match kind {
-        "sqlite" => {
-            "INSERT INTO channel_protocol_configs \
-             (channel_type, api_version, is_default, chat_endpoint, \
-              embed_endpoint, models_endpoint, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        }
-        "postgres" => {
-            "INSERT INTO channel_protocol_configs \
-             (channel_type, api_version, is_default, chat_endpoint, \
-              embed_endpoint, models_endpoint, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
-        }
-        _ => return Ok(()),
-    };
-
-    for (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint) in
-        default_protocols
-    {
-        sqlx::query(insert_sql)
-            .bind(channel_type)
-            .bind(api_version)
-            .bind(is_default)
-            .bind(chat_endpoint)
-            .bind(embed_endpoint)
-            .bind(models_endpoint)
-            .bind(now)
-            .bind(now)
-            .execute(pool)
-            .await?;
-    }
-    tracing::info!(
-        "Initialized default protocol configs for {} channel types",
-        default_protocols.len()
-    );
     Ok(())
 }

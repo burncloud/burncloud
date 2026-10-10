@@ -42,6 +42,12 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
     UserDatabase::init(&db)
         .await
         .expect("UserDatabase::init must create the user_* schema");
+    // `create_database_with_url` no longer seeds domain default records (#842), and the demo
+    // account and demo key are Identity's to write, so seed them through the owner exactly as
+    // the application bootstrap does. Several tests below assert on that seeded state.
+    UserDatabase::seed_demo_defaults(&db)
+        .await
+        .expect("UserDatabase::seed_demo_defaults must seed the demo account and key");
     (db, path)
 }
 
@@ -876,10 +882,12 @@ async fn keys_list_with_pagination_and_an_optional_user_filter() {
     .await
     .expect("created");
 
-    // **`UserDatabase::init` seeds a demo key**: `user_api_keys ('demo-user', 'sk-burncloud-demo', ...,
-    // unlimited_quota 1, ...)` from `schema/user.rs:232`. It is inserted only when the table is empty, so it
-    // is present on a fresh database and an unfiltered list sees it. The first version of this test expected
-    // five plus one and was told there were seven -- which is that seed.
+    // **`UserDatabase::seed_demo_defaults` inserts a demo key**: `user_api_keys ('demo-user',
+    // 'sk-burncloud-demo', ..., unlimited_quota 1, ...)`. Ownership moved here from
+    // `platform/storage/database` in #842, where the statement used to live as `schema/user.rs`.
+    // It is inserted only when the table is empty, so it is present on a fresh database and an
+    // unfiltered list sees it. The first version of this test expected five plus one and was told
+    // there were seven -- which is that seed.
     let all = UserApiKeyModel::list(&db, 100, 0, None)
         .await
         .expect("listable");

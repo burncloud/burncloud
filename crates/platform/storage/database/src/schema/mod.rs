@@ -57,17 +57,15 @@ impl Schema {
         Ok(())
     }
 
-    /// Preserve the existing public database-factory initialization behavior.
-    /// This compatibility entry point will be replaced by an application facade
-    /// once Identity and Supply own their respective default records.
+    /// Run historical data fixups. Equivalent to [`Self::init_infrastructure`].
+    ///
+    /// Retained as the historical entry-point name. Since #842 there is no follow-up
+    /// default-record phase owned by Platform: the demo account, demo API key and default
+    /// protocol configs are seeded by their domain owners through
+    /// `UserDatabase::seed_demo_defaults` and
+    /// `ChannelProtocolConfigModel::seed_default_protocol_configs`, which the application
+    /// bootstrap calls after infrastructure initialization.
     pub async fn init(db: &Database) -> Result<()> {
-        Self::init_infrastructure(db).await?;
-        Self::init_legacy_defaults(db).await
-    }
-
-    /// Run only the legacy default-record phase after infrastructure migration.
-    pub async fn init_legacy_defaults(db: &Database) -> Result<()> {
-        let pool = db.get_connection()?.pool();
-        user::seed_legacy_defaults(pool, &db.kind()).await
+        Self::init_infrastructure(db).await
     }
 }

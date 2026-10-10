@@ -1,5 +1,18 @@
-//! Contract boundary for #845: infrastructure fixups and legacy seed behavior.
+//! Contract boundary for #845 / #842: infrastructure fixups and domain-owned seed behavior.
+//!
+//! #842 moved default-record ownership out of this crate. Platform now creates schema and
+//! historic fixups only; `identity/user` owns the demo account and demo API key, and
+//! `supply/channel` owns the default protocol configs. These tests pin both halves:
+//!
+//! 1. `create_database_with_url` (and the explicit infrastructure factory) seed **nothing**.
+//! 2. The owner capabilities reproduce the historical rows exactly — one demo account, one
+//!    demo key and four protocol configs — and are idempotent on re-initialization.
+//!
+//! The owner crates are dev-dependencies of this crate purely so the second half can be
+//! asserted here. Platform's own source must never depend on them.
 use burncloud_database::{create_database_with_url, create_infrastructure_database_with_url, sqlx};
+use burncloud_identity_user::UserDatabase;
+use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::error::Error;
 
 async fn count(
@@ -13,6 +26,7 @@ async fn count(
         .await?)
 }
 
+/// Assert the seeded-row counts that the historical application startup contract guarantees.
 async fn assert_seeds(
     db: &burncloud_database::Database,
     expected_users: i64,
@@ -22,14 +36,21 @@ async fn assert_seeds(
     let users = count(db, "user_accounts", "id = 'demo-user'").await?;
     let tokens = count(db, "user_api_keys", "key = 'sk-burncloud-demo'").await?;
     let protocols = count(db, "channel_protocol_configs", "1 = 1").await?;
-    assert_eq!(users, expected_users);
-    assert_eq!(tokens, expected_tokens);
-    assert_eq!(protocols, expected_protocols);
+    assert_eq!(users, expected_users, "demo account count");
+    assert_eq!(tokens, expected_tokens, "demo API key count");
+    assert_eq!(protocols, expected_protocols, "default protocol config count");
+    Ok(())
+}
+
+/// The application-bootstrap ordering: infrastructure first, then each domain owner.
+async fn seed_via_owners(db: &burncloud_database::Database) -> Result<(), Box<dyn Error>> {
+    UserDatabase::seed_demo_defaults(db).await?;
+    ChannelProtocolConfigModel::seed_default_protocol_configs(db).await?;
     Ok(())
 }
 
 #[tokio::test]
-async fn infrastructure_bootstrap_is_seed_free_and_legacy_factory_is_compatible(
+async fn factory_is_seed_free_and_owner_capabilities_reproduce_the_legacy_records(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("init-boundary.sqlite");
@@ -38,22 +59,32 @@ async fn infrastructure_bootstrap_is_seed_free_and_legacy_factory_is_compatible(
         path.to_string_lossy().replace('\\', "/")
     );
 
+    // Platform creates schema and fixups only. Both factories must be seed-free (#842).
     let infrastructure = create_infrastructure_database_with_url(&url).await?;
     assert_seeds(&infrastructure, 0, 0, 0).await?;
     infrastructure.close().await?;
 
-    let legacy = create_database_with_url(&url).await?;
-    assert_seeds(&legacy, 1, 1, 4).await?;
-    legacy.close().await?;
+    let factory = create_database_with_url(&url).await?;
+    assert_seeds(&factory, 0, 0, 0).await?;
+    factory.close().await?;
 
-    // Reinitialization must not remove, duplicate or overwrite seeded data.
+    // The owners reproduce the historical startup records exactly.
+    let seeded = create_database_with_url(&url).await?;
+    seed_via_owners(&seeded).await?;
+    assert_seeds(&seeded, 1, 1, 4).await?;
+    seeded.close().await?;
+
+    // Re-running both phases over an existing database must not duplicate or remove rows.
     let reopened = create_infrastructure_database_with_url(&url).await?;
+    assert_seeds(&reopened, 1, 1, 4).await?;
+    seed_via_owners(&reopened).await?;
     assert_seeds(&reopened, 1, 1, 4).await?;
     reopened.close().await?;
 
-    let legacy_again = create_database_with_url(&url).await?;
-    assert_seeds(&legacy_again, 1, 1, 4).await?;
-    legacy_again.close().await?;
+    let factory_again = create_database_with_url(&url).await?;
+    seed_via_owners(&factory_again).await?;
+    assert_seeds(&factory_again, 1, 1, 4).await?;
+    factory_again.close().await?;
     Ok(())
 }
 
@@ -71,8 +102,8 @@ impl Drop for DisposablePostgres {
 }
 
 #[tokio::test]
-async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
-) -> Result<(), Box<dyn Error>> {
+async fn postgres_infrastructure_bootstrap_retains_owner_seed_contract() -> Result<(), Box<dyn Error>>
+{
     use sqlx::{ConnectOptions, Executor};
     use std::str::FromStr;
 
@@ -149,7 +180,7 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
-    let name = format!("bc_init845_{}_{}", std::process::id(), stamp);
+    let name = format!("bc_init842_{}_{}", std::process::id(), stamp);
     let mut admin = options.connect().await?;
     admin
         .execute(format!("CREATE DATABASE {name}").as_str())
@@ -160,20 +191,21 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
     assert_seeds(&infrastructure, 0, 0, 0).await?;
     infrastructure.close().await?;
 
-    let legacy = create_database_with_url(&url).await?;
-    assert_seeds(&legacy, 1, 1, 4).await?;
-    legacy.close().await?;
+    let seeded = create_database_with_url(&url).await?;
+    seed_via_owners(&seeded).await?;
+    assert_seeds(&seeded, 1, 1, 4).await?;
+    seeded.close().await?;
 
+    // Re-initialization on PostgreSQL must also be idempotent.
     let reopened = create_infrastructure_database_with_url(&url).await?;
+    assert_seeds(&reopened, 1, 1, 4).await?;
+    seed_via_owners(&reopened).await?;
     assert_seeds(&reopened, 1, 1, 4).await?;
     reopened.close().await?;
 
-    let legacy_again = create_database_with_url(&url).await?;
-    assert_seeds(&legacy_again, 1, 1, 4).await?;
-    legacy_again.close().await?;
     admin
         .execute(format!("DROP DATABASE {name} WITH (FORCE)").as_str())
         .await?;
-    println!("Real PostgreSQL 16: infrastructure and legacy seed contracts PASS");
+    println!("Real PostgreSQL 16: infrastructure and owner seed contracts PASS");
     Ok(())
 }

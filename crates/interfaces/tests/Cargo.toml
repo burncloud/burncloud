@@ -39,6 +39,9 @@ path = "tests/logging_test.rs"
 burncloud-router.workspace = true
 burncloud-server.workspace = true
 burncloud-identity-user.workspace = true
+# Test-only: the API suite's demo-token fixture needs the default protocol configs, which
+# Supply owns (#842). Runtime supply wiring remains in `burncloud-server`.
+burncloud-supply-channel.workspace = true
 tracing.workspace = true
 log.workspace = true
 tempfile.workspace = true

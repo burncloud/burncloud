@@ -24,6 +24,13 @@ tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Test-only, to prove Platform writes no domain default records itself (#842): the boundary
+# contract asserts that `create_database_with_url` seeds nothing, and that the owner
+# capabilities produce the historical (1 user, 1 key, 4 protocol configs) result when the
+# application bootstrap calls them. Neither owner depends on this crate at runtime, so these
+# edges cannot form a cycle. Platform's own source must never import them.
+burncloud-identity-user.workspace = true
+burncloud-supply-channel.workspace = true
 
 [[example]]
 name = "database-basic-usage"

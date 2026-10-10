@@ -17,8 +17,15 @@
 //!
 //! Strategy: create a fresh SQLite database via `create_database_with_url`, which
 //! runs all migrations (0001–0010) and the `schema/rename.rs` data-copy logic.
+//!
+//! `create_database_with_url` creates schema and historic fixups only since #842; the domain
+//! default records now come from their owners. `create_test_db` therefore also runs the two
+//! owner seed calls the application bootstrap makes, so these tests observe the same database
+//! state a real startup produces.
 
 use burncloud_database::{create_database_with_url, sqlite_url, sqlx};
+use burncloud_identity_user::UserDatabase;
+use burncloud_supply_channel::ChannelProtocolConfigModel;
 use sqlx::any::{AnyConnectOptions, AnyPoolOptions};
 use std::str::FromStr;
 use tempfile::NamedTempFile;
@@ -33,6 +40,14 @@ async fn create_test_db() -> (burncloud_database::Database, NamedTempFile) {
     let db = create_database_with_url(&url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize test database: {e}"));
+    // Match the application bootstrap's owner-seeded startup state (#842). Both calls are
+    // idempotent, so a database that was already seeded is unchanged.
+    UserDatabase::seed_demo_defaults(&db)
+        .await
+        .unwrap_or_else(|e| panic!("failed to seed Identity defaults: {e}"));
+    ChannelProtocolConfigModel::seed_default_protocol_configs(&db)
+        .await
+        .unwrap_or_else(|e| panic!("failed to seed Supply defaults: {e}"));
     (db, tmp)
 }
 

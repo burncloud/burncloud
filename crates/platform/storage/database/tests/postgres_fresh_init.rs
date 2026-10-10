@@ -1,9 +1,14 @@
 //! PostgreSQL fresh-install and repeat-initialization regression for #833.
 //! Only executes against an explicitly provided disposable PostgreSQL server.
 //! Never points this test at a production instance: it creates and drops a DB.
+//!
+//! Since #842 the demo account is written by its Identity owner rather than by
+//! `create_database_with_url`, so this test performs the same owner-seed call the
+//! application bootstrap makes before asserting the seeded state.
 
 use burncloud_database::create_database_with_url;
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
+use burncloud_identity_user::UserDatabase;
 use std::{error::Error, str::FromStr};
 
 const ENV: &str = "BURNCLOUD_TEST_POSTGRES_URL";
@@ -46,6 +51,8 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
         .ok_or("PostgreSQL URL must include the database name")?;
     let target_url = format!("{prefix}/{name}");
     let db = create_database_with_url(&target_url).await?;
+    // The application bootstrap seeds through the Identity owner (#842).
+    UserDatabase::seed_demo_defaults(&db).await?;
 
     let conn = db.get_connection()?;
     let user_type: String = sqlx::query_scalar(
@@ -80,6 +87,8 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
 
     db.close().await?;
     let reopened = create_database_with_url(&target_url).await?;
+    // Repeat the owner seed exactly as a restart would; it must be idempotent.
+    UserDatabase::seed_demo_defaults(&reopened).await?;
     let seeded_again: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
         .bind("demo-user")
         .fetch_one(reopened.get_connection()?.pool())
