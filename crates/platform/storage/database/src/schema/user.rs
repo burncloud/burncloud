@@ -12,7 +12,7 @@ use sqlx::AnyPool;
 pub(super) async fn migrate_users_and_seed(pool: &AnyPool, kind: &str) -> Result<()> {
     migrate_tokens_unlimited_quota(pool, kind).await?;
     migrate_quota_to_balance(pool).await?;
-    seed_demo_user(pool).await?;
+    seed_demo_user(pool, kind).await?;
     seed_demo_token(pool, kind).await?;
     seed_protocol_configs(pool, kind).await?;
     Ok(())
@@ -179,20 +179,25 @@ async fn migrate_quota_to_balance(pool: &AnyPool) -> Result<()> {
 }
 
 /// Ensure the demo user exists (required by validate_token_and_get_info JOIN).
-async fn seed_demo_user(pool: &AnyPool) -> Result<()> {
-    let canonical = sqlx::query(
+async fn seed_demo_user(pool: &AnyPool, kind: &str) -> Result<()> {
+    // PostgreSQL does not implement SQLite's INSERT OR IGNORE syntax. Preserve
+    // the existing fallback from the canonical to the legacy user table.
+    let insert = if kind == "postgres" {
+        "INSERT INTO user_accounts (id, username, password_hash, status) \
+         VALUES ('demo-user', 'demo-user', 'no-login', 1) ON CONFLICT DO NOTHING"
+    } else {
         "INSERT OR IGNORE INTO user_accounts (id, username, password_hash, status) \
-         VALUES ('demo-user', 'demo-user', 'no-login', 1)",
-    )
-    .execute(pool)
-    .await;
-    if canonical.is_err() {
-        sqlx::query(
+         VALUES ('demo-user', 'demo-user', 'no-login', 1)"
+    };
+    if sqlx::query(insert).execute(pool).await.is_err() {
+        let fallback = if kind == "postgres" {
+            "INSERT INTO users (id, username, password_hash, status) \
+             VALUES ('demo-user', 'demo-user', 'no-login', 1) ON CONFLICT DO NOTHING"
+        } else {
             "INSERT OR IGNORE INTO users (id, username, password_hash, status) \
-             VALUES ('demo-user', 'demo-user', 'no-login', 1)",
-        )
-        .execute(pool)
-        .await?;
+             VALUES ('demo-user', 'demo-user', 'no-login', 1)"
+        };
+        sqlx::query(fallback).execute(pool).await?;
     }
     Ok(())
 }
