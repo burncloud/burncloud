@@ -96,6 +96,19 @@ async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent() -> Resul
     let (_dir, url) = sqlite_url_for("idempotent")?;
 
     let db = create_database_with_url(&url).await?;
+    // Diagnostic: a freshly created database must hold no account at all. If this fails, report
+    // what is actually present and which file was used, so the source of the row is identified
+    // from evidence rather than guessed.
+    let observed: Vec<(String, String)> =
+        burncloud_database::sqlx::query_as("SELECT id, username FROM user_accounts ORDER BY id")
+            .fetch_all(db.get_connection()?.pool())
+            .await?;
+    if !observed.is_empty() {
+        return Err(std::io::Error::other(format!(
+            "a freshly created database already holds accounts {observed:?} at {url}"
+        ))
+        .into());
+    }
     assert_seed_counts(&db, 0, 0, 0).await?;
 
     // Identity's half: the account and its key appear, Supply's configs do not yet.
