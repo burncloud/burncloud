@@ -136,7 +136,19 @@ impl Database {
         Ok(db)
     }
 
+    /// Initialize with the historical public contract: migrations, fixups and
+    /// default domain records. Existing consumers retain this behavior.
     pub async fn initialize(&mut self) -> Result<()> {
+        self.initialize_infrastructure().await?;
+        crate::schema::Schema::init_legacy_defaults(self).await
+    }
+
+    /// Initialize only Platform-owned infrastructure and historic fixups.
+    ///
+    /// Application bootstrap must arrange Identity and Supply defaults after
+    /// this step. The raw infrastructure factory deliberately adds no demo
+    /// user, API key or protocol configuration.
+    pub async fn initialize_infrastructure(&mut self) -> Result<()> {
         sqlx::any::install_default_drivers();
         let connection = DatabaseConnection::new(&self.database_url).await?;
         self.connection = Some(connection.clone());
@@ -153,8 +165,8 @@ impl Database {
         // Run versioned DDL migrations first (creates all tables and columns).
         crate::migration::MigrationRunner::run(self).await?;
 
-        // Run post-migration data fixups and seed initial records.
-        crate::schema::Schema::init(self).await?;
+        // Run historical data compatibility fixups without business seeds.
+        crate::schema::Schema::init_infrastructure(self).await?;
 
         Ok(())
     }
@@ -303,6 +315,19 @@ pub async fn create_database_with_url(url: &str) -> Result<Database> {
         database_url: url.to_string(),
     };
     db.initialize().await?;
+    Ok(db)
+}
+
+/// Explicit infrastructure-only factory for a domain-owned application bootstrap.
+///
+/// Legacy factories continue to seed their default records. Callers of this
+/// entry point must explicitly invoke Identity/Supply seed owners.
+pub async fn create_infrastructure_database_with_url(url: &str) -> Result<Database> {
+    let mut db = Database {
+        connection: None,
+        database_url: url.to_string(),
+    };
+    db.initialize_infrastructure().await?;
     Ok(db)
 }
 

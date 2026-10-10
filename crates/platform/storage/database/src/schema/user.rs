@@ -8,10 +8,16 @@
 use crate::Result;
 use sqlx::AnyPool;
 
-/// Run all user/token data migrations then seed initial records.
-pub(super) async fn migrate_users_and_seed(pool: &AnyPool, kind: &str) -> Result<()> {
+/// Historical compatibility fixups; never create new business records.
+pub(super) async fn migrate_users(pool: &AnyPool, kind: &str) -> Result<()> {
     migrate_tokens_unlimited_quota(pool, kind).await?;
     migrate_quota_to_balance(pool).await?;
+    Ok(())
+}
+
+/// Legacy initialization contract, retained until domain-owned bootstrap
+/// replaces it without changing callers' expected initialization semantics.
+pub(super) async fn seed_legacy_defaults(pool: &AnyPool, kind: &str) -> Result<()> {
     seed_demo_user(pool, kind).await?;
     seed_demo_token(pool, kind).await?;
     seed_protocol_configs(pool, kind).await?;
