@@ -1,10 +1,8 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use burncloud_database::placeholder::ph;
-use burncloud_database::sqlx;
 use burncloud_database::Database;
-use burncloud_supply_channel::ChannelProviderModel;
+use burncloud_supply_channel::ChannelService;
 use burncloud_supply_contracts::Channel;
 
 use crate::affinity::{self, AffinityCache};
@@ -86,81 +84,26 @@ impl ModelRouter {
     ///
     /// Returns channels sorted by priority (highest first) with their weights.
     pub async fn get_candidates(&self, group: &str, model: &str) -> Result<Vec<(Channel, i32)>> {
-        let conn = self.db.get_connection()?;
-        let pool = conn.pool();
-        let is_postgres = self.db.kind() == "postgres";
-
-        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
-
-        // 1. Get max priority
-        // Boolean literal differs by dialect: PG `true` vs SQLite `1`.
-        let enabled_lit = if is_postgres { "true" } else { "1" };
-        let query = format!(
-            r#"
-                SELECT priority
-                FROM channel_abilities
-                WHERE {col} = {p1} AND model = {p2} AND enabled = {enabled_lit}
-                ORDER BY priority DESC
-                LIMIT 1
-            "#,
-            col = group_col,
-            p1 = ph(is_postgres, 1),
-            p2 = ph(is_postgres, 2),
-            enabled_lit = enabled_lit,
-        );
-
-        let max_priority: Option<i64> = sqlx::query_scalar(&query)
-            .bind(group)
-            .bind(model)
-            .fetch_optional(pool)
-            .await?;
-
-        let priority = match max_priority {
-            Some(p) => p,
-            None => return Ok(Vec::new()), // No ability found
-        };
-
-        // 2. Get all candidate channel IDs with weights
-        let query_candidates = format!(
-            r#"
-                SELECT channel_id, weight
-                FROM channel_abilities
-                WHERE {col} = {p1} AND model = {p2} AND enabled = {enabled_lit} AND priority = {p3}
-            "#,
-            col = group_col,
-            p1 = ph(is_postgres, 1),
-            p2 = ph(is_postgres, 2),
-            p3 = ph(is_postgres, 3),
-            enabled_lit = enabled_lit,
-        );
-
-        let candidates: Vec<(i32, i32)> = sqlx::query_as::<_, (i32, i64)>(&query_candidates)
-            .bind(group)
-            .bind(model)
-            .bind(priority)
-            .fetch_all(pool)
-            .await?
-            .into_iter()
-            .map(|(id, w)| (id, w as i32))
-            .collect();
-
-        if candidates.is_empty() {
+        // Supply owns the channel_abilities query and dialect details. Traffic keeps the
+        // routing decision: map the highest-priority abilities to weighted Channel values.
+        let abilities =
+            ChannelService::list_enabled_at_highest_priority(self.db.as_ref(), group, model)
+                .await?;
+        if abilities.is_empty() {
             return Ok(Vec::new());
         }
 
-        // 3. Fetch Channel Details for all candidates
-        let channel_ids: Vec<i32> = candidates.iter().map(|(id, _)| *id).collect();
-
-        // Channel details come from the Supply persistence layer; the routing layer must not
-        // issue its own SELECT against `channel_providers` (see #607).
-        let channels = ChannelProviderModel::list_by_ids(self.db.as_ref(), &channel_ids).await?;
-
-        // 4. Map channels to weights
-        let weight_map: std::collections::HashMap<i32, i32> = candidates.into_iter().collect();
-
-        let result: Vec<(Channel, i32)> = channels
+        let candidates: Vec<(i32, i32)> = abilities
             .into_iter()
-            .filter_map(|ch| weight_map.get(&ch.id).map(|&w| (ch, w)))
+            .map(|ability| (ability.channel_id, ability.weight))
+            .collect();
+        let channel_ids: Vec<i32> = candidates.iter().map(|(id, _)| *id).collect();
+        let channels = ChannelService::list_by_ids(self.db.as_ref(), &channel_ids).await?;
+
+        let weight_map: std::collections::HashMap<i32, i32> = candidates.into_iter().collect();
+        let result = channels
+            .into_iter()
+            .filter_map(|channel| weight_map.get(&channel.id).map(|&weight| (channel, weight)))
             .collect();
 
         Ok(result)

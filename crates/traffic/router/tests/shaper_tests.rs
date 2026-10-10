@@ -86,18 +86,14 @@ fn t1_startup_configure_loads_caps_and_reservations() {
     assert_eq!(snap.tpm_remaining_red, 20_000);
 }
 
-/// T2 — PG dialect parity is a documentation contract. The SQL in
-/// `configure_rate_budget_from_db` is `SELECT id, rpm_cap, tpm_cap,
-/// reservation_green, reservation_yellow, reservation_red FROM
-/// channel_providers` with **no parameter placeholders** and **no quoted
-/// identifiers** — it parses identically on PG and SQLite. T1 (above) and
-/// T6 (HTTP E2E) exercise the same code path on SQLite; PG behavior is
-/// guaranteed by the dialect-neutral query.
+/// T2 — the Supply-owned rate-cap projection keeps the historical
+/// dialect-neutral SQL used by the shaper. Traffic no longer owns that query,
+/// but its no-placeholder/no-quoted-identifier property remains pinned here
+/// because startup fail-open behavior depends on the same cross-backend data.
 #[test]
-fn t2_configure_from_db_sql_is_dialect_neutral() {
-    // Sentinel test: documents the contract via assertion. If a future
-    // refactor introduces dialect-specific SQL in configure_from_db, this
-    // contract needs re-verifying with a real PG instance.
+fn t2_supply_rate_cap_projection_is_dialect_neutral() {
+    // Sentinel test: if Supply makes this projection dialect-specific, update
+    // the real PostgreSQL owner-boundary test together with this contract.
     let pg_neutral_sql = "SELECT id, rpm_cap, tpm_cap, reservation_green, \
                           reservation_yellow, reservation_red FROM channel_providers";
     assert!(!pg_neutral_sql.contains('?'));

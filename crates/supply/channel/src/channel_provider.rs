@@ -4,6 +4,27 @@ use burncloud_database::{adapt_sql, ph, phs, Database, Result};
 use burncloud_supply_contracts::Channel;
 use sqlx::Row;
 
+/// Supply-owned projection of the provider fields used by Traffic's L2 shaper.
+/// It intentionally excludes credentials and unrelated provider configuration.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChannelRateCap {
+    pub id: i32,
+    pub rpm_cap: Option<i32>,
+    pub tpm_cap: Option<i64>,
+    pub reservation_green: Option<f64>,
+    pub reservation_yellow: Option<f64>,
+    pub reservation_red: Option<f64>,
+}
+
+type ChannelRateCapRow = (
+    i32,
+    Option<i32>,
+    Option<i64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+);
+
 pub struct ChannelProviderModel;
 
 impl ChannelProviderModel {
@@ -167,6 +188,62 @@ impl ChannelProviderModel {
         Ok(())
     }
 
+    /// Update only the provider API version while keeping all other Channel fields unchanged.
+    ///
+    /// This is the Supply-owned boundary used by Traffic's deprecation detector. The historical
+    /// caller treated a missing id as a successful no-op, so this targeted update intentionally
+    /// preserves that behavior instead of turning it into a not-found error.
+    pub async fn update_api_version(db: &Database, id: i32, api_version: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let sql = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET api_version = ? WHERE id = ?",
+        );
+
+        sqlx::query(&sql)
+            .bind(api_version)
+            .bind(id)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Atomically quarantine a Channel: remove its routing abilities and mark it disabled.
+    ///
+    /// Returns `Ok(false)` when the provider no longer exists. In that case the transaction is
+    /// dropped, rolling back the ability deletion so callers never observe a half-quarantined row.
+    pub async fn quarantine(db: &Database, id: i32) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let mut tx = conn.pool().begin().await?;
+
+        let delete_abilities = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
+        sqlx::query(&delete_abilities)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+
+        let disable_channel = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET status = 3 WHERE id = ?",
+        );
+        let result = sqlx::query(&disable_channel)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+
+        if result.rows_affected() != 1 {
+            return Ok(false);
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
@@ -205,6 +282,39 @@ impl ChannelProviderModel {
             .map(Channel::from);
 
         Ok(channel)
+    }
+
+    /// List only the provider rate-cap projection needed by Traffic's in-memory shaper.
+    pub async fn list_rate_caps(db: &Database) -> Result<Vec<ChannelRateCap>> {
+        let conn = db.get_connection()?;
+        let sql = if db.kind() == "postgres" {
+            "SELECT id, rpm_cap, tpm_cap, \
+             reservation_green::DOUBLE PRECISION AS reservation_green, \
+             reservation_yellow::DOUBLE PRECISION AS reservation_yellow, \
+             reservation_red::DOUBLE PRECISION AS reservation_red FROM channel_providers"
+        } else {
+            "SELECT id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red \
+             FROM channel_providers"
+        };
+        let rows = sqlx::query_as::<_, ChannelRateCapRow>(sql)
+            .fetch_all(conn.pool())
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)| {
+                    ChannelRateCap {
+                        id,
+                        rpm_cap,
+                        tpm_cap,
+                        reservation_green,
+                        reservation_yellow,
+                        reservation_red,
+                    }
+                },
+            )
+            .collect())
     }
 
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {

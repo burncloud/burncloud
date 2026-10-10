@@ -17,7 +17,8 @@
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_supply_channel::{
-    ChannelProtocolConfigInput, ChannelProtocolConfigModel, ChannelProviderModel,
+    ChannelAbilityModel, ChannelProtocolConfigInput, ChannelProtocolConfigModel,
+    ChannelProviderModel, ChannelService,
 };
 use burncloud_supply_contracts::{Channel, ChannelType};
 use std::str::FromStr;
@@ -157,6 +158,117 @@ fn protocol_input(
     }
 }
 
+/// GitHub-hosted Code Test does not set BURNCLOUD_TEST_POSTGRES_URL. Run the
+/// dialect contracts against a disposable real PostgreSQL 16 container rather than
+/// silently counting their opt-in SKIPPED results as acceptance.
+struct TestPostgresContainer(String);
+
+impl Drop for TestPostgresContainer {
+    fn drop(&mut self) {
+        if let Err(error) = std::process::Command::new("docker")
+            .args(["rm", "-f", &self.0])
+            .status()
+        {
+            eprintln!("PostgreSQL container cleanup failed: {error}");
+        }
+    }
+}
+
+#[test]
+fn github_actions_executes_real_supply_owner_postgres_contracts() {
+    if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
+        println!("Local opt-in: set {SERVER_URL_ENV} to run real PostgreSQL contracts.");
+        return;
+    }
+    let run = std::process::Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "-d",
+            "-e",
+            "POSTGRES_PASSWORD=postgres",
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_DB=postgres",
+            "-p",
+            "127.0.0.1::5432",
+            "postgres:16",
+        ])
+        .output()
+        .expect("GitHub-hosted CI must provide Docker for real PostgreSQL tests");
+    assert!(
+        run.status.success(),
+        "start PostgreSQL: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let id = String::from_utf8_lossy(&run.stdout).trim().to_owned();
+    assert!(
+        !id.is_empty(),
+        "Docker did not return a PostgreSQL container ID"
+    );
+    let _cleanup = TestPostgresContainer(id.clone());
+    let output = std::process::Command::new("docker")
+        .args(["port", &id, "5432/tcp"])
+        .output()
+        .expect("read PostgreSQL port");
+    assert!(
+        output.status.success(),
+        "published PostgreSQL port query failed"
+    );
+    let ports = String::from_utf8_lossy(&output.stdout);
+    let port = ports
+        .lines()
+        .next()
+        .and_then(|line| line.rsplit_once(':'))
+        .map(|(_, port)| port)
+        .expect("PostgreSQL must publish a TCP port");
+    let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
+    let opts = sqlx::postgres::PgConnectOptions::from_str(&url).expect("PostgreSQL URL must parse");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("SQLx readiness runtime");
+    let mut ready = false;
+    for _ in 0..40 {
+        ready = runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                match opts.connect().await {
+                    Ok(mut conn) => conn.execute("SELECT 1").await.is_ok(),
+                    Err(_) => false,
+                }
+            })
+            .await
+            .unwrap_or(false)
+        });
+        if ready {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    assert!(ready, "real PostgreSQL 16 did not become SQLx-ready");
+    let binary = std::env::current_exe().expect("current integration-test binary");
+    for test in [
+        "channel_create_returns_the_postgres_id_and_round_trips_quoted_columns",
+        "failed_channel_writes_roll_back_atomically_on_postgres",
+        "owner_boundary_capabilities_execute_on_real_postgres",
+        "protocol_upsert_uses_postgres_conflict_and_default_demote_branches",
+    ] {
+        let output = std::process::Command::new(&binary)
+            .args(["--exact", test, "--nocapture"])
+            .env(SERVER_URL_ENV, &url)
+            .output()
+            .expect("spawn isolated real PostgreSQL test");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed; 0 failed"),
+            "real PostgreSQL contract {test} failed:\nstdout:\n{stdout}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        println!("Real PostgreSQL 16: {test}: PASS");
+    }
+}
+
 #[tokio::test]
 async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns() {
     with_postgres("provider", |db| async move {
@@ -262,6 +374,78 @@ async fn failed_channel_writes_roll_back_atomically_on_postgres() {
         assert_eq!(
             abilities[0].model, "old",
             "ability DELETE and partial rebuild must roll back too"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn owner_boundary_capabilities_execute_on_real_postgres() {
+    with_postgres("owner_boundary", |db| async move {
+        let mut channel = sample_channel();
+        let id = ChannelService::create(&db, &mut channel)
+            .await
+            .expect("Supply facade creates the PostgreSQL channel");
+
+        let abilities =
+            ChannelService::list_enabled_at_highest_priority(&db, "pg-vip", "claude-pg-contract")
+                .await
+                .expect("highest-priority Supply query must execute on PostgreSQL");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].channel_id, id);
+        assert_eq!(abilities[0].weight, 17);
+
+        let caps = ChannelService::list_rate_caps(&db)
+            .await
+            .expect("Supply rate-cap projection executes on PostgreSQL");
+        let cap = caps
+            .iter()
+            .find(|cap| cap.id == id)
+            .expect("created channel must appear in rate-cap projection");
+        assert_eq!(cap.rpm_cap, Some(600));
+        assert_eq!(cap.tpm_cap, Some(200_000));
+        assert_eq!(cap.reservation_green, Some(0.5));
+        assert!(
+            (cap.reservation_yellow.unwrap_or_default() - 0.3).abs() < 0.000001,
+            "PostgreSQL REAL uses float4 precision"
+        );
+        assert!(
+            (cap.reservation_red.unwrap_or_default() - 0.2).abs() < 0.000001,
+            "PostgreSQL REAL uses float4 precision"
+        );
+
+        ChannelService::update_api_version(&db, id, "2026-10-owner")
+            .await
+            .expect("targeted PostgreSQL API-version update");
+        let updated = ChannelService::get_by_id(&db, id)
+            .await
+            .expect("read channel after API-version update")
+            .expect("updated channel remains present");
+        assert_eq!(updated.api_version.as_deref(), Some("2026-10-owner"));
+
+        assert!(
+            ChannelService::quarantine(&db, id)
+                .await
+                .expect("PostgreSQL quarantine transaction"),
+            "existing channel must quarantine successfully"
+        );
+        let quarantined = ChannelService::get_by_id(&db, id)
+            .await
+            .expect("read quarantined PostgreSQL channel")
+            .expect("quarantine must not delete the provider");
+        assert_eq!(quarantined.status, 3);
+        assert!(
+            ChannelAbilityModel::list_by_channel(&db, id)
+                .await
+                .expect("read abilities after PostgreSQL quarantine")
+                .is_empty(),
+            "quarantine must remove abilities before commit"
+        );
+        assert!(
+            !ChannelService::quarantine(&db, i32::MAX)
+                .await
+                .expect("missing PostgreSQL channel is a normal false result"),
+            "missing channel must not be reported as quarantined"
         );
     })
     .await;

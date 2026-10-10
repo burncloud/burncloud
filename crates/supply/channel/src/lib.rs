@@ -67,7 +67,7 @@ pub use channel_ability::{ChannelAbilityInput, ChannelAbilityModel};
 pub use channel_protocol_config::{
     ChannelProtocolConfig, ChannelProtocolConfigInput, ChannelProtocolConfigModel,
 };
-pub use channel_provider::ChannelProviderModel;
+pub use channel_provider::{ChannelProviderModel, ChannelRateCap};
 
 type Result<T> = std::result::Result<T, DatabaseError>;
 
@@ -102,6 +102,40 @@ impl ChannelService {
     /// Get a channel by ID.
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
         ChannelProviderModel::get_by_id(db, id).await
+    }
+
+    /// List the narrow provider rate-cap projection used by Traffic's L2 shaper.
+    pub async fn list_rate_caps(db: &Database) -> Result<Vec<ChannelRateCap>> {
+        ChannelProviderModel::list_rate_caps(db).await
+    }
+
+    /// List channels by ids through the Supply-owned persistence boundary.
+    pub async fn list_by_ids(db: &Database, ids: &[i32]) -> Result<Vec<Channel>> {
+        ChannelProviderModel::list_by_ids(db, ids).await
+    }
+
+    /// Update only one channel's API version.
+    pub async fn update_api_version(db: &Database, id: i32, api_version: &str) -> Result<()> {
+        ChannelProviderModel::update_api_version(db, id, api_version).await
+    }
+
+    /// Atomically remove a channel's abilities and mark it quarantined (status 3).
+    pub async fn quarantine(db: &Database, id: i32) -> Result<bool> {
+        ChannelProviderModel::quarantine(db, id).await
+    }
+
+    /// Return enabled abilities at the highest priority for one group/model pair.
+    pub async fn list_enabled_at_highest_priority(
+        db: &Database,
+        group: &str,
+        model: &str,
+    ) -> Result<Vec<Ability>> {
+        ChannelAbilityModel::list_enabled_at_highest_priority(db, group, model).await
+    }
+
+    /// List all model names with at least one enabled ability.
+    pub async fn list_distinct_models(db: &Database) -> Result<Vec<String>> {
+        ChannelAbilityModel::list_distinct_models(db).await
     }
 
     /// Synchronize model abilities for a channel.
@@ -274,6 +308,101 @@ mod migration_invariants {
         verify(
             remaining_abilities.is_empty(),
             "delete must remove the channel abilities",
+        )?;
+
+        cleanup(db, &path).await
+    }
+
+    /// Traffic-facing Channel capabilities must remain Supply-owned without changing routing data.
+    #[tokio::test]
+    async fn owner_boundary_preserves_candidate_update_and_quarantine_behavior() -> TestResult<()> {
+        let (db, path) = fresh_db("owner_boundary").await?;
+
+        let mut low = sample_channel("low", "shared-model", "routing", 1);
+        low.priority = 1;
+        low.weight = 2;
+        let low_id = ChannelService::create(&db, &mut low).await?;
+
+        let mut high_a = sample_channel("high-a", "shared-model", "routing", 1);
+        high_a.priority = 9;
+        high_a.weight = 4;
+        high_a.rpm_cap = Some(120);
+        high_a.tpm_cap = Some(50_000);
+        high_a.reservation_green = Some(0.5);
+        high_a.reservation_yellow = Some(0.3);
+        high_a.reservation_red = Some(0.2);
+        let high_a_id = ChannelService::create(&db, &mut high_a).await?;
+
+        let mut high_b = sample_channel("high-b", "shared-model", "routing", 1);
+        high_b.priority = 9;
+        high_b.weight = 7;
+        let high_b_id = ChannelService::create(&db, &mut high_b).await?;
+
+        let mut candidates =
+            ChannelService::list_enabled_at_highest_priority(&db, "routing", "shared-model")
+                .await?;
+        candidates.sort_unstable_by_key(|ability| ability.channel_id);
+        let mut expected = vec![(high_a_id, 4), (high_b_id, 7)];
+        expected.sort_unstable_by_key(|(id, _)| *id);
+        let actual: Vec<_> = candidates
+            .iter()
+            .map(|ability| (ability.channel_id, ability.weight))
+            .collect();
+        verify(
+            actual == expected,
+            "candidate query must keep only enabled abilities at the highest priority with weights",
+        )?;
+        verify(
+            candidates
+                .iter()
+                .all(|ability| ability.channel_id != low_id),
+            "lower-priority abilities must not leak into Traffic candidate selection",
+        )?;
+
+        let rate_caps = ChannelService::list_rate_caps(&db).await?;
+        let high_cap = rate_caps
+            .iter()
+            .find(|row| row.id == high_a_id)
+            .ok_or_else(|| std::io::Error::other("rate-cap projection omitted channel"))?;
+        verify(
+            high_cap.rpm_cap == Some(120)
+                && high_cap.tpm_cap == Some(50_000)
+                && high_cap.reservation_green == Some(0.5)
+                && high_cap.reservation_yellow == Some(0.3)
+                && high_cap.reservation_red == Some(0.2),
+            "rate-cap projection must preserve all shaper fields",
+        )?;
+
+        ChannelService::update_api_version(&db, high_a_id, "2026-10-owner").await?;
+        let updated = ChannelService::get_by_id(&db, high_a_id)
+            .await?
+            .ok_or_else(|| std::io::Error::other("updated channel disappeared"))?;
+        verify(
+            updated.api_version.as_deref() == Some("2026-10-owner"),
+            "targeted API-version update must preserve the new version",
+        )?;
+        ChannelService::update_api_version(&db, i32::MAX, "missing-is-noop").await?;
+
+        verify(
+            ChannelService::quarantine(&db, high_a_id).await?,
+            "existing channel quarantine must report success",
+        )?;
+        let quarantined = ChannelService::get_by_id(&db, high_a_id)
+            .await?
+            .ok_or_else(|| std::io::Error::other("quarantined channel disappeared"))?;
+        verify(
+            quarantined.status == 3,
+            "quarantine must keep the historical status=3 behavior",
+        )?;
+        verify(
+            ChannelAbilityModel::list_by_channel(&db, high_a_id)
+                .await?
+                .is_empty(),
+            "quarantine must atomically remove routing abilities",
+        )?;
+        verify(
+            !ChannelService::quarantine(&db, i32::MAX).await?,
+            "missing channel quarantine must report false",
         )?;
 
         cleanup(db, &path).await

@@ -2,16 +2,16 @@ use crate::local_attachment::{
     LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId,
 };
 use async_trait::async_trait;
-use burncloud_database::{adapt_sql, sqlx, Database};
-use burncloud_supply_channel::ChannelProviderModel;
+use burncloud_database::Database;
+use burncloud_supply_channel::ChannelService;
 use burncloud_supply_contracts::{Channel, ChannelType};
 use std::sync::Arc;
 
 /// Production adapter that makes a READY local endpoint visible through the
 /// existing BurnCloud channel/ability routing truth.
 ///
-/// It deliberately reuses `ChannelProviderModel`; it does not create a second
-/// ModelRouter or a second routing table.
+/// It deliberately reuses Supply's `ChannelService`; it does not create a second
+/// ModelRouter, persistence owner, or routing table.
 pub struct ExistingRouterLocalAttacher {
     db: Arc<Database>,
 }
@@ -63,7 +63,7 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
         attachment: LocalRouteAttachment,
     ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError> {
         let mut channel = Self::build_channel(&attachment);
-        let channel_id = ChannelProviderModel::create(self.db.as_ref(), &mut channel)
+        let channel_id = ChannelService::create(self.db.as_ref(), &mut channel)
             .await
             .map_err(|error| LocalRouteAttachmentError::AttachFailed(error.to_string()))?;
         Ok(LocalRouteAttachmentId(channel_id))
@@ -73,59 +73,25 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
         &self,
         attachment_id: LocalRouteAttachmentId,
     ) -> Result<(), LocalRouteAttachmentError> {
-        let conn = self
-            .db
-            .get_connection()
-            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
-        let pool = conn.pool();
-        let is_postgres = self.db.kind() == "postgres";
-
-        // Fail-closed must be atomic from Traffic's point of view:
-        // either both the routing ability and channel status change, or neither
-        // does. This prevents a half-quarantined channel from remaining
-        // discoverable through channel_abilities.
-        let mut tx = pool
-            .begin()
+        // Supply owns the provider + ability transaction. Keep Traffic's historical
+        // missing-attachment error text while preserving the same atomic fail-closed behavior.
+        let quarantined = ChannelService::quarantine(self.db.as_ref(), attachment_id.0)
             .await
             .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
-
-        let delete_abilities = adapt_sql(
-            is_postgres,
-            "DELETE FROM channel_abilities WHERE channel_id = ?",
-        );
-        sqlx::query(&delete_abilities)
-            .bind(attachment_id.0)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
-
-        let disable_channel = adapt_sql(
-            is_postgres,
-            "UPDATE channel_providers SET status = 3 WHERE id = ?",
-        );
-        let result = sqlx::query(&disable_channel)
-            .bind(attachment_id.0)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
-
-        if result.rows_affected() != 1 {
+        if !quarantined {
             return Err(LocalRouteAttachmentError::DetachFailed(format!(
                 "local route attachment {} no longer exists",
                 attachment_id.0
             )));
         }
-
-        tx.commit()
-            .await
-            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))
+        Ok(())
     }
 
     async fn detach(
         &self,
         attachment_id: LocalRouteAttachmentId,
     ) -> Result<(), LocalRouteAttachmentError> {
-        ChannelProviderModel::delete(self.db.as_ref(), attachment_id.0)
+        ChannelService::delete(self.db.as_ref(), attachment_id.0)
             .await
             .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))
     }
