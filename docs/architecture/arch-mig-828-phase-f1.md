@@ -6,21 +6,35 @@ Parent: #734. Prerequisites: #816, #822, #825.
 
 | Capability / data | Sole owner | Current implementation | Allowed public consumer |
 | --- | --- | --- | --- |
-| Token lifecycle, credential hashes, whitelist, rotations, validation | Identity | `identity/service-token` | Traffic Router, Server |
-| Credential `quota_limit` and `used_quota`, atomic settlement | Identity | `identity/service-token` | Traffic via Identity public API |
+| Token lifecycle, credential hashes, whitelist, rotations, validation | Identity | `identity/token` | Traffic Router, Server |
+| Credential `quota_limit` and `used_quota`, atomic settlement | Identity | `identity/token` | Traffic via Identity public API |
 | `order_type` and `price_cap_nanodollars` | Traffic | `traffic/database-router` | Traffic routing |
 | Router logs, usage projections, video tasks and upstream/group persistence | Traffic | `traffic/database-router` / `traffic/service-router-log` | Traffic consumers |
 | Per-request cost and pricing | Commerce | `commerce/billing` | Consumers via published billing contracts |
 
-## Observed Cargo dependency edges
+## Cargo dependency edges, before and after
+
+Before (#825 baseline):
 
 ```text
-interfaces/server   -> identity/service-token
-interfaces/service  -> identity/service-token
+interfaces/server -> identity/service-token
+interfaces/service -> identity/service-token
 traffic/database-router -> identity/service-token
-traffic/service-router-log -> traffic/database-router
 identity/service-token -> platform/storage/database
+traffic/service-router-log -> traffic/database-router
 ```
+
+After (#829):
+
+```text
+interfaces/server -> identity/token
+interfaces/service -> identity/token
+traffic/database-router -> identity/token
+identity/token -> platform/storage/database
+traffic/service-router-log -> traffic/database-router
+```
+
+No backwards Identity -> Traffic crate dependency was introduced.
 
 The dependency reversal implemented in #822 is present: Identity does not depend on Traffic's database crate. `traffic/database-router` still provides historical compatibility re-exports for credential types; their implementation belongs to Identity.
 
@@ -41,7 +55,7 @@ References migrated in PR #829 (verify from PR diff):
 - `crates/interfaces/service/{Cargo.toml,src/lib.rs}`
 - `crates/identity/service-token/{Cargo.toml,README.md,src/lib.rs,tests/token_credentials.rs,tests/token_service_entries.rs}`
 - `.github/workflows/ci-quality.yml`: preserve the credential-test floor of 20; rename the package being tested, **never lower the floor**
-- all other callers must be verified against the **branch tree**, not the default-branch code search index
+- all tracked non-historical files are now audited by the `CI / GitHub-hosted Fmt` gate using `git grep`; the only exclusions are this historical migration plan and the code-test manifest's before/after fixture
 - no tracked root `Cargo.lock` was found; verify dependency rules against current repo and CI
 
 Note: a GitHub code-search index can lag the main branch; therefore index results alone are not adequate proof that every reference was migrated.
@@ -73,14 +87,14 @@ Note: a GitHub code-search index can lag the main branch; therefore index result
 - [x] Crate rename, Cargo consumer updates and the original two credential integration test files are committed in PR #829.
 - [x] Traffic router and router log implementation files were not modified in the PR.
 - [x] Credential test discovery floor remains **20**; package target was renamed, floor not relaxed.
-- [ ] Verify the complete branch tree contains **zero** remaining references to the retired package name/path, including examples, scripts, docs and architecture/deny checks. GitHub code search may reflect the old default branch and is insufficient.
-- [ ] Verify migrated tests are discovered and all behavior/SQL/auth/quota invariants remain intact; publish test counts and affected-consumer results.
-- [ ] Verify `cargo run -- code test` plans the correct affected packages, including a rename-only move; no hidden skip or test-selection regression.
-- [ ] Verify Cargo Fmt, Code Test, Clippy, Deny and all configured required checks pass on the **same latest HEAD**.
+- [x] Full tracked-tree retired-reference audit was added to the Fmt CI gate. `git grep` returns no retired package/module/path hits outside the explicitly documented historical migration plan and code-test fixture; validated in [Fmt run 38015040312](https://github.com/burncloud/burncloud/actions/runs/38015040312). This gate remains active for later changes.
+- [x] Test job [37972526930](https://github.com/burncloud/burncloud/actions/runs/37972526930) executed the full workspace, including `burncloud-identity-token` credential suites: `token_credentials.rs` **18 passed**, `token_service_entries.rs` **4 passed**, 0 failed/ignored/filtered in either suite. It also covered Server, Service, Traffic and other workspace consumers.
+- [x] The actual `cargo run -p burncloud-code -- test --base origin/main` run detected the deleted former crate path as unclassified and deliberately selected the **entire workspace** rather than skipping deleted files. The manifest-scoped rename regression test passed, with no hidden skip arguments.
+- [ ] Recheck Fmt, Code Test, Clippy, Deny on the **final latest HEAD** after this evidence update. The earlier `4cd7793` head passed all four, and the new tracked-tree audit's Fmt step passed on `d5b567a`; final PR HEAD must be checked again.
 - [x] Source-level writer audit identified an existing cross-domain write in `traffic/database-router/src/log.rs` (`RouterLogModel::insert` updates `router_tokens.used_quota` by raw prompt+completion token count). This conflicts with Identity's ownership; tracked as **#830**. No unsafe behavior change is part of #829.
-- [ ] Resolve #830 separately before asserting *single-writer* architectural compliance. The rename-only PR is not a fix for that existing behavior.
-- [ ] Confirm no schema/migration, public HTTP/JSON/error semantics, or Protected Zone logic changed.
+- [x] Separated the existing Data Truth violation into #830 per #734's Stop Conditions. `RouterLogService::insert` uses the side-effect-free `RouterDatabase::insert_log`; the legacy public `RouterLogModel::insert` has the cross-domain update. **Single-writer compliance is not yet proven and must be fixed/verified under #830**, not claimed by #829.
+- [x] PR diff contains no schema/migration or Traffic router-log implementation changes. Token service method signatures, tests and database SQL were moved unchanged; the rename only updates Rust package/module references, not JSON/HTTP/error behavior.
 
 ## Status
 
-The source audit exposed an independent pre-existing Data Truth issue, #830. Implementation is present but final evidence is incomplete. **PR #829 must remain draft and issue #828 open until every outstanding verification above has positive evidence.**
+The rename-only migration and repository-wide stale-reference audit are implemented. All focused credential tests (22) and the entire workspace completed successfully on the earlier green commit. #830 tracks a **pre-existing** Protected Zone Data Truth issue requiring independent behavior investigation; do not conflate that fix with this structural PR. **Do not merge until every configured required CI check passes on the final HEAD.**
