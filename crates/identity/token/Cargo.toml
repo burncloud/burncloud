@@ -1,7 +1,7 @@
 [package]
 publish.workspace = true
 license.workspace = true
-name = "burncloud-service-token"
+name = "burncloud-identity-token"
 version = "0.1.0"
 edition = "2021"
 

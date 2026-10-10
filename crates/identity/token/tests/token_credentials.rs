@@ -43,7 +43,7 @@
 //! unambiguous.
 
 use burncloud_database::create_database_with_url;
-use burncloud_service_token::{RouterToken, RouterTokenValidationResult, TokenService};
+use burncloud_identity_token::{RouterToken, RouterTokenValidationResult, TokenService};
 use tempfile::NamedTempFile;
 
 /// Optional behaviour of a credential, so each test states its intent instead of setting 14 fields.

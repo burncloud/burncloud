@@ -15,8 +15,8 @@ mod node_framework_e2e;
 
 use burncloud_database::Database;
 use burncloud_database_router::RouterToken;
+use burncloud_identity_token::TokenService;
 use burncloud_server::InternalSecret;
-use burncloud_service_token::TokenService;
 use burncloud_service_user::{JwtSecret, UserService};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;

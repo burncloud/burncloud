@@ -9,7 +9,7 @@
 //! - [`router_video_task`] - Router video task persistence (RouterVideoTask, RouterVideoTaskModel)
 
 use burncloud_database::{adapt_sql, phs, Database, Result};
-use burncloud_service_token::TokenService;
+use burncloud_identity_token::TokenService;
 
 pub mod log;
 pub mod router_video_task;
@@ -19,7 +19,7 @@ pub mod token {
     use burncloud_common::CrudRepository;
     use burncloud_database::{Database, DatabaseError, Result};
 
-    pub use burncloud_service_token::{
+    pub use burncloud_identity_token::{
         RouterToken, RouterTokenModel, RouterTokenValidationResult, TokenRotationResult,
     };
 

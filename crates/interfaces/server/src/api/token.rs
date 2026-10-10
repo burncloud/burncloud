@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use burncloud_service_token::{RouterToken, TokenService};
+use burncloud_identity_token::{RouterToken, TokenService};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;

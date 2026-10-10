@@ -7,9 +7,9 @@ name: Maintenance / Version Tag
 # tag that `cd-release.yml` may have begun releasing.
 #
 # The push trigger is not a duplicate of the local hook. The hook answers "is this commit sound"; the
-# push of a version bump is the release decision, and the full workspace suite is what has to pass
-# before an artifact is built. `quality-gate` below calls the full-workspace release gate in
-# `ci-quality.yml` rather than restating its policy.
+# push of a version bump is the release decision, and the full workspace suite must pass
+# before an artifact is built. The former reusable quality workflow was retired; the
+# release gate runs all four full-workspace checks below.
 on:
   push:
     branches: [ main, master ]
@@ -23,7 +23,6 @@ on:
       # any number of path segments, so this matches all of them.
       - 'crates/**/Cargo.toml'
       - '.github/workflows/maintenance-version-tag.yml'
-      - '.github/workflows/ci-quality.yml'
   workflow_dispatch:
 
 permissions:
@@ -137,19 +136,85 @@ jobs:
             echo "::warning::root package version v$CURRENT is older than the latest tag $PREVIOUS; no tag created"
           fi
 
-  # Full-workspace release validation executed against the commit being released. This is deliberately
-  # broader than affected-package `code test`, and is called rather than copied so the release policy
-  # remains defined in exactly one file; see `ci-quality.yml`.
-  #
-  # Skipped when the version did not change: a version-change job must not be gated on the full suite
-  # merely to report "nothing to do", and skipping is visible in the run summary rather than silent.
+  # Full workspace quality check, executed only for a release candidate.
+  # Retains the existing release-only test-discovery floors and all four checks.
+  # Failure blocks create-tag; affected-package PR tests are not a substitute.
   quality-gate:
     name: Workspace gate (fmt, test, clippy, deny)
     needs: check-version
     if: needs.check-version.outputs.should_create_tag == 'true'
-    uses: ./.github/workflows/ci-quality.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
     permissions:
       contents: read
+    env:
+      JWT_SECRET: burncloud-ci-security-invariant-jwt-secret-2026
+      BURNCLOUD_INTERNAL_SECRET: burncloud-ci-security-invariant-internal-secret
+      MASTER_KEY: a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8
+      SKIP_INITIAL_PRICE_SYNC: "1"
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust, rustfmt and clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test entire workspace and assert test-discovery floors
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --workspace --no-default-features 2>&1 | tee /tmp/workspace-tests.log
+          executed=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' /tmp/workspace-tests.log)
+          echo "Executed $executed workspace tests"
+          if [ "$executed" -lt 300 ]; then
+            echo "::error::expected at least 300 workspace tests, got $executed"
+            exit 1
+          fi
+          check_floor() {
+            package="$1"; minimum="$2"
+            cargo test -p "$package" --no-default-features 2>&1 | tee "/tmp/discovery-$package.log"
+            count=$(awk '/^test result: ok\./ { for (i = 1; i <= NF; i++) if ($i == "ok.") { sum += $(i + 1) } } END { print sum + 0 }' "/tmp/discovery-$package.log")
+            echo "$package executed $count tests"
+            if [ "$count" -lt "$minimum" ]; then
+              echo "::error::expected at least $minimum tests in $package, got $count"
+              exit 1
+            fi
+          }
+          check_floor burncloud-identity-token 20
+          check_floor burncloud-identity-user 12
+
+      - name: Check Clippy
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+      - name: Check dependencies, licenses and advisories
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources advisories
+          arguments: --all-features
+
+      - name: Upload test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-workspace-test-log
+          path: /tmp/workspace-tests.log
+          if-no-files-found: ignore
 
   create-tag:
     name: Create the release tag
