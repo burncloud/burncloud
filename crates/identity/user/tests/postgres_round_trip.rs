@@ -331,7 +331,12 @@ async fn identity_wallet_preserves_debit_variants_on_real_postgres() {
     with_postgres("wallet", |db| async move {
         UserDatabase::create_user(
             &db,
-            &account("pg-wallet-1", "pg_wallet_user", 10_000_000_000, 20_000_000_000),
+            &account(
+                "pg-wallet-1",
+                "pg_wallet_user",
+                10_000_000_000,
+                20_000_000_000,
+            ),
         )
         .await
         .expect("PostgreSQL wallet row");
@@ -380,7 +385,12 @@ async fn identity_wallet_preserves_debit_variants_on_real_postgres() {
 
         UserDatabase::create_user(
             &db,
-            &account("pg-wallet-2", "pg_wallet_legacy", 3_000_000_000, 8_000_000_000),
+            &account(
+                "pg-wallet-2",
+                "pg_wallet_legacy",
+                3_000_000_000,
+                8_000_000_000,
+            ),
         )
         .await
         .expect("create legacy wallet");
