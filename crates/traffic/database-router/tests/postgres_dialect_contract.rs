@@ -163,28 +163,6 @@ fn github_actions_runs_real_postgres_dialect_contracts() {
     assert!(!id.is_empty(), "Docker must return a container ID");
     let _cleanup = TestPostgresContainer(id.clone());
 
-    let mut ready = false;
-    for _ in 0..120 {
-        if std::process::Command::new("docker")
-            .args([
-                "exec",
-                &id,
-                "pg_isready",
-                "-U",
-                "postgres",
-                "-d",
-                "postgres",
-            ])
-            .output()
-            .is_ok_and(|out| out.status.success())
-        {
-            ready = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(250));
-    }
-    assert!(ready, "PostgreSQL 16 did not become ready");
-
     let port_output = std::process::Command::new("docker")
         .args(["port", &id, "5432/tcp"])
         .output()
@@ -198,6 +176,33 @@ fn github_actions_runs_real_postgres_dialect_contracts() {
         .map(|(_, port)| port)
         .expect("expected a published PostgreSQL port");
     let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
+
+    // pg_isready inside the container can succeed before Docker's published
+    // host port accepts connections. Probe the actual SQLx connection path.
+    let opts = sqlx::postgres::PgConnectOptions::from_str(&url)
+        .expect("published PostgreSQL port must yield a valid connection URL");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("create SQLx readiness runtime");
+    let mut ready = false;
+    for _ in 0..120 {
+        let connected = runtime.block_on(async {
+            match opts.connect().await {
+                Ok(mut conn) => conn.execute("SELECT 1").await.is_ok(),
+                Err(_) => false,
+            }
+        });
+        if connected {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    assert!(
+        ready,
+        "PostgreSQL 16 did not accept a SQLx connection from the GitHub-hosted runner"
+    );
     let runner = std::env::current_exe().expect("find the current integration test binary");
 
     for test in [
