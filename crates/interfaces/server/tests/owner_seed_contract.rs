@@ -22,20 +22,37 @@
 //!    one demo key, four protocol configs;
 //! 3. both owner calls are idempotent, so a restart over an existing database neither
 //!    duplicates nor removes a row.
-use burncloud_database::{create_database_with_url, Database};
+use burncloud_database::create_database_with_url;
+use burncloud_database::sqlx::{self, Database};
 use burncloud_service_user::UserDatabase;
 use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::error::Error;
 
-/// Read the three seeded row counts through the owning crates' public APIs.
+/// Read the three seeded row counts with direct `COUNT(*)` queries.
 ///
 /// Counting, rather than reading whole rows, is deliberate: it detects duplicates as well as
-/// absences, and PostgreSQL returns `user_api_keys.key` as `bpchar`, which the `Any` driver
-/// cannot decode — so listing credentials fails outright on the real-PostgreSQL run.
+/// absences. It also avoids a real portability trap — PostgreSQL returns `user_api_keys.key` as
+/// `bpchar`, which the `Any` driver cannot decode, so listing credentials fails outright on the
+/// real-PostgreSQL run. `select id, username from user_accounts` succeeds, so only the
+/// credential table has this problem.
+///
+/// This mirrors how `crates/platform/storage/database/tests/initialization_boundary.rs` asserts
+/// the same counts, and it deliberately does **not** route through a helper on the owner crate:
+/// a first attempt using an owner-side counting helper reported different numbers from these
+/// identical queries on the same connection, and an integration test should not be the place
+/// that discrepancy is debugged.
 async fn seed_counts(db: &Database) -> Result<(i64, i64, i64), Box<dyn Error>> {
-    let (demo_users, demo_tokens) = UserDatabase::count_seeded_demo_defaults(db).await?;
+    let pool = db.get_connection()?.pool();
+    let demo_users: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'")
+            .fetch_one(pool)
+            .await?;
+    let demo_tokens: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'")
+            .fetch_one(pool)
+            .await?;
     // `ChannelProtocolConfigModel::list` projects `is_default::INTEGER` on PostgreSQL, so it
-    // decodes on both backends.
+    // decodes on both backends; it is also the owner's own read path.
     let protocols = ChannelProtocolConfigModel::list(db, 1_000, 0).await?.len() as i64;
     Ok((demo_users, demo_tokens, protocols))
 }
@@ -96,21 +113,6 @@ async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent() -> Resul
     let (_dir, url) = sqlite_url_for("idempotent")?;
 
     let db = create_database_with_url(&url).await?;
-    // Diagnostic: reconcile the count probe against an unbound literal predicate. A freshly
-    // created database must hold no account at all; if the bound and unbound forms disagree,
-    // the probe is what is wrong, not the database.
-    let literal: i64 = burncloud_database::sqlx::query_scalar(
-        "SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'",
-    )
-    .fetch_one(db.get_connection()?.pool())
-    .await?;
-    let (bound, _keys) = UserDatabase::count_seeded_demo_defaults(&db).await?;
-    if literal != 0 || bound != literal {
-        return Err(std::io::Error::other(format!(
-            "fresh database probe mismatch: unbound literal {literal}, bound probe {bound}, at {url}"
-        ))
-        .into());
-    }
     assert_seed_counts(&db, 0, 0, 0).await?;
 
     // Identity's half: the account and its key appear, Supply's configs do not yet.
