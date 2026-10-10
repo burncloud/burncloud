@@ -96,7 +96,7 @@ impl ChannelAbilityModel {
 
         let sql = if is_postgres {
             format!(
-                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = {}",
+                "SELECT {} as \"group\", model, channel_id, enabled::INTEGER AS enabled, priority, weight FROM channel_abilities WHERE channel_id = {}",
                 group_col, ph(is_postgres, 1)
             )
         } else {
