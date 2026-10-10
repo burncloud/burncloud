@@ -8,6 +8,20 @@ use std::{error::Error, str::FromStr};
 
 const ENV: &str = "BURNCLOUD_TEST_POSTGRES_URL";
 
+fn ensure_eq<T: std::fmt::Debug + PartialEq>(
+    actual: T,
+    expected: T,
+    context: &str,
+) -> Result<(), Box<dyn Error>> {
+    if actual != expected {
+        return Err(std::io::Error::other(format!(
+            "{context}: expected {expected:?}, got {actual:?}"
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
 ) -> Result<(), Box<dyn Error>> {
@@ -40,13 +54,13 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
     )
     .fetch_one(conn.pool())
     .await?;
-    assert_eq!(user_type, "text", "subscription FK must match users.id");
+    ensure_eq(user_type.as_str(), "text", "subscription FK must match users.id")?;
 
     let seeded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
         .bind("demo-user")
         .fetch_one(conn.pool())
         .await?;
-    assert_eq!(seeded, 1, "demo user must seed on real PostgreSQL");
+    ensure_eq(seeded, 1_i64, "demo user must seed on real PostgreSQL")?;
 
     let request_log_fks: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM pg_constraint \
@@ -54,10 +68,11 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
     )
     .fetch_one(conn.pool())
     .await?;
-    assert_eq!(
-        request_log_fks, 0,
-        "request_id cannot FK to router_logs, because request_id is non-unique"
-    );
+    ensure_eq(
+        request_log_fks,
+        0_i64,
+        "request_id cannot FK to router_logs, because request_id is non-unique",
+    )?;
 
     db.close().await?;
     let reopened = create_database_with_url(&target_url).await?;
@@ -65,10 +80,11 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
         .bind("demo-user")
         .fetch_one(reopened.get_connection()?.pool())
         .await?;
-    assert_eq!(
-        seeded_again, 1,
-        "reinitialization must not duplicate seed data"
-    );
+    ensure_eq(
+        seeded_again,
+        1_i64,
+        "reinitialization must not duplicate seed data",
+    )?;
     reopened.close().await?;
 
     admin
