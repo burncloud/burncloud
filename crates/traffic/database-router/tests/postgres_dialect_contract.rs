@@ -117,9 +117,16 @@ struct TestPostgresContainer(String);
 
 impl Drop for TestPostgresContainer {
     fn drop(&mut self) {
-        let _ = std::process::Command::new("docker")
+        match std::process::Command::new("docker")
             .args(["rm", "-f", &self.0])
-            .output();
+            .status()
+        {
+            Ok(status) if !status.success() => {
+                eprintln!("Docker PostgreSQL cleanup failed: {status}");
+            }
+            Err(error) => eprintln!("Docker PostgreSQL cleanup failed: {error}"),
+            _ => {}
+        }
     }
 }
 
