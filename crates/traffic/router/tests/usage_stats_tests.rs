@@ -14,11 +14,9 @@ use tempfile::NamedTempFile;
 
 /// An isolated SQLite database plus the router tables.
 ///
-/// Cleanup runs on a dedicated thread because `Drop` may execute from inside Tokio. The important part is
-/// that `Drop` joins the cleanup thread before returning: SQLite is closed first, then its main/WAL/SHM
-/// files are removed, and the test process cannot exit with detached cleanup still pending. Cleanup errors
-/// are logged instead of panicking so unwinding from a failing test cannot become a process-aborting double
-/// panic.
+/// Normal teardown is explicitly awaited inside the Tokio test, so the pool can
+/// finish shutting down without a synchronous thread join blocking its executor.
+/// Drop is only a best-effort fallback when a test panics before cleanup.
 struct TestDb {
     db: Option<burncloud_database::Database>,
     path: std::path::PathBuf,
@@ -34,48 +32,57 @@ impl std::ops::Deref for TestDb {
     }
 }
 
+fn remove_sqlite_test_files(path: &std::path::Path) {
+    for suffix in ["", "-wal", "-shm"] {
+        let mut candidate = path.as_os_str().to_os_string();
+        candidate.push(suffix);
+        let candidate = std::path::PathBuf::from(candidate);
+        if let Err(e) = std::fs::remove_file(&candidate) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "failed to remove test database file {}: {e}",
+                    candidate.display()
+                );
+            }
+        }
+    }
+}
+
+impl TestDb {
+    async fn finish(mut self) {
+        let db = self.db.take().expect("test database already closed");
+        db.close().await.expect("close test database");
+        // SQLite can release its OS handles just after the pool has closed.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        remove_sqlite_test_files(&self.path);
+    }
+}
+
 impl Drop for TestDb {
     fn drop(&mut self) {
         let Some(db) = self.db.take() else {
             return;
         };
         let path = self.path.clone();
-
-        let cleanup = std::thread::Builder::new()
-            .name("bc-testdb-cleanup".to_string())
+        // A panicking test cannot await, so clean up on a separate thread.
+        // Crucially do not join it from the Tokio worker: SQLx may need that
+        // worker to service the pool's shutdown and a join would deadlock.
+        if let Err(e) = std::thread::Builder::new()
+            .name("bc-testdb-panic-cleanup".to_string())
             .spawn(move || {
                 if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                 {
                     if let Err(e) = rt.block_on(db.close()) {
-                        eprintln!("test database close failed (cleanup continues): {e}");
+                        eprintln!("test database panic cleanup close failed: {e}");
                     }
                 }
-                // SQLite releases the OS handle slightly after the pool closes.
                 std::thread::sleep(std::time::Duration::from_millis(50));
-                for suffix in ["", "-wal", "-shm"] {
-                    let mut candidate = path.clone().into_os_string();
-                    candidate.push(suffix);
-                    let candidate = std::path::PathBuf::from(candidate);
-                    if let Err(e) = std::fs::remove_file(&candidate) {
-                        if e.kind() != std::io::ErrorKind::NotFound {
-                            eprintln!(
-                                "failed to remove test database file {}: {e}",
-                                candidate.display()
-                            );
-                        }
-                    }
-                }
-            });
-
-        match cleanup {
-            Ok(handle) => {
-                if handle.join().is_err() {
-                    eprintln!("test database cleanup thread panicked");
-                }
-            }
-            Err(e) => eprintln!("failed to spawn test database cleanup thread: {e}"),
+                remove_sqlite_test_files(&path);
+            })
+        {
+            eprintln!("failed to spawn test database panic cleanup: {e}");
         }
     }
 }
@@ -181,6 +188,7 @@ async fn test_b4_time_filter_day_returns_recent_data() {
         stats.total_prompt_tokens > 0,
         "B4: day-period stats should return non-zero prompt_tokens"
     );
+    db.finish().await;
 }
 
 /// B4 regression: get_usage_stats with period="week" returns non-zero stats
@@ -202,6 +210,7 @@ async fn test_b4_time_filter_week_returns_recent_data() {
         "B4: week-period stats should return non-zero requests for recent data, got {}",
         stats.total_requests
     );
+    db.finish().await;
 }
 
 /// B4 regression: get_usage_stats with period="month" returns non-zero stats
@@ -223,6 +232,7 @@ async fn test_b4_time_filter_month_returns_recent_data() {
         "B4: month-period stats should return non-zero requests for recent data, got {}",
         stats.total_requests
     );
+    db.finish().await;
 }
 
 /// B4 regression: get_usage_stats returns zero for old data outside the period.
@@ -245,6 +255,7 @@ async fn test_b4_time_filter_old_data_excluded() {
         stats.total_requests, 0,
         "B4: day-period stats should return 0 for data older than 24 hours"
     );
+    db.finish().await;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +278,7 @@ async fn test_v2_deduct_usd_user_not_found_returns_err() {
         "V2: deduct_usd should return Err for nonexistent user, got {:?}",
         result
     );
+    db.finish().await;
 }
 
 /// V2 regression: deduct_cny returns Err (not Ok(false)) when user does not exist.
@@ -281,6 +293,7 @@ async fn test_v2_deduct_cny_user_not_found_returns_err() {
         "V2: deduct_cny should return Err for nonexistent user, got {:?}",
         result
     );
+    db.finish().await;
 }
 
 /// V2 complement: deduct_usd returns Ok(false) for existing user with insufficient balance.
@@ -301,6 +314,7 @@ async fn test_v2_deduct_usd_insufficient_balance_returns_ok_false() {
         !result,
         "V2: deduct_usd should return Ok(false) for insufficient balance"
     );
+    db.finish().await;
 }
 
 /// V2 complement: deduct_usd returns Ok(true) for existing user with sufficient balance.
@@ -321,6 +335,7 @@ async fn test_v2_deduct_usd_sufficient_balance_returns_ok_true() {
         result,
         "V2: deduct_usd should return Ok(true) for sufficient balance"
     );
+    db.finish().await;
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +367,7 @@ async fn test_b5_period_day_filters_by_model() {
         stats.iter().any(|s| s.requests > 0),
         "B5: at least one model should have non-zero requests"
     );
+    db.finish().await;
 }
 
 /// B5 regression: get_usage_stats_by_model with period="week" returns recent data.
@@ -371,6 +387,7 @@ async fn test_b5_period_week_filters_by_model() {
         !stats.is_empty(),
         "B5: week-period by-model stats should return data for recent logs"
     );
+    db.finish().await;
 }
 
 /// B5 regression: get_usage_stats_by_model excludes old data outside the period.
@@ -393,4 +410,5 @@ async fn test_b5_period_excludes_old_data_by_model() {
         stats.is_empty() || stats.iter().all(|s| s.requests == 0),
         "B5: day-period by-model stats should exclude data older than 24 hours"
     );
+    db.finish().await;
 }
