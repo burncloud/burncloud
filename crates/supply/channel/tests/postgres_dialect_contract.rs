@@ -312,6 +312,13 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
         assert_eq!(abilities.len(), 1);
         assert_eq!(abilities[0].group, "pg-vip");
         assert_eq!(abilities[0].model, "claude-pg-contract");
+        let enabled_models = burncloud_supply_channel::ChannelAbilityModel::list_distinct_models(&db)
+            .await
+            .expect("PostgreSQL BOOLEAN enabled predicate must execute");
+        assert!(
+            enabled_models.iter().any(|model| model == "claude-pg-contract"),
+            "enabled channel model must be discoverable on PostgreSQL"
+        );
     })
     .await;
 }
