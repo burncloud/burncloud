@@ -85,8 +85,25 @@ impl ChannelService {
     }
 
     /// Create a new channel. Sets `channel.id` to the newly assigned ID.
+    ///
+    /// Abilities are derived from the channel's own `models` / `group` / `priority` / `weight`
+    /// inside the same transaction, so a created channel is routable without a second call.
     pub async fn create(db: &Database, channel: &mut Channel) -> Result<i32> {
         ChannelProviderModel::create(db, channel).await
+    }
+
+    /// Create abilities for a channel through the Supply-owned persistence boundary.
+    ///
+    /// This exists for callers that declare a channel's ability explicitly instead of relying on
+    /// the derivation performed by [`Self::create`]. It is idempotent: the underlying write is
+    /// `INSERT OR IGNORE` / `ON CONFLICT DO NOTHING` on `(group, model, channel_id)`, so an
+    /// ability that [`Self::create`] already derived is reported as `0` inserted rows rather than
+    /// duplicated or overwritten.
+    pub async fn create_abilities(
+        db: &Database,
+        abilities: &[ChannelAbilityInput],
+    ) -> Result<usize> {
+        ChannelAbilityModel::create_batch(db, abilities).await
     }
 
     /// Update an existing channel.
