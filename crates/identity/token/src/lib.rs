@@ -12,10 +12,36 @@ pub use repository::{
 
 type Result<T> = std::result::Result<T, burncloud_database::DatabaseError>;
 
+/// Identity-owned, active API-key credential projection for the routing consumer.
+/// This intentionally does not perform RouterToken lifecycle validation: the historical
+/// primary API-key and router-token fallback paths have distinct status rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveApiKeyIdentity {
+    pub user_id: String,
+    pub group: String,
+    pub remain_quota: i64,
+    pub used_quota: i64,
+}
+
 /// Token service for managing API tokens
 pub struct TokenService;
 
 impl TokenService {
+    /// Resolve an active API key attached to an active account, exactly matching the
+    /// historical primary Traffic authentication join.
+    pub async fn active_api_key_identity(
+        db: &Database,
+        token: &str,
+    ) -> Result<Option<ActiveApiKeyIdentity>> {
+        repository::active_api_key_identity(db, token).await
+    }
+
+    /// Resolve the owner of an enabled user API key, without requiring the
+    /// owning user account to be enabled (legacy usage-by-token semantics).
+    pub async fn active_api_key_user_id(db: &Database, token: &str) -> Result<Option<String>> {
+        repository::active_api_key_user_id(db, token).await
+    }
+
     /// Initialize the Identity-owned token persistence surface.
     pub async fn init(db: &Database) -> Result<()> {
         repository::init(db).await
