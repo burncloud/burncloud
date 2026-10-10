@@ -67,7 +67,7 @@ pub use channel_ability::{ChannelAbilityInput, ChannelAbilityModel};
 pub use channel_protocol_config::{
     ChannelProtocolConfig, ChannelProtocolConfigInput, ChannelProtocolConfigModel,
 };
-pub use channel_provider::ChannelProviderModel;
+pub use channel_provider::{ChannelProviderModel, ChannelRateCap};
 
 type Result<T> = std::result::Result<T, DatabaseError>;
 
@@ -102,6 +102,11 @@ impl ChannelService {
     /// Get a channel by ID.
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
         ChannelProviderModel::get_by_id(db, id).await
+    }
+
+    /// List the narrow provider rate-cap projection used by Traffic's L2 shaper.
+    pub async fn list_rate_caps(db: &Database) -> Result<Vec<ChannelRateCap>> {
+        ChannelProviderModel::list_rate_caps(db).await
     }
 
     /// List channels by ids through the Supply-owned persistence boundary.
