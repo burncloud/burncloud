@@ -148,7 +148,7 @@ impl ChannelAbilityModel {
 
         let select_sql = if is_postgres {
             format!(
-                "SELECT {group_col} as \"group\", model, channel_id, enabled, priority, weight FROM channel_abilities WHERE {group_col} = {} AND model = {} AND enabled = {enabled_lit} AND priority = {}",
+                "SELECT {group_col} as \"group\", model, channel_id, enabled::INTEGER AS enabled, priority, weight FROM channel_abilities WHERE {group_col} = {} AND model = {} AND enabled = {enabled_lit} AND priority = {}",
                 ph(is_postgres, 1),
                 ph(is_postgres, 2),
                 ph(is_postgres, 3),
