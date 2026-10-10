@@ -222,9 +222,10 @@ fn quote_ident(ident: &str) -> String {
 mod tests {
     use super::*;
 
+    type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
+
     #[tokio::test]
-    async fn copy_failure_preserves_legacy_table(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn copy_failure_preserves_legacy_table() -> TestResult {
         sqlx::any::install_default_drivers();
         let pool = sqlx::any::AnyPoolOptions::new()
             .max_connections(1)
