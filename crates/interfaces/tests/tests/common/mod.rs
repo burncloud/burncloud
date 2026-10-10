@@ -15,7 +15,7 @@
 pub(crate) mod evidence;
 
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::RouterDatabase;
+use burncloud_router::RouterDatabase;
 use burncloud_service_user::JwtSecret;
 use burncloud_service_user::UserDatabase;
 use burncloud_tests::TestClient;

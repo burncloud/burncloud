@@ -4,4 +4,4 @@ pub use burncloud_service_ip as ip;
 // pub use burncloud_supply_model as models;  // TEMP: broken dep chain
 pub use burncloud_identity_token as token;
 pub use burncloud_service_monitor as monitor;
-pub use burncloud_service_router_log as router_log;
+pub use burncloud_router as router_log;

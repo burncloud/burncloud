@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use burncloud_database::sqlx::Row;
-use burncloud_service_router_log::{RouterLog, RouterLogService};
+use burncloud_router::{RouterLog, RouterLogService};
 use serde::{Deserialize, Serialize};
 
 // ── DTOs ──────────────────────────────────────────────────────────────────
