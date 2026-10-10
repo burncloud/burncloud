@@ -97,19 +97,25 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
             "postgres:16",
         ])
         .output()?;
-    assert!(
-        started.status.success(),
-        "start PostgreSQL: {}",
-        String::from_utf8_lossy(&started.stderr)
-    );
+    if !started.status.success() {
+        return Err(std::io::Error::other(format!(
+            "start PostgreSQL: {}",
+            String::from_utf8_lossy(&started.stderr)
+        ))
+        .into());
+    }
     let id = String::from_utf8(started.stdout)?.trim().to_owned();
-    assert!(!id.is_empty(), "Docker did not provide container ID");
+    if id.is_empty() {
+        return Err(std::io::Error::other("Docker did not provide container ID").into());
+    }
     let _container = DisposablePostgres(id.clone());
 
     let published = std::process::Command::new("docker")
         .args(["port", &id, "5432/tcp"])
         .output()?;
-    assert!(published.status.success(), "read PostgreSQL published port");
+    if !published.status.success() {
+        return Err(std::io::Error::other("read PostgreSQL published port").into());
+    }
     let ports = String::from_utf8(published.stdout)?;
     let port = ports
         .lines()
@@ -134,7 +140,9 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
         }
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
-    assert!(ready, "real PostgreSQL container did not become SQLx-ready");
+    if !ready {
+        return Err(std::io::Error::other("real PostgreSQL container did not become SQLx-ready").into());
+    }
 
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
