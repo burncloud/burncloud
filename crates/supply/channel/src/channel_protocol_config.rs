@@ -232,13 +232,14 @@ impl ChannelProtocolConfigModel {
         let pool = conn.pool();
         let is_postgres = db.kind() == "postgres";
 
-        let pc_count: i64 = match sqlx::query_scalar("SELECT count(*) FROM channel_protocol_configs")
-            .fetch_one(pool)
-            .await
-        {
-            Ok(n) => n,
-            Err(_) => return Ok(()),
-        };
+        let pc_count: i64 =
+            match sqlx::query_scalar("SELECT count(*) FROM channel_protocol_configs")
+                .fetch_one(pool)
+                .await
+            {
+                Ok(n) => n,
+                Err(_) => return Ok(()),
+            };
 
         if pc_count != 0 {
             return Ok(());
@@ -294,8 +295,14 @@ impl ChannelProtocolConfigModel {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         };
 
-        for (channel_type, api_version, is_default, chat_endpoint, embed_endpoint, models_endpoint) in
-            default_protocols
+        for (
+            channel_type,
+            api_version,
+            is_default,
+            chat_endpoint,
+            embed_endpoint,
+            models_endpoint,
+        ) in default_protocols
         {
             sqlx::query(insert_sql)
                 .bind(channel_type)

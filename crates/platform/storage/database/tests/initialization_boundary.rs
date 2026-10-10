@@ -38,8 +38,10 @@ async fn assert_seeds(
     let protocols = count(db, "channel_protocol_configs", "1 = 1").await?;
     assert_eq!(users, expected_users, "demo account count");
     assert_eq!(tokens, expected_tokens, "demo API key count");
-    assert_eq!(protocols, expected_protocols, "default protocol config count");
-    Ok(())
+    assert_eq!(
+        protocols, expected_protocols,
+        "default protocol config count"
+    );    Ok(())
 }
 
 /// The application-bootstrap ordering: infrastructure first, then each domain owner.
@@ -102,8 +104,8 @@ impl Drop for DisposablePostgres {
 }
 
 #[tokio::test]
-async fn postgres_infrastructure_bootstrap_retains_owner_seed_contract() -> Result<(), Box<dyn Error>>
-{
+async fn postgres_infrastructure_bootstrap_retains_owner_seed_contract(
+) -> Result<(), Box<dyn Error>> {
     use sqlx::{ConnectOptions, Executor};
     use std::str::FromStr;
 
