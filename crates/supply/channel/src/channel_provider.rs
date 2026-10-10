@@ -167,6 +167,62 @@ impl ChannelProviderModel {
         Ok(())
     }
 
+    /// Update only the provider API version while keeping all other Channel fields unchanged.
+    ///
+    /// This is the Supply-owned boundary used by Traffic's deprecation detector. The historical
+    /// caller treated a missing id as a successful no-op, so this targeted update intentionally
+    /// preserves that behavior instead of turning it into a not-found error.
+    pub async fn update_api_version(db: &Database, id: i32, api_version: &str) -> Result<()> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let sql = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET api_version = ? WHERE id = ?",
+        );
+
+        sqlx::query(&sql)
+            .bind(api_version)
+            .bind(id)
+            .execute(conn.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Atomically quarantine a Channel: remove its routing abilities and mark it disabled.
+    ///
+    /// Returns `Ok(false)` when the provider no longer exists. In that case the transaction is
+    /// dropped, rolling back the ability deletion so callers never observe a half-quarantined row.
+    pub async fn quarantine(db: &Database, id: i32) -> Result<bool> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let mut tx = conn.pool().begin().await?;
+
+        let delete_abilities = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
+        sqlx::query(&delete_abilities)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+
+        let disable_channel = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET status = 3 WHERE id = ?",
+        );
+        let result = sqlx::query(&disable_channel)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+
+        if result.rows_affected() != 1 {
+            return Ok(false);
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
     pub async fn get_by_id(db: &Database, id: i32) -> Result<Option<Channel>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
