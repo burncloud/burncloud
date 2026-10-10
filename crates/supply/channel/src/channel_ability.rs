@@ -124,7 +124,11 @@ impl ChannelAbilityModel {
     pub async fn list_distinct_models(db: &Database) -> Result<Vec<String>> {
         let conn = db.get_connection()?;
 
-        let sql = "SELECT DISTINCT model FROM channel_abilities WHERE enabled = 1 ORDER BY model";
+        let sql = if db.kind() == "postgres" {
+            "SELECT DISTINCT model FROM channel_abilities WHERE enabled = TRUE ORDER BY model"
+        } else {
+            "SELECT DISTINCT model FROM channel_abilities WHERE enabled = 1 ORDER BY model"
+        };
 
         let models: Vec<(String,)> = sqlx::query_as(sql).fetch_all(conn.pool()).await?;
 
