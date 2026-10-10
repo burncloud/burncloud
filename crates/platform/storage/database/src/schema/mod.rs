@@ -70,5 +70,4 @@ impl Schema {
         let pool = db.get_connection()?.pool();
         user::seed_legacy_defaults(pool, &db.kind()).await
     }
-
 }
