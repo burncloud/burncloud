@@ -251,6 +251,7 @@ fn github_actions_runs_real_identity_wallet_contracts() {
         "accounts_round_trip_through_the_real_postgres_schema",
         "a_missing_account_is_none_on_postgres_not_an_error",
         "identity_wallet_preserves_debit_variants_on_real_postgres",
+        "wallet_parallel_cross_currency_charges_never_double_spend_on_postgres",
     ] {
         let result = std::process::Command::new(&runner)
             .args(["--exact", test, "--nocapture"])
@@ -410,6 +411,64 @@ async fn identity_wallet_preserves_debit_variants_on_real_postgres() {
             .expect("legacy wallet exists");
         assert_eq!(legacy.balance_usd, 0);
         assert_eq!(legacy.balance_cny, 4_000_000_000);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn wallet_parallel_cross_currency_charges_never_double_spend_on_postgres() {
+    with_postgres("wallet_race", |db| async move {
+        UserDatabase::create_user(
+            &db,
+            &account("pg-race", "pg_wallet_race", 0, 12_000_000_000),
+        )
+        .await
+        .expect("create wallet for concurrent debits");
+
+        // Two 4 USD charges each require 8 CNY; only one may succeed with
+        // 12 CNY available. Both entry points must share the wallet row lock.
+        let (service, router) = tokio::join!(
+            BalanceModel::deduct_dual_currency(
+                &db,
+                "pg-race",
+                4_000_000_000,
+                "USD",
+                2_000_000_000,
+            ),
+            BalanceModel::deduct_dual_currency_router_legacy(
+                &db,
+                "pg-race",
+                4_000_000_000,
+                "USD",
+                2_000_000_000,
+            )
+        );
+        let succeeded = usize::from(service.expect("service debit"))
+            + usize::from(router.expect("router debit"));
+        assert_eq!(succeeded, 1, "serializable balance must fund one debit");
+        let wallet = UserDatabase::get_user_by_id(&db, "pg-race")
+            .await
+            .expect("query wallet")
+            .expect("wallet exists");
+        assert_eq!(wallet.balance_usd, 0);
+        assert_eq!(wallet.balance_cny, 4_000_000_000);
+
+        for rate in [0_i64, -2_i64] {
+            let invalid = BalanceModel::deduct_dual_currency(
+                &db,
+                "pg-race",
+                4_000_000_000,
+                "USD",
+                rate,
+            )
+            .await;
+            assert!(invalid.is_err(), "invalid rate must never debit funds");
+        }
+        let after = UserDatabase::get_user_by_id(&db, "pg-race")
+            .await
+            .expect("query after invalid rate")
+            .expect("wallet exists");
+        assert_eq!(after.balance_cny, 4_000_000_000);
     })
     .await;
 }

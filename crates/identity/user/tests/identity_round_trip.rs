@@ -419,3 +419,129 @@ async fn wallet_single_owner_preserves_both_traffic_debit_variants() {
 
     cleanup(db, &path).await;
 }
+
+#[tokio::test]
+async fn wallet_invalid_exchange_rate_fails_closed_and_preserves_funds() {
+    let (db, path) = fresh_db("wallet_invalid_fx").await;
+    UserDatabase::create_user(
+        &db,
+        &account("fx-user", "fx_user", 1_000_000_000, 2_000_000_000),
+    )
+    .await
+    .expect("create wallet");
+
+    // Neither public entry point may panic or commit a partial debit.
+    for rate in [0_i64, -1_i64] {
+        for legacy in [false, true] {
+            let result = if legacy {
+                BalanceModel::deduct_dual_currency_router_legacy(
+                    &db,
+                    "fx-user",
+                    5_000_000_000,
+                    "USD",
+                    rate,
+                )
+                .await
+            } else {
+                BalanceModel::deduct_dual_currency(&db, "fx-user", 5_000_000_000, "USD", rate).await
+            };
+            assert!(result.is_err(), "invalid cross-currency rate must error");
+        }
+    }
+    let still_funded = UserDatabase::get_user_by_id(&db, "fx-user")
+        .await
+        .expect("query account")
+        .expect("account exists");
+    assert_eq!(still_funded.balance_usd, 1_000_000_000);
+    assert_eq!(still_funded.balance_cny, 2_000_000_000);
+
+    // No conversion: a zero rate must not break a valid primary-only debit.
+    assert!(
+        BalanceModel::deduct_dual_currency(&db, "fx-user", 500_000_000, "USD", 0,)
+            .await
+            .expect("primary currency is sufficient")
+    );
+    assert!(
+        BalanceModel::deduct_dual_currency(&db, "fx-user", -1, "CNY", 0,)
+            .await
+            .expect("historical nonpositive cost is a no-op")
+    );
+
+    let after = UserDatabase::get_user_by_id(&db, "fx-user")
+        .await
+        .expect("query account")
+        .expect("account exists");
+    assert_eq!(after.balance_usd, 500_000_000);
+    assert_eq!(after.balance_cny, 2_000_000_000);
+    cleanup(db, &path).await;
+}
+
+#[tokio::test]
+async fn wallet_large_conversion_cannot_wrap_or_charge_partially() {
+    let (db, path) = fresh_db("wallet_large_fx").await;
+    UserDatabase::create_user(&db, &account("large-fx", "large_fx", 1, 1))
+        .await
+        .expect("create wallet");
+
+    for legacy in [false, true] {
+        let result = if legacy {
+            BalanceModel::deduct_dual_currency_router_legacy(
+                &db,
+                "large-fx",
+                i64::MAX,
+                "USD",
+                i64::MAX,
+            )
+            .await
+        } else {
+            BalanceModel::deduct_dual_currency(&db, "large-fx", i64::MAX, "USD", i64::MAX).await
+        };
+        assert!(!result.expect("large amount must not overflow or truncate"));
+    }
+    let remaining = UserDatabase::get_user_by_id(&db, "large-fx")
+        .await
+        .expect("query account")
+        .expect("account exists");
+    assert_eq!(remaining.balance_usd, 1);
+    assert_eq!(remaining.balance_cny, 1);
+    cleanup(db, &path).await;
+}
+
+#[tokio::test]
+async fn wallet_sqlite_parallel_debits_never_report_partial_success() {
+    let (db, path) = fresh_db("wallet_parallel").await;
+    UserDatabase::create_user(
+        &db,
+        &account("race-sqlite", "race_sqlite", 0, 12_000_000_000),
+    )
+    .await
+    .expect("create wallet");
+
+    let (service, router) = tokio::join!(
+        BalanceModel::deduct_dual_currency(&db, "race-sqlite", 4_000_000_000, "USD", 2_000_000_000,),
+        BalanceModel::deduct_dual_currency_router_legacy(
+            &db,
+            "race-sqlite",
+            4_000_000_000,
+            "USD",
+            2_000_000_000,
+        ),
+    );
+
+    // SQLite may abort a competing deferred reader when it cannot upgrade to
+    // a writer. A database lock error is fail-closed, never a successful debit.
+    let successes =
+        usize::from(matches!(service, Ok(true))) + usize::from(matches!(router, Ok(true)));
+    assert!(successes <= 1, "wallet cannot pay twice from one snapshot");
+    let wallet = UserDatabase::get_user_by_id(&db, "race-sqlite")
+        .await
+        .expect("query wallet")
+        .expect("wallet exists");
+    assert_eq!(wallet.balance_usd, 0);
+    assert_eq!(
+        wallet.balance_cny,
+        12_000_000_000 - (successes as i64 * 8_000_000_000),
+        "balance must account for every successful debit and no failed debit"
+    );
+    cleanup(db, &path).await;
+}
