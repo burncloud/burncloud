@@ -104,6 +104,35 @@ impl ChannelService {
         ChannelProviderModel::get_by_id(db, id).await
     }
 
+    /// List channels by ids through the Supply-owned persistence boundary.
+    pub async fn list_by_ids(db: &Database, ids: &[i32]) -> Result<Vec<Channel>> {
+        ChannelProviderModel::list_by_ids(db, ids).await
+    }
+
+    /// Update only one channel's API version.
+    pub async fn update_api_version(db: &Database, id: i32, api_version: &str) -> Result<()> {
+        ChannelProviderModel::update_api_version(db, id, api_version).await
+    }
+
+    /// Atomically remove a channel's abilities and mark it quarantined (status 3).
+    pub async fn quarantine(db: &Database, id: i32) -> Result<bool> {
+        ChannelProviderModel::quarantine(db, id).await
+    }
+
+    /// Return enabled abilities at the highest priority for one group/model pair.
+    pub async fn list_enabled_at_highest_priority(
+        db: &Database,
+        group: &str,
+        model: &str,
+    ) -> Result<Vec<Ability>> {
+        ChannelAbilityModel::list_enabled_at_highest_priority(db, group, model).await
+    }
+
+    /// List all model names with at least one enabled ability.
+    pub async fn list_distinct_models(db: &Database) -> Result<Vec<String>> {
+        ChannelAbilityModel::list_distinct_models(db).await
+    }
+
     /// Synchronize model abilities for a channel.
     pub async fn sync_abilities(db: &Database, channel: &Channel) -> Result<()> {
         ChannelProviderModel::sync_abilities(db, channel).await
