@@ -224,7 +224,12 @@ mod tests {
     type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
 
     #[tokio::test]
-    async fn copy_failure_preserves_legacy_table() -> TestResult {
+    async fn copy_failure_preserves_legacy_table() {
+        let outcome = verify_copy_failure_preserves_legacy_table().await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+    }
+
+    async fn verify_copy_failure_preserves_legacy_table() -> TestResult {
         sqlx::any::install_default_drivers();
         let pool = sqlx::any::AnyPoolOptions::new()
             .max_connections(1)
@@ -243,21 +248,27 @@ mod tests {
             .execute(&pool)
             .await?;
 
-        let result = copy_and_drop(&pool, "sqlite", "legacy_items", "canonical_items").await;
-        assert!(
-            result.is_err(),
-            "copy must fail when the destination has an unsatisfied NOT NULL column"
-        );
+        if copy_and_drop(&pool, "sqlite", "legacy_items", "canonical_items")
+            .await
+            .is_ok()
+        {
+            return Err(std::io::Error::other(
+                "copy must fail when the destination has an unsatisfied NOT NULL column",
+            )
+            .into());
+        }
 
         let legacy_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='legacy_items'",
         )
         .fetch_one(&pool)
         .await?;
-        assert_eq!(
-            legacy_count, 1,
-            "legacy table must be preserved when copying rows fails"
-        );
+        if legacy_count != 1 {
+            return Err(std::io::Error::other(
+                "legacy table must be preserved when copying rows fails",
+            )
+            .into());
+        }
 
         pool.close().await;
         Ok(())
