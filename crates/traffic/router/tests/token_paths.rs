@@ -205,6 +205,43 @@ async fn the_join_path_checks_the_account_and_the_credential(
 }
 
 #[tokio::test]
+async fn identity_credential_and_traffic_projection_compose_without_changing_quota(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDb::new("split_owner_projection").await?;
+    account(&temp.db, "usr_split", 1).await?;
+    api_key(&temp.db, "usr_split", "sk-split", 1).await?;
+
+    let without_projection = RouterDatabase::validate_token_and_get_info(&temp.db, "sk-split")
+        .await?
+        .expect("active Identity API key validates without a Traffic projection");
+    assert_eq!(without_projection.user_id, "usr_split");
+    assert_eq!(without_projection.remain_quota, 100);
+    assert_eq!(without_projection.used_quota, 0);
+    assert_eq!(without_projection.order_type, None);
+    assert_eq!(without_projection.price_cap, None);
+
+    RouterTokenModel::create(&temp.db, &token("sk-split", "usr_split", "active", -1)).await?;
+    temp.db.execute_query(
+        "UPDATE router_tokens SET order_type = 'budget', price_cap_nanodollars = 123456789 WHERE token = 'sk-split'",
+    ).await?;
+
+    let with_projection = RouterDatabase::validate_token_and_get_info(&temp.db, "sk-split")
+        .await?
+        .expect("same active Identity key validates with a Traffic projection");
+    assert_eq!(with_projection.user_id, without_projection.user_id);
+    assert_eq!(with_projection.group, without_projection.group);
+    assert_eq!(with_projection.remain_quota, without_projection.remain_quota);
+    assert_eq!(with_projection.used_quota, without_projection.used_quota);
+    assert_eq!(with_projection.order_type.as_deref(), Some("budget"));
+    assert_eq!(with_projection.price_cap, Some(123_456_789));
+
+    let usage = burncloud_router::get_usage_stats_by_token(&temp.db, "sk-split", "day").await?;
+    assert_eq!(usage.map(|(user_id, _)| user_id), Some("usr_split".to_string()));
+    temp.cleanup().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn the_two_validation_paths_disagree_about_a_disabled_account(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // **The finding, and it is a security question rather than a tidiness one.**
