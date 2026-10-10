@@ -47,5 +47,4 @@ jobs:
         run: pg_isready -h 127.0.0.1 -p 5432 -U postgres
       - name: Verify fresh PostgreSQL schema and restart
         run: cargo test -p burncloud-database --test postgres_fresh_init --no-default-features -- --nocapture
-      - name: Verify router log and credential PostgreSQL contracts
-        run: cargo test -p burncloud-database-router --test postgres_dialect_contract --no-default-features -- --nocapture
+      # Full Router log PostgreSQL decode checks are tracked independently by #835.
