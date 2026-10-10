@@ -17,8 +17,8 @@
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_supply_channel::{
-    ChannelAbilityModel, ChannelProtocolConfigInput, ChannelProtocolConfigModel,
-    ChannelProviderModel, ChannelService,
+    ChannelAbilityInput, ChannelAbilityModel, ChannelProtocolConfigInput,
+    ChannelProtocolConfigModel, ChannelProviderModel, ChannelService,
 };
 use burncloud_supply_contracts::{Channel, ChannelType};
 use std::str::FromStr;
@@ -140,6 +140,42 @@ fn sample_channel() -> Channel {
     }
 }
 
+/// Exactly the Channel that `crates/trust/inference` builds for a locally-spawned upstream, so the
+/// PostgreSQL contract below pins the row shape that crate has always produced (#865).
+fn local_upstream_channel(model_id: &str, port: u16) -> Channel {
+    Channel {
+        id: 0,
+        type_: ChannelType::OpenAI as i32,
+        key: String::new(),
+        status: 1,
+        name: format!("Local: {model_id}"),
+        weight: 1,
+        created_time: None,
+        test_time: None,
+        response_time: None,
+        base_url: Some(format!("http://127.0.0.1:{port}")),
+        models: model_id.to_string(),
+        group: "default".to_string(),
+        used_quota: 0,
+        model_mapping: None,
+        priority: 100,
+        auto_ban: 1,
+        other_info: None,
+        tag: Some("local-inference".to_string()),
+        setting: None,
+        param_override: None,
+        header_override: None,
+        remark: None,
+        api_version: Some("default".to_string()),
+        pricing_region: None,
+        rpm_cap: None,
+        tpm_cap: None,
+        reservation_green: None,
+        reservation_yellow: None,
+        reservation_red: None,
+    }
+}
+
 fn protocol_input(
     channel_type: i32,
     api_version: &str,
@@ -252,6 +288,7 @@ fn github_actions_executes_real_supply_owner_postgres_contracts() {
         "channel_create_returns_the_postgres_id_and_round_trips_quoted_columns",
         "failed_channel_writes_roll_back_atomically_on_postgres",
         "owner_boundary_capabilities_execute_on_real_postgres",
+        "local_upstream_registration_and_removal_execute_on_real_postgres",
         "protocol_upsert_uses_postgres_conflict_and_default_demote_branches",
     ] {
         let output = std::process::Command::new(&binary)
@@ -446,6 +483,78 @@ async fn owner_boundary_capabilities_execute_on_real_postgres() {
                 .await
                 .expect("missing PostgreSQL channel is a normal false result"),
             "missing channel must not be reported as quarantined"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn local_upstream_registration_and_removal_execute_on_real_postgres() {
+    with_postgres("local_upstream", |db| async move {
+        let mut channel = local_upstream_channel("local-pg-model", 18080);
+        let id = ChannelService::create(&db, &mut channel)
+            .await
+            .expect("Supply facade registers the local upstream on PostgreSQL");
+
+        // `create` derives the ability from the channel's models/group/priority/weight, which is the
+        // row `trust/inference` expects to route to a locally-spawned model.
+        let derived =
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-pg-model")
+                .await
+                .expect("read the derived local-upstream ability on PostgreSQL");
+        assert_eq!(derived.len(), 1);
+        assert_eq!(derived[0].channel_id, id);
+        assert_eq!(derived[0].weight, 1);
+        assert_eq!(derived[0].priority, 100);
+        assert!(derived[0].enabled_bool());
+
+        // `trust/inference` still declares that ability explicitly. On PostgreSQL this executes
+        // `ON CONFLICT ("group", model, channel_id) DO NOTHING`, so it must report zero new rows
+        // and must not rewrite or duplicate the derived ability.
+        let inserted = ChannelService::create_abilities(
+            &db,
+            &[ChannelAbilityInput {
+                group: "default".to_string(),
+                model: "local-pg-model".to_string(),
+                channel_id: id,
+                enabled: true,
+                priority: 100,
+                weight: 1,
+            }],
+        )
+        .await
+        .expect("explicit local-upstream ability write executes on PostgreSQL");
+        assert_eq!(
+            inserted, 0,
+            "the explicit ability is already derived by create"
+        );
+        let after =
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-pg-model")
+                .await
+                .expect("read abilities after the explicit local-upstream write");
+        assert_eq!(
+            after.len(),
+            1,
+            "the explicit write must not duplicate the derived ability"
+        );
+
+        // Unregistration: Supply deletes abilities first, then the provider.
+        ChannelService::delete(&db, id)
+            .await
+            .expect("Supply facade unregisters the local upstream on PostgreSQL");
+        assert!(
+            ChannelService::get_by_id(&db, id)
+                .await
+                .expect("read the unregistered local upstream")
+                .is_none(),
+            "unregistration must remove the provider row"
+        );
+        assert!(
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-pg-model")
+                .await
+                .expect("read abilities after local-upstream removal")
+                .is_empty(),
+            "unregistration must remove the ability rows"
         );
     })
     .await;

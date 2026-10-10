@@ -7,7 +7,10 @@ mod error;
 pub use error::{InferenceError, Result};
 
 use burncloud_database::Database;
-use burncloud_supply_channel::{ChannelAbilityInput, ChannelAbilityModel, ChannelProviderModel};
+// Channel Data Truth (`channel_providers` / `channel_abilities`) is Supply-owned. This crate
+// reaches it only through the `ChannelService` use-case facade; the `Channel*Model` compatibility
+// surfaces are deliberately not used here.
+use burncloud_supply_channel::{ChannelAbilityInput, ChannelService};
 use burncloud_supply_contracts::Channel;
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -224,14 +227,16 @@ impl InferenceService {
             reservation_red: None,
         };
 
-        // 创建 channel
-        let channel_id = ChannelProviderModel::create(db, &mut channel)
+        // 创建 channel：Supply 在同一个事务里按 channel 的 models/group/priority/weight 派生 abilities
+        let channel_id = ChannelService::create(db, &mut channel)
             .await
             .map_err(|e| {
                 InferenceError::ProcessSpawnFailed(format!("Failed to create channel: {}", e))
             })?;
 
-        // 创建 channel_ability
+        // 显式创建 channel_ability：保留原有的两步语义与各自的错误文案。
+        // 当 ability 与上面派生的结果一致时，底层 INSERT OR IGNORE / ON CONFLICT DO NOTHING
+        // 不会重复写入，也不会覆盖已存在的行。
         let ability = ChannelAbilityInput {
             group: "default".to_string(),
             model: config.model_id.clone(),
@@ -240,7 +245,7 @@ impl InferenceService {
             priority: 100,
             weight: 1,
         };
-        ChannelAbilityModel::create_batch(db, &[ability])
+        ChannelService::create_abilities(db, &[ability])
             .await
             .map_err(|e| {
                 InferenceError::ProcessSpawnFailed(format!("Failed to create ability: {}", e))
@@ -256,18 +261,14 @@ impl InferenceService {
 
     async fn unregister_upstream(&self, db: &Database, model_id: &str) -> Result<()> {
         // 查找并删除对应的 channel
-        let channels = ChannelProviderModel::list(db, 1000, 0)
+        let channels = ChannelService::list(db, 1000, 0)
             .await
             .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
 
         for channel in channels {
             if channel.name == format!("Local: {}", model_id) {
-                // 先删除 abilities
-                ChannelAbilityModel::delete_by_channel(db, channel.id)
-                    .await
-                    .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
-                // 再删除 channel
-                ChannelProviderModel::delete(db, channel.id)
+                // Supply owns the deletion order: abilities first, then the provider.
+                ChannelService::delete(db, channel.id)
                     .await
                     .map_err(|e| InferenceError::ProcessKillFailed(e.to_string()))?;
                 tracing::info!("Unregistered local channel: {}", model_id);
@@ -335,5 +336,153 @@ async fn probe_health(client: &reqwest::Client, url: &str, model_id: &str, attem
             );
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod local_upstream_owner_boundary {
+    use super::*;
+    use burncloud_database::create_database_with_url;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+    static NEXT_DB: AtomicU64 = AtomicU64::new(0);
+
+    fn verify(condition: bool, message: &'static str) -> TestResult<()> {
+        if condition {
+            Ok(())
+        } else {
+            Err(Box::new(std::io::Error::other(message)))
+        }
+    }
+
+    async fn fresh_db(tag: &str) -> TestResult<(Database, PathBuf)> {
+        let serial = NEXT_DB.fetch_add(1, Ordering::SeqCst);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "bc_trust_inference_{tag}_{}_{}_{}.db",
+            std::process::id(),
+            serial,
+            nanos
+        ));
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(Box::new(error)),
+        }
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        let url = format!("sqlite:///{}?mode=rwc", normalized);
+        let db = create_database_with_url(&url).await?;
+        Ok((db, path))
+    }
+
+    async fn cleanup(db: Database, path: &Path) -> TestResult<()> {
+        db.close().await?;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        for suffix in ["", "-wal", "-shm"] {
+            let mut candidate = path.as_os_str().to_os_string();
+            candidate.push(suffix);
+            match std::fs::remove_file(PathBuf::from(candidate)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(Box::new(error)),
+            }
+        }
+        Ok(())
+    }
+
+    fn sample_config(model_id: &str, port: u16) -> InferenceConfig {
+        InferenceConfig {
+            model_id: model_id.to_owned(),
+            file_path: "unused-local-model.gguf".to_owned(),
+            port,
+            context_size: 2048,
+            gpu_layers: -1,
+        }
+    }
+
+    /// Registration must still produce exactly the historical local-upstream rows, and
+    /// unregistration must still remove the provider and its abilities. This exercises the real
+    /// `InferenceService` wiring against SQLite; the same Supply capabilities are exercised
+    /// against real PostgreSQL in
+    /// `crates/supply/channel/tests/postgres_dialect_contract.rs`.
+    #[tokio::test]
+    async fn registration_and_unregistration_keep_the_local_upstream_contract() -> TestResult<()> {
+        let (db, path) = fresh_db("local_upstream").await?;
+        let service = InferenceService::new();
+        let config = sample_config("local-gemma", 18080);
+
+        service.register_upstream(&db, &config).await?;
+
+        let channels = ChannelService::list(&db, 1000, 0).await?;
+        let created: Vec<_> = channels
+            .iter()
+            .filter(|channel| channel.name == "Local: local-gemma")
+            .collect();
+        verify(
+            created.len() == 1,
+            "registration must create exactly one local channel",
+        )?;
+        let channel = created[0];
+        verify(channel.type_ == 1, "local channel keeps the OpenAI type")?;
+        verify(channel.key.is_empty(), "local channel needs no credential")?;
+        verify(channel.status == 1, "local channel starts enabled")?;
+        verify(channel.weight == 1, "local channel keeps weight 1")?;
+        verify(
+            channel.base_url.as_deref() == Some("http://127.0.0.1:18080"),
+            "local channel points at the spawned port",
+        )?;
+        verify(
+            channel.models == "local-gemma",
+            "local channel advertises exactly its model",
+        )?;
+        verify(
+            channel.group == "default",
+            "local channel joins the default group",
+        )?;
+        verify(channel.priority == 100, "local channel keeps priority 100")?;
+        verify(channel.auto_ban == 1, "local channel keeps auto_ban 1")?;
+        verify(
+            channel.tag.as_deref() == Some("local-inference"),
+            "local channel keeps its tag",
+        )?;
+        verify(
+            channel.api_version.as_deref() == Some("default"),
+            "local channel keeps api_version default",
+        )?;
+
+        let abilities =
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-gemma").await?;
+        verify(
+            abilities.len() == 1,
+            "registration must produce exactly one routable ability, not a duplicate",
+        )?;
+        let ability = &abilities[0];
+        verify(
+            ability.channel_id == channel.id,
+            "ability must point at the created channel",
+        )?;
+        verify(ability.enabled_bool(), "ability must be enabled")?;
+        verify(ability.priority == 100, "ability keeps priority 100")?;
+        verify(ability.weight == 1, "ability keeps weight 1")?;
+
+        service.unregister_upstream(&db, "local-gemma").await?;
+
+        verify(
+            ChannelService::get_by_id(&db, channel.id).await?.is_none(),
+            "unregistration must remove the provider",
+        )?;
+        verify(
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-gemma")
+                .await?
+                .is_empty(),
+            "unregistration must remove the abilities",
+        )?;
+
+        cleanup(db, &path).await?;
+        Ok(())
     }
 }
