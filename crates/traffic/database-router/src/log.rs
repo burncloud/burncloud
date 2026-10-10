@@ -107,79 +107,13 @@ pub struct ModelUsageStats {
 pub struct RouterLogModel;
 
 impl RouterLogModel {
-    /// Insert a new router log entry
+    /// Persist a router log without changing Identity credential spend quotas.
+    ///
+    /// Both the legacy model API and the service entry point use the same
+    /// log-only insertion path. Credential settlement is performed separately
+    /// by Identity, using the cost in nanodollars for the authenticated key.
     pub async fn insert(db: &Database, log: &RouterLog) -> Result<()> {
-        let conn = db.get_connection()?;
-        let is_postgres = db.kind() == "postgres";
-
-        let sql = format!(
-            r#"
-            INSERT INTO router_logs
-            (request_id, user_id, path, upstream_id, status_code, latency_ms,
-             prompt_tokens, completion_tokens, cost,
-             model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens,
-             cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens,
-             input_cost, output_cost, cache_read_cost, cache_write_cost,
-             audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost,
-             layer_decision, traffic_color, cost_status, error_type)
-            VALUES ({})
-            "#,
-            phs(is_postgres, 32)
-        );
-
-        sqlx::query(&sql)
-            .bind(&log.request_id)
-            .bind(&log.user_id)
-            .bind(&log.path)
-            .bind(&log.upstream_id)
-            .bind(log.status_code)
-            .bind(log.latency_ms)
-            .bind(log.prompt_tokens)
-            .bind(log.completion_tokens)
-            .bind(log.cost)
-            .bind(&log.model)
-            .bind(log.cache_read_tokens)
-            .bind(log.reasoning_tokens)
-            .bind(&log.pricing_region)
-            .bind(log.video_tokens)
-            .bind(log.cache_write_tokens)
-            .bind(log.audio_input_tokens)
-            .bind(log.audio_output_tokens)
-            .bind(log.image_tokens)
-            .bind(log.embedding_tokens)
-            .bind(log.input_cost)
-            .bind(log.output_cost)
-            .bind(log.cache_read_cost)
-            .bind(log.cache_write_cost)
-            .bind(log.audio_cost)
-            .bind(log.image_cost)
-            .bind(log.video_cost)
-            .bind(log.reasoning_cost)
-            .bind(log.embedding_cost)
-            .bind(&log.layer_decision)
-            .bind(&log.traffic_color)
-            .bind(&log.cost_status)
-            .bind(&log.error_type)
-            .execute(conn.pool())
-            .await?;
-
-        // Update token used_quota
-        if let Some(user_id) = &log.user_id {
-            let total_tokens = log.prompt_tokens + log.completion_tokens;
-            if total_tokens > 0 {
-                let update_sql = adapt_sql(
-                    is_postgres,
-                    "UPDATE router_tokens SET used_quota = used_quota + ? WHERE user_id = ?",
-                );
-                sqlx::query(&update_sql)
-                    .bind(total_tokens)
-                    .bind(user_id)
-                    .execute(conn.pool())
-                    .await?;
-            }
-        }
-
-        Ok(())
+        crate::RouterDatabase::insert_log(db, log).await
     }
 
     /// Get logs with pagination

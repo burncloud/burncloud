@@ -162,6 +162,60 @@ async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch
 }
 
 #[tokio::test]
+async fn legacy_log_insert_does_not_write_identity_credential_spend_on_postgres() {
+    with_postgres("log_quota", |db| async move {
+        let conn = db.get_connection().expect("PostgreSQL connection");
+        sqlx::query(
+            "INSERT INTO router_tokens (token, user_id, status, quota_limit, used_quota) \
+             VALUES ('pg-credential-one', 'pg-user', 'active', -1, 1000000), \
+                    ('pg-credential-two', 'pg-user', 'active', -1, 2222222)",
+        )
+        .execute(conn.pool())
+        .await
+        .expect("create two Identity credentials for same user");
+
+        let log = RouterLog {
+            request_id: "pg-duplicate-log".to_string(),
+            user_id: Some("pg-user".to_string()),
+            path: "/v1/chat/completions".to_string(),
+            prompt_tokens: 123,
+            completion_tokens: 456,
+            cost: 99_000_000,
+            ..RouterLog::default()
+        };
+
+        for _ in 0..2 {
+            RouterLogModel::insert(&db, &log)
+                .await
+                .expect("insert duplicate log with PostgreSQL placeholders");
+        }
+
+        let spent: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT token, used_quota FROM router_tokens WHERE user_id = $1 ORDER BY token",
+        )
+        .bind("pg-user")
+        .fetch_all(conn.pool())
+        .await
+        .expect("read authoritative Identity spend after logging");
+
+        assert_eq!(
+            spent,
+            vec![
+                ("pg-credential-one".to_string(), 1_000_000),
+                ("pg-credential-two".to_string(), 2_222_222)
+            ],
+            "PostgreSQL log insertion must not charge or cross-charge credentials"
+        );
+
+        let saved = RouterLogModel::get(&db, 10, 0)
+            .await
+            .expect("read duplicate logs");
+        assert_eq!(saved.len(), 2, "both log rows should persist");
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn token_info_join_quotes_group_and_preserves_the_left_join_on_postgres() {
     with_postgres("token_join", |db| async move {
         let conn = db.get_connection().expect("database connection");

@@ -522,6 +522,83 @@ async fn writing_a_log_entry_does_not_settle_any_quota() {
 }
 
 #[tokio::test]
+async fn repeated_legacy_log_insertion_never_changes_any_credential_spend() {
+    use burncloud_database::sqlx;
+
+    let db = create_test_db().await;
+    insert_user(&db, "u-1", 1).await;
+    insert_router_token(&db, "bc_live_one", "u-1").await;
+    insert_router_token(&db, "bc_live_two", "u-1").await;
+
+    // Spending uses cost in nanodollars and is scoped to the authenticated
+    // credential. A log belongs to a user, not to either credential.
+    let charged_cost = 1_000_000_i64;
+    assert!(
+        RouterTokenModel::deduct_quota(&db, "bc_live_one", charged_cost)
+            .await
+            .expect("settle the first credential")
+    );
+
+    // Real schemas allow multiple logs with the same request_id. Even if a
+    // caller retries its logging step, logging must never settle spend again.
+    let entry = tiny_log("req-repeated");
+    RouterLogModel::insert(&db, &entry)
+        .await
+        .expect("write first log");
+    RouterLogModel::insert(&db, &entry)
+        .await
+        .expect("write duplicate log");
+
+    let conn = db.get_connection().expect("connection");
+    for (token, expected) in [("bc_live_one", charged_cost), ("bc_live_two", 0_i64)] {
+        let actual: i64 =
+            sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
+                .bind(token)
+                .fetch_one(conn.pool())
+                .await
+                .expect("read Identity-owned spend quota");
+        assert_eq!(
+            actual, expected,
+            "logging must not alter Identity quota for {token}"
+        );
+    }
+
+    let logs = RouterLogModel::get(&db, 10, 0).await.expect("read logs");
+    assert_eq!(logs.len(), 2, "both log insertions are persisted");
+    assert!(logs.iter().all(|row| row.request_id == "req-repeated"));
+}
+
+#[tokio::test]
+async fn legacy_log_insert_fails_closed_when_log_storage_is_missing() {
+    use burncloud_database::sqlx;
+
+    let db = create_test_db().await;
+    insert_user(&db, "u-1", 1).await;
+    insert_router_token(&db, "bc_live_one", "u-1").await;
+
+    let conn = db.get_connection().expect("connection");
+    sqlx::query("DROP TABLE router_logs")
+        .execute(conn.pool())
+        .await
+        .expect("remove log storage");
+
+    let error = RouterLogModel::insert(&db, &tiny_log("req-unwritable"))
+        .await
+        .expect_err("broken log storage must return an error");
+    assert!(
+        !error.to_string().is_empty(),
+        "database failure should be visible to the caller"
+    );
+
+    let spent: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
+        .bind("bc_live_one")
+        .fetch_one(conn.pool())
+        .await
+        .expect("credential storage remains readable");
+    assert_eq!(spent, 0, "failed logging must not mutate Identity quota");
+}
+
+#[tokio::test]
 async fn settlement_reports_exhaustion_separately_from_what_it_wrote() {
     // This is the plan's warning made into a test: *do not interpret "returned false" as "nothing was
     // written"*. `deduct_quota` writes the charge and then reports that the credential is now exhausted,
