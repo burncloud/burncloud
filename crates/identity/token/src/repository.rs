@@ -1,3 +1,13 @@
+//! Database operations for token management
+//!
+//! This crate handles all database operations related to API tokens,
+//! including validation, spend-quota tracking, CRUD operations, and key rotation.
+
+use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+
 /// Read the Identity credential portion of Traffic's historical primary auth path.
 /// Only the Identity owner may issue this join against API keys and accounts.
 pub(crate) async fn active_api_key_identity(
@@ -31,16 +41,6 @@ pub(crate) async fn active_api_key_user_id(
     );
     Ok(sqlx::query_scalar(&sql).bind(token).fetch_optional(conn.pool()).await?)
 }
-
-//! Database operations for token management
-//!
-//! This crate handles all database operations related to API tokens,
-//! including validation, spend-quota tracking, CRUD operations, and key rotation.
-
-use burncloud_database::{adapt_sql, phs, Database, DatabaseError, Result};
-use rand::RngCore;
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 
 async fn best_effort_execute(pool: &sqlx::AnyPool, sql: &str) {
     // Existing columns are expected on databases already initialized by migrations.
