@@ -117,10 +117,9 @@ dirs = "5.0"
 tempfile = "3.8"
 futures = "0.3"
 futures-util = "0.3"
-regex = "1"
+regex = "1.11"
 once_cell = "1.19"
 dashmap = "5.5"
-time = "0.3"
 hex = "0.4"
 url = "2.5"
 rand = "0.8"
@@ -130,7 +129,6 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 axum = { version = "0.8.7", features = ["macros", "ws"] }
 tower-http = { version = "0.6", features = ["trace", "cors", "request-id"] }
 http-body-util = "0.1"
-http = "1.0"
 
 # Cryptography
 sha2 = "0.10"
@@ -152,48 +150,43 @@ libc = "0.2"
 winapi = { version = "0.3", features = ["winuser", "pdh", "psapi", "winbase", "winnt", "fileapi", "handleapi", "winerror", "sysinfoapi", "winreg"] }
 
 # UI
-dioxus-desktop = "0.7.2"
-dioxus-ssr = "0.7.2"
 
 # Build
 winres = "0.1"
-image = "0.25"
 
 # Application
 self_update = { version = "1.3.0", features = ["archive-zip"] }
-systray = "0.4.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tracing-log = "0.2"
 
 # Internal crates
-burncloud-code = { path = "crates/platform/code" }
-burncloud-auto-update = { path = "crates/platform/lifecycle/update" }
-burncloud-client = { path = "crates/interfaces/client", default-features = false }
-burncloud-commerce-contracts = { path = "crates/commerce/contracts" }
-burncloud-common = { path = "crates/interfaces/common" }
-burncloud-database = { path = "crates/platform/storage/database" }
-burncloud-commerce-billing = { path = "crates/commerce/billing" }
-burncloud-database-sys = { path = "crates/platform/storage/database-sys" }
-burncloud-download = { path = "crates/platform/storage/download" }
-burncloud-download-aria2 = { path = "crates/platform/storage/download-aria2" }
-burncloud-installer = { path = "crates/platform/lifecycle/installer" }
-burncloud-node-runtime = { path = "crates/platform/node" }
-burncloud-router = { path = "crates/traffic/router" }
-burncloud-router-aws = { path = "crates/traffic/router-aws" }
-burncloud-server = { path = "crates/interfaces/server" }
-burncloud-service = { path = "crates/interfaces/service" }
-burncloud-service-ip = { path = "crates/platform/observability/ip" }
-burncloud-service-monitor = { path = "crates/platform/observability/monitor" }
-burncloud-service-setting = { path = "crates/platform/configuration/setting" }
-burncloud-service-inference = { path = "crates/trust/inference" }
-burncloud-identity-user = { path = "crates/identity/user" }
-burncloud-identity-token = { path = "crates/identity/token" }
-burncloud-supply-channel = { path = "crates/supply/channel" }
-burncloud-supply-model = { path = "crates/supply/model" }
-burncloud-supply-contracts = { path = "crates/supply/contracts" }
-burncloud-traffic-contracts = { path = "crates/traffic/contracts" }
+# Each path dependency also carries the owning package's current version.
+# Avoid wildcard path requirements so cargo-deny can enforce wildcards = "deny".
+burncloud-code = { path = "crates/platform/code", version = "0.1.0"  }
+burncloud-auto-update = { path = "crates/platform/lifecycle/update", version = "0.1.2"  }
+burncloud-client = { path = "crates/interfaces/client", version = "0.2.0", default-features = false  }
+burncloud-commerce-contracts = { path = "crates/commerce/contracts", version = "0.1.0"  }
+burncloud-common = { path = "crates/interfaces/common", version = "0.1.9"  }
+burncloud-database = { path = "crates/platform/storage/database", version = "0.1.0"  }
+burncloud-commerce-billing = { path = "crates/commerce/billing", version = "0.1.0"  }
+burncloud-database-sys = { path = "crates/platform/storage/database-sys", version = "0.1.0"  }
+burncloud-download = { path = "crates/platform/storage/download", version = "0.1.0"  }
+burncloud-download-aria2 = { path = "crates/platform/storage/download-aria2", version = "0.1.0"  }
+burncloud-installer = { path = "crates/platform/lifecycle/installer", version = "0.1.0"  }
+burncloud-node-runtime = { path = "crates/platform/node", version = "0.1.0"  }
+burncloud-router = { path = "crates/traffic/router", version = "0.1.0"  }
+burncloud-server = { path = "crates/interfaces/server", version = "0.1.9"  }
+burncloud-service-ip = { path = "crates/platform/observability/ip", version = "0.1.0"  }
+burncloud-service-monitor = { path = "crates/platform/observability/monitor", version = "0.1.0"  }
+burncloud-service-setting = { path = "crates/platform/configuration/setting", version = "0.1.0"  }
+burncloud-identity-user = { path = "crates/identity/user", version = "0.1.0"  }
+burncloud-identity-token = { path = "crates/identity/token", version = "0.1.0"  }
+burncloud-supply-channel = { path = "crates/supply/channel", version = "0.1.0"  }
+burncloud-supply-model = { path = "crates/supply/model", version = "0.1.0"  }
+burncloud-supply-contracts = { path = "crates/supply/contracts", version = "0.1.0"  }
+burncloud-traffic-contracts = { path = "crates/traffic/contracts", version = "0.1.0"  }
 
 [package]
 name = "burncloud"
