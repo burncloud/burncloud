@@ -104,6 +104,17 @@ pub struct ModelUsageStats {
     pub cost_nano: i64,
 }
 
+/// SQLx Any does not decode PostgreSQL BPCHAR or TIMESTAMP directly into
+/// the String fields used by RouterLog. Normalize only the SELECT projection;
+/// the underlying persisted values and the public row shape stay unchanged.
+fn router_log_text_projection(is_postgres: bool) -> &'static str {
+    if is_postgres {
+        "traffic_color::TEXT AS traffic_color, cost_status, error_type, created_at::TEXT AS created_at"
+    } else {
+        "traffic_color, cost_status, error_type, created_at"
+    }
+}
+
 pub struct RouterLogModel;
 
 impl RouterLogModel {
@@ -122,7 +133,8 @@ impl RouterLogModel {
         let is_postgres = db.kind() == "postgres";
 
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, cost_status, error_type, created_at FROM router_logs ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, {} FROM router_logs ORDER BY created_at DESC {}",
+            router_log_text_projection(is_postgres),
             adapt_sql(is_postgres, "LIMIT ? OFFSET ?")
         );
         let logs = sqlx::query_as::<_, RouterLog>(&sql)
@@ -173,7 +185,8 @@ impl RouterLogModel {
             ph(is_postgres, param_index + 1)
         );
         let sql = format!(
-            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, traffic_color, cost_status, error_type, created_at FROM router_logs {} ORDER BY created_at DESC {}",
+            "SELECT id, request_id, user_id, path, upstream_id, status_code, latency_ms, prompt_tokens, completion_tokens, cost, model, cache_read_tokens, reasoning_tokens, pricing_region, video_tokens, cache_write_tokens, audio_input_tokens, audio_output_tokens, image_tokens, embedding_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, audio_cost, image_cost, video_cost, reasoning_cost, embedding_cost, layer_decision, {} FROM router_logs {} ORDER BY created_at DESC {}",
+            router_log_text_projection(is_postgres),
             where_clause, limit_offset
         );
 
