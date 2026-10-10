@@ -550,10 +550,7 @@ async fn repeated_legacy_log_insertion_never_changes_any_credential_spend() {
         .expect("write duplicate log");
 
     let conn = db.get_connection().expect("connection");
-    for (token, expected) in [
-        ("bc_live_one", charged_cost),
-        ("bc_live_two", 0_i64),
-    ] {
+    for (token, expected) in [("bc_live_one", charged_cost), ("bc_live_two", 0_i64)] {
         let actual: i64 =
             sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
                 .bind(token)
@@ -593,13 +590,11 @@ async fn legacy_log_insert_fails_closed_when_log_storage_is_missing() {
         "database failure should be visible to the caller"
     );
 
-    let spent: i64 = sqlx::query_scalar(
-        "SELECT used_quota FROM router_tokens WHERE token = ?",
-    )
-    .bind("bc_live_one")
-    .fetch_one(conn.pool())
-    .await
-    .expect("credential storage remains readable");
+    let spent: i64 = sqlx::query_scalar("SELECT used_quota FROM router_tokens WHERE token = ?")
+        .bind("bc_live_one")
+        .fetch_one(conn.pool())
+        .await
+        .expect("credential storage remains readable");
     assert_eq!(spent, 0, "failed logging must not mutate Identity quota");
 }
 
