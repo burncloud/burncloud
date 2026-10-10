@@ -16,8 +16,8 @@
 
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_service_user::{
-    UserAccount, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput, UserDatabase,
-    UserRecharge, BalanceModel,
+    BalanceModel, UserAccount, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput,
+    UserDatabase, UserRecharge,
 };
 
 /// A fresh SQLite file database with the Identity schema applied through the production initializer.
@@ -338,9 +338,12 @@ async fn api_keys_round_trip_and_updates_are_partial() {
 #[tokio::test]
 async fn wallet_single_owner_preserves_both_traffic_debit_variants() {
     let (db, path) = fresh_db("wallet_single_owner").await;
-    UserDatabase::create_user(&db, &account("wallet-u1", "wallet_a", 10_000_000_000, 20_000_000_000))
-        .await
-        .expect("create wallet account");
+    UserDatabase::create_user(
+        &db,
+        &account("wallet-u1", "wallet_a", 10_000_000_000, 20_000_000_000),
+    )
+    .await
+    .expect("create wallet account");
 
     // Simple debits have identical nanodollar units and guarded SQL updates.
     assert!(BalanceModel::deduct_usd(&db, "wallet-u1", 1_000_000_000)
@@ -369,15 +372,11 @@ async fn wallet_single_owner_preserves_both_traffic_debit_variants() {
 
     // Legacy RouterDatabase variant: missing-account positive debit returned
     // Ok(false), unlike the service variant's explicit not-found error.
-    assert!(BalanceModel::deduct_dual_currency(
-        &db,
-        "wallet-missing",
-        1,
-        "USD",
-        2_000_000_000,
-    )
-    .await
-    .is_err());
+    assert!(
+        BalanceModel::deduct_dual_currency(&db, "wallet-missing", 1, "USD", 2_000_000_000,)
+            .await
+            .is_err()
+    );
     assert!(!BalanceModel::deduct_dual_currency_router_legacy(
         &db,
         "wallet-missing",
@@ -390,19 +389,18 @@ async fn wallet_single_owner_preserves_both_traffic_debit_variants() {
     assert!(!BalanceModel::deduct_usd(&db, "wallet-u1", 9_000_000_000)
         .await
         .expect("insufficient USD balance"));
-    assert!(BalanceModel::deduct_dual_currency(
+    assert!(
+        BalanceModel::deduct_dual_currency(&db, "wallet-u1", 0, "USD", 2_000_000_000,)
+            .await
+            .expect("zero charge is unchanged")
+    );
+
+    UserDatabase::create_user(
         &db,
-        "wallet-u1",
-        0,
-        "USD",
-        2_000_000_000,
+        &account("wallet-u2", "wallet_b", 3_000_000_000, 8_000_000_000),
     )
     .await
-    .expect("zero charge is unchanged"));
-
-    UserDatabase::create_user(&db, &account("wallet-u2", "wallet_b", 3_000_000_000, 8_000_000_000))
-        .await
-        .expect("create legacy router wallet");
+    .expect("create legacy router wallet");
     assert!(BalanceModel::deduct_dual_currency_router_legacy(
         &db,
         "wallet-u2",
