@@ -113,6 +113,24 @@ async fn rows_for(
     Ok(rows)
 }
 
+#[tokio::test]
+async fn distinct_model_count_ignores_region_row_multiplicity() -> Result<(), Box<dyn Error>> {
+    let (db, path) = fresh_db("distinct_model_count").await?;
+
+    BillingPriceModel::upsert(&db, &price("model-a", "USD", None, 1, 2)).await?;
+    BillingPriceModel::upsert(&db, &price("model-a", "USD", Some("us-east-1"), 3, 4)).await?;
+    BillingPriceModel::upsert(&db, &price("model-b", "USD", None, 5, 6)).await?;
+
+    assert_eq!(
+        BillingPriceModel::count_distinct_models(&db).await?,
+        2,
+        "startup cache detection counts model names, not region/currency rows"
+    );
+
+    cleanup(db, path).await;
+    Ok(())
+}
+
 // -------------------------------------------------------------------------------------------
 // upsert and the identity, which is (model, region)
 // -------------------------------------------------------------------------------------------
