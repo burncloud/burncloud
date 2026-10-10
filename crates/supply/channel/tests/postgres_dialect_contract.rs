@@ -182,21 +182,40 @@ fn github_actions_executes_real_supply_owner_postgres_contracts() {
     }
     let run = std::process::Command::new("docker")
         .args([
-            "run", "--rm", "-d", "-e", "POSTGRES_PASSWORD=postgres",
-            "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_DB=postgres",
-            "-p", "127.0.0.1::5432", "postgres:16",
+            "run",
+            "--rm",
+            "-d",
+            "-e",
+            "POSTGRES_PASSWORD=postgres",
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_DB=postgres",
+            "-p",
+            "127.0.0.1::5432",
+            "postgres:16",
         ])
         .output()
         .expect("GitHub-hosted CI must provide Docker for real PostgreSQL tests");
-    assert!(run.status.success(), "start PostgreSQL: {}", String::from_utf8_lossy(&run.stderr));
+    assert!(
+        run.status.success(),
+        "start PostgreSQL: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     let id = String::from_utf8_lossy(&run.stdout).trim().to_owned();
-    assert!(!id.is_empty(), "Docker did not return a PostgreSQL container ID");
+    assert!(
+        !id.is_empty(),
+        "Docker did not return a PostgreSQL container ID"
+    );
     let _cleanup = TestPostgresContainer(id.clone());
     let output = std::process::Command::new("docker")
         .args(["port", &id, "5432/tcp"])
         .output()
         .expect("read PostgreSQL port");
-    assert!(output.status.success(), "published PostgreSQL port query failed");
+    assert!(
+        output.status.success(),
+        "published PostgreSQL port query failed"
+    );
     let ports = String::from_utf8_lossy(&output.stdout);
     let port = ports
         .lines()
@@ -205,8 +224,7 @@ fn github_actions_executes_real_supply_owner_postgres_contracts() {
         .map(|(_, port)| port)
         .expect("PostgreSQL must publish a TCP port");
     let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
-    let opts = sqlx::postgres::PgConnectOptions::from_str(&url)
-        .expect("PostgreSQL URL must parse");
+    let opts = sqlx::postgres::PgConnectOptions::from_str(&url).expect("PostgreSQL URL must parse");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
