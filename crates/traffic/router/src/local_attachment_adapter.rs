@@ -10,8 +10,8 @@ use std::sync::Arc;
 /// Production adapter that makes a READY local endpoint visible through the
 /// existing BurnCloud channel/ability routing truth.
 ///
-/// It deliberately reuses `ChannelProviderModel`; it does not create a second
-/// ModelRouter or a second routing table.
+/// It deliberately reuses Supply's `ChannelService`; it does not create a second
+/// ModelRouter, persistence owner, or routing table.
 pub struct ExistingRouterLocalAttacher {
     db: Arc<Database>,
 }
