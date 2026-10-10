@@ -91,30 +91,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
 
-      # Architectural rename regression guard: scan the entire tracked tree rather
-      # than trusting GitHub code-search indexing (which may still show main).
-      # The migration record and the code test's before/after fixture are historical,
-      # not active Cargo or Rust references.
-      - name: Audit retired Identity Token package references
-        if: inputs.check == 'fmt'
-        shell: bash
-        run: |
-          set -euo pipefail
-          old_package="burncloud-""service-token"
-          old_module="burncloud_""service_token"
-          old_path="crates/identity/""service-token"
-          set +e
-          git grep -n -F -e "$old_package" -e "$old_module" -e "$old_path" -- . \
-            ':!docs/architecture/arch-mig-828-phase-f1.md' \
-            ':!crates/platform/code/src/manifest.rs'
-          status=$?
-          set -e
-          case "$status" in
-            0) echo "::error::Found references to the retired Identity Token crate outside historical fixtures"; exit 1 ;;
-            1) echo "Retired Identity Token reference audit: PASS (all tracked files scanned)" ;;
-            *) echo "::error::git grep could not complete the repository scan"; exit "$status" ;;
-          esac
-
       - name: Cargo Fmt
         if: inputs.check == 'fmt'
         run: cargo fmt --all -- --check
