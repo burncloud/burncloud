@@ -122,7 +122,6 @@ crate = "burncloud-common"
 wrappers = [
     "burncloud",
     "burncloud-client",
-    "burncloud-database-router",
     "burncloud-router",
     "burncloud-server",
 ]

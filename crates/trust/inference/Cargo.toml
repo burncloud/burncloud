@@ -16,8 +16,8 @@ burncloud-supply-channel = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+burncloud-router.workspace = true
 anyhow = { workspace = true }
-burncloud-database-router = { workspace = true }
 
 [lints]
 workspace = true
