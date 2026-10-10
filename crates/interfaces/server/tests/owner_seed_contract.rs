@@ -96,16 +96,18 @@ async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent() -> Resul
     let (_dir, url) = sqlite_url_for("idempotent")?;
 
     let db = create_database_with_url(&url).await?;
-    // Diagnostic: a freshly created database must hold no account at all. If this fails, report
-    // what is actually present and which file was used, so the source of the row is identified
-    // from evidence rather than guessed.
-    let observed: Vec<(String, String)> =
-        burncloud_database::sqlx::query_as("SELECT id, username FROM user_accounts ORDER BY id")
-            .fetch_all(db.get_connection()?.pool())
-            .await?;
-    if !observed.is_empty() {
+    // Diagnostic: reconcile the count probe against an unbound literal predicate. A freshly
+    // created database must hold no account at all; if the bound and unbound forms disagree,
+    // the probe is what is wrong, not the database.
+    let literal: i64 = burncloud_database::sqlx::query_scalar(
+        "SELECT COUNT(*) FROM user_accounts WHERE id = 'demo-user'",
+    )
+    .fetch_one(db.get_connection()?.pool())
+    .await?;
+    let (bound, _keys) = UserDatabase::count_seeded_demo_defaults(&db).await?;
+    if literal != 0 || bound != literal {
         return Err(std::io::Error::other(format!(
-            "a freshly created database already holds accounts {observed:?} at {url}"
+            "fresh database probe mismatch: unbound literal {literal}, bound probe {bound}, at {url}"
         ))
         .into());
     }
