@@ -17,7 +17,8 @@
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
 use burncloud_supply_channel::{
-    ChannelProtocolConfigInput, ChannelProtocolConfigModel, ChannelProviderModel,
+    ChannelAbilityModel, ChannelProtocolConfigInput, ChannelProtocolConfigModel,
+    ChannelProviderModel, ChannelService,
 };
 use burncloud_supply_contracts::{Channel, ChannelType};
 use std::str::FromStr;
@@ -262,6 +263,59 @@ async fn failed_channel_writes_roll_back_atomically_on_postgres() {
         assert_eq!(
             abilities[0].model, "old",
             "ability DELETE and partial rebuild must roll back too"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn owner_boundary_capabilities_execute_on_real_postgres() {
+    with_postgres("owner_boundary", |db| async move {
+        let mut channel = sample_channel();
+        let id = ChannelService::create(&db, &mut channel)
+            .await
+            .expect("Supply facade creates the PostgreSQL channel");
+
+        let abilities =
+            ChannelService::list_enabled_at_highest_priority(&db, "pg-vip", "claude-pg-contract")
+                .await
+                .expect("highest-priority Supply query must execute on PostgreSQL");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].channel_id, id);
+        assert_eq!(abilities[0].weight, 17);
+
+        ChannelService::update_api_version(&db, id, "2026-10-owner")
+            .await
+            .expect("targeted PostgreSQL API-version update");
+        let updated = ChannelService::get_by_id(&db, id)
+            .await
+            .expect("read channel after API-version update")
+            .expect("updated channel remains present");
+        assert_eq!(updated.api_version.as_deref(), Some("2026-10-owner"));
+
+        assert!(
+            ChannelService::quarantine(&db, id)
+                .await
+                .expect("PostgreSQL quarantine transaction"),
+            "existing channel must quarantine successfully"
+        );
+        let quarantined = ChannelService::get_by_id(&db, id)
+            .await
+            .expect("read quarantined PostgreSQL channel")
+            .expect("quarantine must not delete the provider");
+        assert_eq!(quarantined.status, 3);
+        assert!(
+            ChannelAbilityModel::list_by_channel(&db, id)
+                .await
+                .expect("read abilities after PostgreSQL quarantine")
+                .is_empty(),
+            "quarantine must remove abilities before commit"
+        );
+        assert!(
+            !ChannelService::quarantine(&db, i32::MAX)
+                .await
+                .expect("missing PostgreSQL channel is a normal false result"),
+            "missing channel must not be reported as quarantined"
         );
     })
     .await;
