@@ -109,6 +109,127 @@ where
     drop_database(&server_url, &name).await;
 }
 
+/// GitHub-hosted Rust CI has Docker but intentionally no permanent PostgreSQL
+/// workflow. Exercise every PostgreSQL-only test against a disposable Postgres
+/// 16 container instead of treating the opt-in tests' SKIPPED result as proof.
+/// Local developers can continue to set BURNCLOUD_TEST_POSTGRES_URL themselves.
+struct TestPostgresContainer(String);
+
+impl Drop for TestPostgresContainer {
+    fn drop(&mut self) {
+        match std::process::Command::new("docker")
+            .args(["rm", "-f", &self.0])
+            .status()
+        {
+            Ok(status) if !status.success() => {
+                eprintln!("Docker PostgreSQL cleanup failed: {status}");
+            }
+            Err(error) => eprintln!("Docker PostgreSQL cleanup failed: {error}"),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn github_actions_runs_real_postgres_dialect_contracts() {
+    if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
+        println!("Real PostgreSQL CI runner is GitHub Actions only. Set {SERVER_URL_ENV} to run the individual PostgreSQL contracts locally.");
+        return;
+    }
+
+    let run = std::process::Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "-d",
+            "-e",
+            "POSTGRES_PASSWORD=postgres",
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_DB=postgres",
+            "-p",
+            "127.0.0.1::5432",
+            "postgres:16",
+        ])
+        .output()
+        .expect("GitHub-hosted runner must provide Docker for the real PostgreSQL contract");
+    assert!(
+        run.status.success(),
+        "could not start PostgreSQL 16: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let id = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    assert!(!id.is_empty(), "Docker must return a container ID");
+    let _cleanup = TestPostgresContainer(id.clone());
+
+    let port_output = std::process::Command::new("docker")
+        .args(["port", &id, "5432/tcp"])
+        .output()
+        .expect("read the published PostgreSQL port");
+    assert!(port_output.status.success(), "Docker port lookup failed");
+    let port_line = String::from_utf8_lossy(&port_output.stdout);
+    let port = port_line
+        .lines()
+        .next()
+        .and_then(|line| line.rsplit_once(':'))
+        .map(|(_, port)| port)
+        .expect("expected a published PostgreSQL port");
+    let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
+
+    // pg_isready inside the container can succeed before Docker's published
+    // host port accepts connections. Probe the actual SQLx connection path.
+    let opts = sqlx::postgres::PgConnectOptions::from_str(&url)
+        .expect("published PostgreSQL port must yield a valid connection URL");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("create SQLx readiness runtime");
+    let mut ready = false;
+    for _ in 0..40 {
+        let connected = runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                match opts.connect().await {
+                    Ok(mut conn) => conn.execute("SELECT 1").await.is_ok(),
+                    Err(_) => false,
+                }
+            })
+            .await
+            .unwrap_or(false)
+        });
+        if connected {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    assert!(
+        ready,
+        "PostgreSQL 16 did not accept a SQLx connection from the GitHub-hosted runner"
+    );
+    let runner = std::env::current_exe().expect("find the current integration test binary");
+
+    for test in [
+        "router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch",
+        "legacy_log_insert_does_not_write_identity_credential_spend_on_postgres",
+        "token_info_join_quotes_group_and_preserves_the_left_join_on_postgres",
+        "video_task_conflict_keeps_the_first_mapping_on_postgres",
+    ] {
+        let result = std::process::Command::new(&runner)
+            .args(["--exact", test, "--nocapture"])
+            .env(SERVER_URL_ENV, &url)
+            .output()
+            .expect("launch isolated PostgreSQL integration test");
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            result.status.success() && stdout.contains("1 passed; 0 failed"),
+            "real PostgreSQL contract {test} did not pass:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+        println!("Real PostgreSQL 16: {test}: PASS");
+    }
+}
+
 #[tokio::test]
 async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch() {
     with_postgres("log", |db| async move {
@@ -123,6 +244,8 @@ async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch
             completion_tokens: 567,
             cost: 9_876_543_210,
             model: Some("pg-contract-model".to_string()),
+            layer_decision: Some("affinity".to_string()),
+            traffic_color: Some("g".to_string()),
             cache_read_tokens: 10,
             reasoning_tokens: 20,
             input_cost: 3_000_000_000,
@@ -145,10 +268,27 @@ async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch
         assert_eq!(stored.completion_tokens, 567);
         assert_eq!(stored.cost, 9_876_543_210);
         assert_eq!(stored.model.as_deref(), Some("pg-contract-model"));
+        assert_eq!(stored.traffic_color.as_deref(), Some("g"));
+        assert_eq!(stored.layer_decision.as_deref(), Some("affinity"));
         assert!(
             stored.created_at.is_some(),
             "PostgreSQL TIMESTAMP default must be visible through the production row mapping"
         );
+
+        let filtered = RouterLogModel::get_filtered(
+            &db,
+            Some("pg-router-user"),
+            Some("pg-channel-1"),
+            Some("pg-contract-model"),
+            10,
+            0,
+        )
+        .await
+        .expect("filtered router logs must decode on PostgreSQL");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].traffic_color.as_deref(), Some("g"));
+        assert_eq!(filtered[0].layer_decision.as_deref(), Some("affinity"));
+        assert!(filtered[0].created_at.is_some());
 
         let stats = get_usage_stats(&db, "pg-router-user", "day")
             .await
@@ -211,6 +351,14 @@ async fn legacy_log_insert_does_not_write_identity_credential_spend_on_postgres(
             .await
             .expect("read duplicate logs");
         assert_eq!(saved.len(), 2, "both log rows should persist");
+        assert!(saved.iter().all(|row| row.traffic_color.is_none()));
+        assert!(saved.iter().all(|row| row.created_at.is_some()));
+
+        let filtered = RouterLogModel::get_filtered(&db, Some("pg-user"), None, None, 10, 0)
+            .await
+            .expect("nullable PostgreSQL color must decode in filtered logs");
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|row| row.traffic_color.is_none()));
     })
     .await;
 }
