@@ -139,12 +139,14 @@ async fn owner_seeds_reproduce_the_startup_records_and_are_idempotent() -> Resul
     assert_seed_counts(&db, 1, 1, 4, "both halves").await?;
     db.close().await?;
 
-    // A genuinely reopened database starts empty again and reaches the same state from the
-    // owner calls alone.
+    // Reopening the same file must find the data intact, not reset it: deducing that wrong
+    // expectation from "reopen" is what produced the long-running false alarm on this suite.
+    // (It is `create_database_with_url` on a *new* path that starts empty; a file already
+    // written stays seeded.) Re-running the owner phases over it must add nothing.
     let reopened = create_database_with_url(&url).await?;
-    assert_seed_counts(&reopened, 0, 0, 0, "fresh reopen").await?;
+    assert_seed_counts(&reopened, 1, 1, 4, "reopened keeps seeded rows").await?;
     seed_like_startup(&reopened).await?;
-    assert_seed_counts(&reopened, 1, 1, 4, "reopened seeded").await?;
+    assert_seed_counts(&reopened, 1, 1, 4, "reopened after re-seed").await?;
     reopened.close().await?;
     Ok(())
 }
