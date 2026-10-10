@@ -1,3 +1,37 @@
+/// Read the Identity credential portion of Traffic's historical primary auth path.
+/// Only the Identity owner may issue this join against API keys and accounts.
+pub(crate) async fn active_api_key_identity(
+    db: &Database,
+    token: &str,
+) -> Result<Option<crate::ActiveApiKeyIdentity>> {
+    let conn = db.get_connection()?;
+    let group_col = if db.kind() == "postgres" { "\"group\"" } else { "`group`" };
+    let sql = format!(
+        "SELECT u.id, u.{group_col}, t.remain_quota, t.used_quota FROM user_api_keys t JOIN user_accounts u ON t.user_id = u.id WHERE t.key = {} AND t.status = 1 AND u.status = 1",
+        if db.kind() == "postgres" { "$1" } else { "?" },
+    );
+    let row: Option<(String, String, i64, i64)> = sqlx::query_as(&sql)
+        .bind(token)
+        .fetch_optional(conn.pool())
+        .await?;
+    Ok(row.map(|(user_id, group, remain_quota, used_quota)| {
+        crate::ActiveApiKeyIdentity { user_id, group, remain_quota, used_quota }
+    }))
+}
+
+/// Preserve usage-by-token's narrower key-status-only predicate.
+pub(crate) async fn active_api_key_user_id(
+    db: &Database,
+    token: &str,
+) -> Result<Option<String>> {
+    let conn = db.get_connection()?;
+    let sql = burncloud_database::adapt_sql(
+        db.kind() == "postgres",
+        "SELECT user_id FROM user_api_keys WHERE key = ? AND status = 1",
+    );
+    Ok(sqlx::query_scalar(&sql).bind(token).fetch_optional(conn.pool()).await?)
+}
+
 //! Database operations for token management
 //!
 //! This crate handles all database operations related to API tokens,
