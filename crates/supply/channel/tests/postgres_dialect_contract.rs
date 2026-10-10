@@ -284,6 +284,19 @@ async fn owner_boundary_capabilities_execute_on_real_postgres() {
         assert_eq!(abilities[0].channel_id, id);
         assert_eq!(abilities[0].weight, 17);
 
+        let caps = ChannelService::list_rate_caps(&db)
+            .await
+            .expect("Supply rate-cap projection executes on PostgreSQL");
+        let cap = caps
+            .iter()
+            .find(|cap| cap.id == id)
+            .expect("created channel must appear in rate-cap projection");
+        assert_eq!(cap.rpm_cap, Some(600));
+        assert_eq!(cap.tpm_cap, Some(200_000));
+        assert_eq!(cap.reservation_green, Some(0.5));
+        assert_eq!(cap.reservation_yellow, Some(0.3));
+        assert_eq!(cap.reservation_red, Some(0.2));
+
         ChannelService::update_api_version(&db, id, "2026-10-owner")
             .await
             .expect("targeted PostgreSQL API-version update");
