@@ -217,7 +217,6 @@ fn quote_ident(ident: &str) -> String {
     format!("\"{escaped}\"")
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
