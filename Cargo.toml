@@ -234,6 +234,7 @@ burncloud-auto-update.workspace = true
 burncloud-database.workspace = true
 burncloud-commerce-billing.workspace = true
 burncloud-supply-channel.workspace = true
+burncloud-router.workspace = true
 burncloud-database-sys.workspace = true
 burncloud-identity-user.workspace = true
 burncloud-installer.workspace = true
