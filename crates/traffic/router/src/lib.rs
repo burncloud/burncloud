@@ -802,7 +802,7 @@ fn build_response_with_header(
 }
 
 /// Startup helper: load every channel's L2 Shaper config (rpm_cap / tpm_cap /
-/// reservation triple) from `channel_providers` and feed it into
+/// reservation triple) through the Supply Channel owner and feed it into
 /// [`rate_budget::InMemoryBudget`]. Channels with `rpm_cap = NULL` (or zero)
 /// stay unconfigured — they'll fail-open at request time, and that count is
 /// surfaced via `tracing::warn!` here and `fail_open_count` at runtime.
@@ -821,16 +821,17 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
     let mut unconfigured_count: usize = 0;
     let mut sample_unconfigured_ids: Vec<i32> = Vec::new();
 
-    for (id, rpm_cap, tpm_cap, res_g, res_y, res_r) in rows {
-        match (rpm_cap, tpm_cap) {
+    for row in rows {
+        let id = row.id;
+        match (row.rpm_cap, row.tpm_cap) {
             (Some(rpm), Some(tpm)) if rpm > 0 && tpm > 0 => {
                 // Per-color shares: NULL → migration default (0.4/0.4/0.2).
                 // `configure` itself validates sum-to-1.0 and falls back to
                 // default if invalid (FM8 fix in subtask 4).
                 let reservation = rate_budget::ChannelReservation {
-                    green: res_g.unwrap_or(0.4),
-                    yellow: res_y.unwrap_or(0.4),
-                    red: res_r.unwrap_or(0.2),
+                    green: row.reservation_green.unwrap_or(0.4),
+                    yellow: row.reservation_yellow.unwrap_or(0.4),
+                    red: row.reservation_red.unwrap_or(0.2),
                 };
                 budget.configure(id, rpm as u32, tpm as u64, reservation);
                 configured_count += 1;
@@ -851,43 +852,17 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
     );
 }
 
-/// One row of `channel_providers` shaping the L2 rate budgets.
-type ChannelCapRow = (
-    i32,
-    Option<i32>,
-    Option<i64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-);
-
-/// Read the channel rate-cap columns. Returns `None` (all channels fail-open)
-/// when the DB connection cannot be acquired or the query fails.
-async fn fetch_channel_cap_rows(db: &Database) -> Option<Vec<ChannelCapRow>> {
-    let conn = match db.get_connection() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(
-                error = %e,
-                "rate_budget: failed to acquire DB connection at startup — all channels will fail-open"
-            );
-            return None;
-        }
-    };
-    let pool = conn.pool();
-
-    match burncloud_database::sqlx::query_as(
-        "SELECT id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red \
-             FROM channel_providers",
-    )
-    .fetch_all(pool)
-    .await
-    {
+/// Read the Supply-owned channel rate-cap projection. Returns `None` (all channels
+/// fail-open) when the owner capability cannot load the data.
+async fn fetch_channel_cap_rows(
+    db: &Database,
+) -> Option<Vec<burncloud_supply_channel::ChannelRateCap>> {
+    match burncloud_supply_channel::ChannelService::list_rate_caps(db).await {
         Ok(rows) => Some(rows),
         Err(e) => {
             tracing::error!(
                 error = %e,
-                "rate_budget: failed to query channel_providers at startup — all channels will fail-open"
+                "rate_budget: failed to load Supply channel cap projection at startup — all channels will fail-open"
             );
             None
         }
@@ -902,7 +877,7 @@ fn log_rate_budget_config(
 ) {
     tracing::info!(
         configured_count,
-        "rate_budget: loaded channel cap configs from channel_providers"
+        "rate_budget: loaded channel cap configs from Supply"
     );
     if unconfigured_count > 0 {
         tracing::warn!(
