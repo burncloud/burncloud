@@ -143,7 +143,7 @@ fn log(request_id: &str, user_id: &str, model: &str, cost: i64, when: &str) -> R
 /// `CURRENT_TIMESTAMP` (`0001_initial_schema.sql:119`). A historical row therefore cannot be written through
 /// the service at all, and any test of a time window would only ever see "now".
 ///
-/// `crates/traffic/database-router/tests/usage_stats_tests.rs:39` inserts directly for the same reason -- an
+/// `crates/traffic/router/tests/usage_stats_tests.rs:39` inserts directly for the same reason -- an
 /// independent confirmation that this is the existing workaround rather than something invented here.
 /// `the_service_insert_discards_the_timestamp_it_is_given` below records the defect itself.
 async fn insert_log_at(
@@ -267,7 +267,7 @@ async fn the_service_insert_discards_the_timestamp_it_is_given() -> Result<(), B
     // The consequence is not cosmetic: **a historical row cannot be written through the service at all**, so
     // every row carries the moment it was inserted. Anything that backfills, imports, replays or corrects a log
     // after the fact appears to have happened now -- and the time-windowed queries in this file, and in
-    // `crates/traffic/database-router/tests/usage_stats_tests.rs`, have to bypass the service to test a window
+    // `crates/traffic/router/tests/usage_stats_tests.rs`, have to bypass the service to test a window
     // at all. That the existing suite already bypasses it is the independent confirmation.
     let (db, path) = fresh_db("created_at_dropped").await?;
 
