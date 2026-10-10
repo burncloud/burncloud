@@ -22,15 +22,16 @@ chrono.workspace = true
 dirs.workspace = true
 tracing.workspace = true
 
+# NOTE (#842): this crate deliberately does not depend on `burncloud-identity-user` or
+# `burncloud-supply-channel`, not even as a dev-dependency. `deny.toml` bans
+# `burncloud-supply-channel` from `burncloud-database`, and that ban is exactly the one-way
+# dependency direction #842 requires: Platform must not name the domain owners. The
+# owner-seeded bootstrap contract is therefore asserted in
+# `crates/interfaces/server/tests/owner_seed_contract.rs`, because `burncloud-server` is on
+# the ban's wrapper allow-list, while Platform's own half of the contract (the factories create
+# no domain records) is asserted in `tests/initialization_boundary.rs`.
 [dev-dependencies]
 tempfile.workspace = true
-# Test-only, to prove Platform writes no domain default records itself (#842): the boundary
-# contract asserts that `create_database_with_url` seeds nothing, and that the owner
-# capabilities produce the historical (1 user, 1 key, 4 protocol configs) result when the
-# application bootstrap calls them. Neither owner depends on this crate at runtime, so these
-# edges cannot form a cycle. Platform's own source must never import them.
-burncloud-identity-user.workspace = true
-burncloud-supply-channel.workspace = true
 
 [[example]]
 name = "database-basic-usage"

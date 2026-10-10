@@ -1,18 +1,19 @@
-//! Contract boundary for #845 / #842: infrastructure fixups and domain-owned seed behavior.
+//! Contract boundary for #845: infrastructure fixups must not create domain records.
 //!
-//! #842 moved default-record ownership out of this crate. Platform now creates schema and
-//! historic fixups only; `identity/user` owns the demo account and demo API key, and
-//! `supply/channel` owns the default protocol configs. These tests pin both halves:
+//! #842 moved default-record ownership out of this crate entirely. `identity/user` owns the
+//! demo account and demo API key, `supply/channel` owns the default protocol configs, and the
+//! application bootstrap sequences those calls. This file therefore asserts only Platform's
+//! half of the contract: **creating a database writes no domain default records**, on SQLite
+//! and on real PostgreSQL 16, and re-initialization is stable.
 //!
-//! 1. `create_database_with_url` (and the explicit infrastructure factory) seed **nothing**.
-//! 2. The owner capabilities reproduce the historical rows exactly — one demo account, one
-//!    demo key and four protocol configs — and are idempotent on re-initialization.
-//!
-//! The owner crates are dev-dependencies of this crate purely so the second half can be
-//! asserted here. Platform's own source must never depend on them.
+//! The complementary half — that the owner capabilities still produce the historical one
+//! account, one key and four protocol configs — is asserted by
+//! `crates/interfaces/server/tests/owner_seed_contract.rs`. It cannot live here: `deny.toml`
+//! bans `burncloud-supply-channel` as a dependency of `burncloud-database` (see the
+//! `[[bans.deny]]` entry and its `wrappers` allow-list), which is exactly the one-way
+//! dependency direction #842 requires. `burncloud-server` is on that allow-list, so the
+//! owner-seeded bootstrap contract is tested there.
 use burncloud_database::{create_database_with_url, create_infrastructure_database_with_url, sqlx};
-use burncloud_identity_user::UserDatabase;
-use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::error::Error;
 
 async fn count(
@@ -26,33 +27,22 @@ async fn count(
         .await?)
 }
 
-/// Assert the seeded-row counts that the historical application startup contract guarantees.
-async fn assert_seeds(
-    db: &burncloud_database::Database,
-    expected_users: i64,
-    expected_tokens: i64,
-    expected_protocols: i64,
-) -> Result<(), Box<dyn Error>> {
+/// Assert that no domain default record exists.
+async fn assert_no_seeds(db: &burncloud_database::Database) -> Result<(), Box<dyn Error>> {
     let users = count(db, "user_accounts", "id = 'demo-user'").await?;
     let tokens = count(db, "user_api_keys", "key = 'sk-burncloud-demo'").await?;
     let protocols = count(db, "channel_protocol_configs", "1 = 1").await?;
-    assert_eq!(users, expected_users, "demo account count");
-    assert_eq!(tokens, expected_tokens, "demo API key count");
+    assert_eq!(users, 0, "Platform must not create the demo account");
+    assert_eq!(tokens, 0, "Platform must not create the demo API key");
     assert_eq!(
-        protocols, expected_protocols,
-        "default protocol config count"
-    );    Ok(())
-}
-
-/// The application-bootstrap ordering: infrastructure first, then each domain owner.
-async fn seed_via_owners(db: &burncloud_database::Database) -> Result<(), Box<dyn Error>> {
-    UserDatabase::seed_demo_defaults(db).await?;
-    ChannelProtocolConfigModel::seed_default_protocol_configs(db).await?;
+        protocols, 0,
+        "Platform must not create default protocol configs"
+    );
     Ok(())
 }
 
 #[tokio::test]
-async fn factory_is_seed_free_and_owner_capabilities_reproduce_the_legacy_records(
+async fn database_factories_create_schema_without_domain_default_records(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("init-boundary.sqlite");
@@ -61,32 +51,34 @@ async fn factory_is_seed_free_and_owner_capabilities_reproduce_the_legacy_record
         path.to_string_lossy().replace('\\', "/")
     );
 
-    // Platform creates schema and fixups only. Both factories must be seed-free (#842).
+    // Both factories are seed-free (#842): they run migrations and historic fixups only.
     let infrastructure = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&infrastructure, 0, 0, 0).await?;
+    assert_no_seeds(&infrastructure).await?;
     infrastructure.close().await?;
 
     let factory = create_database_with_url(&url).await?;
-    assert_seeds(&factory, 0, 0, 0).await?;
+    assert_no_seeds(&factory).await?;
     factory.close().await?;
 
-    // The owners reproduce the historical startup records exactly.
-    let seeded = create_database_with_url(&url).await?;
-    seed_via_owners(&seeded).await?;
-    assert_seeds(&seeded, 1, 1, 4).await?;
-    seeded.close().await?;
+    // Re-initialization must remain seed-free and must not disturb existing rows. A row is
+    // inserted deliberately so "still zero" cannot pass by the table being empty.
+    let reused = create_database_with_url(&url).await?;
+    sqlx::query(
+        "INSERT INTO user_accounts (id, username, password_hash, status) \
+         VALUES ('kept-user', 'kept-user', 'no-login', 1)",
+    )
+    .execute(reused.get_connection()?.pool())
+    .await?;
+    reused.close().await?;
 
-    // Re-running both phases over an existing database must not duplicate or remove rows.
     let reopened = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&reopened, 1, 1, 4).await?;
-    seed_via_owners(&reopened).await?;
-    assert_seeds(&reopened, 1, 1, 4).await?;
+    assert_no_seeds(&reopened).await?;
+    assert_eq!(
+        count(&reopened, "user_accounts", "id = 'kept-user'").await?,
+        1,
+        "re-initialization must not remove an existing row"
+    );
     reopened.close().await?;
-
-    let factory_again = create_database_with_url(&url).await?;
-    seed_via_owners(&factory_again).await?;
-    assert_seeds(&factory_again, 1, 1, 4).await?;
-    factory_again.close().await?;
     Ok(())
 }
 
@@ -104,7 +96,7 @@ impl Drop for DisposablePostgres {
 }
 
 #[tokio::test]
-async fn postgres_infrastructure_bootstrap_retains_owner_seed_contract(
+async fn postgres_fresh_init_creates_schema_without_domain_default_records(
 ) -> Result<(), Box<dyn Error>> {
     use sqlx::{ConnectOptions, Executor};
     use std::str::FromStr;
@@ -190,24 +182,33 @@ async fn postgres_infrastructure_bootstrap_retains_owner_seed_contract(
     let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/{name}");
 
     let infrastructure = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&infrastructure, 0, 0, 0).await?;
+    assert_no_seeds(&infrastructure).await?;
     infrastructure.close().await?;
 
-    let seeded = create_database_with_url(&url).await?;
-    seed_via_owners(&seeded).await?;
-    assert_seeds(&seeded, 1, 1, 4).await?;
-    seeded.close().await?;
+    let factory = create_database_with_url(&url).await?;
+    assert_no_seeds(&factory).await?;
 
-    // Re-initialization on PostgreSQL must also be idempotent.
+    // An existing row must survive re-initialization.
+    sqlx::query(
+        "INSERT INTO user_accounts (id, username, password_hash, status) \
+         VALUES ('kept-user', 'kept-user', 'no-login', 1)",
+    )
+    .execute(factory.get_connection()?.pool())
+    .await?;
+    factory.close().await?;
+
     let reopened = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&reopened, 1, 1, 4).await?;
-    seed_via_owners(&reopened).await?;
-    assert_seeds(&reopened, 1, 1, 4).await?;
+    assert_no_seeds(&reopened).await?;
+    assert_eq!(
+        count(&reopened, "user_accounts", "id = 'kept-user'").await?,
+        1,
+        "re-initialization must not remove an existing row"
+    );
     reopened.close().await?;
 
     admin
         .execute(format!("DROP DATABASE {name} WITH (FORCE)").as_str())
         .await?;
-    println!("Real PostgreSQL 16: infrastructure and owner seed contracts PASS");
+    println!("Real PostgreSQL 16: seed-free infrastructure contract PASS");
     Ok(())
 }

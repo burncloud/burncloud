@@ -2,13 +2,18 @@
 //! Only executes against an explicitly provided disposable PostgreSQL server.
 //! Never points this test at a production instance: it creates and drops a DB.
 //!
-//! Since #842 the demo account is written by its Identity owner rather than by
-//! `create_database_with_url`, so this test performs the same owner-seed call the
-//! application bootstrap makes before asserting the seeded state.
+//! Scope after #842: this test owns the **schema and re-initialization** contract on real
+//! PostgreSQL — that a fresh install produces the expected schema, that an existing row
+//! survives a repeat initialization, and that the factory itself writes no domain default
+//! records. The demo-account seed moved to `identity/user`, and this crate may not depend on
+//! that owner (`deny.toml` bans `burncloud-supply-channel` from `burncloud-database`, which is
+//! the same one-way direction), so the owner-seeded startup contract — including its
+//! idempotence across a reopen — is asserted in
+//! `crates/interfaces/server/tests/owner_seed_contract.rs`, where `burncloud-server` is an
+//! allowed consumer.
 
 use burncloud_database::create_database_with_url;
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
-use burncloud_identity_user::UserDatabase;
 use std::{error::Error, str::FromStr};
 
 const ENV: &str = "BURNCLOUD_TEST_POSTGRES_URL";
@@ -28,7 +33,7 @@ fn ensure_eq<T: std::fmt::Debug + PartialEq>(
 }
 
 #[tokio::test]
-async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
+async fn postgres_fresh_install_and_reopen_preserve_schema_without_domain_seeds(
 ) -> Result<(), Box<dyn Error>> {
     let Ok(server_url) = std::env::var(ENV) else {
         println!("SKIPPED: {ENV} unset; PostgreSQL fresh-install contract NOT exercised");
@@ -51,8 +56,6 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
         .ok_or("PostgreSQL URL must include the database name")?;
     let target_url = format!("{prefix}/{name}");
     let db = create_database_with_url(&target_url).await?;
-    // The application bootstrap seeds through the Identity owner (#842).
-    UserDatabase::seed_demo_defaults(&db).await?;
 
     let conn = db.get_connection()?;
     let user_type: String = sqlx::query_scalar(
@@ -67,11 +70,25 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
         "subscription FK must match users.id",
     )?;
 
+    // #842: the factory no longer writes domain default records, so the demo account is
+    // absent until its Identity owner is asked to seed it.
     let seeded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
         .bind("demo-user")
         .fetch_one(conn.pool())
         .await?;
-    ensure_eq(seeded, 1_i64, "demo user must seed on real PostgreSQL")?;
+    ensure_eq(
+        seeded,
+        0_i64,
+        "the database factory must not create the demo account (#842)",
+    )?;
+
+    // A pre-existing row must survive a repeat initialization rather than be reset.
+    sqlx::query(
+        "INSERT INTO user_accounts (id, username, password_hash, status) \
+         VALUES ('pg-kept-user', 'pg-kept-user', 'no-login', 1)",
+    )
+    .execute(conn.pool())
+    .await?;
 
     let request_log_fks: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM pg_constraint \
@@ -87,16 +104,24 @@ async fn postgres_fresh_install_and_reopen_preserve_schema_and_demo_seed(
 
     db.close().await?;
     let reopened = create_database_with_url(&target_url).await?;
-    // Repeat the owner seed exactly as a restart would; it must be idempotent.
-    UserDatabase::seed_demo_defaults(&reopened).await?;
-    let seeded_again: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
-        .bind("demo-user")
+    let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
+        .bind("pg-kept-user")
         .fetch_one(reopened.get_connection()?.pool())
         .await?;
     ensure_eq(
-        seeded_again,
+        kept,
         1_i64,
-        "reinitialization must not duplicate seed data",
+        "reinitialization must not drop an existing account",
+    )?;
+    let still_unseeded: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE id = $1")
+            .bind("demo-user")
+            .fetch_one(reopened.get_connection()?.pool())
+            .await?;
+    ensure_eq(
+        still_unseeded,
+        0_i64,
+        "reinitialization must not create the demo account either (#842)",
     )?;
     reopened.close().await?;
 
