@@ -4,6 +4,27 @@ use burncloud_database::{adapt_sql, ph, phs, Database, Result};
 use burncloud_supply_contracts::Channel;
 use sqlx::Row;
 
+/// Supply-owned projection of the provider fields used by Traffic's L2 shaper.
+/// It intentionally excludes credentials and unrelated provider configuration.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChannelRateCap {
+    pub id: i32,
+    pub rpm_cap: Option<i32>,
+    pub tpm_cap: Option<i64>,
+    pub reservation_green: Option<f64>,
+    pub reservation_yellow: Option<f64>,
+    pub reservation_red: Option<f64>,
+}
+
+type ChannelRateCapRow = (
+    i32,
+    Option<i32>,
+    Option<i64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+);
+
 pub struct ChannelProviderModel;
 
 impl ChannelProviderModel {
@@ -261,6 +282,33 @@ impl ChannelProviderModel {
             .map(Channel::from);
 
         Ok(channel)
+    }
+
+    /// List only the provider rate-cap projection needed by Traffic's in-memory shaper.
+    pub async fn list_rate_caps(db: &Database) -> Result<Vec<ChannelRateCap>> {
+        let conn = db.get_connection()?;
+        let rows = sqlx::query_as::<_, ChannelRateCapRow>(
+            "SELECT id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red \
+             FROM channel_providers",
+        )
+        .fetch_all(conn.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red)| {
+                    ChannelRateCap {
+                        id,
+                        rpm_cap,
+                        tpm_cap,
+                        reservation_green,
+                        reservation_yellow,
+                        reservation_red,
+                    }
+                },
+            )
+            .collect())
     }
 
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {
