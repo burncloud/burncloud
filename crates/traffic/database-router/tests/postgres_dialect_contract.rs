@@ -159,7 +159,15 @@ fn github_actions_runs_real_postgres_dialect_contracts() {
     let mut ready = false;
     for _ in 0..120 {
         if std::process::Command::new("docker")
-            .args(["exec", &id, "pg_isready", "-U", "postgres", "-d", "postgres"])
+            .args([
+                "exec",
+                &id,
+                "pg_isready",
+                "-U",
+                "postgres",
+                "-d",
+                "postgres",
+            ])
             .output()
             .is_ok_and(|out| out.status.success())
         {
