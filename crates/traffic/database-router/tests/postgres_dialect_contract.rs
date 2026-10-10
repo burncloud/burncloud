@@ -186,12 +186,16 @@ fn github_actions_runs_real_postgres_dialect_contracts() {
         .build()
         .expect("create SQLx readiness runtime");
     let mut ready = false;
-    for _ in 0..120 {
+    for _ in 0..40 {
         let connected = runtime.block_on(async {
-            match opts.connect().await {
-                Ok(mut conn) => conn.execute("SELECT 1").await.is_ok(),
-                Err(_) => false,
-            }
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                match opts.connect().await {
+                    Ok(mut conn) => conn.execute("SELECT 1").await.is_ok(),
+                    Err(_) => false,
+                }
+            })
+            .await
+            .unwrap_or(false)
         });
         if connected {
             ready = true;
