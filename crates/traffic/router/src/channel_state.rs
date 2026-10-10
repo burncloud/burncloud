@@ -574,10 +574,17 @@ impl ChannelStateTracker {
 
         // If the model was temporarily down, restore it to available
         // (successful request indicates the issue is resolved)
-        // Also reset failure_count to clear exponential backoff penalty
+        // Also reset failure_count to clear exponential backoff penalty, and clear the backoff
+        // timer: leaving it set made `is_available` pass the status gate and then fail the timer
+        // gate, so a model whose request had just succeeded stayed unselectable for the rest of
+        // its backoff window (120s after one failure, up to the 1800s cap). This is #872.
+        // Anti-flapping is not lost by clearing it here: `ModelState::adaptive_limit` keeps its
+        // own `cooldown_until` / `rate_limit_until`, which `AimdController::check_available`
+        // enforces, and it also reduces `current_limit` on rate-limit events.
         if model_state.status == ModelStatus::TemporarilyDown {
             model_state.status = ModelStatus::Available;
             model_state.failure_count = 0; // Reset failure count on recovery
+            model_state.rate_limit_until = None;
             model_state.last_error = None;
             model_state.last_error_time = None;
         }
@@ -738,5 +745,469 @@ impl ChannelStateTracker {
             .iter()
             .map(|&id| (id, self.get_health_score(id, model)))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Behavioural contract for the channel/model availability gate.
+    //!
+    //! This module previously held a `#[cfg(test)]` item but no tests, while the logic it
+    //! guards is the first thing every scheduling attempt consults. The failure modes pinned
+    //! here are the ones the source itself calls out: a model that becomes permanently
+    //! blocked, a channel-wide failure mistaken for a model-local one, and a rate-limited
+    //! model that silently returns to availability.
+    //!
+    //! These must live inline rather than in `tests/`: `FailureType`, `RateLimitScope` and
+    //! `AimdSnapshot` are not publicly re-exported, and `record_error` takes a `&FailureType`,
+    //! so the gate is not reachable from an integration test at all.
+    //!
+    //! Deliberately **not** asserted: the expiry branches ("timer elapsed, allow a probe").
+    //! This module uses `std::time::Instant`, which tokio's paused clock does not advance:
+    //! `tokio::time::pause`/`advance` only control `tokio::time::Instant`. Asserting those
+    //! branches would require a real sleep, which is the flaky shape to avoid. What is
+    //! asserted instead is that the timer is **set** when a failure is recorded.
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        reason = "unit tests: a failed expectation is the intended failure signal, and the workspace denies unwrap_used even in test code"
+    )]
+    use super::*;
+
+    const CHANNEL: i32 = 7;
+    const MODEL: &str = "gpt-4o";
+
+    /// Look up the state for `channel_id`, asserting it was created.
+    fn channel_state(tracker: &ChannelStateTracker, channel_id: i32) -> ChannelState {
+        tracker
+            .get_all_states()
+            .into_iter()
+            .find(|(id, _)| *id == channel_id)
+            .map(|(_, state)| state)
+            .expect("recording an error must create the channel state")
+    }
+
+    /// An error condition with no `retry_after` must still arm a timer. If it did not, the
+    /// "no timer set: PERMANENT DEADLOCK" branch in the source would become reachable and the
+    /// model could never be probed again.
+    #[test]
+    fn a_transient_failure_arms_a_backoff_timer_and_blocks_the_model() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(
+            CHANNEL,
+            Some(MODEL),
+            &FailureType::ServerError,
+            "upstream 500",
+        );
+
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "a model just marked TemporarilyDown must not be available"
+        );
+
+        let state = channel_state(&tracker, CHANNEL);
+        let model = state
+            .models
+            .get(MODEL)
+            .expect("recording a model error must create the model state");
+
+        assert_eq!(model.status, ModelStatus::TemporarilyDown);
+        assert_eq!(model.failure_count, 1);
+        assert!(
+            model.rate_limit_until.is_some(),
+            "backoff must set rate_limit_until, otherwise the status can never be probed again"
+        );
+    }
+
+    /// The other transient kinds share one code path but are distinct variants, so a
+    /// reclassification mistake in the match would otherwise go unnoticed.
+    #[test]
+    fn every_transient_kind_blocks_its_model_but_not_the_channel() {
+        for (index, failure) in [
+            FailureType::Timeout,
+            FailureType::ConnectionError,
+            FailureType::EmptyResponse,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let tracker = ChannelStateTracker::new();
+            let channel = 100 + index as i32;
+
+            tracker.record_error(channel, Some(MODEL), &failure, "transient");
+
+            assert!(
+                !tracker.is_available(channel, Some(MODEL)),
+                "{failure:?} must block the model it was recorded against"
+            );
+            assert!(
+                tracker.is_available(channel, Some("some-other-model")),
+                "{failure:?} must not take the whole channel down"
+            );
+        }
+    }
+
+    /// An auth failure is channel-wide: it must block every model, including one never seen
+    /// before. Getting this wrong keeps sending traffic through a channel that cannot
+    /// authenticate, losing the request instead of failing over.
+    #[test]
+    fn an_auth_failure_blocks_the_whole_channel_including_unknown_models() {
+        let tracker = ChannelStateTracker::new();
+
+        // Establish a healthy, known model first so the check is not merely "no state yet".
+        tracker.record_success(CHANNEL, Some(MODEL), 10, None);
+        assert!(tracker.is_available(CHANNEL, Some(MODEL)));
+
+        tracker.record_error(CHANNEL, None, &FailureType::AuthFailed, "401");
+
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "auth failure must block an already-known model"
+        );
+        assert!(
+            !tracker.is_available(CHANNEL, Some("never-seen-before")),
+            "auth failure must block a model the tracker has never seen"
+        );
+        assert!(
+            !tracker.is_available(CHANNEL, None),
+            "auth failure must block the channel even with no model named"
+        );
+    }
+
+    /// `PaymentRequired` exhausts the balance, which is also channel-wide.
+    #[test]
+    fn a_payment_failure_exhausts_the_balance_and_blocks_the_channel() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(CHANNEL, None, &FailureType::PaymentRequired, "402");
+
+        assert!(!tracker.is_available(CHANNEL, None));
+        assert!(!tracker.is_available(CHANNEL, Some(MODEL)));
+
+        assert_eq!(
+            channel_state(&tracker, CHANNEL).balance_status,
+            BalanceStatus::Exhausted
+        );
+    }
+
+    /// A model-scoped rate limit must not spill onto a sibling model on the same channel.
+    #[test]
+    fn a_model_rate_limit_does_not_block_a_sibling_model() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(
+            CHANNEL,
+            Some(MODEL),
+            &FailureType::RateLimited {
+                scope: RateLimitScope::Model,
+                retry_after: Some(30),
+            },
+            "429",
+        );
+
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "the rate-limited model must be unavailable"
+        );
+        assert!(
+            tracker.is_available(CHANNEL, Some("sibling-model")),
+            "a model-scoped limit must leave sibling models usable"
+        );
+
+        let state = channel_state(&tracker, CHANNEL);
+        assert_eq!(
+            state.models.get(MODEL).map(|m| &m.status),
+            Some(&ModelStatus::RateLimited)
+        );
+        assert!(
+            state.account_rate_limit_until.is_none(),
+            "a model-scoped limit must not arm the account-wide timer"
+        );
+    }
+
+    /// An account-scoped rate limit is channel-wide and must arm the account timer.
+    #[test]
+    fn an_account_rate_limit_arms_the_account_timer_and_blocks_every_model() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(
+            CHANNEL,
+            None,
+            &FailureType::RateLimited {
+                scope: RateLimitScope::Account,
+                retry_after: Some(120),
+            },
+            "429 account",
+        );
+
+        assert!(!tracker.is_available(CHANNEL, None));
+        assert!(!tracker.is_available(CHANNEL, Some(MODEL)));
+        assert!(!tracker.is_available(CHANNEL, Some("any-other-model")));
+
+        assert!(
+            channel_state(&tracker, CHANNEL)
+                .account_rate_limit_until
+                .is_some(),
+            "an account-scoped limit must arm the account-wide timer"
+        );
+    }
+
+    /// An unknown scope is documented as "treat as account-level to be safe". This pins that
+    /// choice: it is deliberately the conservative branch, not a model-only one.
+    #[test]
+    fn an_unknown_rate_limit_scope_falls_back_to_the_account_wide_timer() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(
+            CHANNEL,
+            Some(MODEL),
+            &FailureType::RateLimited {
+                scope: RateLimitScope::Unknown,
+                retry_after: Some(45),
+            },
+            "429 unknown scope",
+        );
+
+        assert!(
+            !tracker.is_available(CHANNEL, Some("a-model-that-was-never-mentioned")),
+            "an unknown scope must be treated as account-wide"
+        );
+        assert!(channel_state(&tracker, CHANNEL)
+            .account_rate_limit_until
+            .is_some());
+    }
+
+    /// `ModelNotFound` is permanent for the model: it stays blocked while carrying no timer.
+    #[test]
+    fn model_not_found_blocks_while_carrying_no_timer() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(CHANNEL, Some(MODEL), &FailureType::ModelNotFound, "404");
+
+        assert!(!tracker.is_available(CHANNEL, Some(MODEL)));
+
+        let state = channel_state(&tracker, CHANNEL);
+        let model = state.models.get(MODEL).expect("the model state must exist");
+        assert_eq!(model.status, ModelStatus::ModelNotFound);
+        assert!(
+            model.rate_limit_until.is_none(),
+            "a permanent status carries no timer, so it must not look probe-able"
+        );
+    }
+
+    /// A channel or model the tracker has never seen is assumed available, so a cold start
+    /// does not refuse every request.
+    #[test]
+    fn untracked_channels_and_models_are_assumed_available() {
+        let tracker = ChannelStateTracker::new();
+
+        assert!(tracker.is_available(999, None));
+        assert!(tracker.is_available(999, Some("anything")));
+
+        // A tracked-but-healthy channel must also admit a model it has no state for.
+        tracker.record_success(CHANNEL, Some(MODEL), 10, None);
+        assert!(tracker.is_available(CHANNEL, Some("brand-new-model")));
+    }
+
+    /// A success must clear the *transient* bookkeeping: the status returns to `Available`
+    /// and the failure counter resets, so the next backoff starts from the base delay rather
+    /// than compounding.
+    #[test]
+    fn a_success_returns_the_status_to_available_and_resets_the_failure_count() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(CHANNEL, Some(MODEL), &FailureType::ServerError, "500");
+        assert!(!tracker.is_available(CHANNEL, Some(MODEL)));
+
+        tracker.record_success(CHANNEL, Some(MODEL), 25, None);
+
+        let state = channel_state(&tracker, CHANNEL);
+        let model = state.models.get(MODEL).expect("the model state must exist");
+        assert_eq!(model.status, ModelStatus::Available);
+        assert_eq!(
+            model.failure_count, 0,
+            "the failure count must reset so the next backoff starts from the base delay"
+        );
+        assert!(model.last_error.is_none());
+    }
+
+    /// **Regression test for #872.** A successful request must leave the model genuinely
+    /// selectable, not merely labelled `Available`.
+    ///
+    /// Before the fix, `record_success` restored `status` to `Available` and reset
+    /// `failure_count` but left `rate_limit_until` holding the backoff timer. `is_available`
+    /// then passed `model_status_available` (status was Available) and failed
+    /// `model_limits_available` (timer still in the future), so the model stayed unselectable
+    /// for the rest of its window: 120s after one `ServerError`, up to the 1800s cap after five.
+    /// The state was self-contradictory -- `Available` with `failure_count == 0`, yet refused.
+    ///
+    /// This asserts the whole state is coherent after a success, which is what makes it a real
+    /// regression test rather than a check of one field: clearing only the status would pass a
+    /// status assertion while leaving the bug in place.
+    #[test]
+    fn a_success_makes_the_model_selectable_again_and_clears_the_backoff_timer() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(CHANNEL, Some(MODEL), &FailureType::ServerError, "500");
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "the transient failure must block the model first, or this test proves nothing"
+        );
+
+        let before = channel_state(&tracker, CHANNEL);
+        assert!(
+            before
+                .models
+                .get(MODEL)
+                .and_then(|m| m.rate_limit_until)
+                .is_some(),
+            "the failure must have armed a timer, otherwise there is nothing to clear"
+        );
+
+        tracker.record_success(CHANNEL, Some(MODEL), 25, None);
+
+        let after = channel_state(&tracker, CHANNEL);
+        let model = after.models.get(MODEL).expect("the model state must exist");
+        assert_eq!(model.status, ModelStatus::Available);
+        assert_eq!(
+            model.failure_count, 0,
+            "the failure count must reset so the next backoff starts from the base delay"
+        );
+        assert!(
+            model.rate_limit_until.is_none(),
+            "#872: the backoff timer must be cleared, otherwise the status is a lie"
+        );
+        assert!(model.last_error.is_none());
+        assert!(
+            tracker.is_available(CHANNEL, Some(MODEL)),
+            "#872: a model whose request just succeeded must be selectable again"
+        );
+    }
+
+    /// The `RateLimited` branch clears its own timer, and must keep doing so. It is the sibling
+    /// case to the #872 regression above, so a fix that touched only one branch could not pass
+    /// both.
+    ///
+    /// This also pins the **two-layer** relationship that makes the #872 fix safe. Unlike a
+    /// transient failure, a rate-limit event *also* arms `ModelState::adaptive_limit`, whose own
+    /// `rate_limit_until` is set from the advertised `retry_after` and enforced by
+    /// `AimdController::check_available`. So after a success the model-level timer is gone while
+    /// AIMD still refuses for the advertised window.
+    ///
+    /// That is why clearing the model-level timer does not remove anti-flapping protection — and
+    /// it is asserted here so the claim cannot quietly stop being true. Asserting only
+    /// `is_available == true` would have been wrong: with a 300s `retry_after` the model is
+    /// *correctly* still refused by the AIMD layer, which is exactly what the first CI run of
+    /// this fix demonstrated.
+    #[test]
+    fn a_success_clears_the_model_timer_but_the_aimd_layer_still_enforces_the_window() {
+        let tracker = ChannelStateTracker::new();
+
+        tracker.record_error(
+            CHANNEL,
+            Some(MODEL),
+            &FailureType::RateLimited {
+                scope: RateLimitScope::Model,
+                retry_after: Some(300),
+            },
+            "429",
+        );
+        assert!(!tracker.is_available(CHANNEL, Some(MODEL)));
+
+        tracker.record_success(CHANNEL, Some(MODEL), 25, None);
+
+        let after = channel_state(&tracker, CHANNEL);
+        let model = after.models.get(MODEL).expect("the model state must exist");
+        assert_eq!(model.status, ModelStatus::Available);
+        assert!(
+            model.rate_limit_until.is_none(),
+            "the model-level timer must be cleared by a success"
+        );
+        assert!(
+            !model.adaptive_limit.check_available(),
+            "the AIMD layer must keep enforcing the advertised rate-limit window, which is the \
+             protection that makes clearing the model-level timer safe"
+        );
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "with the AIMD window still open the model is correctly still refused"
+        );
+    }
+
+    /// Channel-only health scoring, independent of any model.
+    #[test]
+    fn channel_health_score_reflects_auth_and_balance_but_not_model_state() {
+        let tracker = ChannelStateTracker::new();
+
+        assert_eq!(
+            tracker.get_health_score(CHANNEL, None),
+            1.0,
+            "an untracked channel scores full health"
+        );
+
+        tracker.record_error(CHANNEL, None, &FailureType::PaymentRequired, "402");
+        let exhausted = tracker.get_health_score(CHANNEL, None);
+        assert!(
+            exhausted < 1.0,
+            "an exhausted balance must reduce the channel score, got {exhausted}"
+        );
+
+        let auth_failed = 21;
+        tracker.record_error(auth_failed, None, &FailureType::AuthFailed, "401");
+        let auth_score = tracker.get_health_score(auth_failed, None);
+        assert!(
+            auth_score < 1.0,
+            "an auth failure must reduce the channel score, got {auth_score}"
+        );
+
+        // Model-level state must not move the channel-only score.
+        tracker.record_error(CHANNEL, Some(MODEL), &FailureType::ServerError, "500");
+        assert_eq!(
+            tracker.get_health_score(CHANNEL, None),
+            exhausted,
+            "the channel-only score must ignore model-level failures"
+        );
+    }
+
+    /// `get_health_and_adaptive` returns the learner snapshot alongside the score, and a cold
+    /// model still reports the default limit rather than nothing.
+    #[test]
+    fn health_and_adaptive_returns_a_usable_snapshot_for_a_cold_model() {
+        let tracker = ChannelStateTracker::new();
+
+        let (score, snapshot) = tracker.get_health_and_adaptive(999, MODEL);
+        assert_eq!(score, 1.0);
+        assert_eq!(
+            snapshot.current_limit,
+            crate::aimd_limiter::DEFAULT_INITIAL_LIMIT
+        );
+
+        // A known channel whose model has no entry keeps full *channel* score, but the returned
+        // score also folds in the sibling model's success ratio and latency, so it is only
+        // bounded rather than exactly 1.0. Assert the bound, not an invented constant.
+        tracker.record_success(CHANNEL, Some(MODEL), 10, None);
+        let (score, snapshot) = tracker.get_health_and_adaptive(CHANNEL, "unseen-model");
+        assert!(
+            score > 0.0 && score <= 1.0,
+            "a healthy channel must score within (0, 1], got {score}"
+        );
+        assert_eq!(
+            snapshot.current_limit,
+            crate::aimd_limiter::DEFAULT_INITIAL_LIMIT,
+            "a model with no entry must still report the cold-start limit"
+        );
+    }
+
+    /// Default construction must behave identically to `new`.
+    #[test]
+    fn default_matches_new() {
+        let from_default = ChannelStateTracker::default();
+        let from_new = ChannelStateTracker::new();
+
+        assert!(from_default.is_available(1, None));
+        assert!(from_new.is_available(1, None));
+        assert!(from_default.get_all_states().is_empty());
+        assert!(from_new.get_all_states().is_empty());
     }
 }
