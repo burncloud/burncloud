@@ -11,9 +11,24 @@
 
 use burncloud_database::{create_database_with_url, sqlx, Database};
 use burncloud_router::RouterDatabase;
+use burncloud_service_user::UserDatabase;
+use burncloud_supply_channel::ChannelProtocolConfigModel;
 use sqlx::AnyPool;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+
+/// Arrange the domain-owned default records that the router fixtures rely on (#842).
+///
+/// `create_database_with_url` no longer seeds them: `user_accounts`, `user_api_keys` and
+/// `channel_protocol_configs` are Identity's and Supply's Data Truth. Tests that authenticate
+/// with the demo key (`sk-burncloud-demo`) must therefore seed through the owners, exactly as
+/// the application bootstrap does. Both calls are idempotent, so calling this from more than
+/// one helper on the same database inserts nothing the second time.
+pub(crate) async fn seed_owner_defaults(db: &Database) -> anyhow::Result<()> {
+    UserDatabase::seed_demo_defaults(db).await?;
+    ChannelProtocolConfigModel::seed_default_protocol_configs(db).await?;
+    Ok(())
+}
 
 /// Ensure the `user_accounts`, `user_api_keys`, and `router_tokens` tables
 /// exist with the post-migration-0011 shape required by
@@ -402,6 +417,7 @@ pub(crate) async fn setup_db() -> anyhow::Result<(Database, AnyPool, String)> {
     let url = sqlite_url(&path);
     let db = create_database_with_url(&url).await?;
     RouterDatabase::init(&db).await?;
+    seed_owner_defaults(&db).await?;
     let conn = db.get_connection()?;
     let pool = conn.pool().clone();
     Ok((db, pool, url))
@@ -435,6 +451,11 @@ pub(crate) async fn start_test_server_on(listener: TcpListener, db_url: &str) {
     let db = create_database_with_url(db_url)
         .await
         .unwrap_or_else(|e| panic!("Failed to open DB: {e}"));
+    // Reopened databases start without domain seeds (#842); arrange them so the demo key
+    // used by the router fixtures resolves. Idempotent when `setup_db` already seeded.
+    seed_owner_defaults(&db)
+        .await
+        .unwrap_or_else(|e| panic!("Failed to seed owner defaults: {e}"));
     let db_arc = Arc::new(db);
 
     let jwt_secret = burncloud_service_user::JwtSecret::new("burncloud-router-test-jwt-secret")

@@ -52,7 +52,8 @@ async fn test_claude_adaptor_e2e() {
                         // Demo token usually has 'default' or 'vip'?
                         // In `router/src/lib.rs`, fallback is "default".
                         // Let's use "default" to be safe unless we know demo user group.
-                        // `RouterDatabase::init` inserts demo-user. `UserDatabase::init` creates it.
+                        // The test harness seeds the demo account and demo key through their
+                        // Identity owner (#842), before it builds the app.
                         // Default group for new users is usually "default".
         "group": "default",
         "weight": 10,

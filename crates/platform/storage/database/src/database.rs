@@ -136,11 +136,17 @@ impl Database {
         Ok(db)
     }
 
-    /// Initialize with the historical public contract: migrations, fixups and
-    /// default domain records. Existing consumers retain this behavior.
+    /// Initialize Platform-owned infrastructure: versioned migrations and historic fixups.
+    ///
+    /// Since #842 this no longer writes any domain default records. The demo account, demo
+    /// API key and default protocol configs belong to Identity and Supply, and the
+    /// application bootstrap arranges them after this step by calling
+    /// `UserDatabase::seed_demo_defaults` and
+    /// `ChannelProtocolConfigModel::seed_default_protocol_configs`. Platform deliberately
+    /// writes no `user_accounts`, `user_api_keys` or `channel_protocol_configs` row itself,
+    /// which is what keeps the dependency direction one-way.
     pub async fn initialize(&mut self) -> Result<()> {
-        self.initialize_infrastructure().await?;
-        crate::schema::Schema::init_legacy_defaults(self).await
+        self.initialize_infrastructure().await
     }
 
     /// Initialize only Platform-owned infrastructure and historic fixups.
@@ -309,6 +315,10 @@ pub async fn create_default_database() -> Result<Database> {
 }
 
 /// Create a database at the given URL (e.g. `"sqlite::memory:"` for testing).
+///
+/// Applies Platform's versioned migrations and historic fixups. Since #842 it does **not**
+/// seed domain default records: callers that need the demo account, demo API key or default
+/// protocol configs must invoke their owner capabilities, as the application bootstrap does.
 pub async fn create_database_with_url(url: &str) -> Result<Database> {
     let mut db = Database {
         connection: None,

@@ -21,6 +21,7 @@ use burncloud_router::RouterDatabase;
 use burncloud_service_monitor::SystemMonitorService;
 use burncloud_service_user::UserDatabase;
 use burncloud_service_user::{JwtSecret, UserService};
+use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -208,6 +209,13 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     let db = create_default_database().await?;
     RouterDatabase::init(&db).await?;
     UserDatabase::init(&db).await?;
+    // Domain-owned default records (#842). Platform only creates schema and historic
+    // fixups; Identity owns the demo account plus demo API key and Supply owns the default
+    // protocol configs, so the application bootstrap seeds them here, in the order the
+    // records depend on: account before the key that references it. Both owner calls are
+    // idempotent, so a restart over an existing database inserts nothing.
+    UserDatabase::seed_demo_defaults(&db).await?;
+    ChannelProtocolConfigModel::seed_default_protocol_configs(&db).await?;
     let db = Arc::new(db);
 
     let app = create_app(db, enable_liveview, jwt_secret, internal_secret).await?;

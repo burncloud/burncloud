@@ -40,6 +40,12 @@ async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
     UserDatabase::init(&db)
         .await
         .expect("UserDatabase::init must create the user_* schema");
+    // `create_database_with_url` no longer seeds domain default records (#842), and the demo
+    // account is Identity's to write, so seed it through the owner exactly as the application
+    // bootstrap does before asserting on it.
+    UserDatabase::seed_demo_defaults(&db)
+        .await
+        .expect("UserDatabase::seed_demo_defaults must seed the demo account and key");
     (db, path)
 }
 
@@ -129,9 +135,10 @@ async fn accounts_round_trip_through_the_real_schema() {
         .expect("lookup by email");
     assert_eq!(by_email.id, "u-1");
 
-    // `UserDatabase::init` seeds a `demo-user` row (password hash `no-login`) so the console has a
-    // placeholder account. `list_users` returns it, while `count_users`/`has_admin_user` filter it
-    // out because it cannot log in. Both behaviours are asserted so the seed stays visible.
+    // `UserDatabase::seed_demo_defaults` (this crate's seed for #842) inserts a `demo-user` row with
+    // password hash `no-login` so the console has a placeholder account. `list_users` returns it,
+    // while `count_users`/`has_admin_user` filter it out because it cannot log in. Both behaviours
+    // are asserted so the seed stays visible.
     let all = UserDatabase::list_users(&db).await.unwrap();
     assert_eq!(
         all.len(),

@@ -1,4 +1,18 @@
-//! Contract boundary for #845: infrastructure fixups and legacy seed behavior.
+//! Contract boundary for #845: infrastructure fixups must not create domain records.
+//!
+//! #842 moved default-record ownership out of this crate entirely. `identity/user` owns the
+//! demo account and demo API key, `supply/channel` owns the default protocol configs, and the
+//! application bootstrap sequences those calls. This file therefore asserts only Platform's
+//! half of the contract: **creating a database writes no domain default records**, on SQLite
+//! and on real PostgreSQL 16, and re-initialization is stable.
+//!
+//! The complementary half — that the owner capabilities still produce the historical one
+//! account, one key and four protocol configs — is asserted by
+//! `crates/interfaces/server/tests/owner_seed_contract.rs`. It cannot live here: `deny.toml`
+//! bans `burncloud-supply-channel` as a dependency of `burncloud-database` (see the
+//! `[[bans.deny]]` entry and its `wrappers` allow-list), which is exactly the one-way
+//! dependency direction #842 requires. `burncloud-server` is on that allow-list, so the
+//! owner-seeded bootstrap contract is tested there.
 use burncloud_database::{create_database_with_url, create_infrastructure_database_with_url, sqlx};
 use std::error::Error;
 
@@ -13,23 +27,33 @@ async fn count(
         .await?)
 }
 
-async fn assert_seeds(
-    db: &burncloud_database::Database,
-    expected_users: i64,
-    expected_tokens: i64,
-    expected_protocols: i64,
-) -> Result<(), Box<dyn Error>> {
+/// Fail with a described error rather than panicking: these helpers return `Result`, and
+/// `clippy::panic_in_result_fn` is part of this workspace's lint set.
+fn check(actual: i64, expected: i64, what: &str) -> Result<(), Box<dyn Error>> {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("{what}: expected {expected}, got {actual}")).into())
+    }
+}
+
+/// Assert that no domain default record exists.
+async fn assert_no_seeds(db: &burncloud_database::Database) -> Result<(), Box<dyn Error>> {
     let users = count(db, "user_accounts", "id = 'demo-user'").await?;
     let tokens = count(db, "user_api_keys", "key = 'sk-burncloud-demo'").await?;
     let protocols = count(db, "channel_protocol_configs", "1 = 1").await?;
-    assert_eq!(users, expected_users);
-    assert_eq!(tokens, expected_tokens);
-    assert_eq!(protocols, expected_protocols);
+    check(users, 0, "Platform must not create the demo account")?;
+    check(tokens, 0, "Platform must not create the demo API key")?;
+    check(
+        protocols,
+        0,
+        "Platform must not create default protocol configs",
+    )?;
     Ok(())
 }
 
 #[tokio::test]
-async fn infrastructure_bootstrap_is_seed_free_and_legacy_factory_is_compatible(
+async fn database_factories_create_schema_without_domain_default_records(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("init-boundary.sqlite");
@@ -38,22 +62,34 @@ async fn infrastructure_bootstrap_is_seed_free_and_legacy_factory_is_compatible(
         path.to_string_lossy().replace('\\', "/")
     );
 
+    // Both factories are seed-free (#842): they run migrations and historic fixups only.
     let infrastructure = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&infrastructure, 0, 0, 0).await?;
+    assert_no_seeds(&infrastructure).await?;
     infrastructure.close().await?;
 
-    let legacy = create_database_with_url(&url).await?;
-    assert_seeds(&legacy, 1, 1, 4).await?;
-    legacy.close().await?;
+    let factory = create_database_with_url(&url).await?;
+    assert_no_seeds(&factory).await?;
+    factory.close().await?;
 
-    // Reinitialization must not remove, duplicate or overwrite seeded data.
+    // Re-initialization must remain seed-free and must not disturb existing rows. A row is
+    // inserted deliberately so "still zero" cannot pass by the table being empty.
+    let reused = create_database_with_url(&url).await?;
+    sqlx::query(
+        "INSERT INTO user_accounts (id, username, password_hash, status) \
+         VALUES ('kept-user', 'kept-user', 'no-login', 1)",
+    )
+    .execute(reused.get_connection()?.pool())
+    .await?;
+    reused.close().await?;
+
     let reopened = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&reopened, 1, 1, 4).await?;
+    assert_no_seeds(&reopened).await?;
+    check(
+        count(&reopened, "user_accounts", "id = 'kept-user'").await?,
+        1,
+        "re-initialization must not remove an existing row",
+    )?;
     reopened.close().await?;
-
-    let legacy_again = create_database_with_url(&url).await?;
-    assert_seeds(&legacy_again, 1, 1, 4).await?;
-    legacy_again.close().await?;
     Ok(())
 }
 
@@ -71,7 +107,7 @@ impl Drop for DisposablePostgres {
 }
 
 #[tokio::test]
-async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
+async fn postgres_fresh_init_creates_schema_without_domain_default_records(
 ) -> Result<(), Box<dyn Error>> {
     use sqlx::{ConnectOptions, Executor};
     use std::str::FromStr;
@@ -149,7 +185,7 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
-    let name = format!("bc_init845_{}_{}", std::process::id(), stamp);
+    let name = format!("bc_init842_{}_{}", std::process::id(), stamp);
     let mut admin = options.connect().await?;
     admin
         .execute(format!("CREATE DATABASE {name}").as_str())
@@ -157,23 +193,33 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
     let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/{name}");
 
     let infrastructure = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&infrastructure, 0, 0, 0).await?;
+    assert_no_seeds(&infrastructure).await?;
     infrastructure.close().await?;
 
-    let legacy = create_database_with_url(&url).await?;
-    assert_seeds(&legacy, 1, 1, 4).await?;
-    legacy.close().await?;
+    let factory = create_database_with_url(&url).await?;
+    assert_no_seeds(&factory).await?;
+
+    // An existing row must survive re-initialization.
+    sqlx::query(
+        "INSERT INTO user_accounts (id, username, password_hash, status) \
+         VALUES ('kept-user', 'kept-user', 'no-login', 1)",
+    )
+    .execute(factory.get_connection()?.pool())
+    .await?;
+    factory.close().await?;
 
     let reopened = create_infrastructure_database_with_url(&url).await?;
-    assert_seeds(&reopened, 1, 1, 4).await?;
+    assert_no_seeds(&reopened).await?;
+    check(
+        count(&reopened, "user_accounts", "id = 'kept-user'").await?,
+        1,
+        "re-initialization must not remove an existing row",
+    )?;
     reopened.close().await?;
 
-    let legacy_again = create_database_with_url(&url).await?;
-    assert_seeds(&legacy_again, 1, 1, 4).await?;
-    legacy_again.close().await?;
     admin
         .execute(format!("DROP DATABASE {name} WITH (FORCE)").as_str())
         .await?;
-    println!("Real PostgreSQL 16: infrastructure and legacy seed contracts PASS");
+    println!("Real PostgreSQL 16: seed-free infrastructure contract PASS");
     Ok(())
 }

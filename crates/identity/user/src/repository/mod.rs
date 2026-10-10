@@ -69,6 +69,106 @@ impl UserDatabase {
         Ok(())
     }
 
+    /// Seed the Identity-owned demo account and demo API key (#842).
+    ///
+    /// `user_accounts` and `user_api_keys` are Identity's Data Truth, so the default records
+    /// written into them belong here rather than in `platform/storage/database`. Platform
+    /// previously issued both INSERTs on every database initialization; the SQL is moved
+    /// verbatim, including the PostgreSQL `ON CONFLICT DO NOTHING` / SQLite `INSERT OR IGNORE`
+    /// split and the historical fallback from `user_accounts` to the legacy `users` table, so
+    /// the seeded rows are unchanged.
+    ///
+    /// Both statements are idempotent: re-running on an existing database inserts nothing and
+    /// never overwrites a row that has since been edited. The demo account is written before
+    /// the demo key because the key references `user_id = 'demo-user'`.
+    ///
+    /// Ordering relative to schema creation is the caller's responsibility: the application
+    /// bootstrap runs this after infrastructure initialization, which is what creates the
+    /// tables.
+    pub async fn seed_demo_defaults(db: &Database) -> Result<()> {
+        let conn = db.get_connection()?;
+        let pool = conn.pool();
+        let kind = db.kind();
+
+        Self::seed_demo_user(pool, &kind).await?;
+        Self::seed_demo_token(pool, &kind).await?;
+
+        Ok(())
+    }
+
+    /// Ensure the demo account exists.
+    ///
+    /// Required by the `validate_token_and_get_info` JOIN, which resolves the demo API key
+    /// against `user_accounts`.
+    async fn seed_demo_user(pool: &sqlx::AnyPool, kind: &str) -> Result<()> {
+        // PostgreSQL does not implement SQLite's INSERT OR IGNORE syntax. Preserve the
+        // existing fallback from the canonical to the legacy user table.
+        let insert = if kind == "postgres" {
+            "INSERT INTO user_accounts (id, username, password_hash, status) \
+             VALUES ('demo-user', 'demo-user', 'no-login', 1) ON CONFLICT DO NOTHING"
+        } else {
+            "INSERT OR IGNORE INTO user_accounts (id, username, password_hash, status) \
+             VALUES ('demo-user', 'demo-user', 'no-login', 1)"
+        };
+        if sqlx::query(insert).execute(pool).await.is_err() {
+            let fallback = if kind == "postgres" {
+                "INSERT INTO users (id, username, password_hash, status) \
+                 VALUES ('demo-user', 'demo-user', 'no-login', 1) ON CONFLICT DO NOTHING"
+            } else {
+                "INSERT OR IGNORE INTO users (id, username, password_hash, status) \
+                 VALUES ('demo-user', 'demo-user', 'no-login', 1)"
+            };
+            sqlx::query(fallback).execute(pool).await?;
+        }
+        Ok(())
+    }
+
+    /// Insert the default demo token if it does not yet exist.
+    async fn seed_demo_token(pool: &sqlx::AnyPool, kind: &str) -> Result<()> {
+        let t_count: i64 = match sqlx::query_scalar(
+            "SELECT count(*) FROM user_api_keys WHERE key = 'sk-burncloud-demo'",
+        )
+        .fetch_one(pool)
+        .await
+        {
+            Ok(n) => n,
+            // A missing table means there is nothing to seed yet; this matches the previous
+            // tolerance during early bootstrap.
+            Err(_) => return Ok(()),
+        };
+
+        if t_count != 0 {
+            return Ok(());
+        }
+
+        let now = common::current_timestamp();
+        let insert_sql = match kind {
+            "sqlite" => {
+                "INSERT INTO user_api_keys \
+                 (user_id, key, status, name, remain_quota, unlimited_quota, \
+                  used_quota, created_time, accessed_time, expired_time) \
+                 VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', \
+                         -1, 1, 0, ?, ?, -1)"
+            }
+            "postgres" => {
+                "INSERT INTO user_api_keys \
+                 (user_id, key, status, name, remain_quota, unlimited_quota, \
+                  used_quota, created_time, accessed_time, expired_time) \
+                 VALUES ('demo-user', 'sk-burncloud-demo', 1, 'Demo Token', \
+                         -1, 1, 0, $1, $2, -1)"
+            }
+            _ => return Ok(()),
+        };
+
+        sqlx::query(insert_sql)
+            .bind(now)
+            .bind(now)
+            .execute(pool)
+            .await?;
+        tracing::info!("Initialized demo token: sk-burncloud-demo");
+        Ok(())
+    }
+
     /// Create the `user_*` tables owned by this crate.
     ///
     /// Note: balance_usd and balance_cny use BIGINT nanodollars (9 decimal precision).

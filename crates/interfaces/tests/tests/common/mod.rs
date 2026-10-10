@@ -18,6 +18,7 @@ use burncloud_database::create_database_with_url;
 use burncloud_router::RouterDatabase;
 use burncloud_service_user::JwtSecret;
 use burncloud_service_user::UserDatabase;
+use burncloud_supply_channel::ChannelProtocolConfigModel;
 use burncloud_tests::TestClient;
 use dotenvy::dotenv;
 use reqwest::Client;
@@ -120,6 +121,15 @@ pub(crate) async fn spawn_isolated_app() -> IsolatedApp {
     UserDatabase::init(&db)
         .await
         .expect("initialize User test schema");
+    // Arrange the domain-owned default records (#842) that the demo-token fixture needs:
+    // the demo account and demo API key belong to Identity, the default protocol configs to
+    // Supply. `create_database_with_url` now only creates schema and historic fixups.
+    UserDatabase::seed_demo_defaults(&db)
+        .await
+        .expect("seed Identity default records");
+    ChannelProtocolConfigModel::seed_default_protocol_configs(&db)
+        .await
+        .expect("seed Supply default protocol configs");
 
     let jwt_secret =
         JwtSecret::new("burncloud-api-test-jwt-secret").expect("test JWT secret must be valid");

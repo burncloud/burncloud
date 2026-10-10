@@ -16,6 +16,7 @@ use burncloud_router::RouterDatabase;
 use burncloud_server::InternalSecret;
 use burncloud_service_user::JwtSecret;
 use burncloud_service_user::UserDatabase;
+use burncloud_supply_channel::ChannelProtocolConfigModel;
 use std::sync::Arc;
 
 pub(crate) const TEST_INTERNAL_SECRET: &str = "burncloud-server-test-internal-secret";
@@ -47,5 +48,14 @@ pub(crate) async fn make_isolated_db() -> Arc<Database> {
     let db = create_database_with_url(&url).await.expect("open temp db");
     RouterDatabase::init(&db).await.expect("router db init");
     UserDatabase::init(&db).await.expect("user db init");
+    // Arrange the domain-owned default records (#842): the demo account and demo API key
+    // belong to Identity, the default protocol configs to Supply. `create_database_with_url`
+    // only creates schema and historic fixups now. Both owner calls are idempotent.
+    UserDatabase::seed_demo_defaults(&db)
+        .await
+        .expect("seed identity defaults");
+    ChannelProtocolConfigModel::seed_default_protocol_configs(&db)
+        .await
+        .expect("seed supply defaults");
     Arc::new(db)
 }
