@@ -123,6 +123,8 @@ async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch
             completion_tokens: 567,
             cost: 9_876_543_210,
             model: Some("pg-contract-model".to_string()),
+            layer_decision: Some("affinity".to_string()),
+            traffic_color: Some("g".to_string()),
             cache_read_tokens: 10,
             reasoning_tokens: 20,
             input_cost: 3_000_000_000,
@@ -145,10 +147,27 @@ async fn router_log_round_trip_and_time_window_use_the_postgres_timestamp_branch
         assert_eq!(stored.completion_tokens, 567);
         assert_eq!(stored.cost, 9_876_543_210);
         assert_eq!(stored.model.as_deref(), Some("pg-contract-model"));
+        assert_eq!(stored.traffic_color.as_deref(), Some("g"));
+        assert_eq!(stored.layer_decision.as_deref(), Some("affinity"));
         assert!(
             stored.created_at.is_some(),
             "PostgreSQL TIMESTAMP default must be visible through the production row mapping"
         );
+
+        let filtered = RouterLogModel::get_filtered(
+            &db,
+            Some("pg-router-user"),
+            Some("pg-channel-1"),
+            Some("pg-contract-model"),
+            10,
+            0,
+        )
+        .await
+        .expect("filtered router logs must decode on PostgreSQL");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].traffic_color.as_deref(), Some("g"));
+        assert_eq!(filtered[0].layer_decision.as_deref(), Some("affinity"));
+        assert!(filtered[0].created_at.is_some());
 
         let stats = get_usage_stats(&db, "pg-router-user", "day")
             .await
@@ -211,6 +230,14 @@ async fn legacy_log_insert_does_not_write_identity_credential_spend_on_postgres(
             .await
             .expect("read duplicate logs");
         assert_eq!(saved.len(), 2, "both log rows should persist");
+        assert!(saved.iter().all(|row| row.traffic_color.is_none()));
+        assert!(saved.iter().all(|row| row.created_at.is_some()));
+
+        let filtered = RouterLogModel::get_filtered(&db, Some("pg-user"), None, None, 10, 0)
+            .await
+            .expect("nullable PostgreSQL color must decode in filtered logs");
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|row| row.traffic_color.is_none()));
     })
     .await;
 }
