@@ -39,7 +39,10 @@ fn remove_sqlite_test_files(path: &std::path::Path) {
         let candidate = std::path::PathBuf::from(candidate);
         if let Err(e) = std::fs::remove_file(&candidate) {
             if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("failed to remove test database file {}: {e}", candidate.display());
+                eprintln!(
+                    "failed to remove test database file {}: {e}",
+                    candidate.display()
+                );
             }
         }
     }
@@ -71,7 +74,9 @@ impl Drop for TestDb {
                     .enable_all()
                     .build()
                 {
-                    let _ = rt.block_on(db.close());
+                    if let Err(e) = rt.block_on(db.close()) {
+                        eprintln!("test database panic cleanup close failed: {e}");
+                    }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 remove_sqlite_test_files(&path);
