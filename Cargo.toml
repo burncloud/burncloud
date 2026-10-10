@@ -183,7 +183,6 @@ burncloud-server = { path = "crates/interfaces/server", version = "0.1.9"  }
 burncloud-service-ip = { path = "crates/platform/observability/ip", version = "0.1.0"  }
 burncloud-service-monitor = { path = "crates/platform/observability/monitor", version = "0.1.0"  }
 burncloud-service-setting = { path = "crates/platform/configuration/setting", version = "0.1.0"  }
-burncloud-service-inference = { path = "crates/trust/inference", version = "0.1.0"  }
 burncloud-identity-user = { path = "crates/identity/user", version = "0.1.0"  }
 burncloud-identity-token = { path = "crates/identity/token", version = "0.1.0"  }
 burncloud-supply-channel = { path = "crates/supply/channel", version = "0.1.0"  }

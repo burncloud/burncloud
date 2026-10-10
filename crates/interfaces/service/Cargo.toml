@@ -10,7 +10,9 @@ burncloud-router.workspace = true
 burncloud-service-ip.workspace = true
 # burncloud-supply-model.workspace = true  # TEMP: broken dep chain
 burncloud-service-monitor.workspace = true
-burncloud-service-inference.workspace = true
+# This leaf re-export is the only consumer; keep a pinned path dependency
+# rather than an otherwise unused workspace declaration (cargo-deny #627).
+burncloud-service-inference = { path = "../../trust/inference", version = "0.1.0" }
 burncloud-identity-token.workspace = true
 
 [lints]
