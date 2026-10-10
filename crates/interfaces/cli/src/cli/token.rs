@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_service_user::{UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
+use burncloud_service_user::{UserApiKey, UserApiKeyInput, UserApiKeyModel, UserApiKeyUpdateInput};
 use clap::ArgMatches;
 use std::io::{self, Write};
 
@@ -56,9 +56,15 @@ pub(crate) async fn handle_token_command(db: &Database, matches: &ArgMatches) ->
 
             let updated = UserApiKeyModel::update(db, key, &input).await?;
             if updated {
-                println!("✓ Token '{}' updated successfully!", key);
+                println!(
+                    "✓ Token '{}' updated successfully!",
+                    UserApiKey::mask_key(key)
+                );
             } else {
-                println!("Token '{}' not found or no changes made.", key);
+                println!(
+                    "Token '{}' not found or no changes made.",
+                    UserApiKey::mask_key(key)
+                );
             }
         }
         Some(("delete", sub_m)) => {
@@ -68,7 +74,10 @@ pub(crate) async fn handle_token_command(db: &Database, matches: &ArgMatches) ->
             let skip_confirm = sub_m.get_flag("yes");
 
             if !skip_confirm {
-                print!("Are you sure you want to delete token '{}'? [y/N] ", key);
+                print!(
+                    "Are you sure you want to delete token '{}'? [y/N] ",
+                    UserApiKey::mask_key(key)
+                );
                 io::stdout().flush()?;
                 let mut input = String::new();
                 io::stdin().read_line(&mut input)?;
@@ -149,7 +158,12 @@ async fn list_tokens(db: &Database, sub_m: &ArgMatches) -> Result<()> {
                 };
                 println!(
                     "{:<52} {:<20} {:<12} {:>12} {:<8} {:>12}",
-                    token.key, name, token.user_id, quota, status, expired
+                    token.masked_key(),
+                    name,
+                    token.user_id,
+                    quota,
+                    status,
+                    expired
                 );
             }
         }

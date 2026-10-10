@@ -102,12 +102,14 @@ async fn accounts_round_trip_through_the_real_schema() {
     assert_eq!(stored.balance_usd, 5_000_000_000);
     assert_eq!(stored.balance_cny, 36_200_000_000);
 
-    // The password hash is readable in Rust. Its JSON projection is deliberately NOT asserted here:
-    // today `UserAccount` has no `skip_serializing`, so the field does reach JSON, and whether that
-    // is correct is a design question with its own issue -- not something this test should freeze.
-    // Recorded in #610 as out of scope for S1-D.
+    // Internal password hashing still works, but #612 forbids projection of the stored hash
+    // through the generic Serialize boundary.
     assert_eq!(stored.password_hash.as_deref(), Some("$2b$12$notarealhash"));
     let json = serde_json::to_value(&stored).unwrap();
+    assert!(
+        json.get("password_hash").is_none(),
+        "password hash is secret"
+    );
     assert_eq!(json["username"], serde_json::json!("alice"));
     // Balance is projected into JSON under the same names (Commerce-facing projection).
     // `json!` is used rather than naming `serde_json::Value`: the workspace's type gate disallows that
@@ -286,6 +288,10 @@ async fn api_keys_round_trip_and_updates_are_partial() {
         .unwrap()
         .expect("lookup by key");
     assert_eq!(fetched.id, created.id);
+    assert_eq!(
+        fetched.key, created.key,
+        "authentication lookup retains the raw key"
+    );
     assert_eq!(fetched.remain_quota, 1_000_000);
 
     // A partial update must leave the untouched fields alone.
@@ -314,15 +320,20 @@ async fn api_keys_round_trip_and_updates_are_partial() {
     );
     assert_eq!(after.expired_time, -1, "expired_time was not updated");
 
-    // No assertion on how the key is projected into JSON. `UserApiKey.key` is an ordinary
-    // serializable field today, and whether a full key may be returned by create/get/list, or must
-    // be masked, is a design decision with its own issue (#612). A test is the wrong place to
-    // settle it, and asserting the current shape would freeze it as intended behaviour.
+    // #612 allows raw keys only inside trusted storage/authentication paths and the
+    // one-time create display. Ordinary JSON/Debug projection must be masked.
 
     let listed = UserApiKeyModel::list(&db, 10, 0, Some("u-4"))
         .await
         .unwrap();
     assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].key, created.key,
+        "listing must not mutate stored keys"
+    );
+    let projected = serde_json::to_value(&listed).unwrap();
+    assert_eq!(projected[0]["key"], serde_json::json!(created.masked_key()));
+    assert!(!projected.to_string().contains(&created.key));
     assert!(UserApiKeyModel::delete(&db, &created.key).await.unwrap());
     assert!(
         UserApiKeyModel::get_by_key(&db, &created.key)

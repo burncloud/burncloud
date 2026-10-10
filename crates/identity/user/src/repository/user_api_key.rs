@@ -1,13 +1,14 @@
 use super::common::current_timestamp;
 use burncloud_database::{adapt_sql, Database, Result};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 /// User API key for application-level authentication
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct UserApiKey {
     pub id: i32,
     pub user_id: String,
+    #[serde(serialize_with = "serialize_masked_key")]
     pub key: String,
     pub status: i32,
     pub name: Option<String>,
@@ -17,6 +18,54 @@ pub struct UserApiKey {
     pub created_time: Option<i64>,
     pub accessed_time: Option<i64>,
     pub expired_time: i64,
+}
+
+// Keep the secret in the internal model for authentication and persistence.
+// Generic Serialize and Debug are always safe to expose to presentation paths.
+fn serialize_masked_key<S>(key: &str, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&UserApiKey::mask_key(key))
+}
+
+impl UserApiKey {
+    /// Return a non-authenticating presentation of this key.
+    pub fn masked_key(&self) -> String {
+        Self::mask_key(&self.key)
+    }
+
+    /// Mask a key received by the CLI without printing the supplied plaintext.
+    ///
+    /// The generator creates exactly 48 ASCII characters after the sk- prefix.
+    /// Unexpected input is fully redacted.
+    pub fn mask_key(key: &str) -> String {
+        let Some(suffix) = key.strip_prefix("sk-") else {
+            return "****".to_string();
+        };
+        if suffix.len() != 48 || !suffix.is_ascii() {
+            return "****".to_string();
+        }
+        format!("sk-****{}", &suffix[suffix.len() - 4..])
+    }
+}
+
+impl std::fmt::Debug for UserApiKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserApiKey")
+            .field("id", &self.id)
+            .field("user_id", &self.user_id)
+            .field("key", &self.masked_key())
+            .field("status", &self.status)
+            .field("name", &self.name)
+            .field("remain_quota", &self.remain_quota)
+            .field("unlimited_quota", &self.unlimited_quota)
+            .field("used_quota", &self.used_quota)
+            .field("created_time", &self.created_time)
+            .field("accessed_time", &self.accessed_time)
+            .field("expired_time", &self.expired_time)
+            .finish()
+    }
 }
 
 // Manual FromRow: SQLite stores unlimited_quota as INTEGER (BIGINT in sqlx::Any),
