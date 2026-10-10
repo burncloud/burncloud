@@ -308,6 +308,80 @@ mod migration_invariants {
         cleanup(db, &path).await
     }
 
+    /// Traffic-facing Channel capabilities must remain Supply-owned without changing routing data.
+    #[tokio::test]
+    async fn owner_boundary_preserves_candidate_update_and_quarantine_behavior() -> TestResult<()> {
+        let (db, path) = fresh_db("owner_boundary").await?;
+
+        let mut low = sample_channel("low", "shared-model", "routing", 1);
+        low.priority = 1;
+        low.weight = 2;
+        let low_id = ChannelService::create(&db, &mut low).await?;
+
+        let mut high_a = sample_channel("high-a", "shared-model", "routing", 1);
+        high_a.priority = 9;
+        high_a.weight = 4;
+        let high_a_id = ChannelService::create(&db, &mut high_a).await?;
+
+        let mut high_b = sample_channel("high-b", "shared-model", "routing", 1);
+        high_b.priority = 9;
+        high_b.weight = 7;
+        let high_b_id = ChannelService::create(&db, &mut high_b).await?;
+
+        let mut candidates =
+            ChannelService::list_enabled_at_highest_priority(&db, "routing", "shared-model")
+                .await?;
+        candidates.sort_unstable_by_key(|ability| ability.channel_id);
+        let mut expected = vec![(high_a_id, 4), (high_b_id, 7)];
+        expected.sort_unstable_by_key(|(id, _)| *id);
+        let actual: Vec<_> = candidates
+            .iter()
+            .map(|ability| (ability.channel_id, ability.weight))
+            .collect();
+        verify(
+            actual == expected,
+            "candidate query must keep only enabled abilities at the highest priority with weights",
+        )?;
+        verify(
+            candidates.iter().all(|ability| ability.channel_id != low_id),
+            "lower-priority abilities must not leak into Traffic candidate selection",
+        )?;
+
+        ChannelService::update_api_version(&db, high_a_id, "2026-10-owner").await?;
+        let updated = ChannelService::get_by_id(&db, high_a_id)
+            .await?
+            .ok_or_else(|| std::io::Error::other("updated channel disappeared"))?;
+        verify(
+            updated.api_version.as_deref() == Some("2026-10-owner"),
+            "targeted API-version update must preserve the new version",
+        )?;
+        ChannelService::update_api_version(&db, i32::MAX, "missing-is-noop").await?;
+
+        verify(
+            ChannelService::quarantine(&db, high_a_id).await?,
+            "existing channel quarantine must report success",
+        )?;
+        let quarantined = ChannelService::get_by_id(&db, high_a_id)
+            .await?
+            .ok_or_else(|| std::io::Error::other("quarantined channel disappeared"))?;
+        verify(
+            quarantined.status == 3,
+            "quarantine must keep the historical status=3 behavior",
+        )?;
+        verify(
+            ChannelAbilityModel::list_by_channel(&db, high_a_id)
+                .await?
+                .is_empty(),
+            "quarantine must atomically remove routing abilities",
+        )?;
+        verify(
+            !ChannelService::quarantine(&db, i32::MAX).await?,
+            "missing channel quarantine must report false",
+        )?;
+
+        cleanup(db, &path).await
+    }
+
     /// This migration must not silently change the legacy duplicate-model behavior. Today the
     /// plain INSERT used by automatic synchronization rejects a repeated model with a uniqueness
     /// error. A future behavior fix may deliberately change this test in its own issue.
