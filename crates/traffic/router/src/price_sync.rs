@@ -20,7 +20,7 @@ use burncloud_commerce_billing::{
     BillingPriceModel, BillingTieredPriceModel, DatabaseError, Price, PriceInput, TieredPriceInput,
 };
 use burncloud_commerce_contracts::pricing::{CurrencyPricing, ModelPricing, PricingConfig};
-use burncloud_database::{sqlx, Database};
+use burncloud_database::Database;
 use burncloud_supply_model::{ModelCapabilityInput, ModelCapabilityModel};
 
 /// HTTP client timeout for price sync API calls (seconds).
@@ -383,13 +383,9 @@ impl PriceSyncService {
         (None, last_err)
     }
 
-    /// Count distinct model names in the prices table.
+    /// Count distinct model names through the Commerce-owned price store.
     async fn count_db_models(&self) -> anyhow::Result<usize> {
-        let conn = self.db.get_connection()?;
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(DISTINCT model) FROM billing_prices")
-            .fetch_one(conn.pool())
-            .await?;
-        Ok(row.0 as usize)
+        Ok(BillingPriceModel::count_distinct_models(&self.db).await?)
     }
 
     /// Load local override configuration file
