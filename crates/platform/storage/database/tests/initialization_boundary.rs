@@ -141,7 +141,9 @@ async fn postgres_infrastructure_bootstrap_retains_legacy_seed_contract(
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     if !ready {
-        return Err(std::io::Error::other("real PostgreSQL container did not become SQLx-ready").into());
+        return Err(
+            std::io::Error::other("real PostgreSQL container did not become SQLx-ready").into(),
+        );
     }
 
     let stamp = std::time::SystemTime::now()
