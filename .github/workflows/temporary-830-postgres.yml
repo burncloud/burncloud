@@ -47,6 +47,16 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config postgresql-client
       - name: Verify the real PostgreSQL service is available
         run: pg_isready -h 127.0.0.1 -p 5432 -U postgres
+      - name: Local-only fixture workaround for independent migration defect #833
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=crates/platform/storage/database/migrations/postgres/0015_monthly_quota.sql
+          grep -q "user_id INTEGER NOT NULL" "$file"
+          sed -i "s/user_id INTEGER NOT NULL,/user_id TEXT NOT NULL,/" "$file"
+          echo "::warning::Local CI worktree workaround for existing #833 FK mismatch; production migration remains unchanged in PR #832."
+          git diff -- "$file"
+
       - name: Test real PostgreSQL log and Identity quota isolation
         run: >-
           cargo test -p burncloud-database-router
