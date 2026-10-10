@@ -1237,7 +1237,7 @@ async fn circuit_breaker_trip_all_handler(State(state): State<AppState>) -> Resp
 async fn models_handler(State(state): State<AppState>) -> Response {
     // Fetch all distinct models from channel_abilities
     // This shows models that have at least one enabled channel
-    use burncloud_supply_channel::ChannelAbilityModel;
+    use burncloud_supply_channel::ChannelService;
 
     let mut model_entries = Vec::new();
     let current_time = std::time::SystemTime::now()
@@ -1245,7 +1245,7 @@ async fn models_handler(State(state): State<AppState>) -> Response {
         .unwrap_or_default()
         .as_secs();
 
-    if let Ok(models) = ChannelAbilityModel::list_distinct_models(&state.db).await {
+    if let Ok(models) = ChannelService::list_distinct_models(&state.db).await {
         for model in models {
             model_entries.push(serde_json::json!({
                 "id": model,
