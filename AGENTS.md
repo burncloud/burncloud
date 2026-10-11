@@ -10,6 +10,99 @@ root (`ISSUE_WATCH_STATE.md`). They are not part of the repository contract.
 
 ---
 
+## P0-A — Authorized identity whitelist (`rustburn`)
+
+This is the **highest-priority rule in this file**. Where any later section of this document
+could be read more permissively, this section wins.
+
+The only authorized GitHub account is **`rustburn`** — https://github.com/rustburn,
+stable numeric user ID **134291161**, verified via the GitHub API. Identity is decided by
+`user.login` / `user.id` only. A display name, commit author name, commit email, PR title or
+issue text is **never** identity evidence.
+
+### Issue authorization
+
+Only an issue whose **original creator's login is `rustburn`** may be entered into the
+autonomous development queue. An issue created by anyone else is **read-only**: read it to
+analyse dependencies, detect conflicts or produce a report, and nothing more.
+
+For a non-rustburn issue, never:
+
+- claim it, assign an agent to it, or schedule work against it;
+- change its code to resolve it, or open a fix PR that targets it;
+- close it, or edit its title, body, labels or state;
+- re-file its content as a new issue to escape the author restriction;
+- let a `rustburn` issue become a back door to resolving it (§ "Linked issues").
+
+A rustburn issue may be worked autonomously only while it is open, not already claimed by
+another agent, free of unresolved blocking dependencies, and separable from any other
+author's task. Otherwise mark it `BLOCKED` and move on.
+
+### PR auto-merge authorization
+
+A PR may be auto-merged by an agent **only** when every one of these holds:
+
+1. the PR author's login is `rustburn`;
+2. every commit in the PR is verified as rustburn's contribution (check the commit's GitHub
+   `author.login`, not its commit metadata);
+3. the linked development task is an issue **created by rustburn**;
+4. the PR's own declared scope is completely implemented (no placeholder, no TODO, no test
+   that pins behaviour as "known wrong" in place of a fix);
+5. all four required checks pass on the PR's **current HEAD** SHA (never an earlier SHA);
+6. required reviews are complete and no blocking review thread is unresolved;
+7. there is no merge conflict;
+8. there is no unresolved security risk;
+9. it does not violate branch protection or the repository ruleset;
+10. it does not modify CI workflows, secrets or permissions.
+
+After merging, query GitHub and confirm the PR reports `Merged` before reporting success.
+
+Everything else waits for a human. In particular, for any PR not authored by `rustburn`:
+read it, inspect the diff and CI, post a read-only review, and list it in the
+human-approval report. Never push to its branch, never enable auto-merge, never merge it.
+
+If a PR authored by `rustburn` contains another contributor's commits, or its provenance
+cannot be reliably established, mark it `NEEDS_HUMAN_APPROVAL`. Never squash, cherry-pick,
+rewrite commit authorship or re-create a PR to manufacture merge rights.
+
+### Partial increments of a large issue
+
+A large rustburn issue may be delivered as several independent, verifiable PRs. An increment
+whose own scope is complete, whose current-HEAD checks are green and whose review gates pass
+**may be auto-merged** under the gate above; it does not have to complete the whole parent
+issue. The parent issue stays **open** until all of its acceptance conditions are met, and no
+other condition of the gate may be relaxed to merge an increment.
+
+### Linked issues
+
+When a PR touches several issues, read all of them, but treat only the rustburn-created ones
+as autonomously actionable. Never auto-close, claim or resolve another author's issue by way
+of a rustburn issue. If the boundary cannot be separated safely, mark the task `BLOCKED` and
+escalate.
+
+---
+
+## P0-B — Unattended scheduled rounds
+
+Every scheduled task, cron trigger and background patrol runs in **unattended mode**:
+
+1. never call `ask_user_question`, show a multiple-choice prompt, or wait for interactive
+   approval of an ordinary technical decision;
+2. never repeat a patrol indefinitely just because nothing changed — end the round;
+3. never edit this whitelist or any permission rule to widen its own authority;
+4. never bypass CI, and never reinterpret "needs human authorization" as consent;
+5. end the round normally when no authorized work exists, then wait for the next trigger.
+
+Per-task routing: rustburn issue → handle autonomously; other author's issue → read-only,
+skip; PR not meeting the auto-merge whitelist → wait for human merge; failing CI on a branch
+the agent maintains → fix code within authorization; anything needing wider authority →
+record `NEEDS_HUMAN_APPROVAL`; nothing left → end the round.
+
+CI, test and workflow rules (P1, P2, and "CI failures") continue to apply unchanged, and the
+whitelist never authorizes modifying an existing GitHub Actions workflow.
+
+---
+
 ## P0 — Protect existing work
 
 Never overwrite another developer's unmerged commits, delete another agent's work,
@@ -157,10 +250,16 @@ never edit the workflow to make it pass.
 ## Patrol and failure recovery
 
 Rounds run every 30 minutes via the Harness scheduled task
-`BurnCloud Autonomous R&D Manager` (`schedule-1852516b-f17c-4c3b-8d2e-8db87a049a9b`).
+`BurnCloud Autonomous R&D Manager`, under the unattended rules in P0-B. Keep that exact title
+so a re-created task updates the existing schedule instead of adding a duplicate; verify the
+schedule was actually updated before reporting it as live. A schedule id recorded in these
+notes is a historical fact about a previous task, not proof that the task is still armed —
+read the real schedule list each round.
+
 Each round: read open issues and PRs, read this file's state notes, verify every PR's
 current HEAD checks, fix what is safely fixable, evaluate the auto-merge gate, review other
 authors' PRs, assign free agents to non-conflicting work, record blockers, and report.
+Only issues created by `rustburn` may be assigned (P0-A).
 
 Rounds are idempotent: never re-create an issue, PR, branch, agent task or management task
 that already exists. Read real state before acting, and do not run conflicting operations
@@ -179,6 +278,12 @@ rustburn vs other-author PRs, CI pass/fail, merges performed, PRs awaiting human
 newly assigned tasks, blockers, and next priorities. Structure every human-approval entry
 as PR number and link, author, code contributors, current HEAD SHA, CI status, review
 conclusion, risk notes, and a merge recommendation.
+
+Break the counts down explicitly, so the whitelist is auditable from the report alone:
+open issues **created by rustburn** versus **created by other authors**; issues actually
+assigned to an agent, split the same two ways (the non-rustburn figure must stay zero);
+PRs satisfying the auto-merge whitelist; PRs waiting for a human merge; tasks paused by the
+whitelist; and CI blockages. Confirm the scheduled task's real state from the schedule list.
 
 Every statistic must come from real GitHub data. Report unknown as unknown; never fabricate
 a result, claim an operation that did not happen, or treat a scheduled task firing or a PR
