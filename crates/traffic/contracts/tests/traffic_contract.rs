@@ -135,16 +135,15 @@ fn chat_request_defaults_match_the_current_behaviour() {
 }
 
 #[test]
-fn chat_message_keeps_only_role_and_content_and_that_is_a_known_gap() {
+fn chat_message_round_trips_the_message_level_fields_it_receives() {
     // `chat_request_keeps_unknown_fields_through_the_round_trip` proves that *request-level*
-    // extras survive. A `messages` entry is a different path: `OpenAIChatMessage` declares only
-    // `role` and `content` and has no `#[serde(flatten)]`, so every other field a client sends on a
-    // message is dropped when the DTO is deserialised and re-serialised.
+    // extras survive. This test covers the other path: an entry of `messages`. `OpenAIChatMessage`
+    // now carries its own `#[serde(flatten)] extra` map, so the fields a client sends on a message
+    // (`name`, `tool_calls`, `tool_call_id`, `refusal`, …) survive deserialisation and
+    // re-serialisation instead of being dropped before the adapters can forward them.
     //
-    // That is asserted here rather than changed, because widening the struct is a production
-    // contract decision (the TCP/HTTP entry point hands this DTO straight to the adapters), not a
-    // test-PR edit. The names below are real OpenAI message fields, so the loss is reachable from
-    // ordinary client traffic, not a synthetic shape.
+    // Before the struct was widened this file pinned the opposite (the loss); the assertions below
+    // are that same case rewritten to pin preservation, which is the contract the adapters need.
     let raw = serde_json::json!({
         "model": "gpt-4o",
         "messages": [{
@@ -159,28 +158,44 @@ fn chat_message_keeps_only_role_and_content_and_that_is_a_known_gap() {
 
     let req: OpenAIChatRequest = serde_json::from_value(raw).unwrap();
 
-    // The two declared fields survive and are the only ones the adapters can forward.
     assert_eq!(req.messages.len(), 1);
     assert_eq!(req.messages[0].role, "assistant");
     assert_eq!(req.messages[0].content, "calling a tool");
 
-    // The message-level extras are gone: they are neither a declared field nor captured by the
-    // request's flattened `extra`, which only sees keys at the request level.
+    // The message-level fields land in the message's own flattened map.
+    assert_eq!(
+        req.messages[0].extra.get("name"),
+        Some(&serde_json::json!("planner"))
+    );
+    assert_eq!(
+        req.messages[0].extra.get("tool_call_id"),
+        Some(&serde_json::json!("call_1"))
+    );
+    assert!(
+        req.messages[0].extra.contains_key("tool_calls"),
+        "a tool_calls payload must not be dropped on a message entry"
+    );
+    assert!(
+        req.messages[0].extra.contains_key("refusal"),
+        "an explicit null must be preserved, not silently dropped"
+    );
+
+    // And they survive the round trip: this is what the adapters forward.
     let back = serde_json::to_value(&req).unwrap();
     let message = &back["messages"][0];
     assert_eq!(message["role"], serde_json::json!("assistant"));
     assert_eq!(message["content"], serde_json::json!("calling a tool"));
-    assert!(
-        message.get("tool_calls").is_none(),
-        "tool_calls is dropped today; if it starts surviving, rewrite this test to pin that"
+    assert_eq!(message["name"], serde_json::json!("planner"));
+    assert_eq!(message["tool_call_id"], serde_json::json!("call_1"));
+    assert_eq!(
+        message["tool_calls"],
+        serde_json::json!([{"id": "call_1", "type": "function"}])
     );
-    assert!(message.get("tool_call_id").is_none());
-    assert!(message.get("name").is_none());
     assert!(
-        message.get("refusal").is_none(),
-        "even an explicit null is not preserved on a message entry"
+        message["refusal"].is_null(),
+        "the explicit null must round-trip as null, not disappear"
     );
-    // And nothing leaked upward into `extra`, which would have been the other possible outcome.
+    // And nothing leaked upward into `extra`: the two layers stay separate.
     assert!(
         req.extra.is_empty(),
         "message-level fields must not surface as request-level extras: {:?}",
@@ -229,6 +244,7 @@ fn chat_response_shape_is_unchanged() {
             message: OpenAIChatMessage {
                 role: "assistant".to_string(),
                 content: "hello".to_string(),
+                extra: Default::default(),
             },
             finish_reason: Some("stop".to_string()),
         }],

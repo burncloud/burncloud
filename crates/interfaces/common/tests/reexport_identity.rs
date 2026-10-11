@@ -34,6 +34,7 @@ fn compatibility_paths_resolve_to_the_owner_types() {
     let message: burncloud_traffic_contracts::OpenAIChatMessage = types::OpenAIChatMessage {
         role: "user".to_string(),
         content: "hi".to_string(),
+        extra: Default::default(),
     };
     assert_eq!(message.role, "user");
 }
@@ -90,6 +91,7 @@ fn compatibility_paths_serialise_like_the_owners() {
     let message = types::OpenAIChatMessage {
         role: "user".to_string(),
         content: "hi".to_string(),
+        extra: Default::default(),
     };
     assert_eq!(
         serde_json::to_string(&message).unwrap(),

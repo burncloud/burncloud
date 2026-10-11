@@ -1,5 +1,6 @@
-// Two struct fields legitimately need HashMap<String, Value>:
+// Three struct fields legitimately need HashMap<String, Value>:
 //   OpenAIChatRequest::extra      — generic LLM API passthrough fields
+//   OpenAIChatMessage::extra      — message-level passthrough fields
 // All other Value uses in this codebase must go through typed structs.
 #![allow(
     clippy::disallowed_types,
@@ -11,10 +12,18 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// A single message in an OpenAI-compatible chat request.
+///
+/// Like [`OpenAIChatRequest`], `extra` uses `#[serde(flatten)]` so that message-level fields a
+/// provider or client sends (`name`, `tool_calls`, `tool_call_id`, `refusal`, …) survive the
+/// round trip instead of being dropped by the typed DTO.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OpenAIChatMessage {
     pub role: String,
     pub content: String,
+
+    // Capture all other message-level fields (Generic Passthrough)
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// An OpenAI-compatible chat completion request.
