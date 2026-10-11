@@ -136,8 +136,8 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
 /// (b) + (d): a stub that records its arguments and exits without ever listening fails the health
 /// check, leaves the model `Failed`, and shows the exact argv llama-server is started with.
 #[tokio::test]
-async fn the_spawn_arguments_match_the_documented_contract() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn the_spawn_arguments_match_the_documented_contract(
+) -> Result<(), Box<dyn std::error::Error>> {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
