@@ -1010,6 +1010,34 @@ mod tests {
         assert!(tracker.is_available(CHANNEL, Some("brand-new-model")));
     }
 
+    /// `get_available_channels` is the bulk form of the admission gate: it must keep every
+    /// candidate the gate admits, drop the ones it rejects, and keep the caller's order.
+    #[test]
+    fn the_bulk_filter_drops_only_the_unavailable_channels() {
+        let tracker = ChannelStateTracker::new();
+
+        // 7 fails channel-wide, 8 fails only for MODEL, 11 is a channel nobody has seen yet.
+        tracker.record_error(CHANNEL, None, &FailureType::AuthFailed, "401");
+        tracker.record_error(8, Some(MODEL), &FailureType::ModelNotFound, "404");
+
+        // Without a model the gate is channel-level, so the model-local failure on 8 does not
+        // remove it, and the unknown channel is assumed available.
+        let channel_level = tracker.get_available_channels(&[7, 11, 8], None);
+        assert_eq!(channel_level, vec![11, 8], "unknown kept, order kept");
+
+        // 7 is channel-blocked for every model; 8 is blocked for MODEL only.
+        let for_model = tracker.get_available_channels(&[7, 11, 8], Some(MODEL));
+        assert_eq!(for_model, vec![11], "model-local, not channel-wide");
+
+        // A sibling model of 8 carries no state, so 8 stays usable for it.
+        let sibling = tracker.get_available_channels(&[8], Some("sibling-model"));
+        assert_eq!(sibling, vec![8], "sibling model unaffected");
+
+        // Nothing to filter is not an error.
+        let none = tracker.get_available_channels(&[], None);
+        assert!(none.is_empty(), "an empty candidate list stays empty");
+    }
+
     /// A success must clear the *transient* bookkeeping: the status returns to `Available`
     /// and the failure counter resets, so the next backoff starts from the base delay rather
     /// than compounding.
