@@ -44,7 +44,12 @@ fn scratch(tag: &str) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    std::env::temp_dir().join(format!("bc_inference_{}_{}_{}", tag, std::process::id(), nanos))
+    std::env::temp_dir().join(format!(
+        "bc_inference_{}_{}_{}",
+        tag,
+        std::process::id(),
+        nanos
+    ))
 }
 
 /// Write a POSIX shell stub and mark it executable.
@@ -89,7 +94,9 @@ fn config(model_id: &str, file_path: &Path, port: u16) -> InferenceConfig {
 #[tokio::test]
 async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_failed(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     let missing = scratch("no-such-binary");
     std::env::set_var("BURNCLOUD_LLAMA_BIN", &missing);
@@ -99,7 +106,7 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
     let cfg = config("missing-binary-model", &scratch("model.gguf"), 18_080);
 
     // (c) An unknown model is Stopped — not a fabricated state and not a panic.
-    assert_eq!(service.get_status(&cfg.model_id), InstanceStatus::Stopped);
+    assert_eq!(service.get_status(&cfg.model_id).await, InstanceStatus::Stopped);
 
     let err = service
         .start_instance(&db, cfg.clone())
@@ -110,9 +117,9 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
         "the failure must be the process error, not a database one: {err:?}"
     );
     assert!(
-        matches!(service.get_status(&cfg.model_id), InstanceStatus::Failed(_)),
+        matches!(service.get_status(&cfg.model_id).await, InstanceStatus::Failed(_)),
         "a failed start must leave the model Failed: {:?}",
-        service.get_status(&cfg.model_id)
+        service.get_status(&cfg.model_id).await
     );
 
     // (c) Starting again on a Failed model must report a failure, not panic.
@@ -131,7 +138,9 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
 #[tokio::test]
 async fn the_spawn_arguments_match_the_documented_contract() -> Result<(), Box<dyn std::error::Error>>
 {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     let dir = scratch("stub");
     std::fs::create_dir_all(&dir)?;
@@ -154,9 +163,9 @@ async fn the_spawn_arguments_match_the_documented_contract() -> Result<(), Box<d
         "a stub that never serves must fail the health check: {failure:?}"
     );
     assert!(
-        matches!(service.get_status(&cfg.model_id), InstanceStatus::Failed(_)),
+        matches!(service.get_status(&cfg.model_id).await, InstanceStatus::Failed(_)),
         "a failed health check must leave the model Failed: {:?}",
-        service.get_status(&cfg.model_id)
+        service.get_status(&cfg.model_id).await
     );
 
     let captured =
