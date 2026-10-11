@@ -3,6 +3,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic_in_result_fn,
+    clippy::let_underscore_must_use,
     reason = "Test-only integration file. A failed assertion is the intended failure signal for a \
               process-lifecycle contract, and the assertions below compare real return values, \
               statuses and captured side effects rather than trusting the function under test."
@@ -33,10 +34,10 @@ use burncloud_service_inference::{
 };
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 /// Serialises the tests that mutate `BURNCLOUD_LLAMA_BIN`.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// A path under the temporary directory that is unique per process and call.
 fn scratch(tag: &str) -> PathBuf {
@@ -72,7 +73,7 @@ fn write_stub(path: &Path, body: &str) {
 /// tests assert, which is how (e) becomes observable.
 async fn uninitialised_db(tag: &str) -> Result<(Database, PathBuf), Box<dyn std::error::Error>> {
     let path = scratch(&format!("{tag}.db"));
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
     let normalized = path.to_string_lossy().replace('\\', "/");
     let url = format!("sqlite:///{}?mode=rwc", normalized);
     let db = create_database_with_url(&url).await?;
@@ -94,9 +95,7 @@ fn config(model_id: &str, file_path: &Path, port: u16) -> InferenceConfig {
 #[tokio::test]
 async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_failed(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = ENV_LOCK.lock().await;
 
     let missing = scratch("no-such-binary");
     std::env::set_var("BURNCLOUD_LLAMA_BIN", &missing);
@@ -106,7 +105,10 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
     let cfg = config("missing-binary-model", &scratch("model.gguf"), 18_080);
 
     // (c) An unknown model is Stopped — not a fabricated state and not a panic.
-    assert_eq!(service.get_status(&cfg.model_id).await, InstanceStatus::Stopped);
+    assert_eq!(
+        service.get_status(&cfg.model_id).await,
+        InstanceStatus::Stopped
+    );
 
     let err = service
         .start_instance(&db, cfg.clone())
@@ -117,7 +119,10 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
         "the failure must be the process error, not a database one: {err:?}"
     );
     assert!(
-        matches!(service.get_status(&cfg.model_id).await, InstanceStatus::Failed(_)),
+        matches!(
+            service.get_status(&cfg.model_id).await,
+            InstanceStatus::Failed(_)
+        ),
         "a failed start must leave the model Failed: {:?}",
         service.get_status(&cfg.model_id).await
     );
@@ -129,7 +134,7 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
         "a second start on a Failed model must fail again: {second:?}"
     );
 
-    let _ = std::fs::remove_file(&db_path);
+    std::fs::remove_file(&db_path).ok();
     Ok(())
 }
 
@@ -138,9 +143,7 @@ async fn a_missing_binary_is_reported_as_a_process_error_and_marks_the_model_fai
 #[tokio::test]
 async fn the_spawn_arguments_match_the_documented_contract(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _guard = ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = ENV_LOCK.lock().await;
 
     let dir = scratch("stub");
     std::fs::create_dir_all(&dir)?;
@@ -163,7 +166,10 @@ async fn the_spawn_arguments_match_the_documented_contract(
         "a stub that never serves must fail the health check: {failure:?}"
     );
     assert!(
-        matches!(service.get_status(&cfg.model_id).await, InstanceStatus::Failed(_)),
+        matches!(
+            service.get_status(&cfg.model_id).await,
+            InstanceStatus::Failed(_)
+        ),
         "a failed health check must leave the model Failed: {:?}",
         service.get_status(&cfg.model_id).await
     );
@@ -182,9 +188,12 @@ async fn the_spawn_arguments_match_the_documented_contract(
         "-1",
         "--nobrowser",
     ];
-    assert_eq!(args, expected, "llama-server must be started with the documented arguments");
+    assert_eq!(
+        args, expected,
+        "llama-server must be started with the documented arguments"
+    );
 
-    let _ = std::fs::remove_file(&db_path);
-    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::remove_file(&db_path).ok();
+    std::fs::remove_dir_all(&dir).ok();
     Ok(())
 }
