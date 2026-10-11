@@ -322,7 +322,10 @@ fn channel_type_dummy_has_no_wire_number_but_serde_round_trips_by_name() {
     //   and `From<i32>` maps that value to `Unknown`.
     let json = serde_json::to_string(&ChannelType::Dummy).expect("Dummy must serialise");
     assert_eq!(json, "\"Dummy\"");
-    assert_eq!(serde_json::from_str::<ChannelType>(&json).unwrap(), ChannelType::Dummy);
+    assert_eq!(
+        serde_json::from_str::<ChannelType>(&json).unwrap(),
+        ChannelType::Dummy
+    );
 
     assert_eq!(ChannelType::Dummy as i32, 59);
     assert_eq!(ChannelType::from(59), ChannelType::Unknown);
