@@ -252,6 +252,7 @@ mod tests {
             messages: vec![OpenAIChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                extra: Default::default(),
             }],
             temperature: Some(0.5),
             max_tokens: Some(100),

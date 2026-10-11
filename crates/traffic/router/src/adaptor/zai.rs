@@ -203,10 +203,12 @@ mod tests {
                 OpenAIChatMessage {
                     role: "system".to_string(),
                     content: "Be helpful".to_string(),
+                    extra: Default::default(),
                 },
                 OpenAIChatMessage {
                     role: "user".to_string(),
                     content: "Hello".to_string(),
+                    extra: Default::default(),
                 },
             ],
             temperature: Some(0.7),
@@ -263,6 +265,7 @@ mod tests {
             messages: vec![OpenAIChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                extra: Default::default(),
             }],
             temperature: None,
             max_tokens: Some(100),

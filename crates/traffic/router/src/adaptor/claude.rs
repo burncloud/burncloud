@@ -108,10 +108,12 @@ mod tests {
                 OpenAIChatMessage {
                     role: "system".to_string(),
                     content: "Be helpful".to_string(),
+                    extra: Default::default(),
                 },
                 OpenAIChatMessage {
                     role: "user".to_string(),
                     content: "Hi".to_string(),
+                    extra: Default::default(),
                 },
             ],
             temperature: Some(0.5),
