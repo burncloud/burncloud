@@ -1238,4 +1238,169 @@ mod tests {
         assert!(from_default.get_all_states().is_empty());
         assert!(from_new.get_all_states().is_empty());
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Timer expiry: a blocked channel comes back only when its windows have passed (#634).
+    //
+    // The windows are `std::time::Instant`, which tokio's paused clock does not advance, so these
+    // tests move the fields themselves instead of sleeping: an expired window is one second in
+    // the past, an active one a minute in the future.
+    // ---------------------------------------------------------------------------------------
+
+    /// An already-expired window: the probe is allowed.
+    fn expired() -> std::time::Instant {
+        std::time::Instant::now() - std::time::Duration::from_secs(1)
+    }
+
+    /// A window that is still active: the caller stays blocked.
+    fn active() -> std::time::Instant {
+        std::time::Instant::now() + std::time::Duration::from_secs(60)
+    }
+
+    /// Point both windows of `model` at `model_until` (state tracker) and `aimd_until` (AIMD).
+    ///
+    /// The map guard is released when this returns, so the write lock never overlaps the read
+    /// path the caller is about to assert on.
+    fn set_model_windows(
+        tracker: &ChannelStateTracker,
+        model: &str,
+        model_until: std::time::Instant,
+        aimd_until: std::time::Instant,
+    ) {
+        let mut channel = tracker
+            .channel_states
+            .get_mut(&CHANNEL)
+            .expect("recording an error must create the channel state");
+        let state = channel
+            .models
+            .get_mut(model)
+            .expect("recording a model error must create the model state");
+        state.rate_limit_until = Some(model_until);
+        state.adaptive_limit.cooldown_until = Some(aimd_until);
+        state.adaptive_limit.rate_limit_until = Some(aimd_until);
+    }
+
+    /// Point the account-wide window of the channel at `until`.
+    fn set_account_window(tracker: &ChannelStateTracker, until: std::time::Instant) {
+        tracker
+            .channel_states
+            .get_mut(&CHANNEL)
+            .expect("recording an error must create the channel state")
+            .account_rate_limit_until = Some(until);
+    }
+
+    /// The recorded status of `model`, copied out so no map guard is held while asserting.
+    fn model_status(tracker: &ChannelStateTracker, model: &str) -> ModelStatus {
+        tracker
+            .channel_states
+            .get(&CHANNEL)
+            .expect("the channel state must exist")
+            .models
+            .get(model)
+            .expect("the model state must exist")
+            .status
+            .clone()
+    }
+
+    /// A model-level rate limit hides its channel from the pool until the timer expires, and the
+    /// expiry only allows a probe: the status keeps recording the failure until a success arrives.
+    #[test]
+    fn the_model_becomes_probeable_after_its_rate_limit_timer_expires() {
+        let tracker = ChannelStateTracker::new();
+        tracker.record_error(
+            CHANNEL,
+            Some(MODEL),
+            &FailureType::RateLimited {
+                scope: RateLimitScope::Model,
+                retry_after: Some(60),
+            },
+            "429",
+        );
+
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "an active rate-limit timer must keep the model out"
+        );
+        assert!(
+            tracker
+                .get_available_channels(&[CHANNEL], Some(MODEL))
+                .is_empty(),
+            "the bulk filter must drop a rate-limited channel"
+        );
+
+        set_model_windows(&tracker, MODEL, expired(), expired());
+
+        assert!(
+            tracker.is_available(CHANNEL, Some(MODEL)),
+            "an expired timer must allow one probe request"
+        );
+        assert_eq!(
+            tracker.get_available_channels(&[CHANNEL], Some(MODEL)),
+            vec![CHANNEL]
+        );
+        assert_eq!(model_status(&tracker, MODEL), ModelStatus::RateLimited);
+    }
+
+    /// The account-wide window blocks every model of the channel, tracked or not, and a single
+    /// expiry releases them all.
+    #[test]
+    fn the_account_limit_blocks_every_model_until_it_expires() {
+        let tracker = ChannelStateTracker::new();
+        tracker.record_error(
+            CHANNEL,
+            None,
+            &FailureType::RateLimited {
+                scope: RateLimitScope::Account,
+                retry_after: Some(60),
+            },
+            "429",
+        );
+
+        assert!(
+            !tracker.is_available(CHANNEL, None),
+            "the account window must block the channel without a model"
+        );
+        assert!(
+            !tracker.is_available(CHANNEL, Some("never-seen")),
+            "the account window must block a model the tracker never saw"
+        );
+
+        set_account_window(&tracker, expired());
+
+        assert!(
+            tracker.is_available(CHANNEL, None),
+            "expiry must release the channel"
+        );
+        assert!(
+            tracker.is_available(CHANNEL, Some("never-seen")),
+            "expiry must release untracked models too"
+        );
+    }
+
+    /// A transient failure arms the model timer and the AIMD window; the gate stays closed until
+    /// both have expired, and it reopens as a probe rather than as a rewritten status (#872).
+    #[test]
+    fn a_transient_failure_clears_only_when_both_windows_expire() {
+        let tracker = ChannelStateTracker::new();
+        tracker.record_error(CHANNEL, Some(MODEL), &FailureType::ServerError, "500");
+
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "an active backoff timer must keep the model out"
+        );
+
+        set_model_windows(&tracker, MODEL, expired(), active());
+        assert!(
+            !tracker.is_available(CHANNEL, Some(MODEL)),
+            "an expired model timer alone must not reopen the model"
+        );
+
+        set_model_windows(&tracker, MODEL, expired(), expired());
+        assert!(
+            tracker.is_available(CHANNEL, Some(MODEL)),
+            "both windows expired must allow the probe"
+        );
+        let status = model_status(&tracker, MODEL);
+        assert_eq!(status, ModelStatus::TemporarilyDown);
+    }
 }
