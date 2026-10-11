@@ -309,24 +309,21 @@ fn ability_keeps_its_fields_and_enabled_flag() {
 }
 
 #[test]
-fn channel_type_dummy_serialises_but_does_not_deserialise() {
-    // An asymmetry worth pinning rather than "tidying up": `Dummy` has no assigned wire value
-    // (`From<i32>` never produces it, and the implicit discriminant 59 maps to `Unknown`), yet
-    // serde writes it as the string "Dummy". So this variant can be produced and logged but never
-    // read back.
+fn channel_type_dummy_has_no_wire_number_but_serde_round_trips_by_name() {
+    // `Dummy` is the only variant without an assigned wire value, so the two encodings disagree.
+    // Both directions are recorded here, because a later "tidy-up" of either one would change
+    // what the other agrees with. The first version of this test recorded the wrong one: it
+    // asserted that the name cannot be read back, and CI proved otherwise (PR #875).
     //
-    // It is dead on the production path today -- a repository-wide search finds `Dummy` only in
-    // this enum and in these tests -- which is exactly why the behaviour must be recorded: a
-    // future writer that starts emitting it would create a value its own reader rejects.
+    // * the serde name path is symmetric: `ChannelType` derives `Deserialize` with no custom
+    //   implementation and no `#[serde(...)]` attribute (crates/supply/contracts/src/types.rs),
+    //   so the variant name it writes is the variant name it reads;
+    // * the numeric path is not: `Dummy` takes the implicit discriminant after `NewApi = 58`,
+    //   and `From<i32>` maps that value to `Unknown`.
     let json = serde_json::to_string(&ChannelType::Dummy).expect("Dummy must serialise");
     assert_eq!(json, "\"Dummy\"");
-    assert!(
-        serde_json::from_str::<ChannelType>(&json).is_err(),
-        "if this ever starts parsing, the serialiser/deserialiser pair became symmetric"
-    );
+    assert_eq!(serde_json::from_str::<ChannelType>(&json).unwrap(), ChannelType::Dummy);
 
-    // The same asymmetry is visible in the numeric direction: the discriminant exists, but
-    // `From<i32>` prefers `Unknown` for that value.
     assert_eq!(ChannelType::Dummy as i32, 59);
     assert_eq!(ChannelType::from(59), ChannelType::Unknown);
 }
