@@ -1299,6 +1299,7 @@ mod tests {
             .get(model)
             .expect("the model state must exist")
             .status
+            .clone()
     }
 
     /// A model-level rate limit hides its channel from the pool until the timer expires, and the
@@ -1321,7 +1322,9 @@ mod tests {
             "an active rate-limit timer must keep the model out"
         );
         assert!(
-            tracker.get_available_channels(&[CHANNEL], Some(MODEL)).is_empty(),
+            tracker
+                .get_available_channels(&[CHANNEL], Some(MODEL))
+                .is_empty(),
             "the bulk filter must drop a rate-limited channel"
         );
 
