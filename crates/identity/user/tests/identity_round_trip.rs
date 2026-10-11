@@ -247,7 +247,10 @@ async fn recharge_rows_round_trip_and_credit_the_balance() {
     // The returned value must be *this* row's rowid: a rowid read on another pooled
     // connection can be 0 (caught above) or a non-zero rowid left by that connection's
     // earlier insert, which `id > 0` alone would accept (#876).
-    assert_eq!(listed[0].id, id, "the returned rowid must be the inserted row's id");
+    assert_eq!(
+        listed[0].id, id,
+        "the returned rowid must be the inserted row's id"
+    );
     assert_eq!(listed[0].amount, 10_000_000_000);
     assert_eq!(listed[0].currency.as_deref(), Some("USD"));
     assert_eq!(listed[0].description.as_deref(), Some("first top-up"));
