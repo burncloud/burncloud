@@ -273,11 +273,29 @@ fn ability_keeps_its_fields_and_enabled_flag() {
         weight: 3,
     };
     assert!(ability.enabled_bool());
-    assert!(!Ability {
-        enabled: 0,
-        ..ability.clone()
+
+    // The rule is "anything other than zero", not "exactly one". The column is a plain i32, so a
+    // non-canonical value (a future flag, or a row written by an older writer) must still count as
+    // enabled; narrowing the predicate to `enabled == 1` would silently disable those channels.
+    for enabled in [2, -1, i32::MIN, i32::MAX] {
+        assert!(
+            Ability {
+                enabled,
+                ..ability.clone()
+            }
+            .enabled_bool(),
+            "enabled={enabled} must count as enabled, because the predicate is `enabled != 0`"
+        );
     }
-    .enabled_bool());
+    // Zero is the only disabled value.
+    assert!(
+        !Ability {
+            enabled: 0,
+            ..ability.clone()
+        }
+        .enabled_bool(),
+        "enabled=0 must count as disabled"
+    );
 
     let value: serde_json::Value = serde_json::to_value(&ability).unwrap();
     assert_eq!(value["group"], serde_json::json!("default"));
@@ -288,6 +306,29 @@ fn ability_keeps_its_fields_and_enabled_flag() {
     assert_eq!(value["weight"], serde_json::json!(3));
     let back: Ability = serde_json::from_value(value).unwrap();
     assert_eq!(back.channel_id, 42);
+}
+
+#[test]
+fn channel_type_dummy_serialises_but_does_not_deserialise() {
+    // An asymmetry worth pinning rather than "tidying up": `Dummy` has no assigned wire value
+    // (`From<i32>` never produces it, and the implicit discriminant 59 maps to `Unknown`), yet
+    // serde writes it as the string "Dummy". So this variant can be produced and logged but never
+    // read back.
+    //
+    // It is dead on the production path today -- a repository-wide search finds `Dummy` only in
+    // this enum and in these tests -- which is exactly why the behaviour must be recorded: a
+    // future writer that starts emitting it would create a value its own reader rejects.
+    let json = serde_json::to_string(&ChannelType::Dummy).expect("Dummy must serialise");
+    assert_eq!(json, "\"Dummy\"");
+    assert!(
+        serde_json::from_str::<ChannelType>(&json).is_err(),
+        "if this ever starts parsing, the serialiser/deserialiser pair became symmetric"
+    );
+
+    // The same asymmetry is visible in the numeric direction: the discriminant exists, but
+    // `From<i32>` prefers `Unknown` for that value.
+    assert_eq!(ChannelType::Dummy as i32, 59);
+    assert_eq!(ChannelType::from(59), ChannelType::Unknown);
 }
 
 #[test]
