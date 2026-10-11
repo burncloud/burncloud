@@ -18,6 +18,9 @@ tracing = { workspace = true }
 [dev-dependencies]
 burncloud-router.workspace = true
 anyhow = { workspace = true }
+# Test-only: the crate itself needs tokio's process/io-util/time features only, while the
+# integration tests under tests/ need the test attribute and a multi-threaded runtime.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true
