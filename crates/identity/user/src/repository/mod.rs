@@ -619,9 +619,19 @@ impl UserDatabase {
         }
     }
 
+    /// Insert a recharge row and credit the matching balance column.
+    ///
+    /// The SQLite branch must read the new rowid on the *same* connection that ran the
+    /// INSERT: `last_insert_rowid()` is per-connection state, so a second `conn.pool()`
+    /// checkout can land on another pooled connection and return that connection's own
+    /// previous rowid (or 0). Both statements therefore run inside one transaction, the
+    /// same fix and the same reason as
+    /// `crates/supply/channel/src/channel_provider.rs` (#876).
     pub async fn create_recharge(db: &Database, recharge: &UserRecharge) -> Result<i32> {
         let conn = db.get_connection()?;
         let currency = recharge.currency.as_deref().unwrap_or("USD");
+
+        let mut tx = conn.pool().begin().await?;
         let id: i32 = match db.kind().as_str() {
             "sqlite" => {
                 sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES (?, ?, ?, ?)")
@@ -629,12 +639,11 @@ impl UserDatabase {
                     .bind(recharge.amount)
                     .bind(currency)
                     .bind(&recharge.description)
-                    .execute(conn.pool())
+                    .execute(&mut *tx)
                     .await?;
-                let id: i32 = sqlx::query_scalar("SELECT last_insert_rowid()")
-                    .fetch_one(conn.pool())
-                    .await?;
-                id
+                sqlx::query_scalar("SELECT last_insert_rowid()")
+                    .fetch_one(&mut *tx)
+                    .await?
             }
             "postgres" => {
                 sqlx::query("INSERT INTO user_recharges (user_id, amount, currency, description) VALUES ($1, $2, $3, $4) RETURNING id")
@@ -642,12 +651,13 @@ impl UserDatabase {
                     .bind(recharge.amount)
                     .bind(currency)
                     .bind(&recharge.description)
-                    .fetch_one(conn.pool())
+                    .fetch_one(&mut *tx)
                     .await?
                     .get(0)
             }
             _ => unreachable!(),
         };
+        tx.commit().await?;
 
         // Also update user balance based on currency
         if currency == "CNY" {
