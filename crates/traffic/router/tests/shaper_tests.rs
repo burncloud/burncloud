@@ -42,8 +42,9 @@ use burncloud_router::rate_budget::{
     ReservationSource,
 };
 use burncloud_traffic_contracts::TrafficColor;
+use tokio::net::TcpListener;
 
-use common::{insert_router_token, setup_db, start_test_server};
+use common::{insert_router_token, setup_db, start_test_server, start_test_server_on};
 
 // ---------------------------------------------------------------------------
 // Unit-level tests — direct InMemoryBudget / BudgetGuard public API.
@@ -424,6 +425,99 @@ async fn t6_all_candidates_rejected_returns_503_x_rejected_by_shaper() -> anyhow
         body["error"]["message"], "All candidate channels rejected by rate budget shaper",
         "all-Shaper-rejected must stay on the dedicated 503 path, not fall through to 502"
     );
+
+    Ok(())
+}
+
+/// No-available-channels contract — the sibling of T6 on the *other* 503 path
+/// (audit decision D12): the model has candidate channels and the L2 Shaper
+/// would admit them, but the `Budget` order type filters every candidate out on
+/// price, so `ModelRouter::route_with_scheduler` returns
+/// `NoAvailableChannelsError` and the proxy must answer
+/// `503 + X-Rejected-By: order_type + Retry-After: 60` with
+/// `code=no_available_channels`. A client has to be able to tell this local
+/// admission rejection from an upstream 5xx and from the Shaper branch
+/// (`rate_budget_exhausted`).
+#[tokio::test]
+async fn no_available_channels_returns_503_x_rejected_by_order_type() -> anyhow::Result<()> {
+    let (db, pool, db_url) = setup_db().await?;
+
+    // seed_price writes input 1 + output 1, so a one-nanodollar ceiling puts the
+    // only candidate above the Budget price cap and the OrderType filter drops it.
+    seed_price(&pool, "no-channels-model").await?;
+    seed_channel(
+        &pool,
+        9_101,
+        "http://127.0.0.1:1",
+        "no-channels-model",
+        "default",
+        Some(60),
+        Some(60_000),
+        Some((1.0, 0.0, 0.0)),
+    )
+    .await?;
+
+    insert_router_token(
+        &db,
+        "tok-no-channels",
+        "u-no-channels",
+        "default",
+        Some("budget"),
+        Some(1),
+    )
+    .await?;
+    grant_unlimited_quota(&pool, "tok-no-channels").await?;
+
+    // Fixed ports collide: cargo runs the tests of one binary in parallel, and
+    // t9 in this same file already binds 14_652 — the first round of this test
+    // failed exactly that way. `common.rs` points concurrent integration
+    // servers at `start_test_server_on` for this reason, so let the OS pick.
+    let listener = TcpListener::bind("0.0.0.0:0")
+        .await
+        .expect("binding an ephemeral port must only fail on a broken host");
+    let port = listener
+        .local_addr()
+        .expect("a bound listener always has a local address")
+        .port();
+    start_test_server_on(listener, &db_url).await;
+
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let resp = client
+        .post(&url)
+        .header("Authorization", "Bearer tok-no-channels")
+        .json(&serde_json::json!({
+            "model": "no-channels-model",
+            "max_tokens": 512,
+            "messages": [{"role": "user", "content": "hi"}],
+        }))
+        .send()
+        .await?;
+
+    assert_eq!(
+        resp.status().as_u16(),
+        503,
+        "no candidate left must be a 503, not a 502"
+    );
+    assert_eq!(
+        resp.headers()
+            .get("X-Rejected-By")
+            .and_then(|v| v.to_str().ok()),
+        Some("order_type"),
+        "the OrderType filter branch must identify itself"
+    );
+    assert_eq!(
+        resp.headers()
+            .get("Retry-After")
+            .and_then(|v| v.to_str().ok()),
+        Some("60"),
+        "Retry-After must keep the documented D12 value"
+    );
+
+    let body: serde_json::Value = resp.json().await?;
+    assert_eq!(body["error"]["code"], "no_available_channels");
+    assert_eq!(body["error"]["type"], "service_unavailable");
+    assert_eq!(body["error"]["rejected_by"], "order_type");
 
     Ok(())
 }
