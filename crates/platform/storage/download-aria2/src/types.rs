@@ -131,16 +131,20 @@ pub struct Aria2Instance {
 
 impl Aria2Instance {
     // 输入：可变的 aria2 进程实例。
-    // 功能：探测关联的 aria2 子进程是否仍在运行。
+    // 功能：探测关联的 aria2 服务是否仍在运行。
     // 错误：进程状态查询失败时返回 false。
+    // 说明：这里回答的是**服务**的状态，因为服务就是本结构记录的那个进程：启动路径不再让 aria2 detach
+    // （#904），所以「子进程还活着」与「服务还活着」是同一个事实，而不是关于某个平台的假设。
     pub fn is_running(&mut self) -> bool {
         // 查询子进程的退出状态
         matches!(self.process.try_wait(), Ok(None))
     }
 
     // 输入：可变的 aria2 进程实例。
-    // 功能：终止并等待关联的 aria2 子进程退出。
+    // 功能：终止并等待关联的 aria2 服务退出。
     // 错误：进程终止或等待失败时返回 ProcessError。
+    // 说明：`wait()` 是契约的一部分而不是收尾动作 —— 只有回收了子进程，「服务已经消失」才是被观测到的
+    // 事实，而不是一次调用返回了 Ok。
     pub fn kill(&mut self) -> Aria2Result<()> {
         // 请求终止子进程
         self.process
@@ -151,6 +155,26 @@ impl Aria2Instance {
             .wait()
             .map_err(|e| Aria2Error::ProcessError(e.to_string()))?;
         Ok(())
+    }
+}
+
+/// 终止本 crate 启动的那个 aria2 服务。
+///
+/// 这条缝存在的目的是让守护进程的终止路径**可断言**而不必真的杀掉什么（#904）：测试注入一个记录器，
+/// 断言请求指向的正是本 crate 记录的那个实例。签名只接受 [`Aria2Instance`] 而**不接受** pid 或名字，
+/// 这是有意的 —— 本 crate 唯一有权终止的就是它自己启动的进程（#898），因此不存在一个可以按镜像名选
+/// 中进程、更不可能广播的参数入口。
+pub(crate) trait ProcessTerminator: Send + Sync {
+    /// 终止 `instance` 记录的服务，并等待它退出。
+    fn terminate(&self, instance: &mut Aria2Instance) -> Aria2Result<()>;
+}
+
+/// 生产实现：`Aria2Instance::kill`，目标就是被记录的直接子进程。
+pub(crate) struct ChildTerminator;
+
+impl ProcessTerminator for ChildTerminator {
+    fn terminate(&self, instance: &mut Aria2Instance) -> Aria2Result<()> {
+        instance.kill()
     }
 }
 
