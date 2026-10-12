@@ -209,7 +209,10 @@ async fn a_matching_active_task_is_reported_as_existing_with_its_gid(
         move |index| match index {
             0 => active_tasks(&[&gid]),
             1 => status_for(&gid),
-            _ => files_for(&uri, &format!("{dir}/{}", uri.trim_start_matches("https://"))),
+            _ => files_for(
+                &uri,
+                &format!("{dir}/{}", uri.trim_start_matches("https://")),
+            ),
         }
     })
     .await?;
