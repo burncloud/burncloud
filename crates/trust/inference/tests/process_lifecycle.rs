@@ -232,21 +232,41 @@ async fn the_spawn_arguments_match_the_documented_contract(
 
 /// (f) #886: a failed health check must actually **terminate** the process it started.
 ///
-/// Mechanism (v2, alternative route): the stub writes its own PID and then `exec`s into
-/// `sleep 300`, so the recorded PID **is** the process the service spawned (exec keeps the PID)
-/// and stays alive for the whole 60s health-check window. Liveness is then read from the kernel
-/// with `kill(pid, 0)` -- no cooperation over time, no shell loop, no filesystem timestamp.
+/// ## Why liveness cannot be sampled after the call returns
 ///
-/// Note on which route was taken: the plan's primary route was an argv marker scanned out of
+/// `start_instance` only returns *after* it has killed and reaped the child. So by the time the
+/// test regains control the process is supposed to be gone, and any check made at that point
+/// answers "was it killed?" but can never answer "was it ever alive?" -- the precondition that
+/// keeps the test from passing vacuously. (This is exactly what the previous two attempts got
+/// wrong: they registered "not alive" as a failure of the fix.)
+///
+/// ## The mechanism
+///
+/// The stub starts a **detached observer** before handing itself over to `sleep`. The observer is
+/// a separate process, so the service's kill does not touch it, and it writes one timestamped line
+/// per sample recording whether the stub's PID was still alive:
+///
+/// ```text
+/// pid=<pid> alive=yes
+/// pid=<pid> alive=yes
+/// ...
+/// ```
+///
+/// The test then reads that log. At least one `alive=yes` line is the non-vacuity evidence
+/// (recorded *while* the health check was running, not reconstructed afterwards), and the stub's
+/// PID being gone at assertion time is the termination evidence. No shell loop in the foreground,
+/// no filesystem timestamp, and nothing that depends on the stub surviving the kill.
+///
+/// Deliberately not asserted here: `processes` being empty. That was already true while the
+/// process leaked, so it cannot tell the defect from the fix (#886 AC2).
+///
+/// Note on which route was taken: the plan's primary route was a unique argv marker scanned out of
 /// `/proc/*/cmdline`. It is not reachable here without a production change -- `start_instance`
 /// builds the stub's arguments itself (`-m`, `--port`, `-c`, `-ngl`, `--nobrowser`) and
 /// `InferenceConfig` exposes no field that would forward an extra argument, while editing
 /// `crates/trust/inference/src/lib.rs` is forbidden by this scope. The authorised alternative is
 /// used instead, and the constraint is recorded here rather than asserted, because an assertion
 /// about a hardcoded literal would only test the literal.
-///
-/// Deliberately not asserted here: `processes` being empty. That was already true while the
-/// process leaked, so it cannot tell the defect from the fix (#886 AC2).
 #[tokio::test]
 async fn a_failed_health_check_terminates_the_spawned_process(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -255,14 +275,30 @@ async fn a_failed_health_check_terminates_the_spawned_process(
     let dir = scratch("kill-on-failure");
     std::fs::create_dir_all(&dir)?;
     let pid_file = dir.join("stub.pid");
+    let watch_log = dir.join("liveness.log");
     let stub = dir.join("llama-server");
 
-    // Record the PID, then hand the process over to `sleep`. `exec` replaces the shell, so the
-    // PID written here is the PID of the surviving process. No port is ever opened, so the health
-    // check must time out.
+    // Record the PID, start the detached observer, then hand the process over to `sleep`. `exec`
+    // keeps the PID, so the recorded PID is the process the service actually spawned. No port is
+    // ever opened, so the health check must time out.
+    //
+    // The observer sleeps a whole second per sample on purpose: this `sh` is dash and its `sleep`
+    // is `/bin/sleep`, which rejects a fractional argument with an error. That error would end
+    // nothing but would make the loop spin as fast as the shell can fork, filling the log. One
+    // sample per second is far more than the single `alive=yes` line this test needs.
     write_stub(
         &stub,
-        &format!("printf '%s' \"$$\" > '{}'\nexec sleep 300", pid_file.display()),
+        &format!(
+            "printf '%s' \"$$\" > '{pid}'\n\
+             ( p=\"$$\"; i=0; while [ $i -lt 600 ]; do \
+             if kill -0 \"$p\" 2>/dev/null; then printf 'pid=%s alive=yes\\n' \"$p\" >> '{log}'; \
+             else printf 'pid=%s alive=no\\n' \"$p\" >> '{log}'; fi; \
+             i=$((i+1)); sleep 1; done ) &\n\
+             sleep 1\n\
+             exec sleep 300",
+            pid = pid_file.display(),
+            log = watch_log.display()
+        ),
     );
     std::env::set_var("BURNCLOUD_LLAMA_BIN", &stub);
 
@@ -292,8 +328,6 @@ async fn a_failed_health_check_terminates_the_spawned_process(
         "a failed health check must leave the model Failed"
     );
 
-    // The stub must have written its PID, which also proves it really ran (otherwise the liveness
-    // check below would be about a process that never existed).
     let raw = std::fs::read_to_string(&pid_file)
         .expect("the stub must have recorded its PID before exec'ing into sleep");
     let pid: i32 = raw
@@ -301,27 +335,29 @@ async fn a_failed_health_check_terminates_the_spawned_process(
         .parse()
         .unwrap_or_else(|e| panic!("stub pid {raw:?} is not a number: {e}"));
 
-    // The heart of #886: the spawned process must be gone. Polled, because `kill().await` returns
-    // once the signal was delivered while the process needs a moment to actually leave; a leaked
-    // process never disappears, so the assertion still fails on the defect.
-    //
-    // `seen_alive` is the non-vacuity precondition: if the process had already exited on its own,
-    // the "gone" assertion would hold for the wrong reason and the test would prove nothing.
-    let mut seen_alive = false;
+    // The observer ran while the health check was still going; its log is the record of what the
+    // kernel saw at that time, and it is read after the fact because the observer outlives the stub.
+    let observed = std::fs::read_to_string(&watch_log).unwrap_or_default();
+    let was_alive_at_least_once = observed
+        .lines()
+        .any(|line| line.starts_with(&format!("pid={pid} ")) && line.ends_with("alive=yes"));
+    assert!(
+        was_alive_at_least_once,
+        "the observer never saw process {pid} alive, so this test would have passed vacuously; \
+         observer log was: {observed:?}"
+    );
+
+    // The heart of #886: the process the service started must be gone. Polled, because `kill()`
+    // returns once the signal was delivered while the process needs a moment to actually leave;
+    // a leaked process never disappears, so the defect still fails this assertion.
     let mut gone = false;
     for _ in 0..100 {
         if !pid_is_alive(pid) {
             gone = true;
             break;
         }
-        seen_alive = true;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-
-    assert!(
-        seen_alive,
-        "process {pid} was never observed alive, so this test would have passed vacuously"
-    );
     assert!(
         gone,
         "process {pid} is still alive after the failed start returned, so the spawned child was \
