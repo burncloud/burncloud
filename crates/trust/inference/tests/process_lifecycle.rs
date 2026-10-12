@@ -58,18 +58,21 @@ fn scratch(tag: &str) -> PathBuf {
     ))
 }
 
-/// `true` while the heartbeat file is still being rewritten.
+/// `true` while the heartbeat file keeps growing.
 ///
-/// Takes two reads a short interval apart rather than trusting one timestamp: a *frozen* file
-/// proves the writer is gone, whereas a single read only proves it wrote at some point in the past.
+/// The stub appends one byte per iteration, so the file's length is a monotonic counter of how
+/// many times a live process has beaten. Comparing lengths is robust in a way `mtime` is not:
+/// filesystem timestamp granularity varies, and an equal value is indistinguishable from a frozen
+/// file there. Two samples a short interval apart are taken because a single size only proves the
+/// writer existed at some point in the past.
 async fn heartbeat_is_advancing(path: &Path) -> bool {
-    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified());
-    let first = match modified(path) {
-        Ok(t) => t,
+    let size = |p: &Path| std::fs::metadata(p).map(|m| m.len());
+    let first = match size(path) {
+        Ok(n) => n,
         Err(_) => return false,
     };
-    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-    match modified(path) {
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    match size(path) {
         Ok(second) => second > first,
         Err(_) => false,
     }
@@ -242,12 +245,16 @@ async fn a_failed_health_check_terminates_the_spawned_process(
     let gone = dir.join("exited");
     let stub = dir.join("llama-server");
 
-    // `sleep 0.1` runs in the foreground so the shell stays interruptible and its TERM trap fires.
+    // `sleep 1` rather than a fractional sleep: `sh` here is dash, whose `sleep` is
+    // `/bin/sleep` and rejects fractional arguments with an error, which would end the loop and
+    // make the stub exit immediately. One beat per second is comfortably inside the 1.2s window
+    // the liveness check samples over.
     write_stub(
         &stub,
         &format!(
             "trap 'printf exited > \"{}\"; exit 0' TERM\n\
-             while true; do printf x >> \"{}\"; sleep 0.1; done",
+             sleep 2\n\
+             while true; do printf x >> \"{}\"; sleep 1; done",
             gone.display(),
             hb.display()
         ),
