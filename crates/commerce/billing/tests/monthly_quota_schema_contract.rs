@@ -7,23 +7,40 @@
 //!
 //! The unit surface of `quota` is small, but what it claims is a fact about *production*: that
 //! these types map onto the columns `0015_monthly_quota.sql` actually creates. A hand-written
-//! `CREATE TABLE` here would prove nothing about the shipped migration, so every test builds its
-//! database from the real embedded migrations through [`create_database_with_url`].
+//! `CREATE TABLE` for the tables under test would prove nothing about the shipped migration, so
+//! every database-backed test here builds its database from the real embedded migrations through
+//! [`create_database_with_url`].
 //!
 //! Coverage map:
 //!
-//! * `migrations_create_the_quota_tables` — the guard the rest of the file depends on.
+//! * `migrations_create_the_quota_tables` — the guard the database-backed tests depend on.
 //! * AC3: the ordered column lists from `PRAGMA table_info` are compared with the exact column list
 //!   each row struct selects, and a full row is written and read back through
 //!   `BillingPlanRow`/`BillingSubscriptionRow`, so a renamed or reordered column fails here.
 //! * AC2: the value domains are asserted against the migration comments item by item, and a value
 //!   outside them is shown to be *storable* by the database yet *unrepresentable* in the types.
 //! * AC4: quota exactly exhausted, over quota, the expiry boundary, cancellation with quota left,
-//!   and two subscriptions to the same plan.
+//!   and two subscriptions to the same plan. The boundary predicates are pure functions of a row,
+//!   so those tests build the rows directly instead of round-tripping them through the database;
+//!   that keeps them independent of the schema mismatch described below.
 //!
-//! Honest limits: these tests drive SQLite (the dialect this crate's existing row-mapping test
-//! uses). The PostgreSQL contract suites run in CI as well, but this file does not drive them, and
-//! nothing here exercises the billing admission path, which issue #652 leaves out of scope.
+//! ## Why `scaffold_legacy_fk_parents` exists (finding F2)
+//!
+//! `0015` declares `billing_plans.channel_id -> channels(id)`,
+//! `billing_subscriptions.user_id -> users(id)` and
+//! `billing_subscriptions.channel_id -> channels(id)`. But migration
+//! `0010_rename_tables.sql` renames `channels` to `channel_providers` and `users` to
+//! `user_accounts`, and `burncloud-database`'s rename fixup (`schema/rename.rs`, `copy_and_drop`)
+//! then **drops the legacy names**. On SQLite a foreign key may name a table that does not exist
+//! (creation succeeds), but with foreign-key enforcement on — sqlx enables it by default — the first
+//! *insert* into either table fails with `no such table: channels`.
+//!
+//! That mismatch is a schema defect, and the fix is a migration change, which this issue forbids
+//! (`0015` is shipped; no migration may be edited). It is registered in the PR's Findings for a
+//! follow-up. To keep this file's round-trip assertions meaningful in the meantime, the two legacy
+//! parent tables are created here as an explicit, documented scaffold, and
+//! `the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones` pins the real schema state so
+//! the scaffold can never quietly be mistaken for the production schema.
 
 use burncloud_commerce_billing::{
     BillingMode, BillingPlan, BillingPlanRow, BillingSubscription, BillingSubscriptionRow,
@@ -75,26 +92,15 @@ fn sql_opt(value: Option<i64>) -> String {
     value.map_or_else(|| "NULL".to_owned(), |v| v.to_string())
 }
 
-/// The foreign-key parents `billing_plans`/`billing_subscriptions` reference.
-async fn seed_parents(db: &Database) -> (i64, String) {
-    db.execute_query(
-        "INSERT INTO channels (key, name) VALUES ('quota-contract', 'quota-contract')",
-    )
-    .await
-    .unwrap();
-    let (channel_id,): (i64,) =
-        sqlx::query_as("SELECT id FROM channels WHERE key = 'quota-contract'")
-            .fetch_one(db.get_connection().unwrap().pool())
+/// Whether `table` exists in the migrated database.
+async fn table_exists(db: &Database, table: &str) -> bool {
+    let found: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(table)
+            .fetch_all(db.get_connection().unwrap().pool())
             .await
             .unwrap();
-    // `users.id` is TEXT in both dialects; the id is deliberately non-numeric (see the module note
-    // in `quota.rs` about the SQLite `user_id` declaration).
-    db.execute_query(
-        "INSERT INTO users (id, username, password_hash) VALUES ('user-alice', 'alice', 'test-hash')",
-    )
-    .await
-    .unwrap();
-    (channel_id, "user-alice".to_owned())
+    !found.is_empty()
 }
 
 /// The columns of `table`, in declaration order.
@@ -107,11 +113,44 @@ async fn table_columns(db: &Database, table: &str) -> Vec<String> {
 }
 
 /// The columns every `billing_plans` read in this file selects, in order.
-const PLAN_COLUMNS: &str =
-    "id, name, monthly_fee, billing_mode, request_limit, token_limit, channel_id, created_at, updated_at";
+const PLAN_COLUMNS: &str = "id, name, monthly_fee, billing_mode, request_limit, token_limit, \
+     channel_id, created_at, updated_at";
 /// The columns every `billing_subscriptions` read in this file selects, in order.
 const SUBSCRIPTION_COLUMNS: &str = "id, user_id, plan_id, channel_id, status, quota_used, \
      quota_limit, expires_at, created_at, updated_at";
+
+/// Create the two **legacy** foreign-key parents the shipped `0015` still names, and return a
+/// channel id plus a non-numeric user id.
+///
+/// See the module header: migration `0010` renamed these tables and the rename fixup dropped them,
+/// so they do not exist in the migrated database. Using the legacy names (rather than
+/// `channel_providers`/`user_accounts`) is deliberate — it is the only scaffold that makes `0015`'s
+/// own foreign-key declarations resolve, so the child inserts below exercise a real constraint check
+/// instead of disabling enforcement. The user id is non-numeric on purpose: on SQLite the column is
+/// declared `INTEGER`, and a digit-only id would be coerced by column affinity, which is the
+/// divergence recorded as finding F1.
+async fn scaffold_legacy_fk_parents(db: &Database) -> (i64, String) {
+    db.execute_query(
+        "CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL)",
+    )
+    .await
+    .unwrap();
+    db.execute_query("CREATE TABLE users (id TEXT PRIMARY KEY)")
+        .await
+        .unwrap();
+    db.execute_query("INSERT INTO channels (key) VALUES ('quota-contract')")
+        .await
+        .unwrap();
+    db.execute_query("INSERT INTO users (id) VALUES ('user-alice')")
+        .await
+        .unwrap();
+    let (channel_id,): (i64,) =
+        sqlx::query_as("SELECT id FROM channels WHERE key = 'quota-contract'")
+            .fetch_one(db.get_connection().unwrap().pool())
+            .await
+            .unwrap();
+    (channel_id, "user-alice".to_owned())
+}
 
 /// A plan row to insert.
 struct PlanSeed<'a> {
@@ -196,17 +235,59 @@ async fn load_subscriptions(db: &Database, plan_id: i64) -> Vec<BillingSubscript
         .collect()
 }
 
+/// A subscription value in memory, for the boundary predicates.
+///
+/// The boundary methods are pure functions of a row, so these tests do not need a database at all;
+/// constructing the row directly also keeps them independent of finding F2.
+fn in_memory_subscription(
+    status: SubscriptionStatus,
+    used: i64,
+    limit: i64,
+    expires_at: i64,
+) -> BillingSubscription {
+    BillingSubscription {
+        id: 1,
+        user_id: "user-alice".to_owned(),
+        plan_id: 7,
+        channel_id: 3,
+        status,
+        quota_used: used,
+        quota_limit: limit,
+        expires_at,
+        created_at: 1_700_000_000_000,
+        updated_at: 1_700_000_000_001,
+    }
+}
+
 #[tokio::test]
 async fn migrations_create_the_quota_tables() {
     let (db, path) = fresh_db("guard").await;
     for expected in ["billing_plans", "billing_subscriptions"] {
-        let found: Vec<(String,)> =
-            sqlx::query_as("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-                .bind(expected)
-                .fetch_all(db.get_connection().unwrap().pool())
-                .await
-                .unwrap();
-        assert_eq!(found.len(), 1, "migration 0015 did not create {expected}");
+        assert!(
+            table_exists(&db, expected).await,
+            "migration 0015 did not create {expected}"
+        );
+    }
+    cleanup(db, &path).await;
+}
+
+#[tokio::test]
+async fn the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones() {
+    // Pins the real schema state that `scaffold_legacy_fk_parents` works around: `0010` created the
+    // canonical parents, and the rename fixup dropped the legacy names that `0015`'s foreign keys
+    // still reference. Without this test the scaffold could be mistaken for the production schema.
+    let (db, path) = fresh_db("parents").await;
+    for canonical in ["user_accounts", "channel_providers"] {
+        assert!(
+            table_exists(&db, canonical).await,
+            "0010 should have created {canonical}"
+        );
+    }
+    for legacy in ["users", "channels"] {
+        assert!(
+            !table_exists(&db, legacy).await,
+            "{legacy} should have been renamed away and dropped; finding F2 assumes this"
+        );
     }
     cleanup(db, &path).await;
 }
@@ -214,7 +295,7 @@ async fn migrations_create_the_quota_tables() {
 #[tokio::test]
 async fn the_plan_types_map_onto_the_billing_plans_columns() {
     let (db, path) = fresh_db("plan_columns").await;
-    let (channel_id, _user) = seed_parents(&db).await;
+    let (channel_id, _user) = scaffold_legacy_fk_parents(&db).await;
 
     // AC3: the migration's declared columns are, one by one and in order, the ones the row struct
     // selects. A renamed, added or reordered column breaks this before any decoding can hide it.
@@ -282,7 +363,7 @@ async fn the_plan_types_map_onto_the_billing_plans_columns() {
 #[tokio::test]
 async fn the_subscription_types_map_onto_the_billing_subscriptions_columns() {
     let (db, path) = fresh_db("sub_columns").await;
-    let (channel_id, user_id) = seed_parents(&db).await;
+    let (channel_id, user_id) = scaffold_legacy_fk_parents(&db).await;
     let plan_id = insert_plan(
         &db,
         &PlanSeed {
@@ -381,7 +462,7 @@ async fn a_billing_mode_the_schema_permits_but_the_comment_does_not_is_unreprese
     // an invalid value be unrepresentable in the types: decoding must refuse it rather than let a
     // plan exist whose mode no code can interpret.
     let (db, path) = fresh_db("bad_mode").await;
-    let (channel_id, _user) = seed_parents(&db).await;
+    let (channel_id, _user) = scaffold_legacy_fk_parents(&db).await;
     insert_plan(
         &db,
         &PlanSeed {
@@ -410,7 +491,7 @@ async fn a_billing_mode_the_schema_permits_but_the_comment_does_not_is_unreprese
 #[tokio::test]
 async fn a_subscription_status_the_schema_permits_but_the_comment_does_not_is_unrepresentable() {
     let (db, path) = fresh_db("bad_status").await;
-    let (channel_id, user_id) = seed_parents(&db).await;
+    let (channel_id, user_id) = scaffold_legacy_fk_parents(&db).await;
     let plan_id = insert_plan(
         &db,
         &PlanSeed {
@@ -452,38 +533,9 @@ async fn a_subscription_status_the_schema_permits_but_the_comment_does_not_is_un
     cleanup(db, &path).await;
 }
 
-/// Insert one subscription and return it, for the boundary cases.
-async fn subscription_with(db: &Database, seed: &SubSeed) -> BillingSubscription {
-    let (channel_id, user_id) = seed_parents(db).await;
-    let plan_id = insert_plan(
-        db,
-        &PlanSeed {
-            name: "boundary-plan",
-            mode: "per_request",
-            fee: 2_000_000_000,
-            request_limit: Some(100),
-            token_limit: None,
-        },
-        channel_id,
-    )
-    .await;
-    insert_subscription(db, &user_id, plan_id, channel_id, seed).await;
-    load_subscriptions(db, plan_id).await.remove(0)
-}
-
 #[tokio::test]
 async fn a_subscription_inside_its_quota_and_window_is_usable() {
-    let (db, path) = fresh_db("usable").await;
-    let subscription = subscription_with(
-        &db,
-        &SubSeed {
-            status: "active",
-            used: 99,
-            limit: 100,
-            expires_at: LATER,
-        },
-    )
-    .await;
+    let subscription = in_memory_subscription(SubscriptionStatus::Active, 99, 100, LATER);
 
     assert_eq!(subscription.remaining_quota(), 1);
     assert!(!subscription.is_exhausted());
@@ -493,44 +545,24 @@ async fn a_subscription_inside_its_quota_and_window_is_usable() {
     let view = subscription.status_response_at(NOW);
     assert_eq!(view.remaining_quota, 1);
     assert!(view.usable);
-
-    cleanup(db, &path).await;
+    assert_eq!(view.status, SubscriptionStatus::Active);
+    assert_eq!(view.quota_limit, 100);
+    assert_eq!(view.expires_at, LATER);
 }
 
 #[tokio::test]
 async fn a_subscription_whose_quota_is_exactly_used_up_is_not_usable() {
-    let (db, path) = fresh_db("exhausted").await;
-    let subscription = subscription_with(
-        &db,
-        &SubSeed {
-            status: "active",
-            used: 100,
-            limit: 100,
-            expires_at: LATER,
-        },
-    )
-    .await;
+    let subscription = in_memory_subscription(SubscriptionStatus::Active, 100, 100, LATER);
 
     assert_eq!(subscription.remaining_quota(), 0);
     assert!(subscription.is_exhausted(), "used == limit is exhausted");
     assert!(!subscription.is_usable_at(NOW));
-
-    cleanup(db, &path).await;
+    assert!(!subscription.status_response_at(NOW).usable);
 }
 
 #[tokio::test]
 async fn an_over_quota_subscription_reports_no_negative_remainder() {
-    let (db, path) = fresh_db("over_quota").await;
-    let subscription = subscription_with(
-        &db,
-        &SubSeed {
-            status: "active",
-            used: 250,
-            limit: 100,
-            expires_at: LATER,
-        },
-    )
-    .await;
+    let subscription = in_memory_subscription(SubscriptionStatus::Active, 250, 100, LATER);
 
     assert!(subscription.is_exhausted());
     assert_eq!(
@@ -539,23 +571,22 @@ async fn an_over_quota_subscription_reports_no_negative_remainder() {
         "an overrun must not produce a negative remainder"
     );
     assert!(!subscription.is_usable_at(NOW));
+}
 
-    cleanup(db, &path).await;
+#[tokio::test]
+async fn an_extreme_overrun_still_clamps_to_zero() {
+    // The two quota columns are independent i64 values; an extreme pair must clamp, not overflow.
+    let subscription =
+        in_memory_subscription(SubscriptionStatus::Active, i64::MAX, i64::MIN, LATER);
+
+    assert_eq!(subscription.remaining_quota(), 0);
+    assert!(subscription.is_exhausted());
+    assert!(!subscription.is_usable_at(NOW));
 }
 
 #[tokio::test]
 async fn the_expiry_boundary_itself_counts_as_expired() {
-    let (db, path) = fresh_db("expiry").await;
-    let subscription = subscription_with(
-        &db,
-        &SubSeed {
-            status: "active",
-            used: 1,
-            limit: 100,
-            expires_at: NOW,
-        },
-    )
-    .await;
+    let subscription = in_memory_subscription(SubscriptionStatus::Active, 1, 100, NOW);
 
     assert!(!subscription.is_expired_at(EARLIER));
     assert!(
@@ -565,23 +596,11 @@ async fn the_expiry_boundary_itself_counts_as_expired() {
     assert!(subscription.is_expired_at(NOW), "expires_at is inclusive");
     assert!(!subscription.is_usable_at(NOW));
     assert!(!subscription.is_usable_at(LATER));
-
-    cleanup(db, &path).await;
 }
 
 #[tokio::test]
 async fn a_cancelled_subscription_is_unusable_even_with_quota_left() {
-    let (db, path) = fresh_db("cancelled").await;
-    let subscription = subscription_with(
-        &db,
-        &SubSeed {
-            status: "cancelled",
-            used: 0,
-            limit: 100,
-            expires_at: LATER,
-        },
-    )
-    .await;
+    let subscription = in_memory_subscription(SubscriptionStatus::Cancelled, 0, 100, LATER);
 
     assert_eq!(subscription.status, SubscriptionStatus::Cancelled);
     assert_eq!(
@@ -594,31 +613,17 @@ async fn a_cancelled_subscription_is_unusable_even_with_quota_left() {
         !subscription.is_usable_at(NOW),
         "cancellation outranks remaining quota"
     );
-
-    cleanup(db, &path).await;
 }
 
 #[tokio::test]
 async fn an_expired_status_row_is_unusable_before_its_timestamp() {
     // The schema keeps `status` and `expires_at` as separate facts; a row already marked expired
     // must not become usable again just because its timestamp is in the future.
-    let (db, path) = fresh_db("expired_status").await;
-    let subscription = subscription_with(
-        &db,
-        &SubSeed {
-            status: "expired",
-            used: 0,
-            limit: 100,
-            expires_at: LATER,
-        },
-    )
-    .await;
+    let subscription = in_memory_subscription(SubscriptionStatus::Expired, 0, 100, LATER);
 
     assert!(!subscription.is_expired_at(NOW));
     assert_eq!(subscription.status, SubscriptionStatus::Expired);
     assert!(!subscription.is_usable_at(NOW));
-
-    cleanup(db, &path).await;
 }
 
 #[tokio::test]
@@ -627,7 +632,7 @@ async fn two_subscriptions_to_the_same_plan_are_both_representable() {
     // (expires_at) but no unique constraint on (user_id, plan_id), so a repeated subscription is a
     // state the schema permits. The mapping must not collapse the two rows into one.
     let (db, path) = fresh_db("duplicate").await;
-    let (channel_id, user_id) = seed_parents(&db).await;
+    let (channel_id, user_id) = scaffold_legacy_fk_parents(&db).await;
     let plan_id = insert_plan(
         &db,
         &PlanSeed {
@@ -666,6 +671,7 @@ async fn two_subscriptions_to_the_same_plan_are_both_representable() {
     assert_eq!(stored[1].quota_used, 20);
     assert_eq!(stored[0].user_id, stored[1].user_id);
     assert_eq!(stored[0].plan_id, stored[1].plan_id);
+    assert!(stored.iter().all(|s| s.is_usable_at(NOW)));
 
     cleanup(db, &path).await;
 }

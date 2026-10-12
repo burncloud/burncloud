@@ -23,15 +23,29 @@
 //! `billing_subscriptions`) and the billing admission path both stay deferred, as issue #652
 //! records. These types describe the schema; nothing in this module enforces a quota.
 //!
-//! # Known dialect divergence (reported, not worked around)
+//! # Schema findings (reported, not worked around)
 //!
-//! `billing_subscriptions.user_id` is `TEXT` in the PostgreSQL migration but is still `INTEGER` in
-//! the SQLite one, while `users.id` is `TEXT PRIMARY KEY` in both. The PostgreSQL side was already
-//! corrected under #833 ("Historical fresh installs previously failed while creating this FK"); the
-//! SQLite declaration was not. This module maps the column to [`String`], matching the foreign key's
-//! target type in both dialects and the PostgreSQL column. On SQLite, INTEGER affinity coerces a
-//! digit-only user id to an integer, so such an id cannot round-trip there. That is a schema defect
-//! for a follow-up migration; these types must not paper over it.
+//! F1 — `billing_subscriptions.user_id` is `TEXT` in the PostgreSQL migration but is still
+//! `INTEGER` in the SQLite one. The PostgreSQL side was already corrected under #833 ("Historical
+//! fresh installs previously failed while creating this FK"); the SQLite declaration was not. This
+//! module maps the column to [`String`], matching the foreign-key target type and the PostgreSQL
+//! column. On SQLite, `INTEGER` affinity coerces a digit-only user id to an integer, so such an id
+//! cannot round-trip there.
+//!
+//! F2 — the foreign keys `0015` declares do not resolve in the migrated SQLite database at all.
+//! `billing_plans.channel_id` and `billing_subscriptions.channel_id` reference `channels(id)`, and
+//! `billing_subscriptions.user_id` references `users(id)`; migration `0010_rename_tables.sql`
+//! renames `channels` to `channel_providers` and `users` to `user_accounts`, and the rename fixup
+//! (`burncloud_database::schema::rename`, `copy_and_drop`) then drops the legacy names. SQLite
+//! accepts a foreign key naming a table that does not exist, but with foreign-key enforcement on —
+//! sqlx enables it by default — the first *insert* into `billing_plans` or
+//! `billing_subscriptions` fails with `no such table: channels`. That is where the persistence code
+//! these types exist to serve will land, so it is registered rather than absorbed: the fix is a
+//! migration change, and #652 forbids editing a shipped migration.
+//!
+//! Both are recorded in the PR that introduced this module and in the schema contract test
+//! (`tests/monthly_quota_schema_contract.rs`), which pins the real table names so neither finding
+//! can be quietly lost.
 
 use std::fmt;
 use std::str::FromStr;
