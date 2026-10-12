@@ -475,11 +475,7 @@ impl Installer {
     ///
     /// Takes no `Software`: none of the per-extension paths reads it, and keeping an unused
     /// parameter would be dead weight the lints reject.
-    fn populate_from_local(
-        &self,
-        local_path: &Path,
-        install_dir: &Path,
-    ) -> InstallerResult<()> {
+    fn populate_from_local(&self, local_path: &Path, install_dir: &Path) -> InstallerResult<()> {
         // Determine file type and handle accordingly
         let extension = local_path
             .extension()
