@@ -99,7 +99,11 @@ fn a_logger_records_the_iteration_and_the_category_on_every_line() {
 
     let content = read(&log);
     let lines: Vec<&str> = content.lines().collect();
-    assert_eq!(lines.len(), 2, "two calls must produce two lines: {content:?}");
+    assert_eq!(
+        lines.len(),
+        2,
+        "two calls must produce two lines: {content:?}"
+    );
 
     assert_stamp(lines[0], 7, "run");
     assert!(

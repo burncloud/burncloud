@@ -34,19 +34,15 @@ const LEGAL_NAMES: &[(&str, GateCategory)] = &[
     ("review", GateCategory::AestheticReview),
 ];
 
-/// `GateCategory` is `PartialEq`, so categories are compared directly. `GateSuite` is not, and is
-/// compared through its `Debug` form -- which is what a test failure prints anyway.
-
 /// Every documented spelling resolves to its category, and the short alias agrees with the long one.
+///
+/// `GateCategory` is `PartialEq`, so the comparison is direct.
 #[test]
 fn every_legal_gate_name_parses_to_its_category() {
     for (input, expected) in LEGAL_NAMES {
         let parsed = parse_gate_name(input)
             .unwrap_or_else(|e| panic!("{input:?} is a documented gate name but failed: {e}"));
-        assert_eq!(
-            parsed, *expected,
-            "{input:?} must resolve to {expected:?}"
-        );
+        assert_eq!(parsed, *expected, "{input:?} must resolve to {expected:?}");
     }
 
     // The aliases must not merely parse -- they must agree with their long form.
@@ -201,12 +197,19 @@ const PROCESS_SPAWN_CALLS: &[&str] = &[
     concat!("tokio::process", "::Command"),
 ];
 
-/// Every crate source file, with line comments removed.
+/// Every `.rs` file under a directory of this crate, keyed by its **path relative to the crate
+/// root**, with line comments removed.
+///
+/// The key is relative on purpose. An earlier version returned absolute paths and then decided
+/// "is this a test file?" with `path.contains("tests")` -- which is true for the CI checkout at
+/// `/home/runner/work/...` and therefore scanned production `src/` as well, flagging the very gate
+/// functions the production code is supposed to call. A relative key like `tests/x.rs` cannot make
+/// that mistake.
 ///
 /// Comments are stripped because the module documentation *names* the forbidden functions when it
 /// explains why they are forbidden; matching raw text would flag the explanation instead of a call.
-fn crate_sources() -> Vec<(String, String)> {
-    fn collect(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+fn sources_under(dir: &str) -> Vec<(String, String)> {
+    fn collect(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<(String, String)>) {
         let entries = match std::fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(_) => return,
@@ -214,7 +217,7 @@ fn crate_sources() -> Vec<(String, String)> {
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.is_dir() {
-                collect(&path, out);
+                collect(base, &path, out);
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
@@ -231,38 +234,42 @@ fn crate_sources() -> Vec<(String, String)> {
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            out.push((path.display().to_string(), stripped));
+            let key = path
+                .strip_prefix(base)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| path.display().to_string());
+            out.push((key, stripped));
         }
     }
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut out = Vec::new();
-    collect(&root.join("src"), &mut out);
-    collect(&root.join("tests"), &mut out);
+    collect(root, &root.join(dir), &mut out);
     out
 }
 
-/// The test files a forbidden call could realistically appear in: every test file **except the
-/// files of this increment**.
+/// The other test files of this crate -- every test file **except the two this increment adds**.
 ///
-/// The exclusion is what makes the check sound rather than convenient. These files necessarily
+/// The exclusion is what makes the check sound rather than convenient. These two files necessarily
 /// contain the needles as string literals and in their own panic messages, so a scan that included
-/// them would match itself and report a false positive that says nothing about the other tests.
-/// The other test files are the ones a future author would add a gate call to, and they are fully
-/// scanned.
+/// them would match itself and report a false positive that says nothing about the rest of the
+/// crate. The remaining test files are the ones a future author would add a gate call to, and they
+/// are fully scanned.
 fn scanned_test_sources() -> Vec<(String, String)> {
-    crate_sources()
+    sources_under("tests")
         .into_iter()
-        .filter(|(path, _)| !path.ends_with("gates_vocabulary.rs") && !path.ends_with("log_contract.rs"))
+        .filter(|(path, _)| {
+            !path.ends_with("gates_vocabulary.rs") && !path.ends_with("log_contract.rs")
+        })
         .collect()
 }
 
-/// AC6: no source file of this crate calls a real gate runner.
+/// AC6: no **other** test of this crate calls a real gate runner.
 ///
 /// The five functions below execute cargo, browsers and other processes. A test that called one
 /// would run an acceptance gate inside `cargo test` -- slow, environment-dependent, and forbidden by
-/// this scope. The check reads the crate's own source so that "we did not call it" cannot quietly
-/// stop being true.
+/// this scope. The check reads the crate's own test sources so that "we did not call it" cannot
+/// quietly stop being true.
 #[test]
 fn no_crate_source_invokes_a_real_gate_runner() {
     let sources = scanned_test_sources();
@@ -286,7 +293,7 @@ fn no_crate_source_invokes_a_real_gate_runner() {
     );
 }
 
-/// AC6, second half: no other test in this crate shells out.
+/// AC6, second half: no other test of this crate shells out.
 ///
 /// The gate runners are the obvious way to start a process; this catches the indirect one, so a
 /// future test cannot quietly spawn `cargo` instead.
