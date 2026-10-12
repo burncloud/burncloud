@@ -576,7 +576,9 @@ impl Installer {
                     .file_name()
                     .ok_or_else(|| InstallerError::FileSystem("Invalid file name".to_string()))?;
                 let dest_path = install_dir.join(file_name);
-                fs::copy(local_path, &dest_path)?;
+                // `std::fs`, not the crate's `tokio::fs` alias: this helper is synchronous, like the
+                // `extract_zip` it sits beside, so no runtime is needed to reach it from a test.
+                std::fs::copy(local_path, &dest_path)?;
                 info!("Copied {} to {}", local_path.display(), dest_path.display());
             }
         }
@@ -2227,7 +2229,8 @@ mod tests {
     }
 
     #[test]
-    fn a_traversing_entry_does_not_create_directories_outside_the_target() {        // The directory half of the same problem: an entry named `../dir/` must not create `dir` outside the
+    fn a_traversing_entry_does_not_create_directories_outside_the_target() {
+        // The directory half of the same problem: an entry named `../dir/` must not create `dir` outside the
         // target. A traversal guard that only covers files would miss this, because the directory branch calls
         // `create_dir_all` before any file is written.
         let root = TempRoot::new("zip_slip_dir");
