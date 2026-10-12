@@ -7,40 +7,45 @@
 //!
 //! The unit surface of `quota` is small, but what it claims is a fact about *production*: that
 //! these types map onto the columns `0015_monthly_quota.sql` actually creates. A hand-written
-//! `CREATE TABLE` for the tables under test would prove nothing about the shipped migration, so
-//! every database-backed test here builds its database from the real embedded migrations through
-//! [`create_database_with_url`].
+//! `CREATE TABLE` would prove nothing about the shipped migration, so every database-backed test
+//! here builds its database from the real embedded migrations through [`create_database_with_url`],
+//! and no fixture in this file creates a table.
 //!
 //! Coverage map:
 //!
 //! * `migrations_create_the_quota_tables` — the guard the database-backed tests depend on.
+//! * `the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones` — pins the real table names
+//!   that finding F2 turns on, so schema drift fails here explicitly.
 //! * AC3: the ordered column lists from `PRAGMA table_info` are compared with the exact column list
 //!   each row struct selects, and a full row is written and read back through
 //!   `BillingPlanRow`/`BillingSubscriptionRow`, so a renamed or reordered column fails here.
 //! * AC2: the value domains are asserted against the migration comments item by item, and a value
 //!   outside them is shown to be *storable* by the database yet *unrepresentable* in the types.
 //! * AC4: quota exactly exhausted, over quota, the expiry boundary, cancellation with quota left,
-//!   and two subscriptions to the same plan. The boundary predicates are pure functions of a row,
-//!   so those tests build the rows directly instead of round-tripping them through the database;
-//!   that keeps them independent of the schema mismatch described below.
+//!   and two subscriptions to the same plan. The boundary predicates are pure functions of a row, so
+//!   those tests build their rows in memory instead of round-tripping them through the database.
 //!
-//! ## Why `scaffold_legacy_fk_parents` exists (finding F2)
+//! ## Why the fixtures disable foreign-key enforcement (finding F2)
 //!
 //! `0015` declares `billing_plans.channel_id -> channels(id)`,
 //! `billing_subscriptions.user_id -> users(id)` and
-//! `billing_subscriptions.channel_id -> channels(id)`. But migration
-//! `0010_rename_tables.sql` renames `channels` to `channel_providers` and `users` to
-//! `user_accounts`, and `burncloud-database`'s rename fixup (`schema/rename.rs`, `copy_and_drop`)
-//! then **drops the legacy names**. On SQLite a foreign key may name a table that does not exist
-//! (creation succeeds), but with foreign-key enforcement on — sqlx enables it by default — the first
-//! *insert* into either table fails with `no such table: channels`.
+//! `billing_subscriptions.channel_id -> channels(id)`. But `0010_rename_tables.sql` renames
+//! `channels` to `channel_providers` and `users` to `user_accounts`, and the rename fixup
+//! (`burncloud_database::schema::rename`, `copy_and_drop`) then **drops the legacy names**. SQLite
+//! accepts a foreign key naming a table that does not exist, but with foreign-key enforcement on —
+//! sqlx enables it by default — the first *insert* into either table fails with
+//! `no such table: channels`, so the write path these types exist to serve is currently unusable on
+//! SQLite. That is a schema defect, and its fix is a migration change, which #652 forbids.
 //!
-//! That mismatch is a schema defect, and the fix is a migration change, which this issue forbids
-//! (`0015` is shipped; no migration may be edited). It is registered in the PR's Findings for a
-//! follow-up. To keep this file's round-trip assertions meaningful in the meantime, the two legacy
-//! parent tables are created here as an explicit, documented scaffold, and
-//! `the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones` pins the real schema state so
-//! the scaffold can never quietly be mistaken for the production schema.
+//! Two tempting workarounds are both rejected here. Seeding the *canonical* parents
+//! (`channel_providers`, `user_accounts`) cannot work: the enforced foreign keys name the dropped
+//! legacy tables, so those rows would not satisfy them. Creating the legacy tables by hand would
+//! make the fixture invent schema that the migration chain deliberately removed — exactly what this
+//! file's migration-only principle forbids. Instead the insert fixtures turn enforcement off on the
+//! one connection they write through, which is per-connection in SQLite, so the round-trip still
+//! exercises the real `INSERT`/`SELECT` and `FromRow` decoding, while the foreign key itself is
+//! **not** exercised and is not claimed to be. The constraint can be covered once the F2 follow-up
+//! migration retargets it.
 
 use burncloud_commerce_billing::{
     BillingMode, BillingPlan, BillingPlanRow, BillingSubscription, BillingSubscriptionRow,
@@ -54,6 +59,10 @@ const NOW: i64 = 1_800_000_000_000;
 const LATER: i64 = NOW + 86_400_000;
 /// One day earlier, in milliseconds.
 const EARLIER: i64 = NOW - 86_400_000;
+/// The non-numeric user id these fixtures write, matching the text `users.id` key (finding F1).
+const USER_ID: &str = "user-alice";
+/// The channel id these fixtures write. It need not reference a row while F2 stands.
+const CHANNEL_ID: i64 = 70;
 
 /// Build a fresh SQLite database in a temporary file and run the real migrations.
 async fn fresh_db(tag: &str) -> (Database, std::path::PathBuf) {
@@ -112,45 +121,31 @@ async fn table_columns(db: &Database, table: &str) -> Vec<String> {
     rows.into_iter().map(|(_, name)| name).collect()
 }
 
+/// Run one write statement with foreign-key enforcement off, on the connection it runs on.
+///
+/// See the module header for why (finding F2): `0015`'s foreign keys name tables that migration
+/// `0010` renamed and the rename fixup dropped, so an enforced insert cannot succeed. The pragma is
+/// per-connection in SQLite and is set immediately before the statement on that same connection, so
+/// it cannot leak into another statement's connection. Reads do not need it.
+async fn write_without_fk_enforcement(db: &Database, statement: &str) {
+    let pool = db.get_connection().unwrap().pool().clone();
+    let mut connection = pool.acquire().await.unwrap();
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    sqlx::query(statement)
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+}
+
 /// The columns every `billing_plans` read in this file selects, in order.
 const PLAN_COLUMNS: &str = "id, name, monthly_fee, billing_mode, request_limit, token_limit, \
      channel_id, created_at, updated_at";
 /// The columns every `billing_subscriptions` read in this file selects, in order.
 const SUBSCRIPTION_COLUMNS: &str = "id, user_id, plan_id, channel_id, status, quota_used, \
      quota_limit, expires_at, created_at, updated_at";
-
-/// Create the two **legacy** foreign-key parents the shipped `0015` still names, and return a
-/// channel id plus a non-numeric user id.
-///
-/// See the module header: migration `0010` renamed these tables and the rename fixup dropped them,
-/// so they do not exist in the migrated database. Using the legacy names (rather than
-/// `channel_providers`/`user_accounts`) is deliberate — it is the only scaffold that makes `0015`'s
-/// own foreign-key declarations resolve, so the child inserts below exercise a real constraint check
-/// instead of disabling enforcement. The user id is non-numeric on purpose: on SQLite the column is
-/// declared `INTEGER`, and a digit-only id would be coerced by column affinity, which is the
-/// divergence recorded as finding F1.
-async fn scaffold_legacy_fk_parents(db: &Database) -> (i64, String) {
-    db.execute_query(
-        "CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL)",
-    )
-    .await
-    .unwrap();
-    db.execute_query("CREATE TABLE users (id TEXT PRIMARY KEY)")
-        .await
-        .unwrap();
-    db.execute_query("INSERT INTO channels (key) VALUES ('quota-contract')")
-        .await
-        .unwrap();
-    db.execute_query("INSERT INTO users (id) VALUES ('user-alice')")
-        .await
-        .unwrap();
-    let (channel_id,): (i64,) =
-        sqlx::query_as("SELECT id FROM channels WHERE key = 'quota-contract'")
-            .fetch_one(db.get_connection().unwrap().pool())
-            .await
-            .unwrap();
-    (channel_id, "user-alice".to_owned())
-}
 
 /// A plan row to insert.
 struct PlanSeed<'a> {
@@ -162,20 +157,22 @@ struct PlanSeed<'a> {
 }
 
 /// Insert a plan and return its assigned id.
-async fn insert_plan(db: &Database, seed: &PlanSeed<'_>, channel_id: i64) -> i64 {
-    db.execute_query(&format!(
-        "INSERT INTO billing_plans (name, monthly_fee, billing_mode, request_limit, token_limit, \
-         channel_id, created_at, updated_at) VALUES ('{}', {}, '{}', {}, {}, {}, 1700000000000, \
-         1700000000001)",
-        seed.name,
-        seed.fee,
-        seed.mode,
-        sql_opt(seed.request_limit),
-        sql_opt(seed.token_limit),
-        channel_id
-    ))
-    .await
-    .unwrap();
+async fn insert_plan(db: &Database, seed: &PlanSeed<'_>) -> i64 {
+    write_without_fk_enforcement(
+        db,
+        &format!(
+            "INSERT INTO billing_plans (name, monthly_fee, billing_mode, request_limit, \
+             token_limit, channel_id, created_at, updated_at) VALUES ('{}', {}, '{}', {}, {}, {}, \
+             1700000000000, 1700000000001)",
+            seed.name,
+            seed.fee,
+            seed.mode,
+            sql_opt(seed.request_limit),
+            sql_opt(seed.token_limit),
+            CHANNEL_ID
+        ),
+    )
+    .await;
     let (id,): (i64,) = sqlx::query_as("SELECT id FROM billing_plans WHERE name = ?")
         .bind(seed.name)
         .fetch_one(db.get_connection().unwrap().pool())
@@ -192,22 +189,18 @@ struct SubSeed {
     expires_at: i64,
 }
 
-/// Insert a subscription for `user_id` on `plan_id`.
-async fn insert_subscription(
-    db: &Database,
-    user_id: &str,
-    plan_id: i64,
-    channel_id: i64,
-    seed: &SubSeed,
-) {
-    db.execute_query(&format!(
-        "INSERT INTO billing_subscriptions (user_id, plan_id, channel_id, status, quota_used, \
-         quota_limit, expires_at, created_at, updated_at) VALUES ('{}', {}, {}, '{}', {}, {}, {}, \
-         1700000000000, 1700000000001)",
-        user_id, plan_id, channel_id, seed.status, seed.used, seed.limit, seed.expires_at
-    ))
-    .await
-    .unwrap();
+/// Insert a subscription on `plan_id` for the fixture user.
+async fn insert_subscription(db: &Database, plan_id: i64, seed: &SubSeed) {
+    write_without_fk_enforcement(
+        db,
+        &format!(
+            "INSERT INTO billing_subscriptions (user_id, plan_id, channel_id, status, quota_used, \
+             quota_limit, expires_at, created_at, updated_at) VALUES ('{}', {}, {}, '{}', {}, {}, \
+             {}, 1700000000000, 1700000000001)",
+            USER_ID, plan_id, CHANNEL_ID, seed.status, seed.used, seed.limit, seed.expires_at
+        ),
+    )
+    .await;
 }
 
 /// Read one plan through the real `BillingPlanRow` decoding path.
@@ -237,8 +230,8 @@ async fn load_subscriptions(db: &Database, plan_id: i64) -> Vec<BillingSubscript
 
 /// A subscription value in memory, for the boundary predicates.
 ///
-/// The boundary methods are pure functions of a row, so these tests do not need a database at all;
-/// constructing the row directly also keeps them independent of finding F2.
+/// The boundary methods are pure functions of a row, so these tests need no database at all, which
+/// also keeps them independent of finding F2.
 fn in_memory_subscription(
     status: SubscriptionStatus,
     used: i64,
@@ -247,9 +240,9 @@ fn in_memory_subscription(
 ) -> BillingSubscription {
     BillingSubscription {
         id: 1,
-        user_id: "user-alice".to_owned(),
+        user_id: USER_ID.to_owned(),
         plan_id: 7,
-        channel_id: 3,
+        channel_id: CHANNEL_ID,
         status,
         quota_used: used,
         quota_limit: limit,
@@ -273,9 +266,10 @@ async fn migrations_create_the_quota_tables() {
 
 #[tokio::test]
 async fn the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones() {
-    // Pins the real schema state that `scaffold_legacy_fk_parents` works around: `0010` created the
-    // canonical parents, and the rename fixup dropped the legacy names that `0015`'s foreign keys
-    // still reference. Without this test the scaffold could be mistaken for the production schema.
+    // Pins the real schema state that finding F2 turns on and that the insert fixtures work around:
+    // `0010` created the canonical parents, and the rename fixup dropped the legacy names that
+    // `0015`'s foreign keys still reference. If a migration ever changes this, the failure lands
+    // here, next to the reason, instead of surfacing inside a fixture.
     let (db, path) = fresh_db("parents").await;
     for canonical in ["user_accounts", "channel_providers"] {
         assert!(
@@ -286,7 +280,8 @@ async fn the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones() {
     for legacy in ["users", "channels"] {
         assert!(
             !table_exists(&db, legacy).await,
-            "{legacy} should have been renamed away and dropped; finding F2 assumes this"
+            "{legacy} should have been renamed away and dropped; finding F2 assumes this, and the \
+             fixtures compensate for it"
         );
     }
     cleanup(db, &path).await;
@@ -295,7 +290,6 @@ async fn the_canonical_parent_tables_exist_but_0015_names_the_legacy_ones() {
 #[tokio::test]
 async fn the_plan_types_map_onto_the_billing_plans_columns() {
     let (db, path) = fresh_db("plan_columns").await;
-    let (channel_id, _user) = scaffold_legacy_fk_parents(&db).await;
 
     // AC3: the migration's declared columns are, one by one and in order, the ones the row struct
     // selects. A renamed, added or reordered column breaks this before any decoding can hide it.
@@ -324,7 +318,6 @@ async fn the_plan_types_map_onto_the_billing_plans_columns() {
             request_limit: None,
             token_limit: Some(5_000_000),
         },
-        channel_id,
     )
     .await;
 
@@ -335,7 +328,7 @@ async fn the_plan_types_map_onto_the_billing_plans_columns() {
     assert_eq!(plan.billing_mode, BillingMode::PerToken);
     assert_eq!(plan.request_limit, None, "the unused limit stays NULL");
     assert_eq!(plan.token_limit, Some(5_000_000));
-    assert_eq!(plan.channel_id, channel_id);
+    assert_eq!(plan.channel_id, CHANNEL_ID);
     assert_eq!(plan.created_at, 1_700_000_000_000);
     assert_eq!(plan.updated_at, 1_700_000_000_001);
 
@@ -349,7 +342,6 @@ async fn the_plan_types_map_onto_the_billing_plans_columns() {
             request_limit: Some(1_000),
             token_limit: None,
         },
-        channel_id,
     )
     .await;
     let basic = BillingPlan::try_from(load_plan_row(&db, "basic-monthly").await).unwrap();
@@ -363,7 +355,6 @@ async fn the_plan_types_map_onto_the_billing_plans_columns() {
 #[tokio::test]
 async fn the_subscription_types_map_onto_the_billing_subscriptions_columns() {
     let (db, path) = fresh_db("sub_columns").await;
-    let (channel_id, user_id) = scaffold_legacy_fk_parents(&db).await;
     let plan_id = insert_plan(
         &db,
         &PlanSeed {
@@ -373,7 +364,6 @@ async fn the_subscription_types_map_onto_the_billing_subscriptions_columns() {
             request_limit: None,
             token_limit: Some(5_000_000),
         },
-        channel_id,
     )
     .await;
 
@@ -395,9 +385,7 @@ async fn the_subscription_types_map_onto_the_billing_subscriptions_columns() {
 
     insert_subscription(
         &db,
-        &user_id,
         plan_id,
-        channel_id,
         &SubSeed {
             status: "active",
             used: 1_200,
@@ -411,10 +399,10 @@ async fn the_subscription_types_map_onto_the_billing_subscriptions_columns() {
     assert_eq!(stored.len(), 1);
     let subscription = &stored[0];
     assert!(subscription.id > 0);
-    // The foreign key targets the text `users.id`, so the value round-trips as text.
-    assert_eq!(subscription.user_id, "user-alice");
+    // The foreign key targets the text `users.id`, so the value round-trips as text (finding F1).
+    assert_eq!(subscription.user_id, USER_ID);
     assert_eq!(subscription.plan_id, plan_id);
-    assert_eq!(subscription.channel_id, channel_id);
+    assert_eq!(subscription.channel_id, CHANNEL_ID);
     assert_eq!(subscription.status, SubscriptionStatus::Active);
     assert_eq!(subscription.quota_used, 1_200);
     assert_eq!(subscription.quota_limit, 5_000_000);
@@ -462,7 +450,6 @@ async fn a_billing_mode_the_schema_permits_but_the_comment_does_not_is_unreprese
     // an invalid value be unrepresentable in the types: decoding must refuse it rather than let a
     // plan exist whose mode no code can interpret.
     let (db, path) = fresh_db("bad_mode").await;
-    let (channel_id, _user) = scaffold_legacy_fk_parents(&db).await;
     insert_plan(
         &db,
         &PlanSeed {
@@ -472,7 +459,6 @@ async fn a_billing_mode_the_schema_permits_but_the_comment_does_not_is_unreprese
             request_limit: None,
             token_limit: None,
         },
-        channel_id,
     )
     .await;
 
@@ -491,7 +477,6 @@ async fn a_billing_mode_the_schema_permits_but_the_comment_does_not_is_unreprese
 #[tokio::test]
 async fn a_subscription_status_the_schema_permits_but_the_comment_does_not_is_unrepresentable() {
     let (db, path) = fresh_db("bad_status").await;
-    let (channel_id, user_id) = scaffold_legacy_fk_parents(&db).await;
     let plan_id = insert_plan(
         &db,
         &PlanSeed {
@@ -501,14 +486,11 @@ async fn a_subscription_status_the_schema_permits_but_the_comment_does_not_is_un
             request_limit: None,
             token_limit: Some(10),
         },
-        channel_id,
     )
     .await;
     insert_subscription(
         &db,
-        &user_id,
         plan_id,
-        channel_id,
         &SubSeed {
             status: "suspended",
             used: 0,
@@ -632,7 +614,6 @@ async fn two_subscriptions_to_the_same_plan_are_both_representable() {
     // (expires_at) but no unique constraint on (user_id, plan_id), so a repeated subscription is a
     // state the schema permits. The mapping must not collapse the two rows into one.
     let (db, path) = fresh_db("duplicate").await;
-    let (channel_id, user_id) = scaffold_legacy_fk_parents(&db).await;
     let plan_id = insert_plan(
         &db,
         &PlanSeed {
@@ -642,15 +623,12 @@ async fn two_subscriptions_to_the_same_plan_are_both_representable() {
             request_limit: Some(50),
             token_limit: None,
         },
-        channel_id,
     )
     .await;
     for used in [10, 20] {
         insert_subscription(
             &db,
-            &user_id,
             plan_id,
-            channel_id,
             &SubSeed {
                 status: "active",
                 used,
