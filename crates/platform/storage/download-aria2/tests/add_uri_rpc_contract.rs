@@ -409,13 +409,21 @@ async fn both_branches_send_the_uri_list_as_one_array_parameter(
     );
 
     let seen = requests_seen(&seen);
-    assert_eq!(seen.len(), 4, "expected two tellActive/addUri pairs: {seen:#?}");
+    assert_eq!(
+        seen.len(),
+        4,
+        "expected two tellActive/addUri pairs: {seen:#?}"
+    );
 
     let adds: Vec<&serde_json::Value> = seen
         .iter()
         .filter(|request| request["method"] == "aria2.addUri")
         .collect();
-    assert_eq!(adds.len(), 2, "both branches must call aria2.addUri: {seen:#?}");
+    assert_eq!(
+        adds.len(),
+        2,
+        "both branches must call aria2.addUri: {seen:#?}"
+    );
 
     // No secret configured, so the URI array is parameter 0 in both calls.
     for (label, add) in [("None", adds[0]), ("Some", adds[1])] {
