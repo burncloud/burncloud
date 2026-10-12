@@ -268,11 +268,72 @@ impl Installer {
         // Check dependencies
         self.check_dependencies(software).await?;
 
-        // Create directories
+        // Create directories. These are SHARED roots (`download_dir`, `install_dir`) that other
+        // installs and the download cache also use, so a failed attempt must not delete them --
+        // see `remove_failed_install_tree` for what is cleaned instead.
         fs::create_dir_all(&self.config.download_dir).await?;
         fs::create_dir_all(&self.config.install_dir).await?;
 
         // Execute installation based on method
+        let outcome = self.run_install_method(software).await;
+        if let Err(error) = outcome {
+            // #896: before this, a failed install left the per-software tree behind, with no
+            // `.installed` marker to distinguish it from a real installation, so a retry could
+            // find half-written artifacts and `check_status` reported "not installed" over them.
+            Self::remove_failed_install_tree(&self.config.install_dir, software_id).await;
+            return Err(error);
+        }
+
+        // Create install marker
+        let install_marker = self.config.install_dir.join(software_id).join(".installed");
+        if let Some(parent) = install_marker.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
+
+        info!("Successfully installed {}", software.name);
+
+        // Update system PATH environment variable for        #[cfg(target_os = "windows")]
+        if let Err(e) = self.update_system_path() {
+            warn!("Failed to update system PATH: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// Remove the per-software tree left by a failed install (#896).
+    ///
+    /// Only `install_dir/<software_id>` is removed. The two roots created by `install()` are
+    /// deliberately left alone: they are shared with the download cache and with other software's
+    /// installs, so removing them could destroy a *successful* installation's directory.
+    ///
+    /// A removal failure is recorded rather than returned: the caller already has the real failure
+    /// to report, and replacing it with a cleanup error would hide why the install failed.
+    async fn remove_failed_install_tree(install_dir: &Path, software_id: &str) {
+        let target = install_dir.join(software_id);
+        match fs::remove_dir_all(&target).await {
+            Ok(()) => {
+                info!(
+                    "[cleanup] removed {} left by a failed install",
+                    target.display()
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // Nothing was written before the failure; this is the common, clean case.
+            }
+            Err(error) => {
+                warn!(
+                    "[cleanup] could not remove {} after a failed install: {}",
+                    target.display(),
+                    error
+                );
+            }
+        }
+    }
+
+    /// Dispatch one install method. Split out of `install()` so the failure branch there can clean
+    /// up without the dispatch's own `match` being restructured (#896).
+    async fn run_install_method(&self, software: &Software) -> InstallerResult<()> {
         match &software.install_method {
             InstallMethod::Script { url, shell } => {
                 self.install_via_script(software, url, shell).await?;
@@ -348,20 +409,6 @@ impl Installer {
             }
         }
 
-        // Create install marker
-        let install_marker = self.config.install_dir.join(software_id).join(".installed");
-        if let Some(parent) = install_marker.parent() {
-            fs::create_dir_all(parent).await?;
-        }
-        fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
-
-        info!("Successfully installed {}", software.name);
-
-        // Update system PATH environment variable for        #[cfg(target_os = "windows")]
-        if let Err(e) = self.update_system_path() {
-            warn!("Failed to update system PATH: {}", e);
-        }
-
         Ok(())
     }
 
@@ -405,6 +452,30 @@ impl Installer {
         let install_dir = self.config.install_dir.join(software_id);
         fs::create_dir_all(&install_dir).await?;
 
+        // #896: same defect as the online path -- anything created below must not survive a failure.
+        // This path is the one that can be driven to a real failure without the network (a corrupt
+        // archive), so it is what the regression test exercises.
+        if let Err(error) = self.populate_from_local(local_path, &install_dir) {
+            Self::remove_failed_install_tree(&self.config.install_dir, software_id).await;
+            return Err(error);
+        }
+
+        // Create install marker
+        let install_marker = install_dir.join(".installed");
+        fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
+
+        info!("Successfully installed {} from local file", software.name);
+        Ok(())
+    }
+
+    /// Populate an already-created install directory from a local artifact.
+    ///
+    /// Split out of `install_from_local` so that method can clean up after **any** failure with one
+    /// branch, instead of a `?` on each of the several failure sites below (#896).
+    ///
+    /// Takes no `Software`: none of the per-extension paths reads it, and keeping an unused
+    /// parameter would be dead weight the lints reject.
+    fn populate_from_local(&self, local_path: &Path, install_dir: &Path) -> InstallerResult<()> {
         // Determine file type and handle accordingly
         let extension = local_path
             .extension()
@@ -415,7 +486,7 @@ impl Installer {
         match extension.as_str() {
             "zip" => {
                 // Extract zip archive
-                self.extract_zip(local_path, &install_dir)?;
+                self.extract_zip(local_path, install_dir)?;
                 info!(
                     "Extracted {} to {}",
                     local_path.display(),
@@ -503,16 +574,13 @@ impl Installer {
                     .file_name()
                     .ok_or_else(|| InstallerError::FileSystem("Invalid file name".to_string()))?;
                 let dest_path = install_dir.join(file_name);
-                fs::copy(local_path, &dest_path).await?;
+                // `std::fs`, not the crate's `tokio::fs` alias: this helper is synchronous, like the
+                // `extract_zip` it sits beside, so no runtime is needed to reach it from a test.
+                std::fs::copy(local_path, &dest_path)?;
                 info!("Copied {} to {}", local_path.display(), dest_path.display());
             }
         }
 
-        // Create install marker
-        let install_marker = install_dir.join(".installed");
-        fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
-
-        info!("Successfully installed {} from local file", software.name);
         Ok(())
     }
 
@@ -2096,6 +2164,65 @@ mod tests {
         assert!(
             target.join("nested").join("deep.txt").exists(),
             "and a nested one"
+        );
+    }
+
+    /// #896: a failed local install must not leave the directory it created behind.
+    ///
+    /// This drives a **real** failure through `install_from_local`: a `.zip` whose bytes are not an
+    /// archive is rejected by `extract_zip`, and that rejection happens *after* the install
+    /// directory was created -- which is exactly the shape of the defect. Nothing here needs the
+    /// network, starts a process or touches a real system directory.
+    ///
+    /// The assertion is on the filesystem, not on the returned error: asserting `is_err()` would
+    /// pass with the defect present, which the plan rules out.
+    #[tokio::test]
+    async fn a_failed_local_install_removes_the_directory_it_created() {
+        let root = TempRoot::new("failed_install_cleanup");
+
+        // `bundle_dir` is set so the dependency check is skipped: this test is about cleanup, and a
+        // dependency probe would shell out to `sh -c`, which tests here must not do.
+        let installer = Installer::new(
+            InstallerConfig::new()
+                .with_download_dir(root.path().join("downloads"))
+                .with_install_dir(root.path().join("install"))
+                .with_bundle_dir(Some(root.path().join("bundle"))),
+        );
+
+        let software_id = "fnm";
+        let install_dir = root.path().join("install").join(software_id);
+        assert!(
+            !install_dir.exists(),
+            "the test must start from an absent install directory"
+        );
+
+        let corrupt = write_zip(root.path(), "corrupt.zip", b"not an archive");
+
+        let outcome = installer.install_from_local(software_id, &corrupt).await;
+        assert!(
+            outcome.is_err(),
+            "a corrupt archive must fail the install: {outcome:?}"
+        );
+
+        // The whole tree, not just the file: a cleanup that only removed the last file would still
+        // leave the directory and any earlier artifact.
+        assert!(
+            !install_dir.exists(),
+            "a failed install left {} behind, so a retry would meet stale artifacts",
+            install_dir.display()
+        );
+
+        // The marker likewise must not exist, which the previous `create_dir_all` + `?` sequence
+        // could not have guaranteed either way.
+        assert!(
+            !install_dir.join(".installed").exists(),
+            "a failed install must not leave an install marker"
+        );
+
+        // The shared roots are deliberately kept: other installs and the download cache use them.
+        assert!(
+            root.path().join("install").is_dir(),
+            "the shared install root must survive; it is not this attempt's to remove"
         );
     }
 
