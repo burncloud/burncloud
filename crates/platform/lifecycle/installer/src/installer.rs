@@ -455,7 +455,7 @@ impl Installer {
         // #896: same defect as the online path -- anything created below must not survive a failure.
         // This path is the one that can be driven to a real failure without the network (a corrupt
         // archive), so it is what the regression test exercises.
-        if let Err(error) = self.populate_from_local(software, local_path, &install_dir) {
+        if let Err(error) = self.populate_from_local(local_path, &install_dir) {
             Self::remove_failed_install_tree(&self.config.install_dir, software_id).await;
             return Err(error);
         }
@@ -472,9 +472,11 @@ impl Installer {
     ///
     /// Split out of `install_from_local` so that method can clean up after **any** failure with one
     /// branch, instead of a `?` on each of the several failure sites below (#896).
+    ///
+    /// Takes no `Software`: none of the per-extension paths reads it, and keeping an unused
+    /// parameter would be dead weight the lints reject.
     fn populate_from_local(
         &self,
-        software: &Software,
         local_path: &Path,
         install_dir: &Path,
     ) -> InstallerResult<()> {
@@ -488,7 +490,7 @@ impl Installer {
         match extension.as_str() {
             "zip" => {
                 // Extract zip archive
-                self.extract_zip(local_path, &install_dir)?;
+                self.extract_zip(local_path, install_dir)?;
                 info!(
                     "Extracted {} to {}",
                     local_path.display(),
