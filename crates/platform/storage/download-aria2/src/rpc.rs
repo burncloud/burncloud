@@ -176,11 +176,16 @@ impl Aria2RpcClient {
             return Ok(AddUriOutcome::Existing(existing_gid));
         }
 
-        // 根据是否提供下载配置选择 RPC 参数形式，并统一提取新任务 GID。
+        // aria2 的签名是 `addUri([secret], uris[, options[, position]])`：**uris 必须始终是一个
+        // 数组参数**。`call_method` 会把 `Value::Array` 展开成位置参数（见上面的匹配分支），所以
+        // 这里必须用**元组**把 URI 列表包住，使其序列化为 `[[uri1, uri2]]` 而不是 `["uri1", "uri2"]`
+        // —— 后者会让第二个 URI 顶到 options 的位置上（#893）。
+        //
+        // `options = None` 时同样要保持数组形状：方法的位置签名不随可选参数是否存在而改变。
         let gid = if let Some(opts) = options {
             self.call_method("aria2.addUri", (uris, opts)).await?
         } else {
-            self.call_method("aria2.addUri", uris).await?
+            self.call_method("aria2.addUri", (uris,)).await?
         };
 
         Ok(AddUriOutcome::Created(gid))
