@@ -62,7 +62,9 @@ impl Drop for Scratch {
             if let Ok(meta) = std::fs::metadata(&self.dir) {
                 let mut perms = meta.permissions();
                 perms.set_mode(0o755);
-                let _ = std::fs::set_permissions(&self.dir, perms);
+                // Explicitly drop the Result so a failed restore stays non-fatal without hiding a
+                // `#[must_use]` value behind a non-binding `let` (the workspace lints deny that).
+                drop(std::fs::set_permissions(&self.dir, perms));
             }
         }
         std::fs::remove_dir_all(&self.dir).ok();
@@ -150,8 +152,10 @@ fn the_permission_variant_exists_and_formats_distinctly_from_filesystem() {
         permission_text.starts_with("Permission error"),
         "the variant must keep a distinct prefix: {permission_text}"
     );
+    // The sibling's prefix is "File system error" (two words), not "FileSystem error" -- the enum
+    // variant name and its human text differ, which is worth pinning rather than assuming.
     assert!(
-        filesystem_text.starts_with("FileSystem error"),
+        filesystem_text.starts_with("File system error"),
         "the sibling variant must keep its own prefix: {filesystem_text}"
     );
     assert_ne!(
