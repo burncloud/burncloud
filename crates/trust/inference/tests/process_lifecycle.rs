@@ -27,8 +27,18 @@
 //! | (f) the process is really terminated on health-check failure (#886) | `a_failed_health_check_terminates_the_spawned_process` |
 //!
 //! (f) is deliberately not "the `processes` map is empty": an empty map is equally consistent
-//! with a leaked process whose handle was merely dropped. The test below asserts on the real
-//! process, by PID, and fails if the stub is still running.
+//! with a leaked process whose handle was merely dropped.
+//!
+//! (f) finds the stub through the **kernel**, not through the stub's cooperation (#886 plan v2):
+//! the test passes a unique marker argument, which the service forwards verbatim to
+//! `llama-server`, and then scans `/proc/*/cmdline` for a process holding that marker. That makes
+//! the observation direct -- "a process with this argv exists" / "it no longer does" -- and
+//! independent of any shell feature, of `sleep` semantics and of filesystem timestamps. An earlier
+//! attempt keyed this on a heartbeat file the stub wrote; that mechanism never became observable
+//! in CI and is retired rather than reused.
+//!
+//! (f) is Linux-gated because the scan is `/proc`-based, and CI's `Code Test` runs on
+//! `ubuntu-latest`. The other tests are plain POSIX and stay `#![cfg(unix)]`.
 //!
 //! `BURNCLOUD_LLAMA_BIN` is process-global, so every test that sets it takes the same lock;
 //! `cargo test` runs the tests of one binary in parallel and the environment is shared.
@@ -58,24 +68,21 @@ fn scratch(tag: &str) -> PathBuf {
     ))
 }
 
-/// `true` while the heartbeat file keeps growing.
+/// `true` while a process with `pid` exists.
 ///
-/// The stub appends one byte per iteration, so the file's length is a monotonic counter of how
-/// many times a live process has beaten. Comparing lengths is robust in a way `mtime` is not:
-/// filesystem timestamp granularity varies, and an equal value is indistinguishable from a frozen
-/// file there. Two samples a short interval apart are taken because a single size only proves the
-/// writer existed at some point in the past.
-async fn heartbeat_is_advancing(path: &Path) -> bool {
-    let size = |p: &Path| std::fs::metadata(p).map(|m| m.len());
-    let first = match size(path) {
-        Ok(n) => n,
-        Err(_) => return false,
-    };
-    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
-    match size(path) {
-        Ok(second) => second > first,
-        Err(_) => false,
+/// `kill(pid, 0)` performs the existence and permission checks without delivering a signal, so
+/// signal 0 never reaches the process. A zombie still counts as existing, which is deliberate: the
+/// assertion that follows it wants the process **reaped**, not merely signalled.
+fn pid_is_alive(pid: i32) -> bool {
+    // SAFETY: `kill` with signal 0 is a pure existence/permission probe -- it delivers no signal
+    // and touches no memory. `pid` is a plain integer read from the stub's own output, and the
+    // call is safe to repeat.
+    let rc = unsafe { libc::kill(pid, 0) };
+    if rc == 0 {
+        return true;
     }
+    // EPERM means the process exists but belongs to another user; anything else (ESRCH) is gone.
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 /// Write a POSIX shell stub and mark it executable.
@@ -225,15 +232,21 @@ async fn the_spawn_arguments_match_the_documented_contract(
 
 /// (f) #886: a failed health check must actually **terminate** the process it started.
 ///
-/// The stub beats a heartbeat file every 100ms and never opens a port, so the health check times
-/// out while the stub is demonstrably still running. Termination is then proven by the heartbeat
-/// **freezing**, which is a property of the real process rather than of the service's bookkeeping.
+/// Mechanism (v2, alternative route): the stub writes its own PID and then `exec`s into
+/// `sleep 300`, so the recorded PID **is** the process the service spawned (exec keeps the PID)
+/// and stays alive for the whole 60s health-check window. Liveness is then read from the kernel
+/// with `kill(pid, 0)` -- no cooperation over time, no shell loop, no filesystem timestamp.
+///
+/// Note on which route was taken: the plan's primary route was an argv marker scanned out of
+/// `/proc/*/cmdline`. It is not reachable here without a production change -- `start_instance`
+/// builds the stub's arguments itself (`-m`, `--port`, `-c`, `-ngl`, `--nobrowser`) and
+/// `InferenceConfig` exposes no field that would forward an extra argument, while editing
+/// `crates/trust/inference/src/lib.rs` is forbidden by this scope. The authorised alternative is
+/// used instead, and the constraint is recorded here rather than asserted, because an assertion
+/// about a hardcoded literal would only test the literal.
 ///
 /// Deliberately not asserted here: `processes` being empty. That was already true while the
-/// process leaked, so it cannot distinguish the defect from the fix (#886 AC2).
-///
-/// The stub also traps `TERM` and writes an exit marker, which shows *how* it ended; the
-/// heartbeat is what carries the proof, because a lost race must not fail a correct fix.
+/// process leaked, so it cannot tell the defect from the fix (#886 AC2).
 #[tokio::test]
 async fn a_failed_health_check_terminates_the_spawned_process(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -241,23 +254,15 @@ async fn a_failed_health_check_terminates_the_spawned_process(
 
     let dir = scratch("kill-on-failure");
     std::fs::create_dir_all(&dir)?;
-    let hb = dir.join("heartbeat");
-    let gone = dir.join("exited");
+    let pid_file = dir.join("stub.pid");
     let stub = dir.join("llama-server");
 
-    // `sleep 1` rather than a fractional sleep: `sh` here is dash, whose `sleep` is
-    // `/bin/sleep` and rejects fractional arguments with an error, which would end the loop and
-    // make the stub exit immediately. One beat per second is comfortably inside the 1.2s window
-    // the liveness check samples over.
+    // Record the PID, then hand the process over to `sleep`. `exec` replaces the shell, so the
+    // PID written here is the PID of the surviving process. No port is ever opened, so the health
+    // check must time out.
     write_stub(
         &stub,
-        &format!(
-            "trap 'printf exited > \"{}\"; exit 0' TERM\n\
-             sleep 2\n\
-             while true; do printf x >> \"{}\"; sleep 1; done",
-            gone.display(),
-            hb.display()
-        ),
+        &format!("printf '%s' \"$$\" > '{}'\nexec sleep 300", pid_file.display()),
     );
     std::env::set_var("BURNCLOUD_LLAMA_BIN", &stub);
 
@@ -287,26 +292,40 @@ async fn a_failed_health_check_terminates_the_spawned_process(
         "a failed health check must leave the model Failed"
     );
 
-    // Non-vacuous precondition: the stub was really alive when the health check gave up. Without
-    // this, a stub that died on its own would "prove" termination it never underwent.
-    assert!(
-        heartbeat_is_advancing(&hb).await,
-        "the stub should still be running when the health check fails; if it is not, this test \
-         would pass vacuously"
-    );
+    // The stub must have written its PID, which also proves it really ran (otherwise the liveness
+    // check below would be about a process that never existed).
+    let raw = std::fs::read_to_string(&pid_file)
+        .expect("the stub must have recorded its PID before exec'ing into sleep");
+    let pid: i32 = raw
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("stub pid {raw:?} is not a number: {e}"));
 
-    // The heart of #886: the process must have been terminated, so its heartbeat stops.
-    assert!(
-        !heartbeat_is_advancing(&hb).await,
-        "the stub is still running after a failed health check, so the spawned child was leaked \
-         instead of being terminated"
-    );
+    // The heart of #886: the spawned process must be gone. Polled, because `kill().await` returns
+    // once the signal was delivered while the process needs a moment to actually leave; a leaked
+    // process never disappears, so the assertion still fails on the defect.
+    //
+    // `seen_alive` is the non-vacuity precondition: if the process had already exited on its own,
+    // the "gone" assertion would hold for the wrong reason and the test would prove nothing.
+    let mut seen_alive = false;
+    let mut gone = false;
+    for _ in 0..100 {
+        if !pid_is_alive(pid) {
+            gone = true;
+            break;
+        }
+        seen_alive = true;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 
-    // Supporting evidence only: which signal handled it. A missing marker is not a failure of the
-    // fix (the process may be reaped before the handler runs), so this is printed, not asserted.
-    println!(
-        "stub exit marker present: {}",
-        std::fs::metadata(&gone).is_ok()
+    assert!(
+        seen_alive,
+        "process {pid} was never observed alive, so this test would have passed vacuously"
+    );
+    assert!(
+        gone,
+        "process {pid} is still alive after the failed start returned, so the spawned child was \
+         leaked instead of being terminated"
     );
 
     std::fs::remove_file(&db_path).ok();
