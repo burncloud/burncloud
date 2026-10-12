@@ -64,7 +64,13 @@ pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance>
     // 选择 RPC 监听端口
     let port = find_available_port()?;
 
-    // 根据配置构建 aria2 进程命令
+    // 根据配置构建 aria2 进程命令。
+    //
+    // **不传 `--daemon=true`**（#904）：该标志让 aria2 立刻 fork 出守护进程、直接子进程随即退出。
+    // `Aria2Instance` 记录的正是那个直接子进程，于是启动成功后 `is_running()` 恒为 `false` ⇒ 重启监控
+    // 每个 tick 都再起一个实例（端口递增、无界累积），而 `stop()` 只能终止一个早已退出的句柄。旧实现用
+    // 按镜像名的全机清扫掩盖了这个后果，#898 删除 sweep 后才暴露。让服务**就是**直接子进程，从结构上消除
+    // 「服务 ≠ 子进程」，也就不必先确定某个平台是否真的 detach（#904 的 BLOCK-1）。
     let mut cmd = Command::new(&config.aria2_path);
     cmd.args([
         "--enable-rpc",
@@ -77,7 +83,6 @@ pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance>
         "--continue=true",
         "--max-tries=0",
         "--retry-wait=3",
-        "--daemon=true",
     ]);
 
     // 在配置了密钥时添加 RPC 认证参数
@@ -85,10 +90,15 @@ pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance>
         cmd.arg(format!("--rpc-secret={}", secret));
     }
 
-    // 启动 aria2 子进程并接管标准输出与错误输出
+    // 启动 aria2 子进程，并丢弃它的输出。
+    //
+    // 这里**不能**用 `Stdio::piped()`：管道只有被读取才会排空，而本 crate 从不读取它，于是 aria2 写满
+    // 管道缓冲（约 64 KiB）后会阻塞在 write 上、整个服务停住 —— 过去直接子进程立即退出、由分离出去的
+    // 守护进程继承写端，这一点才没有暴露。服务现在就是直接子进程，必须让它一直写得下去；而这些输出本来
+    // 也从未被读取，丢弃不损失任何既有信息。
     let child = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| Aria2Error::ProcessError(e.to_string()))?;
 
@@ -104,6 +114,12 @@ pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance>
     // 而不是留下一个无人负责、又不被记录的 aria2。
     if let Err(error) = wait_for_rpc_ready(port, &config.secret).await {
         let pid = instance.process.id();
+        // 既然不再读取子进程的输出，它退出时的状态就是唯一还留在手上的诊断信息：启动失败最常见的原因
+        // （可执行文件缺失、参数被拒）会让 aria2 立刻退出，而「RPC 就绪超时」本身过于笼统。这里只把状态
+        // 说出来，不替换真正的失败原因。
+        if let Ok(Some(status)) = instance.process.try_wait() {
+            eprintln!("aria2 子进程 {pid} 在 RPC 就绪前已退出，退出状态：{status}");
+        }
         terminate_after_failed_start(pid, || instance.kill(), |message| eprintln!("{message}"));
         return Err(error);
     }
@@ -349,6 +365,57 @@ mod tests {
         assert!(
             report.contains("terminate refused"),
             "and it keeps the reason the termination failed: {report}"
+        );
+    }
+
+    /// The source with whole-line comments removed.
+    ///
+    /// Only **code** lines are scanned: the documentation has to be able to name what was removed in
+    /// order to explain why it is gone, so the scan must not see comments.
+    fn code_without_comments(source: &str) -> String {
+        let mut code = String::new();
+        for line in source.lines() {
+            if !line.trim_start().starts_with("//") {
+                code.push_str(line);
+                code.push('\n');
+            }
+        }
+        code
+    }
+
+    /// **The service is the direct child, and no flag may make it detach (#904).**
+    ///
+    /// The detach flag made aria2 fork and the direct child exit immediately. `Aria2Instance` records
+    /// that child, so `is_running()` read a process that was already gone, the restart monitor
+    /// started another daemon on every tick (each on the next free port, so the instances accumulated
+    /// without bound) and `stop()` could only kill a handle that had already exited. The image-name
+    /// sweep used to hide the leftovers and #898 removed it. The flag is therefore deleted rather
+    /// than compensated for: with no detach, the recorded child **is** the service on every platform,
+    /// which is what makes liveness and termination exact instead of platform-dependent.
+    ///
+    /// The needles are split so that this test's own text cannot satisfy the positive form of the
+    /// check it performs.
+    #[test]
+    fn the_service_is_launched_as_a_direct_child_that_cannot_detach() {
+        let code = code_without_comments(include_str!("process.rs"));
+
+        let detach_flag = concat!("--", "daemon");
+        assert!(
+            !code.contains(detach_flag),
+            "no detach flag may be passed to aria2: the recorded child would stop being the service, \
+             so liveness, the restart monitor and stop() would all describe the wrong process"
+        );
+
+        // Nothing reads the streams, so a pipe would fill and stall the service. If a draining reader
+        // is ever added, replace this assertion with one that proves the drain -- do not delete it.
+        let piped = concat!("Stdio::", "piped");
+        assert!(
+            !code.contains(piped),
+            "an unread pipe blocks the service once it fills; discard the streams instead"
+        );
+        assert!(
+            code.contains(concat!("Stdio::", "null()")),
+            "the launched service must not write to a pipe"
         );
     }
 }
