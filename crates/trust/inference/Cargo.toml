@@ -21,6 +21,10 @@ anyhow = { workspace = true }
 # Test-only: the crate itself needs tokio's process/io-util/time features only, while the
 # integration tests under tests/ need the test attribute and a multi-threaded runtime.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
+# Test-only: the process-lifecycle tests are `#![cfg(unix)]` and must check whether the process
+# the service spawned still exists (kill(pid, 0)). That is a property of the OS rather than of the
+# service under test, so it cannot be asserted through the crate's own API.
+libc = { workspace = true }
 
 [lints]
 workspace = true

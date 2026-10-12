@@ -113,8 +113,47 @@ impl InferenceService {
                             .await;
                     }
                     Err(e) => {
-                        // 健康检查失败，移除进程并标记为 Failed
-                        processes.remove(&config.model_id);
+                        // 健康检查失败：进程已经启动但服务从未就绪，必须**主动终止**它。
+                        //
+                        // `Child` 默认不会在 drop 时结束子进程（tokio 只在显式设置
+                        // `kill_on_drop(true)` 时才那样做），因此这里仅仅把句柄从 map 中移除、
+                        // 然后 drop，会把 llama-server 留成孤儿进程：它继续占着端口和显存，
+                        // 而调用方已经收到了 Err。
+                        //
+                        // 顺序：先摘出句柄，再 kill，最后 wait 回收。
+                        //   * 先摘出是必须的——`kill()`/`wait()` 都是 await 点，不能让进程继续挂在
+                        //     `processes` 里被其它调用方观察到；
+                        //   * `wait()` 不只为回收退出码：tokio 的 `kill()` 在进程已经自行退出时
+                        //     会把 "no such process" 当作成功，只有 wait 能确认它真的被回收，
+                        //     不会留下僵尸。
+                        //
+                        // kill 本身失败时不得掩盖真正的失败原因：调用方需要看到的是健康检查
+                        // 超时，而不是 kill 的错误。这里只把 kill 失败记进日志。
+                        // 注意：kill 失败时**不会**再调用 wait——那会一直阻塞在一个仍然存活的
+                        // 进程上；释放 map 中的句柄已经足够，剩下的交给操作系统回收。
+                        let child = processes.remove(&config.model_id);
+                        if let Some(mut child) = child {
+                            match child.kill().await {
+                                Ok(()) => {
+                                    if let Err(e) = child.wait().await {
+                                        tracing::warn!(
+                                            "Failed to reap inference process for {}: {}",
+                                            config.model_id,
+                                            e
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to kill inference process for {} after a failed \
+                                         health check: {}",
+                                        config.model_id,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+
                         self.set_status(&config.model_id, InstanceStatus::Failed(e.to_string()))
                             .await;
                         return Err(e);
