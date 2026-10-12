@@ -193,8 +193,10 @@ fn a_timed_gate_reports_the_closure_verdict_and_a_non_negative_duration() {
     );
 
     let content = read(&log);
+    // `gate_start` goes through `line`, so the level sits between the category and START.
+    let label = GateCategory::CssAll.log_label();
     assert!(
-        content.contains(&format!("[{}] START", GateCategory::CssAll.log_label())),
+        content.contains(&format!("[{label}] INFO START")),
         "a timed gate must record its start: {content:?}"
     );
     assert!(
