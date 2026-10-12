@@ -4,11 +4,15 @@
     clippy::expect_used,
     clippy::panic_in_result_fn,
     clippy::let_underscore_must_use,
+    clippy::disallowed_types,
     reason = "Test-only integration file. A failed assertion is the intended failure signal for an \
               RPC contract, and these tests compare real returned values and real wire bytes rather \
               than trusting the function under test. `unwrap`/`expect` appear where the test itself \
               is what would break (reading its own scripted responses), and `let _ =` drives a call \
-              whose return value is deliberately discarded."
+              whose return value is deliberately discarded. `serde_json::Value` is how this file \
+              reads a JSON-RPC message off the wire, which is an untrusted document by definition: a \
+              test server for that protocol is itself the protocol boundary the lint carves out, and \
+              `src/rpc.rs` takes the same exception for the same reason."
 )]
 //! The `add_uri` contract, driven end to end over a real loopback socket (#635 plan v2).
 //!
@@ -28,9 +32,7 @@
 //! same way could not distinguish "the duplicate check ran and passed" from "the duplicate check
 //! was skipped", which is exactly the distinction these tests exist to make.
 
-use burncloud_download_aria2::{
-    AddUriOutcome, Aria2Error, Aria2RpcClient, DownloadOptions,
-};
+use burncloud_download_aria2::{AddUriOutcome, Aria2Error, Aria2RpcClient, DownloadOptions};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -154,8 +156,11 @@ fn active_tasks(gids: &[&str]) -> String {
     serde_json::json!({ "jsonrpc": "2.0", "id": "1", "result": tasks }).to_string()
 }
 
-/// A `getFiles` response claiming `gid` is downloading `uri` into `path`.
-fn files_for(gid: &str, uri: &str, path: &str) -> String {
+/// A `getFiles` response claiming `uri` was downloaded to `path`.
+///
+/// The GID is not part of a `getFiles` reply -- the client already knows which GID it asked about --
+/// so this takes only what the response actually carries.
+fn files_for(uri: &str, path: &str) -> String {
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": "1",
@@ -204,7 +209,7 @@ async fn a_matching_active_task_is_reported_as_existing_with_its_gid(
         move |index| match index {
             0 => active_tasks(&[&gid]),
             1 => status_for(&gid),
-            _ => files_for(&gid, &uri, &format!("{dir}/{uri}").replace("https://", "")),
+            _ => files_for(&uri, &format!("{dir}/{}", uri.trim_start_matches("https://"))),
         }
     })
     .await?;
@@ -220,9 +225,7 @@ async fn a_matching_active_task_is_reported_as_existing_with_its_gid(
         auto_file_renaming: None,
     };
 
-    let outcome = client
-        .add_uri(vec![uri.to_string()], Some(options))
-        .await?;
+    let outcome = client.add_uri(vec![uri.to_string()], Some(options)).await?;
 
     match outcome {
         AddUriOutcome::Existing(gid) => assert_eq!(
@@ -285,9 +288,9 @@ async fn a_new_uri_is_created_and_the_request_shape_matches_the_contract(
             gid, new_gid,
             "the created GID must be the one the server returned"
         ),
-        AddUriOutcome::Existing(gid) => panic!(
-            "nothing was downloading, so no task could already exist; got Existing({gid})"
-        ),
+        AddUriOutcome::Existing(gid) => {
+            panic!("nothing was downloading, so no task could already exist; got Existing({gid})")
+        }
     }
 
     let seen = requests_seen(&seen);
@@ -303,22 +306,26 @@ async fn a_new_uri_is_created_and_the_request_shape_matches_the_contract(
         .as_array()
         .unwrap_or_else(|| panic!("params must be an array: {add:#?}"));
 
-    // The token is parameter 0, and the URI list follows it in the order the caller gave.
+    // aria2's JSON-RPC form is a flat parameter list: `token:<secret>` first (when configured),
+    // then the URIs as one parameter each -- not a nested array. Pinned as observed on the wire, so
+    // a future change that starts wrapping the URIs in an array is caught here.
     let expected_token = format!("token:{secret}");
     assert_eq!(
         params.first().and_then(|value| value.as_str()),
         Some(expected_token.as_str()),
         "a configured secret must be sent first as token:<secret>: {params:#?}"
     );
-    let uris = params
-        .get(1)
-        .and_then(|value| value.as_array())
-        .unwrap_or_else(|| panic!("the URI list must be parameter 1: {params:#?}"));
-    let sent: Vec<&str> = uris.iter().filter_map(|value| value.as_str()).collect();
+
+    let sent: Vec<&str> = params
+        .iter()
+        .skip(1)
+        .filter_map(|value| value.as_str())
+        .collect();
     assert_eq!(
         sent,
         vec![first_uri, second_uri],
-        "the URIs must be sent in the caller's order and without duplicates"
+        "every URI must be its own parameter, in the caller's order and without duplicates: \
+         {params:#?}"
     );
 
     Ok(())
