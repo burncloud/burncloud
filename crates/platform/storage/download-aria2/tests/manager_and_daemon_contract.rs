@@ -7,9 +7,10 @@
 //! Constructor and default-state contract for the aria2 manager and daemon (#635).
 //!
 //! Everything in this file is deliberately **side-effect free**: it constructs the two owners and
-//! reads their accessors, and never calls `start_aria2_rpc`, `Aria2Daemon::start`,
-//! `kill_existing_aria2` or `download_aria2`. Those four reach the network, spawn `aria2c` or run
-//! `taskkill`, and this increment's plan forbids them in tests.
+//! reads their accessors, and never calls `start_aria2_rpc`, `Aria2Daemon::start` or
+//! `download_aria2`. Those three reach the network or spawn `aria2c`, and this increment's plan
+//! forbids them in tests. The machine-wide process sweep that this list used to name was removed in
+//! #898, so no function this file can reach terminates a process any more.
 //!
 //! Why this exists: `manager.rs` and `daemon.rs` previously had no tests in any form, and these
 //! two accessors are exactly what a caller uses to decide whether it may talk to a daemon.

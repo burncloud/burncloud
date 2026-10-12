@@ -23,9 +23,8 @@
 //! `RpcError`) and, for `Created`, the request shape.
 //!
 //! Every test here talks to a **scripted in-process HTTP server** bound to `127.0.0.1:0`. No test
-//! downloads anything, starts `aria2c`, or runs `taskkill`: the real side effects live in
-//! `start_aria2_rpc`, `Aria2Daemon::start`, `download_aria2` and `kill_existing_aria2`, and this
-//! increment's plan forbids invoking them.
+//! downloads anything or starts `aria2c`: the real side effects live in `start_aria2_rpc`,
+//! `Aria2Daemon::start` and `download_aria2`, and this increment's plan forbids invoking them.
 //!
 //! ## A corrected assertion (#893)
 //!
