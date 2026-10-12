@@ -467,11 +467,13 @@ fn a_refused_transition_leaves_the_machine_where_it_was() {
                     }
                 }
                 if !reached || machine.state() != from {
-                    // Not every state is on the forward rail: the two failures and `LocalUnsupported` are
-                    // not, so the illegal pairs from those are **not** asserted here. They are asserted in
-                    // `state_machine_table_completeness.rs`, which finds a legal route to every state with a
-                    // search instead of a fixed route array. (An earlier revision of this comment claimed a
-                    // "direct construction below" that did not exist, leaving 27 pairs unasserted.)
+                    // The walker above breaks **before** applying the step into `from` (the `reached` flag is
+                    // set on the same iteration that breaks), so the machine never arrives at `from` and this
+                    // guard holds for every source state except `Absent`. Only the `Absent` row is therefore
+                    // asserted here -- 11 of the 121 illegal pairs. The other 110, including all pairs from
+                    // the two failures and `LocalUnsupported`, are asserted in
+                    // `state_machine_table_completeness.rs`. (An earlier revision of this comment claimed
+                    // those pairs were covered by a "direct construction below" that did not exist.)
                     continue;
                 }
             }

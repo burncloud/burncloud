@@ -7,11 +7,14 @@
 //! `node-state-machine-coverage`).
 //!
 //! `tests/state_machine_table.rs` compares every ordered pair against a transcribed edge table, and has a
-//! test that a refused transition leaves the machine where it was. That second test cannot build a machine
-//! in `Failed`, `Unhealthy` or `LocalUnsupported`: its route array holds only the forward rail, so it
-//! `continue`s over those three states. Its comment says their pairs are covered "by the direct
-//! construction below", but no such construction follows it. 27 of the 121 illegal pairs were therefore
-//! never asserted -- the half of "所有合法/非法状态转移" that the plan's first acceptance condition names.
+//! test that a refused transition leaves the machine where it was. That second test asserts only the
+//! `Absent` row: in its walker (`state_machine_table.rs:457-468`) the `reached` flag is set on the same
+//! iteration that breaks out of the loop, and the break comes **before** `machine.transition(step)`, so the
+//! machine never arrives at `from` and the guard `!reached || machine.state() != from` at `:469` is true for
+//! every source state except `Absent` -- the `continue` at `:472` then skips it. 11 of the 121 illegal pairs
+//! are asserted there and **110 are not**; the three states off the forward rail are only the most visible
+//! subset of those 110 (31 pairs). That is the half of "所有合法/非法状态转移" the plan's first acceptance
+//! condition names.
 //!
 //! This file closes that gap rather than editing the sibling file's assertions:
 //!
@@ -50,7 +53,8 @@ const ALL_STATES: [NodeState; 12] = [
 ];
 
 /// The two states that mean the workload is not healthy, and the one that means the machine decided it
-/// cannot serve at all. These are the three the sibling file's route array cannot reach.
+/// cannot serve at all. The sibling file's walker never enters any of them -- nor any other state except
+/// `Absent` -- so their illegal pairs are among the 110 it leaves unasserted.
 const OFF_RAIL_STATES: [NodeState; 3] = [
     NodeState::Failed,
     NodeState::Unhealthy,
@@ -124,8 +128,9 @@ fn reachable_from(start: NodeState, wall: Option<NodeState>) -> Vec<NodeState> {
 #[test]
 fn the_three_off_rail_states_are_reachable_so_the_matrix_cannot_skip_them() {
     // The gap this file exists to close, asserted directly. The sibling file's `a_refused_transition_...`
-    // test `continue`s over these three because its fixed route array cannot build them; the search here
-    // finds a legal route for each, so their illegal pairs can be asserted like every other state's.
+    // test never enters these three -- its walker breaks before applying the step into `from`, so it skips
+    // every source state but `Absent`; the search here finds a legal route to each of them, so their illegal
+    // pairs (31 of the 110 the sibling leaves unasserted) can be asserted like every other state's.
     for state in OFF_RAIL_STATES {
         let route = legal_route(state)
             .unwrap_or_else(|| panic!("{state:?} must be reachable by a legal route"));
@@ -140,10 +145,10 @@ fn the_three_off_rail_states_are_reachable_so_the_matrix_cannot_skip_them() {
 
 #[test]
 fn every_illegal_pair_is_refused_and_leaves_the_state_unchanged_for_all_twelve_states() {
-    // The completion of the sibling file's matrix check. That one asserts the property over the states its
-    // route array can build; this one asserts it over all twelve, so the nonsense pairs from `Failed`,
-    // `Unhealthy` and `LocalUnsupported` -- for example jumping straight to `Routable`, or skipping ahead
-    // to `PreparingRuntime` -- are checked too.
+    // The completion of the sibling file's matrix check. That one asserts the property for the single source
+    // state its walker can actually enter (`Absent`); this one asserts it over all twelve, so the nonsense
+    // pairs from `Failed`, `Unhealthy` and `LocalUnsupported` -- for example jumping straight to `Routable`,
+    // or skipping ahead to `PreparingRuntime` -- are checked too.
     let expected_illegal = ALL_STATES.len() * ALL_STATES.len() - 23;
     let mut legal = 0_usize;
     let mut illegal = 0_usize;
