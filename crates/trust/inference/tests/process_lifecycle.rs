@@ -63,13 +63,16 @@ fn scratch(tag: &str) -> PathBuf {
 /// Takes two reads a short interval apart rather than trusting one timestamp: a *frozen* file
 /// proves the writer is gone, whereas a single read only proves it wrote at some point in the past.
 async fn heartbeat_is_advancing(path: &Path) -> bool {
-    let first = std::fs::metadata(path).and_then(|m| m.modified());
-    let Ok(first) = first else {
-        return false;
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified());
+    let first = match modified(path) {
+        Ok(t) => t,
+        Err(_) => return false,
     };
     tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-    let Ok(second) = std::fs::metadata(path).and_then(|m| m.modified());
-    second > first
+    match modified(path) {
+        Ok(second) => second > first,
+        Err(_) => false,
+    }
 }
 
 /// Write a POSIX shell stub and mark it executable.
