@@ -27,6 +27,16 @@
 //! `start_aria2_rpc`, `Aria2Daemon::start`, `download_aria2` and `kill_existing_aria2`, and this
 //! increment's plan forbids invoking them.
 //!
+//! ## A corrected assertion (#893)
+//!
+//! The `Created` test originally asserted that the URIs travel as **scalar** positional parameters.
+//! That was wrong, and correcting it matters more than the usual "fix the test": this file is the
+//! only place that reads the `add_uri` request off the wire, so an assertion here is what future
+//! work will trust. aria2's signature is `addUri([secret], uris[, options[, position]])`, so the
+//! URI list is **one array parameter**; the scalar form additionally pushed the second URI into the
+//! `options` slot. #893 carries the analysis and the fix in `src/rpc.rs`; the test now pins the
+//! array form and asserts that the `None` and `Some` branches agree on it.
+//!
 //! Why the server is scripted rather than "answer whatever comes": `add_uri` calls `tellActive`
 //! first, and only calls `aria2.addUri` when nothing matched. A server that always answered the
 //! same way could not distinguish "the duplicate check ran and passed" from "the duplicate check
@@ -309,9 +319,11 @@ async fn a_new_uri_is_created_and_the_request_shape_matches_the_contract(
         .as_array()
         .unwrap_or_else(|| panic!("params must be an array: {add:#?}"));
 
-    // aria2's JSON-RPC form is a flat parameter list: `token:<secret>` first (when configured),
-    // then the URIs as one parameter each -- not a nested array. Pinned as observed on the wire, so
-    // a future change that starts wrapping the URIs in an array is caught here.
+    // aria2's signature is `addUri([secret], uris[, options[, position]])`, so the URI list is
+    // **one array parameter** and not a run of scalar parameters. This assertion previously pinned
+    // the flat form; that was wrong, and #893 records why: with `["uri1", "uri2"]` the second URI
+    // lands in the `options` slot. Corrected here rather than kept, because the old shape was
+    // asserted on a false premise about the protocol.
     let expected_token = format!("token:{secret}");
     assert_eq!(
         params.first().and_then(|value| value.as_str()),
@@ -319,16 +331,150 @@ async fn a_new_uri_is_created_and_the_request_shape_matches_the_contract(
         "a configured secret must be sent first as token:<secret>: {params:#?}"
     );
 
-    let sent: Vec<&str> = params
-        .iter()
-        .skip(1)
-        .filter_map(|value| value.as_str())
-        .collect();
+    let uris = params
+        .get(1)
+        .and_then(|value| value.as_array())
+        .unwrap_or_else(|| {
+            panic!("the URI list must be ONE array parameter at index 1: {params:#?}")
+        });
+    let sent: Vec<&str> = uris.iter().filter_map(|value| value.as_str()).collect();
     assert_eq!(
         sent,
         vec![first_uri, second_uri],
-        "every URI must be its own parameter, in the caller's order and without duplicates: \
+        "the URI array must carry every URI in the caller's order and without duplicates: \
          {params:#?}"
+    );
+    assert_eq!(
+        params.len(),
+        2,
+        "without options there is no third parameter: {params:#?}"
+    );
+
+    Ok(())
+}
+
+// -------------------------------------------------------------------------------------------
+// #893 -- the None and Some branches must agree on the positional shape
+// -------------------------------------------------------------------------------------------
+
+/// The same method must not change its positional shape depending on whether options were passed.
+///
+/// This is the regression test for #893: `add_uri(uris, None)` used to send
+/// `[token, "uri1", "uri2"]` while `add_uri(uris, Some(opts))` sent `[token, ["uri1", "uri2"], {}]`.
+/// Both are now asserted from the wire, so the two branches cannot drift apart again.
+#[tokio::test]
+async fn both_branches_send_the_uri_list_as_one_array_parameter(
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let gid_without = "gid-none-1";
+    let gid_with = "gid-some-1";
+    let first_uri = "https://example.invalid/alpha.bin";
+    let second_uri = "https://example.invalid/beta.bin";
+    let dir = "/tmp/bc-893-dir";
+
+    // Four calls: tellActive then addUri, twice -- once per branch.
+    let (port, seen) = start_scripted_server(4, move |index| match index {
+        0 => active_tasks(&[]),
+        1 => added(gid_without),
+        2 => active_tasks(&[]),
+        _ => added(gid_with),
+    })
+    .await?;
+
+    let client = Aria2RpcClient::new(port, None);
+    let uris = vec![first_uri.to_string(), second_uri.to_string()];
+
+    // Branch 1: no options.
+    let without = client.add_uri(uris.clone(), None).await?;
+    assert_eq!(
+        without.gid(),
+        gid_without,
+        "the no-options call must report the GID its own response carried"
+    );
+
+    // Branch 2: with options.
+    let options = DownloadOptions {
+        dir: Some(dir.to_string()),
+        out: None,
+        split: None,
+        max_connection_per_server: None,
+        continue_download: None,
+        allow_overwrite: None,
+        auto_file_renaming: None,
+    };
+    let with = client.add_uri(uris.clone(), Some(options)).await?;
+    assert_eq!(
+        with.gid(),
+        gid_with,
+        "the with-options call must report the GID its own response carried"
+    );
+
+    let seen = requests_seen(&seen);
+    assert_eq!(
+        seen.len(),
+        4,
+        "expected two tellActive/addUri pairs: {seen:#?}"
+    );
+
+    let adds: Vec<&serde_json::Value> = seen
+        .iter()
+        .filter(|request| request["method"] == "aria2.addUri")
+        .collect();
+    assert_eq!(
+        adds.len(),
+        2,
+        "both branches must call aria2.addUri: {seen:#?}"
+    );
+
+    // No secret configured, so the URI array is parameter 0 in both calls.
+    for (label, add) in [("None", adds[0]), ("Some", adds[1])] {
+        let params = add["params"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{label}: params must be an array: {add:#?}"));
+
+        let uri_array = params
+            .first()
+            .and_then(|value| value.as_array())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{label}: params[0] must be the URI array, not a scalar; #893 is exactly the \
+                     branch that used to send scalars: {params:#?}"
+                )
+            });
+        let sent: Vec<&str> = uri_array.iter().filter_map(|v| v.as_str()).collect();
+        assert_eq!(
+            sent,
+            vec![first_uri, second_uri],
+            "{label}: the URI array must be parameter 0 in the caller's order: {params:#?}"
+        );
+
+        // No scalar URI may appear at the top level, which is what the defect produced.
+        let scalars: Vec<&str> = params.iter().filter_map(|v| v.as_str()).collect();
+        assert!(
+            scalars.is_empty(),
+            "{label}: no URI may be sent as its own top-level parameter: {params:#?}"
+        );
+    }
+
+    // The shapes agree on everything except the trailing options object.
+    let none_params = adds[0]["params"].as_array().expect("array");
+    let some_params = adds[1]["params"].as_array().expect("array");
+    assert_eq!(
+        none_params.len(),
+        1,
+        "without options the URI array is the only parameter: {none_params:#?}"
+    );
+    assert_eq!(
+        some_params.len(),
+        2,
+        "with options the URI array is followed by the options object: {some_params:#?}"
+    );
+    assert_eq!(
+        none_params[0], some_params[0],
+        "both branches must send the identical URI array: {none_params:#?} vs {some_params:#?}"
+    );
+    assert!(
+        some_params[1].is_object(),
+        "the third parameter must be the options object: {some_params:#?}"
     );
 
     Ok(())
