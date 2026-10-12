@@ -71,7 +71,12 @@ impl From<reqwest::Error> for InstallerError {
 
 impl From<std::io::Error> for InstallerError {
     fn from(error: std::io::Error) -> Self {
-        InstallerError::FileSystem(error.to_string())
+        // 权限不足是调用方可以据以提示用户「授权后重试」的可操作信息，与「文件不存在」等不同；
+        // 因此按 kind 分流把它保留为独立变体，其余种类维持原有的 FileSystem 映射与文本（#897）。
+        match error.kind() {
+            std::io::ErrorKind::PermissionDenied => InstallerError::Permission(error.to_string()),
+            _ => InstallerError::FileSystem(error.to_string()),
+        }
     }
 }
 

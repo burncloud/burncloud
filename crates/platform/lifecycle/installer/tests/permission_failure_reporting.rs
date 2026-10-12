@@ -5,21 +5,26 @@
               assertions compare the error the installer actually produced rather than trusting the \
               call to fail in a particular way."
 )]
-//! How the installer reports a permission failure (#635, scope
-//! `installer-interruption-cleanup-and-permission-failure`).
+//! How the installer reports a permission failure (#635, then fixed by #897).
 //!
-//! `InstallerError` declares a `Permission` variant (`src/error.rs:16-17`), and the plan's premise
-//! was that permission handling might be silently swallowed. It is not swallowed -- it is
-//! **unreachable**: `From<std::io::Error>` maps every kind, `PermissionDenied` included, onto
-//! `FileSystem` (`src/error.rs:72-76`), and nothing anywhere constructs `Permission`.
+//! `InstallerError` declares a `Permission` variant that used to be **unreachable**:
+//! `From<std::io::Error>` mapped every kind, `PermissionDenied` included, onto `FileSystem`, and
+//! nothing anywhere constructed `Permission`.
 //!
-//! That distinction is the whole point of this file. "The error is reported" and "the error is
-//! reported as the structured kind the API advertises" are different claims, and only the first is
-//! true today. These tests pin the current, observable behaviour and make the loss of structure
-//! visible, rather than asserting the behaviour we wish existed.
+//! This file originally pinned that loss so it could not be fixed silently. #897 changed the
+//! conversion to branch on `error.kind()`, so the three assertions that recorded the old mapping are
+//! now **deliberately inverted** rather than deleted or loosened -- each still fails loudly if the
+//! mapping regresses to "every io error is FileSystem":
 //!
-//! AC4 applies here: the fact that `Permission` is unreachable is **reported**, not re-labelled as
-//! expected behaviour, and no production code is changed. The decision belongs to 01.
+//! | test | before #897 | after #897 |
+//! | --- | --- | --- |
+//! | `a_permission_denied_io_error_is_reported_as_permission` | `FileSystem`, `Permission` unreachable | `Permission`, OS message preserved |
+//! | `the_conversion_distinguishes_not_found_from_permission_denied` | denied and missing report the same kind | `Permission` vs `FileSystem` |
+//! | `writing_into_an_unwritable_directory_reports_permission` | `FileSystem` end to end | `Permission` end to end |
+//!
+//! `the_permission_variant_exists_and_formats_distinctly_from_filesystem` is unchanged, and
+//! `only_permission_denied_changes_the_mapping` was added so "every other kind keeps `FileSystem`" is
+//! asserted rather than assumed.
 //!
 //! Nothing in this file installs anything, runs npm/git, or touches a real system directory: the
 //! only writes go to a uniquely named subdirectory of `std::env::temp_dir()`.
@@ -85,37 +90,34 @@ fn make_read_only(dir: &Path) -> bool {
     }
 }
 
-/// A `PermissionDenied` io error is reported, and it is reported as `FileSystem`.
+/// A `PermissionDenied` io error is reported as `Permission`, and the OS message survives.
 ///
-/// This is the pinned current behaviour. The `Permission` variant exists in the public error enum,
-/// so a caller may reasonably match on it; this test records that such a match can never succeed
-/// today. The assertion is deliberately on `FileSystem` -- a strong assertion about what happens,
-/// not a weak one like `is_err()`.
+/// The counterpart of the pin that used to assert `FileSystem`: the defect it recorded was fixed by
+/// #897, so the assertion was inverted deliberately. It is still a strong assertion about what
+/// happens -- a caller matching `Permission` now succeeds, and one matching `FileSystem` does not.
 #[test]
-fn a_permission_denied_io_error_is_reported_as_a_filesystem_error_not_permission() {
+fn a_permission_denied_io_error_is_reported_as_permission() {
     let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied by test");
     let converted: InstallerError = io_error.into();
 
     match &converted {
-        InstallerError::FileSystem(message) => assert!(
+        InstallerError::Permission(message) => assert!(
             message.contains("denied by test"),
             "the OS message must survive the conversion: {message}"
         ),
-        other => panic!(
-            "expected FileSystem (the current mapping for every io error kind), got {other:?}"
-        ),
+        other => panic!("expected Permission for a PermissionDenied io error, got {other:?}"),
     }
 
     assert!(
-        !matches!(converted, InstallerError::Permission(_)),
-        "the Permission variant is declared but unreachable; if this now matches, the mapping was \
-         changed and this test should be updated deliberately rather than silently"
+        !matches!(converted, InstallerError::FileSystem(_)),
+        "a permission failure must not be reported as a generic file system error, or a caller \
+         cannot tell 'retry with better rights' from 'the file is absent'"
     );
 }
 
-/// The same conversion loses the *kind*, which is the part a caller would act on.
+/// The conversion distinguishes the *kind*, which is the part a caller acts on.
 #[test]
-fn the_conversion_does_not_distinguish_not_found_from_permission_denied() {
+fn the_conversion_distinguishes_not_found_from_permission_denied() {
     let denied: InstallerError =
         std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied").into();
     let missing: InstallerError =
@@ -129,10 +131,46 @@ fn the_conversion_does_not_distinguish_not_found_from_permission_denied() {
 
     assert_eq!(
         kind_of(&denied),
-        kind_of(&missing),
-        "two very different failures currently produce the same error kind, so a caller cannot \
-         tell 'retry with better rights' from 'the file is absent' without parsing the message"
+        "Permission",
+        "a permission failure must keep its own kind"
     );
+    assert_eq!(
+        kind_of(&missing),
+        "FileSystem",
+        "a non-permission kind must keep the mapping it had before #897"
+    );
+    assert_ne!(
+        kind_of(&denied),
+        kind_of(&missing),
+        "two very different failures must not produce the same error kind"
+    );
+}
+
+/// `PermissionDenied` is the **only** kind whose mapping changed.
+///
+/// Asserted rather than assumed: the fix routes one kind and leaves the rest alone, so a future
+/// change that widened it (or narrowed it) would be caught here.
+#[test]
+fn only_permission_denied_changes_the_mapping() {
+    let kinds = [
+        std::io::ErrorKind::NotFound,
+        std::io::ErrorKind::AlreadyExists,
+        std::io::ErrorKind::InvalidData,
+        std::io::ErrorKind::UnexpectedEof,
+        std::io::ErrorKind::TimedOut,
+    ];
+
+    for kind in kinds {
+        let converted: InstallerError =
+            std::io::Error::new(kind, format!("{kind:?} by test")).into();
+        match &converted {
+            InstallerError::FileSystem(message) => assert!(
+                message.contains("by test"),
+                "the OS message must survive for {kind:?}: {message}"
+            ),
+            other => panic!("expected FileSystem for {kind:?}, got {other:?}"),
+        }
+    }
 }
 
 /// The `Permission` variant still exists, formats distinctly, and is distinguishable.
@@ -166,13 +204,13 @@ fn the_permission_variant_exists_and_formats_distinctly_from_filesystem() {
 
 /// End to end: an actual write into a real read-only directory.
 ///
-/// Constructed the way the plan asks -- a temp target made unwritable -- and asserted on the error
-/// that reaches the caller. Where the platform cannot make a directory unwritable (for instance a
-/// root user), the test **registers the gap by panicking with a reason** rather than silently
-/// passing: a test that cannot set up its own premise must not report success.
+/// A temp target made unwritable, then asserted on the error that reaches the caller -- which is now
+/// `Permission`, the kind the API advertises. Where the platform cannot make a directory unwritable
+/// (for instance a root user), the test **registers the gap by panicking with a reason** rather than
+/// silently passing: a test that cannot set up its own premise must not report success.
 #[cfg(unix)]
 #[test]
-fn writing_into_an_unwritable_directory_reports_permission_denied_as_filesystem() {
+fn writing_into_an_unwritable_directory_reports_permission() {
     let scratch = Scratch::new("readonly");
     let target = scratch.path().join("target");
     std::fs::create_dir_all(&target).expect("the target directory must be creatable");
@@ -202,8 +240,9 @@ fn writing_into_an_unwritable_directory_reports_permission_denied_as_filesystem(
     // The installer would carry this through its `?` conversion.
     let converted: InstallerError = error.into();
     assert!(
-        matches!(converted, InstallerError::FileSystem(_)),
-        "the installer currently reports this as FileSystem, losing the permission kind: {converted:?}"
+        matches!(converted, InstallerError::Permission(_)),
+        "an unwritable directory must reach the caller as Permission, not as a generic file system \
+         error: {converted:?}"
     );
     assert!(
         !target.join("artifact.bin").exists(),
