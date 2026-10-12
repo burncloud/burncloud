@@ -11,7 +11,7 @@
 //!
 //! Timestamp convention used here: `router_logs.created_at` and `router_video_tasks.created_at` are
 //! `TIMESTAMP` on PostgreSQL and `TEXT` on SQLite (migration audit in
-//! `.github/test-plan/postgres-dialect-contract.md`). Therefore the production router-log window query
+//! the #658 PostgreSQL dialect contract). Therefore the production router-log window query
 //! must use `EXTRACT(EPOCH FROM created_at)` on PostgreSQL, not the millisecond-integer convention used by
 //! tables such as `channel_protocol_configs`.
 

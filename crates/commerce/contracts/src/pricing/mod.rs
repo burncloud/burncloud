@@ -12,7 +12,7 @@
 //
 // [`ModelMetadata`] stays in Commerce because it is the serialized metadata shape carried by
 // pricing documents. #621 established a separate Supply persistence truth:
-// `burncloud-database-model::ModelCapability` matches the real `model_capabilities` table, and
+// `burncloud-supply-model::ModelCapability` matches the real `model_capabilities` table, and
 // Traffic explicitly projects this DTO into that Supply-owned row through
 // `ModelCapabilityModel::upsert`. Traffic no longer writes the table with raw SQL.
 //

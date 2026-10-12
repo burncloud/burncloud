@@ -2,7 +2,7 @@
 # check-router-deps.sh — Verify burncloud-router only depends on whitelisted service crates.
 #
 # Current architecture rule: router may depend on service-billing and
-# service-user, but no other burncloud-service-* crate. Adding a new service
+# identity-user, but no other cross-domain implementation crate. Adding a new service
 # dependency requires architecture review and an explicit whitelist update.
 #
 # Usage:
@@ -29,9 +29,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ── Whitelist: service crates that router is allowed to depend on ──
-ALLOWED_SERVICE_CRATES=(
+ALLOWED_CROSS_DOMAIN_CRATES=(
   burncloud-service-billing
-  burncloud-service-user
+  burncloud-identity-user
 )
 
 cd "$REPO_ROOT"
@@ -51,36 +51,36 @@ if ! echo "$CARGO_METADATA" | jq -e '.packages[] | select(.name == "burncloud-ro
   exit 1
 fi
 
-SERVICE_DEPS=()
-for dep in $(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name | select(startswith("burncloud-service-"))'); do
-  SERVICE_DEPS+=("$dep")
+CROSS_DOMAIN_DEPS=()
+for dep in $(echo "$CARGO_METADATA" | jq -r '.packages[] | select(.name == "burncloud-router") | .dependencies[] | .name | select(startswith("burncloud-service-") or . == "burncloud-identity-user")'); do
+  CROSS_DOMAIN_DEPS+=("$dep")
 done
 
 VIOLATIONS=()
-for dep in "${SERVICE_DEPS[@]}"; do
-  if ! [[ " ${ALLOWED_SERVICE_CRATES[*]} " =~ " $dep " ]]; then
+for dep in "${CROSS_DOMAIN_DEPS[@]}"; do
+  if ! [[ " ${ALLOWED_CROSS_DOMAIN_CRATES[*]} " =~ " $dep " ]]; then
     VIOLATIONS+=("$dep")
   fi
 done
 
 if [[ ${#VIOLATIONS[@]} -eq 0 ]]; then
-  allowed_list="${ALLOWED_SERVICE_CRATES[*]}"
-  echo "${GREEN}OK: burncloud-router service dependencies are within the architecture whitelist.${RESET}"
+  allowed_list="${ALLOWED_CROSS_DOMAIN_CRATES[*]}"
+  echo "${GREEN}OK: burncloud-router cross-domain dependencies are within the architecture whitelist.${RESET}"
   echo "  Allowed: $allowed_list"
-  echo "  Found:   ${SERVICE_DEPS[*]:-none}"
+  echo "  Found:   ${CROSS_DOMAIN_DEPS[*]:-none}"
   exit 0
 fi
 
-allowed_str=$(printf '%s, ' "${ALLOWED_SERVICE_CRATES[@]}")
+allowed_str=$(printf '%s, ' "${ALLOWED_CROSS_DOMAIN_CRATES[@]}")
 allowed_str="${allowed_str%, }"
 
-echo "${RED}Architecture violation: burncloud-router depends on unauthorized service crate(s)${RESET}"
+echo "${RED}Architecture violation: burncloud-router depends on unauthorized cross-domain crate(s)${RESET}"
 echo ""
 echo "  Found:   ${VIOLATIONS[*]}"
 echo "  Allowed: $allowed_str"
 echo ""
 echo "  The current router service-dependency boundary is enforced by this script."
-echo "  Adding a new burncloud-service-* dependency requires architecture review"
+echo "  Adding a new cross-domain implementation dependency requires architecture review"
 echo "  and an explicit update to the whitelist if the new dependency is accepted."
 echo ""
 echo "  See: crates/traffic/router/README.md \"Dependency boundary\" section"

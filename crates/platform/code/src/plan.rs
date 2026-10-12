@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-const KNOWN_TEST_BASELINE: &str =
-    include_str!("../../../../.github/test-plan/known-test-baseline.txt");
+use crate::manifest::{self, Impact, RootManifestChange};
 
 #[derive(Deserialize)]
 pub(crate) struct Metadata {
@@ -24,7 +23,15 @@ struct Package {
 #[derive(Deserialize)]
 struct Dependency {
     // Includes normal, build, dev, optional and target-specific dependencies.
+    name: String,
+    rename: Option<String>,
     path: Option<PathBuf>,
+}
+
+impl Dependency {
+    fn manifest_name(&self) -> &str {
+        self.rename.as_deref().unwrap_or(&self.name)
+    }
 }
 
 pub(crate) struct Plan {
@@ -44,51 +51,74 @@ pub(crate) fn no_test_impact(path: &str) -> bool {
 fn global(path: &str) -> bool {
     matches!(
         path,
-        "Cargo.toml" | "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml"
+        "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml"
     ) || path.starts_with(".cargo/")
 }
 
-fn known_test_skips() -> Result<Vec<&'static str>> {
-    let mut names = Vec::new();
-    let mut seen = BTreeSet::new();
-
-    for (index, raw) in KNOWN_TEST_BASELINE.lines().enumerate() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
+/// Resolve root-workspace manifest changes separately from ordinary file
+/// ownership so neither branch inflates the selection planner's complexity.
+fn apply_root_manifest_change(
+    root: &Path,
+    directories: &BTreeMap<PathBuf, String>,
+    packages: &[Package],
+    plan: &mut Plan,
+    root_manifest: Option<&RootManifestChange>,
+) {
+    let Some(change) = root_manifest else {
+        plan.full_reason.get_or_insert_with(|| {
+            "root Cargo.toml changed but its previous version is unavailable".to_owned()
+        });
+        return;
+    };
+    match manifest::analyze(change) {
+        Impact::Full(reason) => {
+            plan.full_reason.get_or_insert_with(|| {
+                format!("root Cargo.toml requires full workspace: {reason}")
+            });
         }
-        let fields: Vec<_> = line.split('|').map(str::trim).collect();
-        anyhow::ensure!(
-            fields.len() == 3,
-            "Invalid known-test baseline line {}: expected test_name|issue_number|reason",
-            index + 1
-        );
-        let name = fields[0];
-        let issue = fields[1];
-        let reason = fields[2];
-        anyhow::ensure!(
-            !name.is_empty(),
-            "Invalid known-test baseline line {}: empty test name",
-            index + 1
-        );
-        anyhow::ensure!(
-            issue.parse::<u64>().is_ok(),
-            "Invalid known-test baseline line {}: issue number must be numeric",
-            index + 1
-        );
-        anyhow::ensure!(
-            !reason.is_empty(),
-            "Invalid known-test baseline line {}: empty reason",
-            index + 1
-        );
-        anyhow::ensure!(
-            seen.insert(name),
-            "Duplicate known-test baseline entry: {name}"
-        );
-        names.push(name);
+        Impact::Scoped {
+            added_members,
+            changed_workspace_dependencies,
+            root_package_changed,
+        } => {
+            for member in added_members {
+                let member_path = root.join(&member);
+                let owner = member_path
+                    .canonicalize()
+                    .ok()
+                    .and_then(|directory| directories.get(&directory));
+                if let Some(name) = owner {
+                    plan.direct.insert(name.clone());
+                } else {
+                    plan.full_reason.get_or_insert_with(|| {
+                        format!(
+                            "root Cargo.toml added workspace member that cannot be mapped safely: {member}"
+                        )
+                    });
+                }
+            }
+            if root_package_changed {
+                if let Some(name) = directories.get(root) {
+                    plan.direct.insert(name.clone());
+                } else {
+                    plan.full_reason.get_or_insert_with(|| {
+                        "root package changed but cargo metadata has no root package".to_owned()
+                    });
+                }
+            }
+            for dependency in changed_workspace_dependencies {
+                for package in packages {
+                    if package
+                        .dependencies
+                        .iter()
+                        .any(|candidate| candidate.manifest_name() == dependency)
+                    {
+                        plan.direct.insert(package.name.clone());
+                    }
+                }
+            }
+        }
     }
-
-    Ok(names)
 }
 
 pub(crate) fn select(
@@ -96,6 +126,7 @@ pub(crate) fn select(
     files: &BTreeSet<String>,
     metadata: Metadata,
     all: bool,
+    root_manifest: Option<&RootManifestChange>,
 ) -> Result<Plan> {
     let root = root.canonicalize()?;
     let mut directories = BTreeMap::new();
@@ -123,6 +154,10 @@ pub(crate) fn select(
     };
     for file in files {
         if no_test_impact(file) {
+            continue;
+        }
+        if file == "Cargo.toml" {
+            apply_root_manifest_change(&root, &directories, &packages, &mut plan, root_manifest);
             continue;
         }
         if global(file) {
@@ -232,13 +267,6 @@ impl Plan {
             }
         }
         test.push("--no-default-features".to_owned());
-        let known_skips = known_test_skips()?;
-        if !known_skips.is_empty() {
-            test.push("--".to_owned());
-            for name in known_skips {
-                test.extend(["--skip".to_owned(), name.to_owned()]);
-            }
-        }
         commands.push(test);
         Ok(commands)
     }
@@ -246,25 +274,16 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::{known_test_skips, Plan};
+    use super::{global, Plan};
     use std::collections::BTreeSet;
 
     #[test]
-    fn known_test_baseline_is_the_reviewed_seven() -> anyhow::Result<()> {
-        anyhow::ensure!(
-            known_test_skips()?
-                == vec![
-                    "test_claude_adaptor",
-                    "test_deepseek_proxy",
-                    "test_qwen_proxy",
-                    "test_round_robin_balancer",
-                    "test_failover",
-                    "test_vertex_full_flow",
-                    "test_login_user_success",
-                ],
-            "known test baseline changed unexpectedly"
-        );
-        Ok(())
+    fn only_truly_global_cargo_inputs_force_workspace() {
+        assert!(!global("Cargo.toml"));
+        assert!(global("Cargo.lock"));
+        assert!(global("rust-toolchain"));
+        assert!(global("rust-toolchain.toml"));
+        assert!(global(".cargo/config.toml"));
     }
 
     #[test]
@@ -344,39 +363,16 @@ mod tests {
     }
 
     #[test]
-    fn test_command_applies_known_baseline_as_libtest_arguments() -> anyhow::Result<()> {
+    fn test_command_never_injects_hidden_skips() -> anyhow::Result<()> {
         let plan = Plan {
             full_reason: Some("test".to_owned()),
             direct: BTreeSet::new(),
             affected: BTreeSet::from(["burncloud-code".to_owned()]),
         };
         let commands = plan.commands()?;
-        let test = &commands[0];
-        let separator = test
-            .iter()
-            .position(|arg| arg == "--")
-            .ok_or_else(|| anyhow::anyhow!("known test baseline must add libtest arguments"))?;
         anyhow::ensure!(
-            test[..separator] == ["test", "--workspace", "--no-default-features"],
-            "cargo test prefix changed unexpectedly"
-        );
-        let libtest_args = &test[separator + 1..];
-        anyhow::ensure!(
-            libtest_args.len().is_multiple_of(2),
-            "known skip arguments must be --skip/name pairs"
-        );
-        let mut skip_names = Vec::new();
-        for pair in libtest_args.chunks(2) {
-            anyhow::ensure!(
-                pair[0] == "--skip",
-                "unexpected libtest argument: {}",
-                pair[0]
-            );
-            skip_names.push(pair[1].as_str());
-        }
-        anyhow::ensure!(
-            skip_names == known_test_skips()?,
-            "known test skip arguments changed unexpectedly"
+            commands[0] == ["test", "--workspace", "--no-default-features"],
+            "code test must run selected tests directly without hidden libtest skip arguments"
         );
         Ok(())
     }

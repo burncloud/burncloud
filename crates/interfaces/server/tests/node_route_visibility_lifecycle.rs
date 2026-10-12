@@ -27,7 +27,7 @@ use burncloud_server::node_attachment::{
     detach_unhealthy_node_route, prepare_and_attach_node_route, LocalRouteOutcome,
 };
 use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
-use burncloud_service_models::FakeModelResolver;
+use burncloud_supply_model::FakeModelResolver;
 use std::sync::Arc;
 
 fn sqlite_url(path: &str) -> String {

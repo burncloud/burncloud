@@ -1494,15 +1494,13 @@ async fn proxy_handler(
     let (user_id, user_group, quota_limit, used_quota, order_type_str, price_cap) =
         match RouterDatabase::validate_token_and_get_info(&state.db, &user_token).await {
             Ok(Some(info)) => {
-                // Update accessed_time non-blocking
-                let db = state.db.clone();
-                let token = user_token.clone();
-                tokio::spawn(async move {
-                    if let Err(err) = RouterDatabase::update_token_accessed_time(&db, &token).await
-                    {
-                        tracing::debug!("update_token_accessed_time (new token table): {err}");
-                    }
-                });
+                // Best-effort accessed_time update. Await it here so this SQLite write
+                // cannot race the later spend settlement for the same request (#774).
+                if let Err(err) =
+                    RouterDatabase::update_token_accessed_time(&state.db, &user_token).await
+                {
+                    tracing::debug!("update_token_accessed_time (new token table): {err}");
+                }
                 (
                     info.user_id,
                     info.group,
@@ -1516,18 +1514,15 @@ async fn proxy_handler(
                 // Fallback to old token table logic with detailed validation
                 match RouterDatabase::validate_token_detailed(&state.db, &user_token).await {
                     Ok(RouterTokenValidationResult::Valid(t)) => {
-                        // Update accessed_time non-blocking
-                        let db = state.db.clone();
-                        let token = user_token.clone();
-                        tokio::spawn(async move {
-                            if let Err(err) =
-                                RouterDatabase::update_token_accessed_time(&db, &token).await
-                            {
-                                tracing::debug!(
-                                    "update_token_accessed_time (legacy token table): {err}"
-                                );
-                            }
-                        });
+                        // Best-effort accessed_time update. Await it here so this SQLite write
+                        // cannot race the later spend settlement for the same request (#774).
+                        if let Err(err) =
+                            RouterDatabase::update_token_accessed_time(&state.db, &user_token).await
+                        {
+                            tracing::debug!(
+                                "update_token_accessed_time (legacy token table): {err}"
+                            );
+                        }
                         (
                             t.user_id,
                             "default".to_string(),

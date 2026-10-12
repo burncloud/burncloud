@@ -188,6 +188,33 @@ async fn a_download_moves_through_its_states_and_the_progress_is_recorded(
 }
 
 #[tokio::test]
+async fn get_returns_one_download_by_gid_and_none_for_a_missing_gid(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // 按 GID 查询必须只返回匹配记录；不存在的 GID 只能返回 None，查询本身的错误仍需传播。
+    let temp = TempDb::new("dl_get");
+    let downloads = temp.downloads().await?;
+
+    downloads
+        .add(
+            "lookup-gid",
+            vec!["https://example.invalid/lookup".to_string()],
+            Some("/tmp/lookup"),
+            Some("lookup.bin"),
+        )
+        .await?;
+
+    let found = downloads
+        .get("lookup-gid")
+        .await?
+        .expect("the record exists");
+    assert_eq!(found.gid, "lookup-gid");
+    assert_eq!(found.filename.as_deref(), Some("lookup.bin"));
+    assert!(downloads.get("missing-gid").await?.is_none());
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn different_task_ids_do_not_overwrite_each_other() -> Result<(), Box<dyn std::error::Error>>
 {
     // "不同任务 ID 不互相覆盖". `gid` is the primary key, so three tasks must be three rows with independent

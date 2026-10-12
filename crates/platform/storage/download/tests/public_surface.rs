@@ -12,10 +12,10 @@
 //!
 //! ## Why this file is about reachability rather than behaviour
 //!
-//! `DownloadManager`'s methods live in two modules that `lib.rs` declares as private:
+//! `DownloadManager`'s methods live in the private `manager` module that `lib.rs` declares:
 //!
 //! ```text
-//! mod error;  mod manager;  mod monitor;  mod operations;  mod utils;
+//! mod error;  mod manager;  mod utils;
 //! pub use manager::DownloadManager;
 //! ```
 //!
@@ -48,7 +48,7 @@ fn the_manager_type_is_exported() {
 }
 
 /// **The reachability question, answered by the compiler.** `DownloadManager::new` is declared in the private
-/// `operations` module. If this test compiles, inherent methods in a private module are reachable through the
+/// `manager` module. If this test compiles, inherent methods in a private module are reachable through the
 /// re-exported type -- which is what the crate needs, since `crates/supply/service-models/examples/
 /// test_download.rs` calls it from outside.
 ///

@@ -5,7 +5,7 @@ use burncloud_node_runtime::{
     RuntimeAdapter, RuntimePreparer, RuntimeRequest,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
-use burncloud_service_models::{
+use burncloud_supply_model::{
     LocalModelUnsupported, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
     ResolvedModel,
 };
@@ -573,7 +573,7 @@ mod tests {
         ArtifactVerificationStatus, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
         FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
     };
-    use burncloud_service_models::{
+    use burncloud_supply_model::{
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
     };
 

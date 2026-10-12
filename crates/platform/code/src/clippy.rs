@@ -41,11 +41,13 @@ pub(crate) fn run(options: test::Options) -> Result<()> {
     let metadata: Metadata =
         serde_json::from_slice(&output.stdout).context("Invalid Cargo workspace metadata")?;
 
+    let root_manifest = test::root_manifest_change(&root, &options, &files)?;
     let mut plan = plan::select(
         &root,
         &files,
         metadata,
         options.all || clippy_config_changed,
+        root_manifest.as_ref(),
     )?;
     if clippy_config_changed && !options.all {
         plan.full_reason = Some("Clippy configuration changed: clippy.toml".to_owned());

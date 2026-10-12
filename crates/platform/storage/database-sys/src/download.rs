@@ -107,7 +107,7 @@ impl DownloadDB {
                 "#,
                 vec![
                     gid.to_string(),
-                    serde_json::to_string(&uris).unwrap_or_default(),
+                    serde_json::to_string(&uris)?,
                     download_dir.unwrap_or("").to_string(),
                     filename.unwrap_or("").to_string(),
                     Self::now_string(),
@@ -183,6 +183,19 @@ impl DownloadDB {
                     .await
             }
         }
+    }
+
+    /// 按 GID 查询单条下载记录。
+    ///
+    /// 只有查询成功且 GID 不存在时才返回 `Ok(None)`；查询失败会向调用方传播，不能被误认为记录不存在。
+    pub async fn get(&self, gid: &str) -> Result<Option<SysDownload>> {
+        self.db
+            .fetch_optional_with_params::<SysDownload>(
+                "SELECT gid, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, created_at, updated_at \
+                 FROM sys_downloads WHERE gid = ?",
+                vec![gid.to_string()],
+            )
+            .await
     }
 
     /// Update the GID of a download record (used when restoring incomplete downloads)

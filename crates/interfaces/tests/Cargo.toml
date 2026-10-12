@@ -38,8 +38,7 @@ path = "tests/logging_test.rs"
 [dev-dependencies]
 burncloud-server.workspace = true
 burncloud-database-router.workspace = true
-burncloud-database-user.workspace = true
-burncloud-service-user.workspace = true
+burncloud-identity-user.workspace = true
 tracing.workspace = true
 log.workspace = true
 tempfile.workspace = true

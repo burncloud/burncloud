@@ -21,7 +21,7 @@ use burncloud_node_runtime::{
     FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
-use burncloud_service_models::FakeModelResolver;
+use burncloud_supply_model::FakeModelResolver;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap};

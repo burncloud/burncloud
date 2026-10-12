@@ -1,0 +1,16 @@
+name: CI / GitHub-hosted Deny
+
+# Keep one independent PR check per Rust quality gate.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci-github-hosted-base.yml
+    with:
+      check: deny
+      check_name: Cargo Deny

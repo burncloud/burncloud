@@ -8,7 +8,7 @@ use axum::{
     Router,
 };
 use burncloud_database_channel::{Channel, ChannelService};
-use burncloud_database_user::UserDatabase;
+use burncloud_service_user::UserDatabase;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

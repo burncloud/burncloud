@@ -59,11 +59,7 @@ async fn test_vertex_full_flow() -> anyhow::Result<()> {
         .expect(2) // Expect 2 calls (Non-Stream + Stream)
         .create_async().await;
 
-    // 2. Configure Upstream
-    let id = "vertex-test";
-    let name = "Vertex Test";
-    let base_url = "https://ignored-but-required.com";
-
+    // 2. Configure the Vertex channel fixture.
     let private_key = r#"-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDaJKsOxgH3D2ah
 v8vbh9n99AvHPOoIuJur/sV7tHZ9/bzMvnzVsQxxciagrVFve+XaE1mQjzNbRKB3
@@ -104,37 +100,24 @@ Apfww82b16AoK7qgtPcI8g==
     })
     .to_string();
 
-    let match_path = "/v1/chat/completions";
-    let auth_type = "VertexAi"; // Important: Triggers factory
-
-    // Inject overrides
+    // Current routing truth belongs to Supply channels. Retain the Vertex
+    // service account, auth URL override and response assertions unchanged.
+    common::ensure_channel_tables(&pool).await?;
     let param_override = json!({
         "base_url": server.url(),
         "auth_url": format!("{}/auth", server.url())
     })
     .to_string();
-
-    // Clear existing upstreams (e.g. defaults)
-    sqlx::query("DELETE FROM router_upstreams")
-        .execute(&pool)
-        .await?;
-
     sqlx::query(
-        r#"
-        INSERT INTO router_upstreams (id, name, base_url, api_key, match_path, auth_type, param_override, protocol)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        "#,
+        "INSERT INTO channel_providers (id, type, key, status, name, weight, base_url, models, `group`, priority, param_override) VALUES (75641, 41, ?, 1, 'Vertex Test', 1, ?, 'gemini-pro', 'default', 0, ?)"
     )
-    .bind(id)
-    .bind(name)
-    .bind(base_url)
-    .bind(api_key)
-    .bind(match_path)
-    .bind(auth_type)
-    .bind(param_override)
-    .bind("vertex") // Protocol
+    .bind(&api_key)
+    .bind(server.url())
+    .bind(&param_override)
     .execute(&pool)
     .await?;
+    sqlx::query("INSERT INTO channel_abilities (`group`, model, channel_id, enabled, priority, weight) VALUES ('default', 'gemini-pro', 75641, 1, 0, 1)")
+        .execute(&pool).await?;
 
     // Seed a price for gemini-pro so the preflight billing check passes.
     sqlx::query(
