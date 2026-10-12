@@ -1,6 +1,8 @@
 -- Migration 0018: Router request logs table (PostgreSQL)
 -- Stores detailed request/response data for debugging and auditing.
--- Linked to router_logs via request_id foreign key.
+-- Correlates to router_logs by request_id, without a foreign key: router_logs
+-- permits multiple rows per request_id (e.g. retries), so PostgreSQL cannot
+-- reference that non-unique column. (#833)
 
 CREATE TABLE IF NOT EXISTS router_request_logs (
     id BIGSERIAL PRIMARY KEY,
@@ -34,9 +36,7 @@ CREATE TABLE IF NOT EXISTS router_request_logs (
     -- 'none': skip recording (high traffic)
     storage_policy VARCHAR(16) DEFAULT 'summary',
 
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (request_id) REFERENCES router_logs(request_id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for common query patterns

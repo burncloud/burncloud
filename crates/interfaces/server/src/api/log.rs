@@ -6,7 +6,7 @@ use axum::{
     routing::get,
     Router,
 };
-use burncloud_service_router_log::{BillingService, RouterLogService};
+use burncloud_router::{BillingService, RouterLogService};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -23,7 +23,7 @@ struct BillingSummaryParams {
 
 #[derive(Serialize)]
 struct LogPage {
-    data: Vec<burncloud_service_router_log::RouterLog>,
+    data: Vec<burncloud_router::RouterLog>,
     page: i32,
     page_size: i32,
 }

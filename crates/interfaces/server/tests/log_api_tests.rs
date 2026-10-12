@@ -14,7 +14,7 @@
 mod test_utils;
 
 use burncloud_database::create_database_with_url;
-use burncloud_database_router::{RouterDatabase, RouterLog};
+use burncloud_router::{RouterDatabase, RouterLog};
 use burncloud_service_user::UserDatabase;
 use reqwest::Client;
 use std::sync::Arc;

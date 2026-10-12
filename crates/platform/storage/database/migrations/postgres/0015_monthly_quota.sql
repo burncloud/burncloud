@@ -1,5 +1,8 @@
 -- Monthly quota billing system (Issue #232)
 -- Supports two billing modes: per_request and per_token
+-- #833: PostgreSQL users.id is TEXT. Historical fresh installs previously failed
+-- while creating this FK. Correct the declaration only; applied versions remain
+-- untouched by the versioned runner and no existing column is altered.
 
 -- Billing plans table
 CREATE TABLE IF NOT EXISTS billing_plans (
@@ -21,7 +24,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_plans_name ON billing_plans(name);
 -- Billing subscriptions table
 CREATE TABLE IF NOT EXISTS billing_subscriptions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
     plan_id INTEGER NOT NULL,
     channel_id INTEGER NOT NULL,            -- Inherited from plan
     status TEXT NOT NULL DEFAULT 'active',  -- 'active', 'expired', 'cancelled'

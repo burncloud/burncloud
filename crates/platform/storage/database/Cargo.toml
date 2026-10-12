@@ -22,6 +22,14 @@ chrono.workspace = true
 dirs.workspace = true
 tracing.workspace = true
 
+# NOTE (#842): this crate deliberately does not depend on `burncloud-identity-user` or
+# `burncloud-supply-channel`, not even as a dev-dependency. `deny.toml` bans
+# `burncloud-supply-channel` from `burncloud-database`, and that ban is exactly the one-way
+# dependency direction #842 requires: Platform must not name the domain owners. The
+# owner-seeded bootstrap contract is therefore asserted in
+# `crates/interfaces/server/tests/owner_seed_contract.rs`, because `burncloud-server` is on
+# the ban's wrapper allow-list, while Platform's own half of the contract (the factories create
+# no domain records) is asserted in `tests/initialization_boundary.rs`.
 [dev-dependencies]
 tempfile.workspace = true
 

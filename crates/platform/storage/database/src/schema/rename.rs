@@ -216,3 +216,61 @@ fn quote_ident(ident: &str) -> String {
     let escaped = ident.replace('"', "\"\"");
     format!("\"{escaped}\"")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
+
+    #[tokio::test]
+    async fn copy_failure_preserves_legacy_table() {
+        let outcome = verify_copy_failure_preserves_legacy_table().await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+    }
+
+    async fn verify_copy_failure_preserves_legacy_table() -> TestResult {
+        sqlx::any::install_default_drivers();
+        let pool = sqlx::any::AnyPoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+
+        sqlx::query("CREATE TABLE legacy_items (id INTEGER PRIMARY KEY)")
+            .execute(&pool)
+            .await?;
+        sqlx::query(
+            "CREATE TABLE canonical_items (id INTEGER PRIMARY KEY, required_value TEXT NOT NULL)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query("INSERT INTO legacy_items (id) VALUES (1)")
+            .execute(&pool)
+            .await?;
+
+        if copy_and_drop(&pool, "sqlite", "legacy_items", "canonical_items")
+            .await
+            .is_ok()
+        {
+            return Err(std::io::Error::other(
+                "copy must fail when the destination has an unsatisfied NOT NULL column",
+            )
+            .into());
+        }
+
+        let legacy_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='legacy_items'",
+        )
+        .fetch_one(&pool)
+        .await?;
+        if legacy_count != 1 {
+            return Err(std::io::Error::other(
+                "legacy table must be preserved when copying rows fails",
+            )
+            .into());
+        }
+
+        pool.close().await;
+        Ok(())
+    }
+}

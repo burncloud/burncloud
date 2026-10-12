@@ -1,6 +1,6 @@
 use anyhow::Result;
 use burncloud_database::Database;
-use burncloud_database_channel::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
+use burncloud_supply_channel::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
 use clap::ArgMatches;
 
 pub(crate) async fn handle_protocol_command(db: &Database, matches: &ArgMatches) -> Result<()> {

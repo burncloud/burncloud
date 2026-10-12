@@ -1,7 +1,7 @@
 //! CLI commands for subscription management (Issue #232)
 
 use burncloud_database::Database;
-use burncloud_service_billing::SubscriptionService;
+use burncloud_commerce_billing::SubscriptionService;
 use clap::ArgMatches;
 
 pub async fn handle_subscription_command(

@@ -3,6 +3,9 @@
 //! Identity-owned User capability: authentication plus its persistence implementation.
 
 mod repository;
+mod wallet;
+
+pub use wallet::BalanceModel;
 
 use bcrypt::{hash, verify, DEFAULT_COST};
 use burncloud_database::Database;

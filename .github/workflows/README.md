@@ -1,14 +1,17 @@
-Workflow documentation lives in `../README.md`.
+# GitHub Actions workflows
 
-This directory has three CI layers:
+- PR Rust gates: `ci-github-hosted-fmt.yml`, `ci-github-hosted-test.yml`,
+  `ci-github-hosted-clippy.yml`, and `ci-github-hosted-deny.yml`.
+  They share `ci-github-hosted-base.yml` and check the PR merge commit.
+- Architecture-only manual checks: `ci-architecture.yml`.
+- Release tagging: `maintenance-version-tag.yml` performs **full-workspace**
+  Fmt, Test, Clippy and Deny validation before creating a new version tag.
+- Release packaging and publishing: `cd-release.yml`.
 
-- PR gates: `ci-self-hosted-fmt.yml`, `ci-self-hosted-test.yml`,
-  `ci-self-hosted-clippy.yml`, and `ci-self-hosted-deny.yml`.
-- Shared PR execution: `ci-self-hosted-base.yml` owns self-hosted authorization, runner/bootstrap
-  logic, and the four fixed PR commands.
-- Full release gate: `ci-quality.yml` validates the whole workspace before version tagging.
-- Specialist checks: `ci-architecture.yml`, `ci-client.yml`, and `ci-integration.yml` cover
-  architecture rules, platform client builds, and real PostgreSQL respectively.
+The former `ci-quality.yml`, `ci-integration.yml` and `ci-client.yml`
+workflows were intentionally retired. The dedicated real-PostgreSQL integration
+job and manual multi-platform client checks are no longer provided by those
+workflows; do not assume the PR Rust checks replace that coverage.
 
-Do not duplicate generic fmt/test/Clippy/deny policy into specialist workflows. Change shared PR runner
-policy in `ci-self-hosted-base.yml`; change full-workspace release policy in `ci-quality.yml`.
+To change shared PR checks, edit `ci-github-hosted-base.yml`. To change the
+release-only full-workspace gate, edit `maintenance-version-tag.yml`.

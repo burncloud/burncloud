@@ -14,7 +14,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 chrono = { workspace = true }
 clap = { workspace = true }
-regex = "1.11"
+regex.workspace = true
 reqwest = { workspace = true, features = ["blocking", "rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -14,6 +14,7 @@ mod config;
 pub mod exchange_rate;
 mod limiter;
 pub mod local_attachment;
+pub mod log_service;
 pub mod model_router;
 pub mod order_type;
 pub mod passthrough;
@@ -23,6 +24,7 @@ pub mod response_parser;
 pub mod response_quality;
 mod scheduler;
 mod state;
+pub mod storage;
 pub mod stream_parser;
 mod stream_peek;
 pub mod token_counter;
@@ -158,16 +160,12 @@ use axum::{
     Router,
 };
 use balancer::RoundRobinBalancer;
-use burncloud_database::Database;
-use burncloud_database_channel::ChannelProviderModel;
-use burncloud_database_router::{
-    CandidateInfo, FailoverAttempt, RouterDatabase, RouterLog, RouterRequestLog,
-    RouterTokenValidationResult, RouterVideoTask, RouterVideoTaskModel, StoragePolicy,
-};
-use burncloud_service_billing::{
+use burncloud_commerce_billing::{
     get_parser, parse_chunk_or_default, parse_response_or_default, UnifiedTokenCounter,
 };
+use burncloud_database::Database;
 use burncloud_service_user::UserService;
+use burncloud_supply_channel::ChannelProviderModel;
 use burncloud_traffic_contracts::OpenAIChatRequest;
 use burncloud_traffic_contracts::TrafficColor;
 use channel_state::ChannelStateTracker;
@@ -176,12 +174,21 @@ use config::{AuthType, Upstream};
 use futures::stream::StreamExt;
 use http_body_util::BodyExt;
 use limiter::RateLimiter;
+pub use log_service::{BalanceService, BillingService, RouterLogService, UsageStatsService};
 use model_router::ModelRouter;
 use order_type::OrderType;
 use reqwest::Client;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Instant;
+pub use storage::{
+    get_billing_summary, get_billing_summary_for_user, get_usage_stats, get_usage_stats_by_model,
+    get_usage_stats_by_token, BalanceModel, BillingModelSummary, BillingSummary, CandidateInfo,
+    FailoverAttempt, ModelUsageStats, RouterDatabase, RouterLog, RouterLogModel, RouterRequestLog,
+    RouterRequestLogModel, RouterToken, RouterTokenModel, RouterTokenValidationResult,
+    RouterVideoTask, RouterVideoTaskModel, StoragePolicy, TokenRotationResult, TokenValidationInfo,
+    UsageStats,
+};
 use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -213,6 +220,7 @@ const SEEDANCE_DEFAULT_RESOLUTION: &str = "720p";
 const PROTOCOL_OPENAI: &str = "openai";
 const PROTOCOL_CLAUDE: &str = "claude";
 const PROTOCOL_GEMINI: &str = "gemini";
+const PROTOCOL_VERTEX: &str = "vertex";
 const PROTOCOL_ZAI: &str = "zai";
 /// SSE stream termination marker sent to clients.
 const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
@@ -220,6 +228,96 @@ const SSE_DONE_MARKER: &str = "data: [DONE]\n\n";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 30;
 /// HTTP request timeout (seconds). Total time for request completion (600 minutes).
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 36000;
+/// Retry budget: upper bound for the entire proxy pipeline, including failover.
+/// Overrides: BURNCLOUD_INTERACTIVE_DEADLINE_SECS and BURNCLOUD_LONG_TASK_DEADLINE_SECS.
+/// An invalid or zero override falls back to the documented defaults.
+/// Long-task policies deliberately retain the existing 10-hour per-request timeout.
+const DEFAULT_INTERACTIVE_DEADLINE_SECS: u64 = 120;
+const DEFAULT_LONG_TASK_DEADLINE_SECS: u64 = 72000;
+/// Reject malformed/unreasonably large retry budget overrides before Tokio
+/// attempts to construct a deadline beyond Instant's supported range.
+const MAX_RETRY_DEADLINE_SECS: u64 = 30 * 24 * 60 * 60;
+
+fn is_interactive_request(path: &str) -> bool {
+    // Explicitly match interactive API families: an unknown endpoint keeps the
+    // long-task budget rather than accidentally truncating video/audio/music jobs.
+    // In particular, OpenAI Responses API must not inherit the 20-hour budget.
+    path.ends_with("/chat/completions")
+        || path.ends_with("/completions")
+        || path.ends_with("/embeddings")
+        || path.ends_with("/responses")
+        || path.ends_with("/messages")
+        || path.ends_with("/moderations")
+        || path.ends_with("/rerank")
+        || path.contains(":generateContent")
+        || path.contains(":streamGenerateContent")
+}
+
+fn parse_retry_budget_secs(raw: Option<&str>, default: u64) -> u64 {
+    raw.and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| (1..=MAX_RETRY_DEADLINE_SECS).contains(v))
+        .unwrap_or(default)
+}
+
+fn retry_budget_secs(path: &str) -> u64 {
+    let (key, default) = if is_interactive_request(path) {
+        (
+            "BURNCLOUD_INTERACTIVE_DEADLINE_SECS",
+            DEFAULT_INTERACTIVE_DEADLINE_SECS,
+        )
+    } else {
+        (
+            "BURNCLOUD_LONG_TASK_DEADLINE_SECS",
+            DEFAULT_LONG_TASK_DEADLINE_SECS,
+        )
+    };
+    parse_retry_budget_secs(std::env::var(key).ok().as_deref(), default)
+}
+
+/// Bound each upstream HTTP request by both its legacy per-attempt limit and
+/// the time left in the request-class retry budget. This remains active while
+/// streaming a response body after proxy_logic returns the response headers.
+///
+/// Long tasks retain the existing 10-hour maximum on the first attempt, but
+/// late failover attempts cannot extend the configured 20-hour total.
+fn remaining_attempt_timeout(
+    total_budget: std::time::Duration,
+    elapsed: std::time::Duration,
+) -> std::time::Duration {
+    total_budget
+        .saturating_sub(elapsed)
+        .min(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
+}
+
+fn retry_attempt_timeout(
+    retry_budget: std::time::Duration,
+    request_start_time: Instant,
+) -> std::time::Duration {
+    remaining_attempt_timeout(retry_budget, request_start_time.elapsed())
+}
+
+/// One cancellable deadline shared by all upstream attempts. A timed-out
+/// future is dropped, releasing any uncommitted BudgetGuard it still owns.
+/// This helper is exercised with a hung future in the router unit tests.
+async fn enforce_retry_deadline<T>(
+    remaining: std::time::Duration,
+    operation: impl std::future::Future<Output = T>,
+) -> Result<T, tokio::time::error::Elapsed> {
+    tokio::time::timeout(remaining, operation).await
+}
+
+/// A stable, structured timeout error for exhausted routing retry budgets.
+fn retry_deadline_error_response() -> Response {
+    build_response_with_header(
+        StatusCode::GATEWAY_TIMEOUT,
+        "content-type",
+        "application/json",
+        Body::from(
+            r#"{"error":{"message":"Router retry budget deadline exceeded","type":"upstream_error","code":"retry_deadline_exceeded"}}"#,
+        ),
+    )
+}
+
 /// HTTP pool idle timeout (seconds). Time before idle connections are closed.
 const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 /// HTTP TCP keepalive interval (seconds).
@@ -704,7 +802,7 @@ fn build_response_with_header(
 }
 
 /// Startup helper: load every channel's L2 Shaper config (rpm_cap / tpm_cap /
-/// reservation triple) from `channel_providers` and feed it into
+/// reservation triple) through the Supply Channel owner and feed it into
 /// [`rate_budget::InMemoryBudget`]. Channels with `rpm_cap = NULL` (or zero)
 /// stay unconfigured — they'll fail-open at request time, and that count is
 /// surfaced via `tracing::warn!` here and `fail_open_count` at runtime.
@@ -723,16 +821,17 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
     let mut unconfigured_count: usize = 0;
     let mut sample_unconfigured_ids: Vec<i32> = Vec::new();
 
-    for (id, rpm_cap, tpm_cap, res_g, res_y, res_r) in rows {
-        match (rpm_cap, tpm_cap) {
+    for row in rows {
+        let id = row.id;
+        match (row.rpm_cap, row.tpm_cap) {
             (Some(rpm), Some(tpm)) if rpm > 0 && tpm > 0 => {
                 // Per-color shares: NULL → migration default (0.4/0.4/0.2).
                 // `configure` itself validates sum-to-1.0 and falls back to
                 // default if invalid (FM8 fix in subtask 4).
                 let reservation = rate_budget::ChannelReservation {
-                    green: res_g.unwrap_or(0.4),
-                    yellow: res_y.unwrap_or(0.4),
-                    red: res_r.unwrap_or(0.2),
+                    green: row.reservation_green.unwrap_or(0.4),
+                    yellow: row.reservation_yellow.unwrap_or(0.4),
+                    red: row.reservation_red.unwrap_or(0.2),
                 };
                 budget.configure(id, rpm as u32, tpm as u64, reservation);
                 configured_count += 1;
@@ -753,43 +852,17 @@ async fn configure_rate_budget_from_db(db: &Database, budget: &rate_budget::InMe
     );
 }
 
-/// One row of `channel_providers` shaping the L2 rate budgets.
-type ChannelCapRow = (
-    i32,
-    Option<i32>,
-    Option<i64>,
-    Option<f64>,
-    Option<f64>,
-    Option<f64>,
-);
-
-/// Read the channel rate-cap columns. Returns `None` (all channels fail-open)
-/// when the DB connection cannot be acquired or the query fails.
-async fn fetch_channel_cap_rows(db: &Database) -> Option<Vec<ChannelCapRow>> {
-    let conn = match db.get_connection() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(
-                error = %e,
-                "rate_budget: failed to acquire DB connection at startup — all channels will fail-open"
-            );
-            return None;
-        }
-    };
-    let pool = conn.pool();
-
-    match burncloud_database::sqlx::query_as(
-        "SELECT id, rpm_cap, tpm_cap, reservation_green, reservation_yellow, reservation_red \
-             FROM channel_providers",
-    )
-    .fetch_all(pool)
-    .await
-    {
+/// Read the Supply-owned channel rate-cap projection. Returns `None` (all channels
+/// fail-open) when the owner capability cannot load the data.
+async fn fetch_channel_cap_rows(
+    db: &Database,
+) -> Option<Vec<burncloud_supply_channel::ChannelRateCap>> {
+    match burncloud_supply_channel::ChannelService::list_rate_caps(db).await {
         Ok(rows) => Some(rows),
         Err(e) => {
             tracing::error!(
                 error = %e,
-                "rate_budget: failed to query channel_providers at startup — all channels will fail-open"
+                "rate_budget: failed to load Supply channel cap projection at startup — all channels will fail-open"
             );
             None
         }
@@ -804,7 +877,7 @@ fn log_rate_budget_config(
 ) {
     tracing::info!(
         configured_count,
-        "rate_budget: loaded channel cap configs from channel_providers"
+        "rate_budget: loaded channel cap configs from Supply"
     );
     if unconfigured_count > 0 {
         tracing::warn!(
@@ -861,13 +934,13 @@ pub async fn create_router_app_with_route_miss(
     // API Version Detector for handling deprecated versions
     let api_version_detector = Arc::new(adaptor::detector::ApiVersionDetector::new(db.clone()));
     // Price cache + cost calculator (loaded at startup; refreshed on POST /api/v1/prices)
-    let price_cache = burncloud_service_billing::PriceCache::load(&db)
+    let price_cache = burncloud_commerce_billing::PriceCache::load(&db)
         .await
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to load price cache at startup: {e} — using empty cache");
-            burncloud_service_billing::PriceCache::empty()
+            burncloud_commerce_billing::PriceCache::empty()
         });
-    let cost_calculator = burncloud_service_billing::CostCalculator::new(price_cache.clone());
+    let cost_calculator = burncloud_commerce_billing::CostCalculator::new(price_cache.clone());
 
     // Exchange Rate Service for multi-currency cost calculations
     let exchange_rate_service = Arc::new(exchange_rate::ExchangeRateService::new(db.clone()));
@@ -1139,7 +1212,7 @@ async fn circuit_breaker_trip_all_handler(State(state): State<AppState>) -> Resp
 async fn models_handler(State(state): State<AppState>) -> Response {
     // Fetch all distinct models from channel_abilities
     // This shows models that have at least one enabled channel
-    use burncloud_database_channel::ChannelAbilityModel;
+    use burncloud_supply_channel::ChannelService;
 
     let mut model_entries = Vec::new();
     let current_time = std::time::SystemTime::now()
@@ -1147,7 +1220,7 @@ async fn models_handler(State(state): State<AppState>) -> Response {
         .unwrap_or_default()
         .as_secs();
 
-    if let Ok(models) = ChannelAbilityModel::list_distinct_models(&state.db).await {
+    if let Ok(models) = ChannelService::list_distinct_models(&state.db).await {
         for model in models {
             model_entries.push(serde_json::json!({
                 "id": model,
@@ -1233,7 +1306,7 @@ async fn usage_handler(State(state): State<AppState>, headers: axum::http::Heade
         Err(resp) => return *resp,
     };
 
-    match burncloud_database_router::get_usage_stats(&state.db, &user_id, "month").await {
+    match crate::storage::get_usage_stats(&state.db, &user_id, "month").await {
         Ok(stats) => build_response_with_header(
             StatusCode::OK,
             "content-type",
@@ -1265,7 +1338,7 @@ async fn usage_models_handler(
         Err(resp) => return *resp,
     };
 
-    match burncloud_database_router::get_usage_stats_by_model(&state.db, &user_id, "month").await {
+    match crate::storage::get_usage_stats_by_model(&state.db, &user_id, "month").await {
         Ok(rows) => build_response_with_header(
             StatusCode::OK,
             "content-type",
@@ -1336,10 +1409,10 @@ fn normalize_doubled_path(path: &str) -> String {
 /// Exposed as `pub(crate)` so unit tests can call it without a running server.
 pub(crate) fn inject_video_tokens_if_empty(
     status: axum::http::StatusCode,
-    mut usage: burncloud_service_billing::UnifiedUsage,
+    mut usage: burncloud_commerce_billing::UnifiedUsage,
     video_tokens: i64,
     source: &str,
-) -> burncloud_service_billing::UnifiedUsage {
+) -> burncloud_commerce_billing::UnifiedUsage {
     if status.is_success() && usage.is_empty() && video_tokens > 0 {
         usage.video_tokens = video_tokens;
         tracing::info!(
@@ -1801,8 +1874,15 @@ async fn proxy_handler(
     // Create unified token counter for streaming response parsing
     let token_counter = Arc::new(UnifiedTokenCounter::new());
 
-    // Perform Proxy Logic
-    let result = proxy_logic(
+    // Enforce one deadline across all failover attempts, rather than resetting
+    // a full client timeout for every upstream. Dropping the timed-out future
+    // also drops any live BudgetGuard, refunding uncommitted TPM reservations.
+    let retry_budget_secs = retry_budget_secs(&path);
+    // Snapshot the policy once: a runtime config change must not extend a
+    // response stream beyond the deadline assigned when it was admitted.
+    let retry_budget = std::time::Duration::from_secs(retry_budget_secs);
+    let remaining = retry_budget.saturating_sub(start_time.elapsed());
+    let proxy_future = proxy_logic(
         &state,
         method,
         uri,
@@ -1816,8 +1896,32 @@ async fn proxy_handler(
         token_counter.clone(),
         model_name.as_deref(),
         start_time,
-    )
-    .await;
+        retry_budget,
+    );
+    let result = match enforce_retry_deadline(remaining, proxy_future).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!(
+                request_id = %request_id,
+                path = %path,
+                retry_budget_secs,
+                elapsed_ms = start_time.elapsed().as_millis() as u64,
+                "Router retry budget deadline exceeded; abandoning failover"
+            );
+            ProxyResult {
+                response: retry_deadline_error_response(),
+                upstream_id: None,
+                final_status: StatusCode::GATEWAY_TIMEOUT,
+                pricing_region: None,
+                video_task_id: None,
+                shaper_outcome: None,
+                routing_decision: None,
+                sched_request_color: TrafficColor::Yellow,
+                error_type: Some("timeout".to_string()),
+                request_log_data: None,
+            }
+        }
+    };
 
     // Save video task mapping asynchronously (fire-and-forget)
     if let Some(task_id) = result.video_task_id {
@@ -1886,7 +1990,7 @@ async fn proxy_handler(
                     let total = result.usd_amount_nano;
                     (total, result.breakdown, Some("ok".to_string()))
                 }
-                Err(burncloud_service_billing::BillingError::PriceNotFound(m)) => {
+                Err(burncloud_commerce_billing::BillingError::PriceNotFound(m)) => {
                     tracing::warn!(model = %m, "PriceNotFound — no price configured for this model");
                     state
                         .billing_post_settle_price_missing_count
@@ -2142,6 +2246,7 @@ async fn proxy_logic(
     token_counter: Arc<UnifiedTokenCounter>,
     model_name: Option<&str>,
     request_start_time: Instant,
+    retry_budget: std::time::Duration,
 ) -> ProxyResult {
     // Initialize request log data collection (Issue #334)
     // Only collect detailed data when storage policy is not 'none'
@@ -2287,6 +2392,8 @@ async fn proxy_logic(
                         // Skip channel if path format does not match channel type
                         if is_openai_path
                             && !matches!(channel_type, ChannelType::OpenAI | ChannelType::Zai)
+                            && !(channel_type == ChannelType::VertexAi
+                                && path.starts_with("/v1/chat/completions"))
                         {
                             tracing::debug!(
                                 "Skipping {:?} channel for OpenAI format path: {}",
@@ -2309,8 +2416,11 @@ async fn proxy_logic(
                             ChannelType::Anthropic => {
                                 (AuthType::Claude, PROTOCOL_CLAUDE.to_string())
                             }
-                            ChannelType::Gemini | ChannelType::VertexAi => {
+                            ChannelType::Gemini => {
                                 (AuthType::GoogleAI, PROTOCOL_GEMINI.to_string())
+                            }
+                            ChannelType::VertexAi => {
+                                (AuthType::GoogleAI, PROTOCOL_VERTEX.to_string())
                             }
                             ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
                             _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
@@ -2721,6 +2831,10 @@ async fn proxy_logic(
                 apply_header_override(req_builder, upstream.header_override.as_deref());
 
             let req_builder = req_builder.json(&passthrough_body);
+            // Enforce the remaining total budget through SSE body reads as
+            // well as request setup, without extending the legacy 10-hour cap.
+            let req_builder =
+                req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
 
             // Execute passthrough request
             match req_builder.send().await {
@@ -3400,7 +3514,10 @@ async fn proxy_logic(
             )
             .await;
 
-        // 5. Execute
+        // 5. Execute: apply both the remaining total budget and legacy 10-hour
+        // per-attempt cap, including any streaming response body reads.
+        let req_builder =
+            req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
@@ -3539,12 +3656,8 @@ async fn proxy_logic(
                                 request_log_data: None,
                             };
                         }
-                        // L2 Shaper success: OpenAI streaming path — keep est_tpm
-                        // (actual_tpm not yet available during stream, audit decision D9).
-                        if let Some(g) = budget_guard.take() {
-                            g.commit(shaper_ctx.est_tpm);
-                        }
-
+                        // Keep the BudgetGuard live until the first chunk
+                        // passes inspection, so cancellation or peek errors refund TPM.
                         // Peek first chunk to detect errors before sending HTTP response
                         // This allows retry on auth errors instead of sending error to user
                         let peek_timeout =
@@ -3647,9 +3760,16 @@ async fn proxy_logic(
                             }
                         };
 
-                        // If peek detected an error, skip this channel and try next
+                        // If peek detected an error, skip this channel and try next.
+                        // The still-live guard refunds this attempted channel.
                         if peek_error_handled {
                             continue;
+                        }
+
+                        // L2 Shaper success: OpenAI streaming path — retain est_tpm
+                        // only after the upstream stream passes first-chunk checks.
+                        if let Some(g) = budget_guard.take() {
+                            g.commit(shaper_ctx.est_tpm);
                         }
 
                         let counter_clone = Arc::clone(&token_counter);
@@ -4535,9 +4655,230 @@ async fn proxy_logic(
     reason = "test module: fail-fast assertions on router fixtures"
 )]
 mod tests {
-    use super::inject_video_tokens_if_empty;
+    use super::{
+        enforce_retry_deadline, inject_video_tokens_if_empty, is_interactive_request,
+        parse_retry_budget_secs, remaining_attempt_timeout, retry_attempt_timeout,
+    };
+    use crate::rate_budget::{
+        BudgetBackend, BudgetGuard, ChannelReservation, ConsumeOutcome, InMemoryBudget,
+    };
     use axum::http::StatusCode;
-    use burncloud_service_billing::UnifiedUsage;
+    use burncloud_commerce_billing::UnifiedUsage;
+    use burncloud_traffic_contracts::TrafficColor;
+
+    #[test]
+    fn retry_budget_classifies_interactive_and_long_task_endpoints() {
+        for path in [
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/responses",
+            "/v1/embeddings",
+            "/v1/messages",
+            "/v1/moderations",
+            "/v1/rerank",
+            "/v1beta/models/gemini-2.5-flash:generateContent",
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+        ] {
+            assert!(
+                is_interactive_request(path),
+                "{path} must have the interactive deadline"
+            );
+        }
+        for path in [
+            "/v1/video/generations",
+            "/v1/videos",
+            "/v1/audio/speech",
+            "/v1/audio/generations",
+            "/v1/music/generations",
+            "/unknown-long-running-endpoint",
+        ] {
+            assert!(
+                !is_interactive_request(path),
+                "{path} must retain long-task headroom"
+            );
+        }
+    }
+
+    #[test]
+    fn attempt_timeout_bounds_sse_and_preserves_long_task_cap() {
+        let started = std::time::Instant::now();
+        for path in ["/v1/responses", "/v1/chat/completions", "/v1/messages"] {
+            let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
+            let timeout = retry_attempt_timeout(budget, started);
+            assert!(timeout <= budget);
+            assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
+        }
+        for path in [
+            "/v1/video/generations",
+            "/v1/audio/speech",
+            "/v1/music/generations",
+        ] {
+            let budget = std::time::Duration::from_secs(super::retry_budget_secs(path));
+            let timeout = retry_attempt_timeout(budget, started);
+            assert!(timeout <= std::time::Duration::from_secs(super::HTTP_REQUEST_TIMEOUT_SECS));
+            assert!(timeout > std::time::Duration::from_secs(120));
+        }
+    }
+
+    #[test]
+    fn retry_budget_config_rejects_zero_malformed_or_overflowing_values() {
+        let default = super::DEFAULT_INTERACTIVE_DEADLINE_SECS;
+        assert_eq!(parse_retry_budget_secs(None, default), default);
+        assert_eq!(parse_retry_budget_secs(Some(""), default), default);
+        assert_eq!(parse_retry_budget_secs(Some("0"), default), default);
+        assert_eq!(
+            parse_retry_budget_secs(Some("not-seconds"), default),
+            default
+        );
+        assert_eq!(
+            parse_retry_budget_secs(Some("18446744073709551615"), default),
+            default
+        );
+        assert_eq!(parse_retry_budget_secs(Some("45"), default), 45);
+        assert_eq!(
+            parse_retry_budget_secs(Some("2592000"), default),
+            super::MAX_RETRY_DEADLINE_SECS
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_deadline_returns_structured_gateway_timeout() {
+        let response = super::retry_deadline_error_response();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("timeout response body is readable");
+        let decoded: serde_json::Value =
+            serde_json::from_slice(&body).expect("timeout response is valid JSON");
+        assert_eq!(decoded["error"]["code"], "retry_deadline_exceeded");
+        assert_eq!(decoded["error"]["type"], "upstream_error");
+    }
+
+    #[test]
+    fn long_task_total_budget_is_not_reset_by_failover() {
+        let hour = std::time::Duration::from_secs(3600);
+        let long = std::time::Duration::from_secs(super::DEFAULT_LONG_TASK_DEADLINE_SECS);
+        assert_eq!(
+            remaining_attempt_timeout(long, std::time::Duration::ZERO),
+            hour * 10,
+            "first attempt retains the legacy ten-hour cap"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, hour * 19),
+            hour,
+            "late failover must not extend the total budget"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, long),
+            std::time::Duration::ZERO,
+            "an exhausted retry budget must never be reset"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(long, long + hour),
+            std::time::Duration::ZERO,
+            "elapsed time beyond the deadline must saturate to zero"
+        );
+        assert_eq!(
+            remaining_attempt_timeout(std::time::Duration::from_secs(120), hour),
+            std::time::Duration::ZERO,
+            "interactive attempts must also respect the aggregate deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn interactive_sse_body_stops_when_request_deadline_expires() {
+        use futures::StreamExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // Local HTTP server sends response headers and one chunk, then stalls.
+        // The outer proxy_logic timer is no longer active after headers, so
+        // Reqwest's request-scoped timeout must end the pending body read.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind a local upstream");
+        let addr = listener.local_addr().expect("local address");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept request");
+            let mut request = [0_u8; 4096];
+            let bytes_read = socket.read(&mut request).await.expect("read request");
+            assert!(bytes_read > 0, "upstream must receive an HTTP request");
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n",
+                )
+                .await
+                .expect("send first SSE body chunk");
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        });
+
+        let started = std::time::Instant::now();
+        let timeout = retry_attempt_timeout(std::time::Duration::from_millis(800), started);
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/v1/chat/completions"))
+            .timeout(timeout)
+            .send()
+            .await
+            .expect("receive upstream headers");
+        let mut body = response.bytes_stream();
+        let first = body
+            .next()
+            .await
+            .expect("initial chunk")
+            .expect("first chunk readable");
+        assert_eq!(first.as_ref(), b"hello");
+        let stalled = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+            .await
+            .expect("stream must not hang beyond watchdog");
+        let error = stalled
+            .expect("the stalled body must produce an error")
+            .expect_err("response body must terminate on request timeout");
+        assert!(error.is_timeout(), "expected the real Reqwest timeout");
+        server.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn deadline_cancellation_refunds_real_budget_guard() {
+        let budget = InMemoryBudget::new();
+        let channel_id = 680;
+        budget.configure(channel_id, 100, 1000, ChannelReservation::default());
+        let initial = budget.snapshot(channel_id).expect("configured channel");
+
+        // Drive the very same deadline helper that proxy_handler uses. The
+        // outer timeout prevents a removed/broken deadline from hanging CI.
+        let hung_upstream = async {
+            let outcome = budget.try_consume(channel_id, TrafficColor::Yellow, 100);
+            assert_eq!(outcome, ConsumeOutcome::OwnBucket);
+            let _guard = BudgetGuard::with_source(
+                &budget,
+                channel_id,
+                TrafficColor::Yellow,
+                100,
+                outcome.sourced().expect("admitted reservation source"),
+            );
+            assert_eq!(
+                budget
+                    .snapshot(channel_id)
+                    .expect("configured")
+                    .tpm_remaining_yellow,
+                initial.tpm_remaining_yellow - 100
+            );
+            std::future::pending::<()>().await;
+        };
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            enforce_retry_deadline(std::time::Duration::from_secs(1), hung_upstream),
+        )
+        .await;
+        assert!(
+            matches!(outcome, Ok(Err(_))),
+            "a stalled upstream must fail at its configured retry deadline"
+        );
+        let final_snapshot = budget.snapshot(channel_id).expect("configured");
+        assert_eq!(
+            final_snapshot.tpm_remaining_yellow, initial.tpm_remaining_yellow,
+            "deadline cancellation must drop the real BudgetGuard and refund TPM"
+        );
+    }
 
     #[test]
     fn test_veo_billing_extracts_duration() {
@@ -4715,11 +5056,25 @@ fn check_response_quality(
     // Detect response quality using the detector
     let detector = crate::response_quality::ResponseQualityDetector::new();
 
-    // Determine channel_type based on upstream protocol
-    let channel_type = match upstream.protocol.as_str() {
-        "claude" | "anthropic" => "anthropic",
-        "gemini" | "vertex" => "gemini",
-        _ => "openai",
+    // Vertex conversion returns an OpenAI chat completion even though the
+    // upstream protocol is Vertex/Gemini. Validate the *returned* format,
+    // not the provider's native protocol, or a valid converted completion
+    // is incorrectly rejected as malformed (HTTP 502).
+    let normalized_vertex_completion = upstream.protocol == PROTOCOL_VERTEX
+        && serde_json::from_str::<serde_json::Value>(response_body)
+            .ok()
+            .is_some_and(|json| {
+                json.get("object").and_then(|v| v.as_str()) == Some("chat.completion")
+                    && json.get("choices").and_then(|v| v.as_array()).is_some()
+            });
+    let channel_type = if normalized_vertex_completion {
+        "openai"
+    } else {
+        match upstream.protocol.as_str() {
+            "claude" | "anthropic" => "anthropic",
+            "gemini" | "vertex" => "gemini",
+            _ => "openai",
+        }
     };
 
     let quality = detector.detect(http_status, headers, response_body, 0, false, channel_type);

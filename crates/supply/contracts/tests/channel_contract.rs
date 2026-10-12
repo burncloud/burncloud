@@ -273,11 +273,29 @@ fn ability_keeps_its_fields_and_enabled_flag() {
         weight: 3,
     };
     assert!(ability.enabled_bool());
-    assert!(!Ability {
-        enabled: 0,
-        ..ability.clone()
+
+    // The rule is "anything other than zero", not "exactly one". The column is a plain i32, so a
+    // non-canonical value (a future flag, or a row written by an older writer) must still count as
+    // enabled; narrowing the predicate to `enabled == 1` would silently disable those channels.
+    for enabled in [2, -1, i32::MIN, i32::MAX] {
+        assert!(
+            Ability {
+                enabled,
+                ..ability.clone()
+            }
+            .enabled_bool(),
+            "enabled={enabled} must count as enabled, because the predicate is `enabled != 0`"
+        );
     }
-    .enabled_bool());
+    // Zero is the only disabled value.
+    assert!(
+        !Ability {
+            enabled: 0,
+            ..ability.clone()
+        }
+        .enabled_bool(),
+        "enabled=0 must count as disabled"
+    );
 
     let value: serde_json::Value = serde_json::to_value(&ability).unwrap();
     assert_eq!(value["group"], serde_json::json!("default"));
@@ -288,6 +306,29 @@ fn ability_keeps_its_fields_and_enabled_flag() {
     assert_eq!(value["weight"], serde_json::json!(3));
     let back: Ability = serde_json::from_value(value).unwrap();
     assert_eq!(back.channel_id, 42);
+}
+
+#[test]
+fn channel_type_dummy_has_no_wire_number_but_serde_round_trips_by_name() {
+    // `Dummy` is the only variant without an assigned wire value, so the two encodings disagree.
+    // Both directions are recorded here, because a later "tidy-up" of either one would change
+    // what the other agrees with. The first version of this test recorded the wrong one: it
+    // asserted that the name cannot be read back, and CI proved otherwise (PR #875).
+    //
+    // * the serde name path is symmetric: `ChannelType` derives `Deserialize` with no custom
+    //   implementation and no `#[serde(...)]` attribute (crates/supply/contracts/src/types.rs),
+    //   so the variant name it writes is the variant name it reads;
+    // * the numeric path is not: `Dummy` takes the implicit discriminant after `NewApi = 58`,
+    //   and `From<i32>` maps that value to `Unknown`.
+    let json = serde_json::to_string(&ChannelType::Dummy).expect("Dummy must serialise");
+    assert_eq!(json, "\"Dummy\"");
+    assert_eq!(
+        serde_json::from_str::<ChannelType>(&json).unwrap(),
+        ChannelType::Dummy
+    );
+
+    assert_eq!(ChannelType::Dummy as i32, 59);
+    assert_eq!(ChannelType::from(59), ChannelType::Unknown);
 }
 
 #[test]

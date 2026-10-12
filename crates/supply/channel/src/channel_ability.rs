@@ -96,7 +96,7 @@ impl ChannelAbilityModel {
 
         let sql = if is_postgres {
             format!(
-                "SELECT {} as \"group\", model, channel_id, enabled, priority, weight FROM channel_abilities WHERE channel_id = {}",
+                "SELECT {} as \"group\", model, channel_id, enabled::INTEGER AS enabled, priority, weight FROM channel_abilities WHERE channel_id = {}",
                 group_col, ph(is_postgres, 1)
             )
         } else {
@@ -117,6 +117,63 @@ impl ChannelAbilityModel {
         Ok(abilities)
     }
 
+    /// List enabled abilities at the highest priority for one group/model pair.
+    ///
+    /// Traffic may rank the returned candidates, but the Supply owner keeps the table/dialect SQL.
+    /// The two-step query intentionally preserves the previous routing behavior exactly.
+    pub async fn list_enabled_at_highest_priority(
+        db: &Database,
+        group: &str,
+        model: &str,
+    ) -> Result<Vec<Ability>> {
+        let conn = db.get_connection()?;
+        let is_postgres = db.kind() == "postgres";
+        let group_col = if is_postgres { "\"group\"" } else { "`group`" };
+        let enabled_lit = if is_postgres { "true" } else { "1" };
+
+        let max_priority_sql = format!(
+            "SELECT priority FROM channel_abilities WHERE {group_col} = {} AND model = {} AND enabled = {enabled_lit} ORDER BY priority DESC LIMIT 1",
+            ph(is_postgres, 1),
+            ph(is_postgres, 2),
+        );
+        let max_priority: Option<i64> = sqlx::query_scalar(&max_priority_sql)
+            .bind(group)
+            .bind(model)
+            .fetch_optional(conn.pool())
+            .await?;
+
+        let Some(priority) = max_priority else {
+            return Ok(Vec::new());
+        };
+
+        let select_sql = if is_postgres {
+            format!(
+                "SELECT {group_col} as \"group\", model, channel_id, enabled::INTEGER AS enabled, priority, weight FROM channel_abilities WHERE {group_col} = {} AND model = {} AND enabled = {enabled_lit} AND priority = {}",
+                ph(is_postgres, 1),
+                ph(is_postgres, 2),
+                ph(is_postgres, 3),
+            )
+        } else {
+            format!(
+                "SELECT {group_col} as `group`, model, channel_id, enabled, priority, weight FROM channel_abilities WHERE {group_col} = {} AND model = {} AND enabled = {enabled_lit} AND priority = {}",
+                ph(is_postgres, 1),
+                ph(is_postgres, 2),
+                ph(is_postgres, 3),
+            )
+        };
+
+        let abilities = sqlx::query_as::<_, AbilityRow>(&select_sql)
+            .bind(group)
+            .bind(model)
+            .bind(priority)
+            .fetch_all(conn.pool())
+            .await?
+            .into_iter()
+            .map(Ability::from)
+            .collect();
+        Ok(abilities)
+    }
+
     /// List all distinct models from channel_abilities
     ///
     /// Returns a list of unique model names that have at least one enabled channel.
@@ -124,7 +181,11 @@ impl ChannelAbilityModel {
     pub async fn list_distinct_models(db: &Database) -> Result<Vec<String>> {
         let conn = db.get_connection()?;
 
-        let sql = "SELECT DISTINCT model FROM channel_abilities WHERE enabled = 1 ORDER BY model";
+        let sql = if db.kind() == "postgres" {
+            "SELECT DISTINCT model FROM channel_abilities WHERE enabled = TRUE ORDER BY model"
+        } else {
+            "SELECT DISTINCT model FROM channel_abilities WHERE enabled = 1 ORDER BY model"
+        };
 
         let models: Vec<(String,)> = sqlx::query_as(sql).fetch_all(conn.pool()).await?;
 

@@ -1,5 +1,5 @@
-use burncloud_database::placeholder::adapt_sql;
-use burncloud_database::{sqlx, Database};
+use burncloud_database::Database;
+use burncloud_supply_channel::ChannelService;
 use regex::Regex;
 use std::sync::Arc;
 
@@ -90,9 +90,8 @@ impl ApiVersionDetector {
             None => return Ok(None),
         };
 
-        // Update channel's api_version in database
-        self.update_channel_api_version(channel_id, &new_version)
-            .await?;
+        // Supply owns channel_providers; Traffic requests the targeted business update.
+        ChannelService::update_api_version(self.db.as_ref(), channel_id, &new_version).await?;
 
         // Invalidate adaptor cache for this channel
         // Note: We invalidate all cached adaptors for this channel type
@@ -100,29 +99,6 @@ impl ApiVersionDetector {
         adaptor_factory.clear_cache();
 
         Ok(Some(new_version))
-    }
-
-    /// Update the API version for a channel in the database
-    async fn update_channel_api_version(
-        &self,
-        channel_id: i32,
-        new_version: &str,
-    ) -> anyhow::Result<()> {
-        let conn = self.db.get_connection()?;
-        let is_postgres = self.db.kind() == "postgres";
-
-        let sql = adapt_sql(
-            is_postgres,
-            "UPDATE channel_providers SET api_version = ? WHERE id = ?",
-        );
-
-        sqlx::query(&sql)
-            .bind(new_version)
-            .bind(channel_id)
-            .execute(conn.pool())
-            .await?;
-
-        Ok(())
     }
 }
 

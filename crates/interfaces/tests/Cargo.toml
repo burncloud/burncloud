@@ -18,9 +18,9 @@ burncloud-common.workspace = true
 burncloud-database.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
 ssh2 = "0.9"
-hmac = "0.12"
+hmac.workspace = true
 sha1 = "0.10"
-base64 = "0.22"
+base64.workspace = true
 chrono = { workspace = true }
 
 [[test]]
@@ -36,9 +36,12 @@ name = "logging_test"
 path = "tests/logging_test.rs"
 
 [dev-dependencies]
+burncloud-router.workspace = true
 burncloud-server.workspace = true
-burncloud-database-router.workspace = true
 burncloud-identity-user.workspace = true
+# Test-only: the API suite's demo-token fixture needs the default protocol configs, which
+# Supply owns (#842). Runtime supply wiring remains in `burncloud-server`.
+burncloud-supply-channel.workspace = true
 tracing.workspace = true
 log.workspace = true
 tempfile.workspace = true

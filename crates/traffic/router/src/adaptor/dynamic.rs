@@ -279,6 +279,7 @@ mod tests {
             messages: vec![burncloud_traffic_contracts::OpenAIChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                extra: Default::default(),
             }],
             temperature: Some(0.7),
             max_tokens: Some(100),
@@ -307,6 +308,7 @@ mod tests {
             messages: vec![burncloud_traffic_contracts::OpenAIChatMessage {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                extra: Default::default(),
             }],
             temperature: None,
             max_tokens: None,

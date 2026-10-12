@@ -28,7 +28,7 @@
 //!    that, which is why (2) is tested rather than assumed.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
+use burncloud_supply_channel::{ChannelProtocolConfigInput, ChannelProtocolConfigModel};
 
 /// A fresh SQLite file database with the real migrations applied.
 ///
@@ -426,7 +426,7 @@ async fn list_orders_by_type_then_version_and_respects_limit_and_offset() {
     );
 
     // Ordered over the whole table, so the pages are monotonic in the sort key.
-    let key = |c: &burncloud_database_channel::ChannelProtocolConfig| {
+    let key = |c: &burncloud_supply_channel::ChannelProtocolConfig| {
         (c.channel_type, c.api_version.clone())
     };
     let mut sorted: Vec<(i32, String)> = first.iter().map(key).collect();

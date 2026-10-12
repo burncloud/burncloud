@@ -13,6 +13,6 @@
 
 ## 依赖
 
-- `burncloud-database`, `burncloud-database-router` — 数据持久化
+- `burncloud-database`, `burncloud-router` — 数据持久化
 - `burncloud-service-setting` — 配置读取
 - `burncloud-supply-model` — 模型信息

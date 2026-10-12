@@ -24,8 +24,8 @@
 //!
 //! There is **no PostgreSQL server and no container runtime on this machine**, so everything here runs on
 //! SQLite. The dialect helpers are tested as **pure string functions**, which is a real test of the translation
-//! and no test at all of whether PostgreSQL accepts the result. `ci-integration.yml` in #654 is the only place
-//! these run against a real server, and it is not this file's claim to make.
+//! and no test at all of whether PostgreSQL accepts the result. Real PostgreSQL execution is not
+//! covered by this SQLite-only suite; the former dedicated integration workflow was retired.
 //!
 //! ## A defect the URL tests found
 //!

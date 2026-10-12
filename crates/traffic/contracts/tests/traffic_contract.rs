@@ -135,6 +135,104 @@ fn chat_request_defaults_match_the_current_behaviour() {
 }
 
 #[test]
+fn chat_message_round_trips_the_message_level_fields_it_receives() {
+    // `chat_request_keeps_unknown_fields_through_the_round_trip` proves that *request-level*
+    // extras survive. This test covers the other path: an entry of `messages`. `OpenAIChatMessage`
+    // now carries its own `#[serde(flatten)] extra` map, so the fields a client sends on a message
+    // (`name`, `tool_calls`, `tool_call_id`, `refusal`, …) survive deserialisation and
+    // re-serialisation instead of being dropped before the adapters can forward them.
+    //
+    // Before the struct was widened this file pinned the opposite (the loss); the assertions below
+    // are that same case rewritten to pin preservation, which is the contract the adapters need.
+    let raw = serde_json::json!({
+        "model": "gpt-4o",
+        "messages": [{
+            "role": "assistant",
+            "content": "calling a tool",
+            "name": "planner",
+            "tool_calls": [{"id": "call_1", "type": "function"}],
+            "tool_call_id": "call_1",
+            "refusal": null
+        }]
+    });
+
+    let req: OpenAIChatRequest = serde_json::from_value(raw).unwrap();
+
+    assert_eq!(req.messages.len(), 1);
+    assert_eq!(req.messages[0].role, "assistant");
+    assert_eq!(req.messages[0].content, "calling a tool");
+
+    // The message-level fields land in the message's own flattened map.
+    assert_eq!(
+        req.messages[0].extra.get("name"),
+        Some(&serde_json::json!("planner"))
+    );
+    assert_eq!(
+        req.messages[0].extra.get("tool_call_id"),
+        Some(&serde_json::json!("call_1"))
+    );
+    assert!(
+        req.messages[0].extra.contains_key("tool_calls"),
+        "a tool_calls payload must not be dropped on a message entry"
+    );
+    assert!(
+        req.messages[0].extra.contains_key("refusal"),
+        "an explicit null must be preserved, not silently dropped"
+    );
+
+    // And they survive the round trip: this is what the adapters forward.
+    let back = serde_json::to_value(&req).unwrap();
+    let message = &back["messages"][0];
+    assert_eq!(message["role"], serde_json::json!("assistant"));
+    assert_eq!(message["content"], serde_json::json!("calling a tool"));
+    assert_eq!(message["name"], serde_json::json!("planner"));
+    assert_eq!(message["tool_call_id"], serde_json::json!("call_1"));
+    assert_eq!(
+        message["tool_calls"],
+        serde_json::json!([{"id": "call_1", "type": "function"}])
+    );
+    assert!(
+        message["refusal"].is_null(),
+        "the explicit null must round-trip as null, not disappear"
+    );
+    // And nothing leaked upward into `extra`: the two layers stay separate.
+    assert!(
+        req.extra.is_empty(),
+        "message-level fields must not surface as request-level extras: {:?}",
+        req.extra
+    );
+}
+
+#[test]
+fn a_message_field_of_the_wrong_type_is_rejected_only_for_the_declared_fields() {
+    // The counterpart to the known gap above: because only `role` and `content` are typed, a
+    // wrongly-typed *declared* field is still rejected ...
+    for (json, why) in [
+        (
+            serde_json::json!({"model": "gpt-4o", "messages": [{"role": 1, "content": "hi"}]}),
+            "`role` given as a number",
+        ),
+        (
+            serde_json::json!({"model": "gpt-4o", "messages": [{"role": "user", "content": 7}]}),
+            "`content` given as a number",
+        ),
+    ] {
+        let result = serde_json::from_value::<OpenAIChatRequest>(json);
+        assert!(result.is_err(), "{why} must be rejected, but it parsed");
+    }
+
+    // ... while an undeclared field is not validated at all: a value of the wrong type is discarded
+    // rather than rejected. Recorded so the silence is not mistaken for strict validation.
+    let tolerated = serde_json::json!({
+        "model": "gpt-4o",
+        "messages": [{"role": "user", "content": "hi", "tool_calls": "not-a-list"}]
+    });
+    let req: OpenAIChatRequest = serde_json::from_value(tolerated)
+        .expect("an undeclared message field is ignored, so this shape must parse");
+    assert_eq!(req.messages[0].content, "hi");
+}
+
+#[test]
 fn chat_response_shape_is_unchanged() {
     let response = OpenAIChatResponse {
         id: "chatcmpl-1".to_string(),
@@ -146,6 +244,7 @@ fn chat_response_shape_is_unchanged() {
             message: OpenAIChatMessage {
                 role: "assistant".to_string(),
                 content: "hello".to_string(),
+                extra: Default::default(),
             },
             finish_reason: Some("stop".to_string()),
         }],

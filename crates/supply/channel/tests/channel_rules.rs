@@ -42,7 +42,7 @@
 //!   channel-keyed config and did not compile.
 
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::{
+use burncloud_supply_channel::{
     ChannelAbilityInput, ChannelAbilityModel, ChannelProtocolConfigInput,
     ChannelProtocolConfigModel, ChannelProviderModel,
 };
@@ -87,6 +87,11 @@ impl TempDb {
         // and fail with `(code: 14) unable to open database file`.
         let url = format!("sqlite:///{}?mode=rwc", normalized);
         let db = create_database_with_url(&url).await?;
+        // `create_database_with_url` no longer seeds domain default records (#842). Supply owns
+        // `channel_protocol_configs`, so arrange the four default configs through the owner, the
+        // same way the application bootstrap does -- the documented fresh-database shape above
+        // (four default configs, empty provider/ability tables) still holds because of this call.
+        ChannelProtocolConfigModel::seed_default_protocol_configs(&db).await?;
         println!("test database: {}", path.display());
         Ok(Self { db, path })
     }

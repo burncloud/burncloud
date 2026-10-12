@@ -55,7 +55,7 @@
 
 mod common;
 
-use burncloud_database_billing::{BillingPriceModel, PriceInput};
+use burncloud_commerce_billing::{BillingPriceModel, PriceInput};
 use common::{insert_test_channel, setup_db, start_mock_upstream, start_test_server};
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -309,8 +309,8 @@ async fn a_price_that_disappears_after_preflight_cannot_be_priced_at_settlement(
     //
     // What this pins: preflight still passes (it reads the cache), settlement reports `PriceNotFound`, and the
     // handler therefore records `cost_status = "price_missing"` and charges zero rather than a guess.
-    use burncloud_service_billing::usage::get_parser;
-    use burncloud_service_billing::{BillingError, CostCalculator, PriceCache};
+    use burncloud_commerce_billing::usage::get_parser;
+    use burncloud_commerce_billing::{BillingError, CostCalculator, PriceCache};
     use burncloud_supply_contracts::ChannelType;
 
     let (db, _pool, _url) = setup_db().await?;

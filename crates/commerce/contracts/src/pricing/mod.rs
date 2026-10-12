@@ -7,7 +7,7 @@
 //
 // This module is a pure contract: it knows neither a database framework nor logging. The
 // persistence representation of the billing tables (the row structs, their SQL row mapping
-// and the conversions into these domain types) lives in `burncloud-database-billing::rows`,
+// and the conversions into these domain types) lives in `burncloud-commerce-billing::rows`,
 // which is the adapter that knows the database.
 //
 // [`ModelMetadata`] stays in Commerce because it is the serialized metadata shape carried by

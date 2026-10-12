@@ -17,6 +17,12 @@
 //!
 //! Strategy: create a fresh SQLite database via `create_database_with_url`, which
 //! runs all migrations (0001–0010) and the `schema/rename.rs` data-copy logic.
+//!
+//! Since #842 that factory creates schema and historic fixups only. Domain default records
+//! are owned by Identity and Supply and are seeded by the application bootstrap, so they are
+//! absent here; this file exercises the migration/rename surface, which does not depend on
+//! them. The owner-seeded startup contract is asserted in
+//! `crates/interfaces/server/tests/owner_seed_contract.rs`.
 
 use burncloud_database::{create_database_with_url, sqlite_url, sqlx};
 use sqlx::any::{AnyConnectOptions, AnyPoolOptions};
@@ -49,19 +55,6 @@ async fn table_exists(db: &burncloud_database::Database, table_name: &str) -> bo
             .await
             .unwrap_or(0);
     count > 0
-}
-
-/// Helper: count rows in a table.
-async fn count_rows(db: &burncloud_database::Database, table_name: &str) -> i64 {
-    let pool = db
-        .get_connection()
-        .unwrap_or_else(|_| panic!("no connection"))
-        .pool();
-    let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table_name}"))
-        .fetch_one(pool)
-        .await
-        .unwrap_or(-1);
-    count
 }
 
 // ─── New tables exist ────────────────────────────────────────────────────────
@@ -596,44 +589,17 @@ async fn test_user_recharges_insert_and_query() {
     assert_eq!(amount, 1000000000);
 }
 
-// ─── Seed data verification ─────────────────────────────────────────────────
+// ─── Seed ownership moved out of this crate (#842) ──────────────────────────
 
-#[tokio::test]
-async fn test_seed_user_in_user_accounts() {
-    let (db, _tmp) = create_test_db().await;
-    let pool = db
-        .get_connection()
-        .unwrap_or_else(|_| panic!("no connection"))
-        .pool();
-
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM user_accounts WHERE username = 'demo-user'")
-            .fetch_one(pool)
-            .await
-            .unwrap_or_else(|e| panic!("count seed user failed: {e}"));
-    assert!(
-        count > 0,
-        "seed user 'demo-user' should exist in user_accounts"
-    );
-}
-
-#[tokio::test]
-async fn test_seed_data_uses_new_table_names() {
-    let (db, _tmp) = create_test_db().await;
-
-    assert!(
-        count_rows(&db, "user_accounts").await >= 1,
-        "user_accounts should have seed data"
-    );
-    assert!(
-        count_rows(&db, "user_api_keys").await >= 1,
-        "user_api_keys should have seed data"
-    );
-    assert!(
-        count_rows(&db, "channel_protocol_configs").await >= 4,
-        "channel_protocol_configs should have 4 default entries"
-    );
-}
+// `test_seed_user_in_user_accounts` and `test_seed_data_uses_new_table_names` used to assert
+// that `create_database_with_url` had inserted the `demo-user` row, the demo API key and the
+// four default protocol configs. All three moved to their domain owners in #842
+// (`UserDatabase::seed_demo_defaults`, `ChannelProtocolConfigModel::seed_default_protocol_configs`),
+// and this crate must not depend on those owners to call them — `deny.toml` bans the edge, which
+// is exactly the one-way direction #842 requires. The two halves of the contract are asserted
+// where they belong: Platform's "creates no domain records" in
+// `tests/initialization_boundary.rs`, and the owner-seeded startup state in
+// `crates/interfaces/server/tests/owner_seed_contract.rs`.
 
 // ─── Migration idempotency ──────────────────────────────────────────────────
 

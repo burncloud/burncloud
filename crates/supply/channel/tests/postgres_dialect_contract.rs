@@ -16,8 +16,9 @@
 
 use burncloud_database::sqlx::{self, ConnectOptions, Executor};
 use burncloud_database::{create_database_with_url, Database};
-use burncloud_database_channel::{
-    ChannelProtocolConfigInput, ChannelProtocolConfigModel, ChannelProviderModel,
+use burncloud_supply_channel::{
+    ChannelAbilityInput, ChannelAbilityModel, ChannelProtocolConfigInput,
+    ChannelProtocolConfigModel, ChannelProviderModel, ChannelService,
 };
 use burncloud_supply_contracts::{Channel, ChannelType};
 use std::str::FromStr;
@@ -139,6 +140,42 @@ fn sample_channel() -> Channel {
     }
 }
 
+/// Exactly the Channel that `crates/trust/inference` builds for a locally-spawned upstream, so the
+/// PostgreSQL contract below pins the row shape that crate has always produced (#865).
+fn local_upstream_channel(model_id: &str, port: u16) -> Channel {
+    Channel {
+        id: 0,
+        type_: ChannelType::OpenAI as i32,
+        key: String::new(),
+        status: 1,
+        name: format!("Local: {model_id}"),
+        weight: 1,
+        created_time: None,
+        test_time: None,
+        response_time: None,
+        base_url: Some(format!("http://127.0.0.1:{port}")),
+        models: model_id.to_string(),
+        group: "default".to_string(),
+        used_quota: 0,
+        model_mapping: None,
+        priority: 100,
+        auto_ban: 1,
+        other_info: None,
+        tag: Some("local-inference".to_string()),
+        setting: None,
+        param_override: None,
+        header_override: None,
+        remark: None,
+        api_version: Some("default".to_string()),
+        pricing_region: None,
+        rpm_cap: None,
+        tpm_cap: None,
+        reservation_green: None,
+        reservation_yellow: None,
+        reservation_red: None,
+    }
+}
+
 fn protocol_input(
     channel_type: i32,
     api_version: &str,
@@ -154,6 +191,118 @@ fn protocol_input(
         request_mapping: Some("{\"provider\":\"postgres-contract\"}".to_string()),
         response_mapping: None,
         detection_rules: None,
+    }
+}
+
+/// GitHub-hosted Code Test does not set BURNCLOUD_TEST_POSTGRES_URL. Run the
+/// dialect contracts against a disposable real PostgreSQL 16 container rather than
+/// silently counting their opt-in SKIPPED results as acceptance.
+struct TestPostgresContainer(String);
+
+impl Drop for TestPostgresContainer {
+    fn drop(&mut self) {
+        if let Err(error) = std::process::Command::new("docker")
+            .args(["rm", "-f", &self.0])
+            .status()
+        {
+            eprintln!("PostgreSQL container cleanup failed: {error}");
+        }
+    }
+}
+
+#[test]
+fn github_actions_executes_real_supply_owner_postgres_contracts() {
+    if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
+        println!("Local opt-in: set {SERVER_URL_ENV} to run real PostgreSQL contracts.");
+        return;
+    }
+    let run = std::process::Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "-d",
+            "-e",
+            "POSTGRES_PASSWORD=postgres",
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_DB=postgres",
+            "-p",
+            "127.0.0.1::5432",
+            "postgres:16",
+        ])
+        .output()
+        .expect("GitHub-hosted CI must provide Docker for real PostgreSQL tests");
+    assert!(
+        run.status.success(),
+        "start PostgreSQL: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let id = String::from_utf8_lossy(&run.stdout).trim().to_owned();
+    assert!(
+        !id.is_empty(),
+        "Docker did not return a PostgreSQL container ID"
+    );
+    let _cleanup = TestPostgresContainer(id.clone());
+    let output = std::process::Command::new("docker")
+        .args(["port", &id, "5432/tcp"])
+        .output()
+        .expect("read PostgreSQL port");
+    assert!(
+        output.status.success(),
+        "published PostgreSQL port query failed"
+    );
+    let ports = String::from_utf8_lossy(&output.stdout);
+    let port = ports
+        .lines()
+        .next()
+        .and_then(|line| line.rsplit_once(':'))
+        .map(|(_, port)| port)
+        .expect("PostgreSQL must publish a TCP port");
+    let url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
+    let opts = sqlx::postgres::PgConnectOptions::from_str(&url).expect("PostgreSQL URL must parse");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("SQLx readiness runtime");
+    let mut ready = false;
+    for _ in 0..40 {
+        ready = runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                match opts.connect().await {
+                    Ok(mut conn) => conn.execute("SELECT 1").await.is_ok(),
+                    Err(_) => false,
+                }
+            })
+            .await
+            .unwrap_or(false)
+        });
+        if ready {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    assert!(ready, "real PostgreSQL 16 did not become SQLx-ready");
+    let binary = std::env::current_exe().expect("current integration-test binary");
+    for test in [
+        "channel_create_returns_the_postgres_id_and_round_trips_quoted_columns",
+        "failed_channel_writes_roll_back_atomically_on_postgres",
+        "owner_boundary_capabilities_execute_on_real_postgres",
+        "local_upstream_registration_and_removal_execute_on_real_postgres",
+        "protocol_upsert_uses_postgres_conflict_and_default_demote_branches",
+    ] {
+        let output = std::process::Command::new(&binary)
+            .args(["--exact", test, "--nocapture"])
+            .env(SERVER_URL_ENV, &url)
+            .output()
+            .expect("spawn isolated real PostgreSQL test");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed; 0 failed"),
+            "real PostgreSQL contract {test} failed:\nstdout:\n{stdout}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        println!("Real PostgreSQL 16: {test}: PASS");
     }
 }
 
@@ -179,7 +328,7 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
         assert_eq!(stored.tpm_cap, Some(200_000));
         assert_eq!(stored.api_version.as_deref(), Some("2024-02-01"));
 
-        let abilities = burncloud_database_channel::ChannelAbilityModel::list_by_channel(&db, id)
+        let abilities = burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, id)
             .await
             .expect(
                 "ability rows created by ChannelProviderModel::create must decode on PostgreSQL",
@@ -187,6 +336,226 @@ async fn channel_create_returns_the_postgres_id_and_round_trips_quoted_columns()
         assert_eq!(abilities.len(), 1);
         assert_eq!(abilities[0].group, "pg-vip");
         assert_eq!(abilities[0].model, "claude-pg-contract");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn failed_channel_writes_roll_back_atomically_on_postgres() {
+    with_postgres("provider_atomicity", |db| async move {
+        let mut failed = sample_channel();
+        failed.name = "pg-failed-create".to_string();
+        failed.models = "same,same".to_string();
+
+        assert!(
+            ChannelProviderModel::create(&db, &mut failed)
+                .await
+                .is_err(),
+            "duplicate abilities must keep returning an error"
+        );
+        assert_eq!(
+            failed.id, 0,
+            "failed creation must not publish the rolled-back PostgreSQL id"
+        );
+        assert_eq!(
+            failed.created_time, None,
+            "failed creation must leave the caller timestamp unchanged"
+        );
+        assert!(
+            ChannelProviderModel::list(&db, 100, 0)
+                .await
+                .expect("list providers after failed create")
+                .is_empty(),
+            "provider INSERT must roll back with the failed ability INSERT"
+        );
+
+        let conn = db.get_connection().expect("PostgreSQL connection");
+        let ability_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM channel_abilities")
+            .fetch_one(conn.pool())
+            .await
+            .expect("count abilities after failed create");
+        assert_eq!(
+            ability_count.0, 0,
+            "the first ability INSERT must roll back with the duplicate failure"
+        );
+
+        let mut existing = sample_channel();
+        existing.name = "pg-before".to_string();
+        existing.models = "old".to_string();
+        let id = ChannelProviderModel::create(&db, &mut existing)
+            .await
+            .expect("control channel create");
+
+        existing.name = "pg-after".to_string();
+        existing.models = "same,same".to_string();
+        assert!(
+            ChannelProviderModel::update(&db, &existing).await.is_err(),
+            "duplicate abilities must fail the update"
+        );
+
+        let stored = ChannelProviderModel::get_by_id(&db, id)
+            .await
+            .expect("read provider after failed update")
+            .expect("provider remains");
+        assert_eq!(
+            stored.name, "pg-before",
+            "provider UPDATE must roll back with ability synchronization"
+        );
+        assert_eq!(stored.models, "old");
+
+        let abilities = burncloud_supply_channel::ChannelAbilityModel::list_by_channel(&db, id)
+            .await
+            .expect("read abilities after failed update");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].group, "pg-vip");
+        assert_eq!(
+            abilities[0].model, "old",
+            "ability DELETE and partial rebuild must roll back too"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn owner_boundary_capabilities_execute_on_real_postgres() {
+    with_postgres("owner_boundary", |db| async move {
+        let mut channel = sample_channel();
+        let id = ChannelService::create(&db, &mut channel)
+            .await
+            .expect("Supply facade creates the PostgreSQL channel");
+
+        let abilities =
+            ChannelService::list_enabled_at_highest_priority(&db, "pg-vip", "claude-pg-contract")
+                .await
+                .expect("highest-priority Supply query must execute on PostgreSQL");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].channel_id, id);
+        assert_eq!(abilities[0].weight, 17);
+
+        let caps = ChannelService::list_rate_caps(&db)
+            .await
+            .expect("Supply rate-cap projection executes on PostgreSQL");
+        let cap = caps
+            .iter()
+            .find(|cap| cap.id == id)
+            .expect("created channel must appear in rate-cap projection");
+        assert_eq!(cap.rpm_cap, Some(600));
+        assert_eq!(cap.tpm_cap, Some(200_000));
+        assert_eq!(cap.reservation_green, Some(0.5));
+        assert!(
+            (cap.reservation_yellow.unwrap_or_default() - 0.3).abs() < 0.000001,
+            "PostgreSQL REAL uses float4 precision"
+        );
+        assert!(
+            (cap.reservation_red.unwrap_or_default() - 0.2).abs() < 0.000001,
+            "PostgreSQL REAL uses float4 precision"
+        );
+
+        ChannelService::update_api_version(&db, id, "2026-10-owner")
+            .await
+            .expect("targeted PostgreSQL API-version update");
+        let updated = ChannelService::get_by_id(&db, id)
+            .await
+            .expect("read channel after API-version update")
+            .expect("updated channel remains present");
+        assert_eq!(updated.api_version.as_deref(), Some("2026-10-owner"));
+
+        assert!(
+            ChannelService::quarantine(&db, id)
+                .await
+                .expect("PostgreSQL quarantine transaction"),
+            "existing channel must quarantine successfully"
+        );
+        let quarantined = ChannelService::get_by_id(&db, id)
+            .await
+            .expect("read quarantined PostgreSQL channel")
+            .expect("quarantine must not delete the provider");
+        assert_eq!(quarantined.status, 3);
+        assert!(
+            ChannelAbilityModel::list_by_channel(&db, id)
+                .await
+                .expect("read abilities after PostgreSQL quarantine")
+                .is_empty(),
+            "quarantine must remove abilities before commit"
+        );
+        assert!(
+            !ChannelService::quarantine(&db, i32::MAX)
+                .await
+                .expect("missing PostgreSQL channel is a normal false result"),
+            "missing channel must not be reported as quarantined"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn local_upstream_registration_and_removal_execute_on_real_postgres() {
+    with_postgres("local_upstream", |db| async move {
+        let mut channel = local_upstream_channel("local-pg-model", 18080);
+        let id = ChannelService::create(&db, &mut channel)
+            .await
+            .expect("Supply facade registers the local upstream on PostgreSQL");
+
+        // `create` derives the ability from the channel's models/group/priority/weight, which is the
+        // row `trust/inference` expects to route to a locally-spawned model.
+        let derived =
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-pg-model")
+                .await
+                .expect("read the derived local-upstream ability on PostgreSQL");
+        assert_eq!(derived.len(), 1);
+        assert_eq!(derived[0].channel_id, id);
+        assert_eq!(derived[0].weight, 1);
+        assert_eq!(derived[0].priority, 100);
+        assert!(derived[0].enabled_bool());
+
+        // `trust/inference` still declares that ability explicitly. On PostgreSQL this executes
+        // `ON CONFLICT ("group", model, channel_id) DO NOTHING`, so it must report zero new rows
+        // and must not rewrite or duplicate the derived ability.
+        let inserted = ChannelService::create_abilities(
+            &db,
+            &[ChannelAbilityInput {
+                group: "default".to_string(),
+                model: "local-pg-model".to_string(),
+                channel_id: id,
+                enabled: true,
+                priority: 100,
+                weight: 1,
+            }],
+        )
+        .await
+        .expect("explicit local-upstream ability write executes on PostgreSQL");
+        assert_eq!(
+            inserted, 0,
+            "the explicit ability is already derived by create"
+        );
+        let after =
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-pg-model")
+                .await
+                .expect("read abilities after the explicit local-upstream write");
+        assert_eq!(
+            after.len(),
+            1,
+            "the explicit write must not duplicate the derived ability"
+        );
+
+        // Unregistration: Supply deletes abilities first, then the provider.
+        ChannelService::delete(&db, id)
+            .await
+            .expect("Supply facade unregisters the local upstream on PostgreSQL");
+        assert!(
+            ChannelService::get_by_id(&db, id)
+                .await
+                .expect("read the unregistered local upstream")
+                .is_none(),
+            "unregistration must remove the provider row"
+        );
+        assert!(
+            ChannelService::list_enabled_at_highest_priority(&db, "default", "local-pg-model")
+                .await
+                .expect("read abilities after local-upstream removal")
+                .is_empty(),
+            "unregistration must remove the ability rows"
+        );
     })
     .await;
 }

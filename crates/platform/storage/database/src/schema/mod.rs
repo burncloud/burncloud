@@ -40,12 +40,9 @@ pub(crate) fn current_timestamp() -> i64 {
 pub struct Schema;
 
 impl Schema {
-    /// Run data migrations and seed initial records.
-    ///
-    /// This is called **after** [`crate::migration::MigrationRunner::run`] has
-    /// applied all DDL migrations, so all tables and columns are guaranteed to
-    /// exist when this function runs.
-    pub async fn init(db: &Database) -> Result<()> {
+    /// Run historical data fixups without creating application-owned seed records.
+    /// Called after versioned schema migrations.
+    pub async fn init_infrastructure(db: &Database) -> Result<()> {
         let pool = db.get_connection()?.pool();
         let kind = db.kind();
 
@@ -55,8 +52,20 @@ impl Schema {
 
         router::migrate_router_logs(pool, &kind).await?;
         price::migrate_prices(pool, &kind).await?;
-        user::migrate_users_and_seed(pool, &kind).await?;
+        user::migrate_users(pool, &kind).await?;
 
         Ok(())
+    }
+
+    /// Run historical data fixups. Equivalent to [`Self::init_infrastructure`].
+    ///
+    /// Retained as the historical entry-point name. Since #842 there is no follow-up
+    /// default-record phase owned by Platform: the demo account, demo API key and default
+    /// protocol configs are seeded by their domain owners through
+    /// `UserDatabase::seed_demo_defaults` and
+    /// `ChannelProtocolConfigModel::seed_default_protocol_configs`, which the application
+    /// bootstrap calls after infrastructure initialization.
+    pub async fn init(db: &Database) -> Result<()> {
+        Self::init_infrastructure(db).await
     }
 }

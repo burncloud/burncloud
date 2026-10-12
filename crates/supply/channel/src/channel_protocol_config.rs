@@ -50,9 +50,14 @@ impl ChannelProtocolConfigModel {
     ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        let is_default_column = if is_postgres {
+            "is_default::INTEGER AS is_default"
+        } else {
+            "is_default"
+        };
         let sql = format!(
             r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -78,10 +83,15 @@ impl ChannelProtocolConfigModel {
     ) -> Result<Option<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        let is_default_column = if is_postgres {
+            "is_default::INTEGER AS is_default"
+        } else {
+            "is_default"
+        };
         let sql = if is_postgres {
             format!(
                 r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -92,7 +102,7 @@ impl ChannelProtocolConfigModel {
         } else {
             format!(
                 r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -118,9 +128,14 @@ impl ChannelProtocolConfigModel {
     ) -> Result<Vec<ChannelProtocolConfig>> {
         let conn = db.get_connection()?;
         let is_postgres = db.kind() == "postgres";
+        let is_default_column = if is_postgres {
+            "is_default::INTEGER AS is_default"
+        } else {
+            "is_default"
+        };
         let sql = format!(
             r#"
-                SELECT id, channel_type, api_version, is_default, chat_endpoint, embed_endpoint,
+                SELECT id, channel_type, api_version, {is_default_column}, chat_endpoint, embed_endpoint,
                        models_endpoint, request_mapping, response_mapping, detection_rules,
                        created_at, updated_at
                 FROM channel_protocol_configs
@@ -194,6 +209,113 @@ impl ChannelProtocolConfigModel {
             .bind(now)
             .execute(conn.pool())
             .await?;
+
+        Ok(())
+    }
+
+    /// Seed the four default protocol configs that Supply owns (#842).
+    ///
+    /// `channel_protocol_configs` is Supply's Data Truth, so the default records written into
+    /// it belong here rather than in `platform/storage/database`. Platform previously issued
+    /// these INSERTs on every database initialization; the SQL is moved verbatim, including
+    /// the SQLite/PostgreSQL placeholder split, so the seeded rows are unchanged.
+    ///
+    /// Idempotent: it only runs while the table is empty, so a second call inserts nothing and
+    /// never overwrites a row an operator has since edited. A missing table is treated as
+    /// "nothing to seed yet" rather than an error, preserving the previous tolerance during
+    /// early bootstrap.
+    ///
+    /// Ordering is the caller's responsibility: the application bootstrap runs this after
+    /// infrastructure initialization, because that is what creates the table.
+    pub async fn seed_default_protocol_configs(db: &Database) -> Result<()> {
+        let conn = db.get_connection()?;
+        let pool = conn.pool();
+        let is_postgres = db.kind() == "postgres";
+
+        let pc_count: i64 =
+            match sqlx::query_scalar("SELECT count(*) FROM channel_protocol_configs")
+                .fetch_one(pool)
+                .await
+            {
+                Ok(n) => n,
+                Err(_) => return Ok(()),
+            };
+
+        if pc_count != 0 {
+            return Ok(());
+        }
+
+        let now = current_timestamp();
+        type ProtocolConfig<'a> = (
+            i32,
+            &'a str,
+            bool,
+            Option<&'a str>,
+            Option<&'a str>,
+            Option<&'a str>,
+        );
+
+        let default_protocols: [ProtocolConfig; 4] = [
+            (
+                1,
+                "default",
+                true,
+                Some("/v1/chat/completions"),
+                Some("/v1/embeddings"),
+                Some("/v1/models"),
+            ),
+            (2, "2023-06-01", true, Some("/v1/messages"), None, None),
+            (
+                3,
+                "2024-02-01",
+                true,
+                Some("/deployments/{deployment_id}/chat/completions"),
+                Some("/deployments/{deployment_id}/embeddings"),
+                Some("/deployments?api-version=2024-02-01"),
+            ),
+            (
+                4,
+                "v1",
+                true,
+                Some("/v1/models/{model}:generateContent"),
+                Some("/v1/models/{model}:embedContent"),
+                Some("/v1/models"),
+            ),
+        ];
+
+        let insert_sql = if is_postgres {
+            "INSERT INTO channel_protocol_configs \
+             (channel_type, api_version, is_default, chat_endpoint, \
+              embed_endpoint, models_endpoint, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+        } else {
+            "INSERT INTO channel_protocol_configs \
+             (channel_type, api_version, is_default, chat_endpoint, \
+              embed_endpoint, models_endpoint, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        };
+
+        for (
+            channel_type,
+            api_version,
+            is_default,
+            chat_endpoint,
+            embed_endpoint,
+            models_endpoint,
+        ) in default_protocols
+        {
+            sqlx::query(insert_sql)
+                .bind(channel_type)
+                .bind(api_version)
+                .bind(is_default)
+                .bind(chat_endpoint)
+                .bind(embed_endpoint)
+                .bind(models_endpoint)
+                .bind(now)
+                .bind(now)
+                .execute(pool)
+                .await?;
+        }
 
         Ok(())
     }

@@ -4,11 +4,12 @@ use sqlx::FromRow;
 /// User account row type (user_accounts table).
 ///
 /// Balance fields use i64 nanodollars (9 decimal precision) for PostgreSQL BIGINT compatibility.
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Clone, Serialize, Deserialize, FromRow)]
 pub struct UserAccount {
     pub id: String,
     pub username: String,
     pub email: Option<String>,
+    #[serde(skip_serializing)]
     pub password_hash: Option<String>, // Nullable for OIDC users
     pub github_id: Option<String>,
     #[sqlx(default)]
@@ -26,11 +27,12 @@ pub struct UserAccount {
 }
 
 /// Input for creating a new user account.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct UserAccountInput {
     pub id: String,
     pub username: String,
     pub email: Option<String>,
+    #[serde(skip_serializing)]
     pub password_hash: Option<String>,
     pub github_id: Option<String>,
     pub status: i32,
@@ -52,5 +54,43 @@ impl From<UserAccount> for UserAccountInput {
             balance_cny: u.balance_cny,
             preferred_currency: u.preferred_currency,
         }
+    }
+}
+
+impl std::fmt::Debug for UserAccount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserAccount")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("email", &self.email)
+            .field(
+                "password_hash",
+                &self.password_hash.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("github_id", &self.github_id)
+            .field("status", &self.status)
+            .field("balance_usd", &self.balance_usd)
+            .field("balance_cny", &self.balance_cny)
+            .field("preferred_currency", &self.preferred_currency)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for UserAccountInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserAccountInput")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("email", &self.email)
+            .field(
+                "password_hash",
+                &self.password_hash.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("github_id", &self.github_id)
+            .field("status", &self.status)
+            .field("balance_usd", &self.balance_usd)
+            .field("balance_cny", &self.balance_cny)
+            .field("preferred_currency", &self.preferred_currency)
+            .finish()
     }
 }

@@ -19,8 +19,8 @@
 
 mod common;
 
-use burncloud_database_router::RouterDatabase;
-use burncloud_database_router::RouterLog;
+use burncloud_router::RouterDatabase;
+use burncloud_router::RouterLog;
 
 use common::{ensure_error_type_column, ensure_l6_observability_columns, setup_db};
 
