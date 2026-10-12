@@ -88,13 +88,7 @@ async fn test_unified_gateway_routing() -> anyhow::Result<()> {
 
     // The dashboard shell is mounted only when LiveView is enabled, so `/` is asserted on
     // that side of the switch, which is the coverage the previous revision intended.
-    let base = spawn_gateway(
-        db,
-        jwt_secret,
-        test_utils::test_internal_secret(),
-        true,
-    )
-    .await?;
+    let base = spawn_gateway(db, jwt_secret, test_utils::test_internal_secret(), true).await?;
     let client = Client::new();
     await_gateway_ready(&client, &base).await?;
 
@@ -137,8 +131,7 @@ async fn test_unified_gateway_routing() -> anyhow::Result<()> {
         "administrator access to the management surface must remain functional"
     );
     let authorized_body = authorized.text().await?;
-    serde_json::from_str::<Value>(&authorized_body)
-        .expect("the channel listing must be JSON");
+    serde_json::from_str::<Value>(&authorized_body).expect("the channel listing must be JSON");
 
     // 4. The data plane stays closed to a caller with no credential, and to one whose
     //    credential cannot be validated.
