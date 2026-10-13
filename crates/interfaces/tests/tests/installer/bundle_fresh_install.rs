@@ -314,6 +314,7 @@ async fn test_openclaw_fresh_install_debian() {
 
 /// Quick local test without Docker (for development)
 #[tokio::test]
+#[ignore = "nested cargo build --release inside the default path conflicts with AGENTS.md P2; do not enable until a human ruling switches it to the burncloud artefact the CI driver already builds"]
 async fn test_bundle_creation_local() {
     let test = FreshInstallTest::new("openclaw");
 
