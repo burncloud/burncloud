@@ -1,4 +1,15 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_types, clippy::let_unit_value, clippy::redundant_pattern, clippy::manual_is_multiple_of, clippy::let_and_return, clippy::to_string_trait_impl, clippy::to_string_in_format_args, clippy::redundant_pattern_matching)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_types,
+    clippy::let_unit_value,
+    clippy::redundant_pattern,
+    clippy::manual_is_multiple_of,
+    clippy::let_and_return,
+    clippy::to_string_trait_impl,
+    clippy::to_string_in_format_args,
+    clippy::redundant_pattern_matching
+)]
 //! Bundle Fresh Install Test
 //!
 //! This test validates that a bundle can be installed on a completely fresh machine.
@@ -268,6 +279,8 @@ fn project_root() -> PathBuf {
         .unwrap()
         .parent()
         .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -291,8 +304,7 @@ fn test_temp_dir() -> PathBuf {
 #[tokio::test]
 #[ignore = "Requires Docker and takes time - run with: cargo test -- --ignored"]
 async fn test_openclaw_fresh_install_ubuntu() {
-    let test = FreshInstallTest::new("openclaw")
-        .with_docker_image("ubuntu:22.04");
+    let test = FreshInstallTest::new("openclaw").with_docker_image("ubuntu:22.04");
 
     let result = test.run().await.expect("Test should complete");
 
@@ -303,8 +315,7 @@ async fn test_openclaw_fresh_install_ubuntu() {
 #[tokio::test]
 #[ignore = "Requires Docker and takes time"]
 async fn test_openclaw_fresh_install_debian() {
-    let test = FreshInstallTest::new("openclaw")
-        .with_docker_image("debian:12-slim");
+    let test = FreshInstallTest::new("openclaw").with_docker_image("debian:12-slim");
 
     let result = test.run().await.expect("Test should complete");
 
