@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::error::{DownloadError, Result};
 use crate::manager::{DownloadStatus, MonitorState};
 
-pub(crate) async fn monitor_loop(
+pub(super) async fn monitor_loop(
     aria2: Arc<Aria2Manager>,
     db: Arc<DownloadDB>,
     states: Arc<Mutex<std::collections::HashMap<String, MonitorState>>>,

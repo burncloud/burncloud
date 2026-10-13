@@ -9,21 +9,38 @@ use tokio_util::sync::CancellationToken;
 
 use crate::DownloadError;
 
-pub(crate) const MAX_RETRIES: u8 = 1;
-pub(crate) type DownloadWaiter = oneshot::Sender<std::result::Result<PathBuf, String>>;
+pub(super) const MAX_RETRIES: u8 = 1;
+pub(super) type DownloadWaiter = oneshot::Sender<std::result::Result<PathBuf, String>>;
 
-/// 统一创建、恢复并监控下载任务。
+/// 创建并管理 aria2 下载任务，持久化任务状态并监控下载进度。
+///
+/// # 示例
+///
+/// ```no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let manager = burncloud_download::DownloadManager::new().await?;
+/// let path = manager
+///     .download("https://example.com/model.gguf", "models")
+///     .await?;
+/// println!("{}", path.display());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # 注意
+///
+/// 创建管理器需要 Tokio 运行时，并会初始化数据库和 aria2 服务。
 pub struct DownloadManager {
-    pub(crate) aria2: Arc<Aria2Manager>,
-    pub(crate) db: Arc<burncloud_database_sys::DownloadDB>,
-    pub(crate) monitor_states: Arc<Mutex<HashMap<String, MonitorState>>>,
-    pub(crate) cancellation: CancellationToken,
-    pub(crate) monitor: Option<JoinHandle<()>>,
+    pub(super) aria2: Arc<Aria2Manager>,
+    pub(super) db: Arc<burncloud_database_sys::DownloadDB>,
+    pub(super) monitor_states: Arc<Mutex<HashMap<String, MonitorState>>>,
+    pub(super) cancellation: CancellationToken,
+    pub(super) monitor: Option<JoinHandle<()>>,
 }
 
 /// aria2 任务在本地管理器中的状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DownloadStatus {
+pub(super) enum DownloadStatus {
     Pending,
     Active,
     Waiting,
@@ -34,7 +51,7 @@ pub(crate) enum DownloadStatus {
 }
 
 impl DownloadStatus {
-    pub(crate) fn from_aria2(value: &str) -> Option<Self> {
+    pub(super) fn from_aria2(value: &str) -> Option<Self> {
         match value {
             "pending" => Some(Self::Pending),
             "active" => Some(Self::Active),
@@ -47,7 +64,7 @@ impl DownloadStatus {
         }
     }
 
-    pub(crate) fn as_str(self) -> &'static str {
+    pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Active => "active",
@@ -59,36 +76,36 @@ impl DownloadStatus {
         }
     }
 
-    pub(crate) fn is_terminal(self) -> bool {
+    pub(super) fn is_terminal(self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
     }
 }
 
 /// 保存一个运行中任务及其等待者。
-pub(crate) struct MonitorState {
-    pub(crate) db_id: i64,
-    pub(crate) gid: String,
-    pub(crate) url: String,
-    pub(crate) dir: PathBuf,
-    pub(crate) filename: String,
-    pub(crate) status: DownloadStatus,
-    pub(crate) retry_count: u8,
-    pub(crate) max_retries: u8,
-    pub(crate) total_length: i64,
-    pub(crate) completed_length: i64,
-    pub(crate) download_speed: i64,
-    pub(crate) waiters: Vec<DownloadWaiter>,
+pub(super) struct MonitorState {
+    pub(super) db_id: i64,
+    pub(super) gid: String,
+    pub(super) url: String,
+    pub(super) dir: PathBuf,
+    pub(super) filename: String,
+    pub(super) status: DownloadStatus,
+    pub(super) retry_count: u8,
+    pub(super) max_retries: u8,
+    pub(super) total_length: i64,
+    pub(super) completed_length: i64,
+    pub(super) download_speed: i64,
+    pub(super) waiters: Vec<DownloadWaiter>,
 }
 
 impl MonitorState {
-    pub(crate) fn has_key(&self, url: &str, dir: &str, filename: &str) -> bool {
+    pub(super) fn has_key(&self, url: &str, dir: &str, filename: &str) -> bool {
         self.url == url
             && self.dir.to_string_lossy() == dir
             && self.filename == filename
             && !self.status.is_terminal()
     }
 
-    pub(crate) fn update_progress(
+    pub(super) fn update_progress(
         &mut self,
         status: DownloadStatus,
         total_length: i64,
@@ -101,13 +118,13 @@ impl MonitorState {
         self.download_speed = download_speed;
     }
 
-    pub(crate) fn retry_with_gid(&mut self, gid: String, retry_count: u8) {
+    pub(super) fn retry_with_gid(&mut self, gid: String, retry_count: u8) {
         self.gid = gid;
         self.retry_count = retry_count;
         self.status = DownloadStatus::Pending;
     }
 
-    pub(crate) fn take_waiters(&mut self) -> Vec<DownloadWaiter> {
+    pub(super) fn take_waiters(&mut self) -> Vec<DownloadWaiter> {
         std::mem::take(&mut self.waiters)
     }
 }
@@ -130,6 +147,6 @@ impl Drop for DownloadManager {
     }
 }
 
-pub(crate) fn invalid_record(message: impl Into<String>) -> DownloadError {
+pub(super) fn invalid_record(message: impl Into<String>) -> DownloadError {
     DownloadError::InvalidRecord(message.into())
 }

@@ -7,14 +7,11 @@ use url::Url;
 use crate::error::{DownloadError, Result};
 
 /// 从 URL 文本中提取文件名。
-pub(crate) fn extract_filename_from_url(url: &str) -> Option<String> {
-    // 移除查询参数。
+pub(super) fn extract_filename_from_url(url: &str) -> Option<String> {
     let url_without_query = url.split('?').next()?;
 
-    // 提取路径的最后一部分。
     let filename = url_without_query.split('/').next_back()?;
 
-    // 文件名为空时返回 None。
     if filename.is_empty() {
         None
     } else {
@@ -22,7 +19,7 @@ pub(crate) fn extract_filename_from_url(url: &str) -> Option<String> {
     }
 }
 
-pub(crate) async fn validate_url(url: &str) -> Result<()> {
+pub(super) async fn validate_url(url: &str) -> Result<()> {
     let parsed = Url::parse(url).map_err(|error| DownloadError::InvalidUrl(error.to_string()))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(DownloadError::InvalidUrl(
@@ -52,7 +49,7 @@ pub(crate) async fn validate_url(url: &str) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
+pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
     let project_dir = tokio::fs::canonicalize(current_dir)
@@ -144,7 +141,7 @@ async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()
     Ok(())
 }
 
-pub(crate) fn sanitize_filename(filename: &str) -> Result<String> {
+pub(super) fn sanitize_filename(filename: &str) -> Result<String> {
     let sanitized = filename
         .chars()
         .filter(|character| {

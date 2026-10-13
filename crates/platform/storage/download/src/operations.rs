@@ -23,7 +23,21 @@ struct DownloadTarget<'a> {
 }
 
 impl DownloadManager {
-    /// 初始化 aria2、数据库，恢复未完成任务并启动唯一监控循环。
+    /// 初始化 aria2 与数据库，恢复未完成任务并启动监控循环。
+    ///
+    /// # 示例
+    ///
+    /// ```no_run
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let manager = burncloud_download::DownloadManager::new().await?;
+    /// # drop(manager);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # 注意
+    ///
+    /// 此方法需要 Tokio 运行时，并会启动 aria2 服务。
     pub async fn new() -> Result<Self> {
         let db = Arc::new(burncloud_database_sys::DownloadDB::new().await?);
         let aria2 = Arc::new(quick_start().await?);
@@ -61,7 +75,25 @@ impl DownloadManager {
         Ok(manager)
     }
 
-    /// 下载指定 URL，并在任务完成后返回最终文件路径。
+    /// 下载 HTTP 或 HTTPS 资源，并在任务完成后返回最终文件路径。
+    ///
+    /// # 示例
+    ///
+    /// ```no_run
+    /// # async fn example(
+    /// #     manager: &burncloud_download::DownloadManager,
+    /// # ) -> Result<(), Box<dyn std::error::Error>> {
+    /// let path = manager
+    ///     .download("https://example.com/model.gguf", "models")
+    ///     .await?;
+    /// println!("{}", path.display());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # 注意
+    ///
+    /// 下载目录必须位于项目的 `downloads` 子目录内；回环、私有和链路本地目标地址会被拒绝。
     pub async fn download(&self, url: &str, dir: &str) -> Result<PathBuf> {
         validate_url(url).await?;
         let filename = extract_filename_from_url(url)

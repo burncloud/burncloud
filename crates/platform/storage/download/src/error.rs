@@ -25,4 +25,4 @@ pub enum DownloadError {
     InvalidRecord(String),
 }
 
-pub(crate) type Result<T> = std::result::Result<T, DownloadError>;
+pub(super) type Result<T> = std::result::Result<T, DownloadError>;
