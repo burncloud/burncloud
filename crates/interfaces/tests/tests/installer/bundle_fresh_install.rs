@@ -8,7 +8,8 @@
     clippy::let_and_return,
     clippy::to_string_trait_impl,
     clippy::to_string_in_format_args,
-    clippy::redundant_pattern_matching
+    clippy::redundant_pattern_matching,
+    reason = "bundle install tests: an unwrap or expect failure is the intended failure signal, and the fixture types are intentionally plain"
 )]
 //! Bundle Fresh Install Test
 //!
@@ -17,7 +18,6 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Duration;
 
 /// Configuration for fresh install test
 struct FreshInstallTest {
@@ -116,8 +116,8 @@ impl FreshInstallTest {
     fn run_docker_test(&self) -> anyhow::Result<bool> {
         println!("🐳 Testing installation in fresh Docker container...");
 
-        let bundle_dir = test_temp_dir().join("bundles");
-        let cli_path = cli_binary_path();
+        let _bundle_dir = test_temp_dir().join("bundles");
+        let _cli_path = cli_binary_path();
 
         // Create Dockerfile for isolated test
         let dockerfile = self.generate_dockerfile();
@@ -293,7 +293,7 @@ fn cli_binary_path() -> PathBuf {
 
 fn test_temp_dir() -> PathBuf {
     let dir = std::env::temp_dir().join("burncloud-bundle-test");
-    let _ = std::fs::create_dir_all(&dir);
+    std::fs::create_dir_all(&dir).ok();
     dir
 }
 
