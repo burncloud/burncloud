@@ -71,8 +71,19 @@ impl DatabaseConnection {
         let options =
             AnyConnectOptions::from_str(database_url).map_err(DatabaseError::Connection)?;
 
+        let is_sqlite = database_url.starts_with("sqlite:");
         let pool = AnyPoolOptions::new()
             .max_connections(10)
+            .after_connect(move |connection, _metadata| {
+                Box::pin(async move {
+                    if is_sqlite {
+                        sqlx::query("PRAGMA busy_timeout=5000")
+                            .execute(&mut *connection)
+                            .await?;
+                    }
+                    Ok(())
+                })
+            })
             .connect_with(options)
             .await?;
 
@@ -354,4 +365,27 @@ fn create_directory_if_not_exists(path: &std::path::Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DatabaseConnection;
+
+    #[tokio::test]
+    async fn sqlite_connections_use_busy_timeout() {
+        sqlx::any::install_default_drivers();
+        let connection = match DatabaseConnection::new("sqlite::memory:").await {
+            Ok(connection) => connection,
+            Err(error) => panic!("create SQLite connection: {error}"),
+        };
+        let busy_timeout: i64 = match sqlx::query_scalar("PRAGMA busy_timeout")
+            .fetch_one(connection.pool())
+            .await
+        {
+            Ok(timeout) => timeout,
+            Err(error) => panic!("read SQLite busy_timeout: {error}"),
+        };
+
+        assert_eq!(busy_timeout, 5000);
+    }
 }

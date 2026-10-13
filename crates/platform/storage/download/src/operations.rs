@@ -1,109 +1,349 @@
-use burncloud_download_aria2::{quick_start, DownloadOptions};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use burncloud_download_aria2::{
+    quick_start, AddUriOutcome, Aria2Error, Aria2RpcClient, DownloadOptions,
+};
+use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::{DownloadError, Result};
-use crate::manager::DownloadManager;
-use crate::utils::extract_filename_from_url;
+use crate::manager::{
+    invalid_record, DownloadManager, DownloadStatus, DownloadWaiter, MonitorState, MAX_RETRIES,
+};
+use crate::monitor::monitor_loop;
+use crate::utils::{
+    extract_filename_from_url, normalize_download_dir, sanitize_filename, validate_url,
+};
+
+struct DownloadTarget<'a> {
+    url: &'a str,
+    directory: &'a str,
+    filename: &'a str,
+}
 
 impl DownloadManager {
+    /// 初始化 aria2、数据库，恢复未完成任务并启动唯一监控循环。
     pub async fn new() -> Result<Self> {
-        let aria2 = std::sync::Arc::new(quick_start().await?);
-        let db = std::sync::Arc::new(burncloud_database_sys::DownloadDB::new().await?);
-        let manager = Self { aria2, db };
-        manager.restore_incomplete_downloads().await?;
+        let db = Arc::new(burncloud_database_sys::DownloadDB::new().await?);
+        let aria2 = Arc::new(quick_start().await?);
+        let monitor_states = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+        let cancellation = CancellationToken::new();
+        let mut manager = Self {
+            aria2,
+            db,
+            monitor_states,
+            cancellation,
+            monitor: None,
+        };
+        if let Err(operation) = manager.restore_incomplete().await {
+            let cleanup = match Arc::get_mut(&mut manager.aria2) {
+                Some(aria2) => aria2.shutdown().await.map_err(|error| error.to_string()),
+                None => Err("aria2 管理器仍被其他任务引用".to_string()),
+            };
+            return match cleanup {
+                Ok(()) => Err(operation),
+                Err(cleanup) => Err(DownloadError::Compensation {
+                    operation: operation.to_string(),
+                    cleanup,
+                }),
+            };
+        }
+
+        let aria2 = Arc::clone(&manager.aria2);
+        let db = Arc::clone(&manager.db);
+        let states = Arc::clone(&manager.monitor_states);
+        let cancellation = manager.cancellation.clone();
+        manager.monitor = Some(tokio::spawn(async move {
+            monitor_loop(aria2, db, states, cancellation).await;
+        }));
+
         Ok(manager)
     }
 
-    pub async fn add_download(&self, url: &str, download_dir: Option<&str>) -> Result<String> {
-        let client = self.aria2.create_rpc_client().ok_or_else(|| {
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
-                "客户端未就绪".to_string(),
-            ))
-        })?;
+    /// 下载指定 URL，并在任务完成后返回最终文件路径。
+    pub async fn download(&self, url: &str, dir: &str) -> Result<PathBuf> {
+        validate_url(url).await?;
+        let filename = extract_filename_from_url(url)
+            .as_deref()
+            .map(sanitize_filename)
+            .transpose()?
+            .ok_or(DownloadError::InvalidFilename)?;
+        let directory = normalize_download_dir(dir).await?;
+        let directory_text = directory.to_string_lossy().into_owned();
 
-        let dir = download_dir.unwrap_or("./downloads").to_string();
-
-        // 从 URL 中提取文件名
-        let filename = extract_filename_from_url(url);
-
-        let options = DownloadOptions {
-            dir: Some(dir.clone()),
-            out: filename.clone(),
-            split: None,
-            max_connection_per_server: None,
-            continue_download: Some(true),
-            allow_overwrite: Some(true),     // 开启覆盖式下载
-            auto_file_renaming: Some(false), // 关闭文件自动重命名
+        let (sender, receiver) = oneshot::channel();
+        let sender = match self
+            .attach_waiter(url, &directory_text, &filename, sender)
+            .await
+        {
+            Ok(()) => return receive_result(receiver).await,
+            Err(sender) => sender,
         };
 
-        let uris = vec![url.to_string()];
-        let outcome = client.add_uri(uris.clone(), Some(options)).await?;
-        let gid = outcome.gid().to_string();
-        if outcome.is_created() {
-            self.db
-                .add(&gid, uris, Some(&dir), filename.as_deref())
-                .await?;
+        if let Some(record) = self
+            .db
+            .find_completed(url, &directory_text, &filename)
+            .await?
+        {
+            if let Some(path) = record.final_path {
+                return Ok(PathBuf::from(path));
+            }
         }
 
-        // 启动进度监控
-        self.start_progress_monitor(&gid).await;
-
-        Ok(gid)
+        self.start_or_join(url, directory, filename, sender).await?;
+        receive_result(receiver).await
     }
 
-    pub async fn get_status(&self, gid: &str) -> Result<burncloud_download_aria2::DownloadStatus> {
-        let client = self.aria2.create_rpc_client().ok_or_else(|| {
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
-                "客户端未就绪".to_string(),
-            ))
-        })?;
-
-        let status = client.tell_status(gid).await?;
-
-        // 同步状态到数据库
-        self.db.update_status(gid, &status.status).await?;
-        let total: i64 = status.total_length.parse().unwrap_or(0);
-        let completed: i64 = status.completed_length.parse().unwrap_or(0);
-        let speed: i64 = status.download_speed.parse().unwrap_or(0);
-        self.db
-            .update_progress(gid, total, completed, speed)
+    async fn start_or_join(
+        &self,
+        url: &str,
+        directory: PathBuf,
+        filename: String,
+        sender: DownloadWaiter,
+    ) -> Result<()> {
+        let client = self.rpc_client()?;
+        let directory_text = directory.to_string_lossy().into_owned();
+        let outcome = client
+            .add_uri(
+                vec![url.to_string()],
+                Some(download_options(&directory_text, &filename)),
+            )
+            .await?;
+        let gid = outcome.gid().to_string();
+        let db_id = self
+            .persist_task(
+                &client,
+                outcome,
+                &gid,
+                DownloadTarget {
+                    url,
+                    directory: &directory_text,
+                    filename: &filename,
+                },
+            )
             .await?;
 
-        Ok(status)
-    }
+        let mut states = self.monitor_states.lock().await;
+        if let Some(state) = states
+            .values_mut()
+            .find(|state| state.has_key(url, &directory_text, &filename))
+        {
+            state.waiters.push(sender);
+            return Ok(());
+        }
+        if let Some(state) = states.get_mut(&gid) {
+            if state.db_id != db_id
+                || state.url != url
+                || state.dir != directory
+                || state.filename != filename
+            {
+                return Err(invalid_record(format!(
+                    "aria2 GID {gid} is already registered to a different download"
+                )));
+            }
+            state.waiters.push(sender);
+            return Ok(());
+        }
 
-    pub async fn pause(&self, gid: &str) -> Result<()> {
-        let client = self.aria2.create_rpc_client().ok_or_else(|| {
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
-                "客户端未就绪".to_string(),
-            ))
-        })?;
-
-        client.pause(gid).await?;
-        self.db.update_status(gid, "paused").await?;
+        let state = MonitorState {
+            db_id,
+            gid: gid.clone(),
+            url: url.to_string(),
+            dir: directory,
+            filename,
+            status: DownloadStatus::Pending,
+            retry_count: 0,
+            max_retries: MAX_RETRIES,
+            total_length: 0,
+            completed_length: 0,
+            download_speed: 0,
+            waiters: vec![sender],
+        };
+        states.insert(gid, state);
         Ok(())
     }
 
-    pub async fn resume(&self, gid: &str) -> Result<()> {
-        let client = self.aria2.create_rpc_client().ok_or_else(|| {
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
-                "客户端未就绪".to_string(),
-            ))
-        })?;
+    async fn persist_task(
+        &self,
+        client: &Aria2RpcClient,
+        outcome: AddUriOutcome,
+        gid: &str,
+        target: DownloadTarget<'_>,
+    ) -> Result<i64> {
+        let DownloadTarget {
+            url,
+            directory,
+            filename,
+        } = target;
+        match outcome {
+            AddUriOutcome::Created(_) => {
+                match self.db.insert_task(gid, url, directory, filename).await {
+                    Ok(id) => Ok(id),
+                    Err(error) => match client.remove(gid).await {
+                        Ok(_) => Err(error.into()),
+                        Err(cleanup) => Err(DownloadError::Compensation {
+                            operation: error.to_string(),
+                            cleanup: cleanup.to_string(),
+                        }),
+                    },
+                }
+            }
+            AddUriOutcome::Existing(_) => {
+                if let Some(record) = self.db.get_by_gid(gid).await? {
+                    return Ok(record.id);
+                }
+                match self.db.insert_task(gid, url, directory, filename).await {
+                    Ok(id) => Ok(id),
+                    Err(insert_error) => self
+                        .db
+                        .get_by_gid(gid)
+                        .await?
+                        .map(|record| record.id)
+                        .ok_or(insert_error.into()),
+                }
+            }
+        }
+    }
 
-        client.unpause(gid).await?;
-        self.db.update_status(gid, "active").await?;
+    async fn attach_waiter(
+        &self,
+        url: &str,
+        dir: &str,
+        filename: &str,
+        sender: DownloadWaiter,
+    ) -> std::result::Result<(), DownloadWaiter> {
+        let mut states = self.monitor_states.lock().await;
+        if let Some(state) = states
+            .values_mut()
+            .find(|state| state.has_key(url, dir, filename))
+        {
+            state.waiters.push(sender);
+            Ok(())
+        } else {
+            Err(sender)
+        }
+    }
+
+    async fn restore_incomplete(&mut self) -> Result<()> {
+        let records = self.db.list_incomplete().await?;
+        let client = self.rpc_client()?;
+
+        for record in records {
+            let url = match record.url.clone() {
+                Some(url) if !url.is_empty() => url,
+                _ => serde_json::from_str::<Vec<String>>(&record.uris)
+                    .map_err(|error| {
+                        invalid_record(format!("任务 {} 的 URI 数据无效：{error}", record.id))
+                    })?
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| invalid_record(format!("任务 {} 缺少有效 URL", record.id)))?,
+            };
+            let saved_dir = record
+                .download_dir
+                .as_deref()
+                .filter(|dir| !dir.is_empty())
+                .unwrap_or("downloads");
+            let directory = normalize_download_dir(saved_dir).await?;
+            let directory_text = directory.to_string_lossy().into_owned();
+            let filename = record
+                .filename
+                .as_deref()
+                .filter(|filename| !filename.is_empty())
+                .map(sanitize_filename)
+                .transpose()?
+                .or_else(|| extract_filename_from_url(&url))
+                .ok_or_else(|| invalid_record(format!("任务 {} 缺少有效文件名", record.id)))?;
+            let retry_count = u8::try_from(record.retry_count)
+                .map_err(|_| invalid_record(format!("任务 {} 的重试次数无效", record.id)))?;
+            let mut gid = record.gid.clone();
+
+            if let Err(error) = client.tell_status(&gid).await {
+                tracing::warn!(
+                    db_id = record.id,
+                    old_gid = %gid,
+                    error = %error,
+                    "aria2 中找不到已保存任务，尝试重建"
+                );
+                let outcome = client
+                    .add_uri(
+                        vec![url.clone()],
+                        Some(download_options(&directory_text, &filename)),
+                    )
+                    .await?;
+                gid = outcome.gid().to_string();
+                if let Err(error) = self
+                    .db
+                    .update_gid_by_id(record.id, &gid, i64::from(retry_count))
+                    .await
+                {
+                    if outcome.is_created() {
+                        return match client.remove(&gid).await {
+                            Ok(_) => Err(error.into()),
+                            Err(cleanup) => Err(DownloadError::Compensation {
+                                operation: error.to_string(),
+                                cleanup: cleanup.to_string(),
+                            }),
+                        };
+                    }
+                    return Err(error.into());
+                }
+            }
+
+            let status = DownloadStatus::from_aria2(&record.status).ok_or_else(|| {
+                invalid_record(format!(
+                    "任务 {} 的数据库状态无效：{}",
+                    record.id, record.status
+                ))
+            })?;
+            let state = MonitorState {
+                db_id: record.id,
+                gid: gid.clone(),
+                url,
+                dir: directory,
+                filename,
+                status,
+                retry_count,
+                max_retries: MAX_RETRIES,
+                total_length: record.total_length.unwrap_or(0),
+                completed_length: record.completed_length.unwrap_or(0),
+                download_speed: record.download_speed.unwrap_or(0),
+                waiters: Vec::new(),
+            };
+            let previous = self.monitor_states.lock().await.insert(gid.clone(), state);
+            if previous.is_some() {
+                return Err(invalid_record(format!("数据库中存在重复 aria2 GID：{gid}")));
+            }
+        }
         Ok(())
     }
 
-    pub async fn remove(&self, gid: &str) -> Result<()> {
-        let client = self.aria2.create_rpc_client().ok_or_else(|| {
-            DownloadError::Aria2(burncloud_download_aria2::Aria2Error::RpcError(
-                "客户端未就绪".to_string(),
-            ))
-        })?;
+    fn rpc_client(&self) -> Result<Aria2RpcClient> {
+        self.aria2
+            .create_rpc_client()
+            .ok_or_else(|| Aria2Error::RpcError("aria2 RPC 客户端未就绪".to_string()).into())
+    }
+}
 
-        client.remove(gid).await?;
-        self.db.delete(gid).await?;
-        Ok(())
+fn download_options(dir: &str, filename: &str) -> DownloadOptions {
+    DownloadOptions {
+        dir: Some(dir.to_string()),
+        out: Some(filename.to_string()),
+        split: None,
+        max_connection_per_server: None,
+        continue_download: Some(true),
+        allow_overwrite: Some(true),
+        auto_file_renaming: Some(false),
+    }
+}
+
+async fn receive_result(
+    receiver: oneshot::Receiver<std::result::Result<PathBuf, String>>,
+) -> Result<PathBuf> {
+    match receiver.await {
+        Ok(Ok(path)) => Ok(path),
+        Ok(Err(error)) => Err(DownloadError::Failed(error)),
+        Err(_) => Err(DownloadError::NotificationClosed),
     }
 }

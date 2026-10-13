@@ -93,6 +93,10 @@ pub struct DownloadOptions {
 pub struct DownloadStatus {
     pub gid: String,
     pub status: String,
+    #[serde(rename = "errorCode")]
+    pub error_code: Option<String>,
+    #[serde(rename = "errorMessage")]
+    pub error_message: Option<String>,
     #[serde(rename = "totalLength")]
     pub total_length: String,
     #[serde(rename = "completedLength")]
