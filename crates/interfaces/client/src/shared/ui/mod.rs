@@ -524,6 +524,29 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .admin-revenue-tokens { color: #374151; }
 .admin-revenue-payout { color: #4b5563; }
 .admin-revenue-net, .admin-revenue-margin { color: #047857; font-weight: 700; }
+.admin-settlements-stack { display: flex; min-width: 0; flex-direction: column; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-settlements-header { margin-bottom: 16px; }
+.admin-settlements-conclusion { margin: 0 0 28px; }
+.admin-settlements-panel.panel { padding: 24px; overflow: hidden; }
+.admin-settlements-panel-heading { display: flex; flex-direction: column; gap: 3px; }
+.admin-settlements-panel-heading h2 { margin: 0; color: #111827; font: 700 16px/22px var(--sans); }
+.admin-settlements-panel-heading p { margin: 0; color: #6b7280; font: 400 12px/16px var(--sans); }
+.admin-settlements-table-scroll { width: 100%; margin-top: 20px; overflow-x: auto; }
+.admin-settlements-table { width: 100%; min-width: 1080px; border-collapse: collapse; table-layout: auto; text-align: left; font: 400 12px/16px var(--mono); }
+.admin-settlements-table-head tr { border-bottom: 1px solid #f3f4f6; }
+.admin-settlements-table-head th { padding: 0 12px 12px 0; border: 0; color: #9ca3af; font: 600 10px/14px var(--mono); text-transform: uppercase; white-space: nowrap; }
+.admin-settlements-table-head th:last-child { width: 180px; padding-right: 0; text-align: right; }
+.admin-settlements-table td { padding: 14px 12px 14px 0; border: 0; color: #4b5563; vertical-align: middle; white-space: nowrap; }
+.admin-settlements-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+.admin-settlements-table tbody tr:last-child { border-bottom: 0; }
+.admin-settlements-table tbody tr:hover { background: rgba(249,250,251,.82); }
+.admin-settlements-id, .admin-settlements-payout { color: #111827 !important; font-weight: 700 !important; }
+.admin-settlements-period, .admin-settlements-tokens { color: #6b7280 !important; }
+.admin-settlements-suppliers { color: #374151 !important; }
+.admin-settlements-payout { font-family: var(--mono) !important; }
+.admin-settlements-action { padding-right: 0 !important; text-align: right; }
+.admin-settlements-approve { min-height: 30px; padding: 6px 10px; font-size: 11px; }
+.admin-settlements-completed { color: #9ca3af; font: 400 11px/16px var(--mono); }
 .admin-overview-stack { display: flex; flex-direction: column; gap: 28px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
 .admin-overview-header { margin-bottom: -12px; }
 .admin-overview-actions { gap: 10px; }
@@ -942,6 +965,10 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
     .admin-revenue-export { align-self: flex-start; flex: 0 0 auto; }
     .admin-revenue-metrics .metric-card { padding: 20px; }
     .admin-revenue-panel.panel { padding: 20px 16px 8px; }
+}
+@media (max-width: 639px) {
+    .admin-settlements-panel.panel { padding: 20px 16px 8px; }
+    .admin-settlements-table { min-width: 1080px; }
 }
 @media (max-width: 639px) { .supplier-page-header-row { align-items: flex-start; } .supplier-page-header .page-heading-copy { min-width: 0; } .supplier-page-actions { flex: 0 0 auto; } .supplier-cluster-alert { padding: 16px; } .supplier-nodes-panel { padding: 20px 16px 8px; } .supplier-node-table { min-width: 820px; } .supplier-install-modal { padding: 20px; } }
 @media (max-width: 639px) { .supplier-resource-grid { grid-template-columns: 1fr; gap: 14px; } .supplier-resource-card { padding: 20px; } .supplier-resource-card-header { gap: 10px; } .supplier-resource-name-row { align-items: flex-start; flex-direction: column; gap: 4px; } .supplier-resource-earnings { font-size: 14px; line-height: 20px; } .supplier-drain-modal { padding: 20px; } }
