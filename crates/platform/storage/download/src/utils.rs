@@ -6,17 +6,18 @@ use url::Url;
 
 use crate::error::{DownloadError, Result};
 
-/// 从 URL 文本中提取文件名。
+/// 从下载 URL 中提取仓库名，作为下载文件名。
 pub(super) fn extract_filename_from_url(url: &str) -> Option<String> {
-    let url_without_query = url.split('?').next()?;
+    let path = url.split('?').next()?;
+    let before_action = path
+        .split_once("/resolve/")
+        .map(|(before, _)| before)
+        .or_else(|| path.strip_suffix("/repo"))?;
 
-    let filename = url_without_query.split('/').next_back()?;
-
-    if filename.is_empty() {
-        None
-    } else {
-        Some(filename.to_string())
-    }
+    before_action
+        .rsplit('/')
+        .find(|segment| !segment.is_empty())
+        .map(str::to_string)
 }
 
 pub(super) async fn validate_url(url: &str) -> Result<()> {
@@ -248,48 +249,5 @@ fn is_non_public_ipv6(address: Ipv6Addr) -> bool {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    reason = "测试地址均为固定有效字面量，expect 仅用于构造测试输入"
-)]
-mod tests {
-    use super::{extract_filename_from_url, is_non_public_address, sanitize_filename};
-    use std::net::IpAddr;
-
-    #[test]
-    fn extracts_filename_without_query() {
-        assert_eq!(
-            extract_filename_from_url("https://example.invalid/path/model.gguf?token=x").as_deref(),
-            Some("model.gguf")
-        );
-        assert_eq!(
-            extract_filename_from_url("https://example.invalid/path/"),
-            None
-        );
-    }
-
-    #[test]
-    fn sanitizes_path_separators_and_windows_device_names() {
-        assert!(matches!(
-            sanitize_filename("../model\\file.gguf"),
-            Ok(name) if name == "..modelfile.gguf"
-        ));
-        assert!(matches!(
-            sanitize_filename("CON.txt"),
-            Ok(name) if name == "_CON.txt"
-        ));
-        assert!(sanitize_filename("...").is_err());
-    }
-
-    #[test]
-    fn rejects_non_public_ip_ranges() {
-        for address in ["127.0.0.1", "10.1.2.3", "169.254.1.1", "::1", "fc00::1"] {
-            let address = address.parse::<IpAddr>().expect("valid test address");
-            assert!(is_non_public_address(&address), "{address}");
-        }
-        for address in ["8.8.8.8", "2606:4700:4700::1111"] {
-            let address = address.parse::<IpAddr>().expect("valid test address");
-            assert!(!is_non_public_address(&address), "{address}");
-        }
-    }
-}
+#[path = "../tests/support/utils.rs"]
+mod tests;

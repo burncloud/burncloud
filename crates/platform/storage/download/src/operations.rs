@@ -288,8 +288,10 @@ impl DownloadManager {
                 .as_deref()
                 .filter(|filename| !filename.is_empty())
                 .map(sanitize_filename)
+                .or_else(|| {
+                    extract_filename_from_url(&url).map(|filename| sanitize_filename(&filename))
+                })
                 .transpose()?
-                .or_else(|| extract_filename_from_url(&url))
                 .ok_or_else(|| invalid_record(format!("任务 {} 缺少有效文件名", record.id)))?;
             let retry_count = u8::try_from(record.retry_count)
                 .map_err(|_| invalid_record(format!("任务 {} 的重试次数无效", record.id)))?;
