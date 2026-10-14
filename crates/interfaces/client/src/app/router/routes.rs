@@ -3,6 +3,7 @@ use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
 use crate::domains::admin::demand::AdminDemand as AdminDemandPage;
 use crate::domains::admin::models::AdminModels as AdminModelsPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
+use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
@@ -260,7 +261,7 @@ pub fn AdminModels() -> Element {
 }
 #[component]
 pub fn AdminRevenue() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Platform Revenue".to_string(), role: Role::Admin } }
+    rsx! { AdminRevenuePage {} }
 }
 #[component]
 pub fn AdminSettlements() -> Element {

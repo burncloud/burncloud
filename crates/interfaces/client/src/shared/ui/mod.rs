@@ -494,6 +494,36 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .admin-models-status.status-warning { color: #92400e; }
 .admin-models-status.status-warning .status-label { color: #92400e; }
 .admin-models-status.status-warning .status-dot { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.15); }
+.admin-revenue-stack { display: flex; flex-direction: column; gap: 0; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-revenue-header { margin-bottom: 16px; }
+.admin-revenue-header .page-heading-copy h1 { line-height: 32px; }
+.admin-revenue-export { display: inline-flex; width: 36px; height: 34px; min-height: 34px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid rgba(229,231,235,.9); border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.03); color: #111827; cursor: pointer; transition: background 150ms,border-color 150ms,transform 100ms; }
+.admin-revenue-export:hover { border-color: #d1d5db; background: #f9fafb; }
+.admin-revenue-export:active { background: #f3f4f6; transform: scale(.98); }
+.admin-revenue-conclusion { margin: 0 0 52px; }
+.admin-revenue-metrics { gap: 16px; margin-bottom: 24px; }
+.admin-revenue-metrics .metric-card { min-height: 130px; padding: 24px; border-color: rgba(229,231,235,.8); border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.02); }
+.admin-revenue-metrics .metric-card:hover { border-color: rgba(209,213,219,.9); }
+.admin-revenue-metrics .metric-label { display: none; }
+.admin-revenue-metrics .metric-value-row { padding-top: 2px; }
+.admin-revenue-metrics .metric-value-row strong { font-size: 30px; }
+.admin-revenue-metrics .metric-subtitle { white-space: nowrap; }
+.admin-revenue-panel.panel { padding: 24px; overflow: hidden; }
+.admin-revenue-table-scroll { width: 100%; margin-top: 16px; overflow-x: auto; }
+.admin-revenue-table { width: 100%; border-collapse: collapse; table-layout: auto; font: 400 12px/16px var(--mono); text-align: left; }
+.admin-revenue-table-head { height: auto; }
+.admin-revenue-table-head tr { border-bottom: 1px solid #f3f4f6; }
+.admin-revenue-table-head th { height: auto; padding: 0 0 12px; border: 0; font: 600 10px/13.3333px var(--mono); }
+.admin-revenue-table td { padding: 14px 0; border-bottom: 0; vertical-align: middle; white-space: nowrap; }
+.admin-revenue-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+.admin-revenue-table tbody tr:last-child { border-bottom: 0; }
+.admin-revenue-table tbody tr:hover { background: rgba(249,250,251,.7); }
+.admin-revenue-table td:last-child { text-align: right; }
+.admin-revenue-model { color: #111827; font: 700 12px/16px var(--sans); }
+.admin-revenue-gmv { color: #030712; font-weight: 700; }
+.admin-revenue-tokens { color: #374151; }
+.admin-revenue-payout { color: #4b5563; }
+.admin-revenue-net, .admin-revenue-margin { color: #047857; font-weight: 700; }
 .admin-overview-stack { display: flex; flex-direction: column; gap: 28px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
 .admin-overview-header { margin-bottom: -12px; }
 .admin-overview-actions { gap: 10px; }
@@ -905,6 +935,13 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
     .admin-models-panel.panel { padding: 20px 16px; }
     .admin-models-table { min-width: 760px; font-size: 10px; }
     .admin-models-table-head th { font-size: 9px; }
+}
+@media (max-width: 639px) {
+    .admin-revenue-header { align-items: stretch; flex-direction: column; gap: 16px; }
+    .admin-revenue-header .page-heading-copy { min-width: 0; }
+    .admin-revenue-export { align-self: flex-start; flex: 0 0 auto; }
+    .admin-revenue-metrics .metric-card { padding: 20px; }
+    .admin-revenue-panel.panel { padding: 20px 16px 8px; }
 }
 @media (max-width: 639px) { .supplier-page-header-row { align-items: flex-start; } .supplier-page-header .page-heading-copy { min-width: 0; } .supplier-page-actions { flex: 0 0 auto; } .supplier-cluster-alert { padding: 16px; } .supplier-nodes-panel { padding: 20px 16px 8px; } .supplier-node-table { min-width: 820px; } .supplier-install-modal { padding: 20px; } }
 @media (max-width: 639px) { .supplier-resource-grid { grid-template-columns: 1fr; gap: 14px; } .supplier-resource-card { padding: 20px; } .supplier-resource-card-header { gap: 10px; } .supplier-resource-name-row { align-items: flex-start; flex-direction: column; gap: 4px; } .supplier-resource-earnings { font-size: 14px; line-height: 20px; } .supplier-drain-modal { padding: 20px; } }
