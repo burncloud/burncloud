@@ -55,41 +55,41 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
     let project_dir = tokio::fs::canonicalize(current_dir)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    let downloads_dir = project_dir.join("downloads");
-    tokio::fs::create_dir_all(&downloads_dir)
+    let models_dir = project_dir.join("models");
+    tokio::fs::create_dir_all(&models_dir)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    let downloads_dir = tokio::fs::canonicalize(downloads_dir)
+    let models_dir = tokio::fs::canonicalize(models_dir)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    if !downloads_dir.starts_with(&project_dir) {
+    if !models_dir.starts_with(&project_dir) {
         return Err(DownloadError::InvalidDirectory(
-            "项目 downloads 目录不能指向项目目录之外".to_string(),
+            "项目 models 目录不能指向项目目录之外".to_string(),
         ));
     }
 
     let requested = Path::new(dir);
-    let starts_at_downloads = requested
+    let starts_at_models = requested
         .components()
         .next()
-        .is_some_and(|component| component.as_os_str() == "downloads");
+        .is_some_and(|component| component.as_os_str() == "models");
     let candidate = if requested.is_absolute() {
         requested.to_path_buf()
-    } else if starts_at_downloads {
+    } else if starts_at_models {
         project_dir.join(requested)
     } else {
-        downloads_dir.join(requested)
+        models_dir.join(requested)
     };
     if requested
         .components()
         .any(|component| matches!(component, Component::ParentDir))
-        || !candidate.starts_with(&downloads_dir)
+        || !candidate.starts_with(&models_dir)
     {
         return Err(DownloadError::InvalidDirectory(
-            "目录必须位于项目 downloads 子目录内".to_string(),
+            "目录必须位于项目 models 子目录内".to_string(),
         ));
     }
-    ensure_existing_path_inside(&downloads_dir, &candidate).await?;
+    ensure_existing_path_inside(&models_dir, &candidate).await?;
 
     tokio::fs::create_dir_all(&candidate)
         .await
@@ -97,17 +97,33 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
     let candidate = tokio::fs::canonicalize(candidate)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    if !candidate.starts_with(&downloads_dir) {
+    if !candidate.starts_with(&models_dir) {
         return Err(DownloadError::InvalidDirectory(
-            "目录解析后超出项目 downloads 子目录".to_string(),
+            "目录解析后超出项目 models 子目录".to_string(),
         ));
     }
     Ok(candidate)
 }
 
+pub(super) async fn existing_database_file(final_path: &str) -> Result<Option<PathBuf>> {
+    let path = PathBuf::from(final_path);
+    if !path.is_absolute() {
+        return Ok(None);
+    }
+
+    match tokio::fs::metadata(&path).await {
+        Ok(metadata) if metadata.is_file() => Ok(Some(path)),
+        Ok(_) => Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(DownloadError::Failed(format!(
+            "检查数据库下载文件失败：{error}"
+        ))),
+    }
+}
+
 async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()> {
     let relative = candidate.strip_prefix(root).map_err(|_| {
-        DownloadError::InvalidDirectory("目录必须位于项目 downloads 子目录内".to_string())
+        DownloadError::InvalidDirectory("目录必须位于项目 models 子目录内".to_string())
     })?;
     let mut current = root.to_path_buf();
     for component in relative.components() {
@@ -127,7 +143,7 @@ async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()
                     .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
                 if !resolved.starts_with(root) {
                     return Err(DownloadError::InvalidDirectory(
-                        "目录符号链接指向项目 downloads 子目录之外".to_string(),
+                        "目录符号链接指向项目 models 子目录之外".to_string(),
                     ));
                 }
             }
@@ -140,6 +156,10 @@ async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/support/database_file_path.rs"]
+mod database_file_path_tests;
 
 pub(super) fn sanitize_filename(filename: &str) -> Result<String> {
     let sanitized = filename

@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::{DownloadError, Result};
 use crate::manager::{DownloadStatus, MonitorState};
+use crate::utils::existing_database_file;
 
 pub(super) async fn monitor_loop(
     aria2: Arc<Aria2Manager>,
@@ -190,10 +191,67 @@ async fn complete_task(
         }
     }
     let final_path_text = final_path.to_string_lossy().into_owned();
-    db.mark_completed(snapshot.db_id, gid, &final_path_text, size.0, size.1)
-        .await?;
+    if let Err(error) = db
+        .mark_completed(snapshot.db_id, gid, &final_path_text, size.0, size.1)
+        .await
+    {
+        finish_failed(db, states, gid, format!("持久化下载完成状态失败：{error}")).await;
+        return Ok(());
+    }
+    let record = match db.get_by_gid(gid).await {
+        Ok(Some(record)) => record,
+        Ok(None) => {
+            finish_failed(
+                db,
+                states,
+                gid,
+                "数据库中找不到已完成的下载记录".to_string(),
+            )
+            .await;
+            return Ok(());
+        }
+        Err(error) => {
+            finish_failed(
+                db,
+                states,
+                gid,
+                format!("读取已完成的下载记录失败：{error}"),
+            )
+            .await;
+            return Ok(());
+        }
+    };
+    let database_path = match record.final_path.as_deref() {
+        Some(path) => match existing_database_file(path).await {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                finish_failed(
+                    db,
+                    states,
+                    gid,
+                    "数据库记录中的下载路径不是现存的绝对文件路径".to_string(),
+                )
+                .await;
+                return Ok(());
+            }
+            Err(error) => {
+                finish_failed(db, states, gid, error.to_string()).await;
+                return Ok(());
+            }
+        },
+        None => {
+            finish_failed(
+                db,
+                states,
+                gid,
+                "已完成的下载记录缺少最终文件路径".to_string(),
+            )
+            .await;
+            return Ok(());
+        }
+    };
     let waiters = take_waiters(states, gid).await;
-    notify_waiters(gid, waiters, Ok(final_path)).await;
+    notify_waiters(gid, waiters, Ok(database_path)).await;
     Ok(())
 }
 

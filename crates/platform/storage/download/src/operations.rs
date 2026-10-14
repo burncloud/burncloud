@@ -13,7 +13,8 @@ use crate::manager::{
 };
 use crate::monitor::monitor_loop;
 use crate::utils::{
-    extract_filename_from_url, normalize_download_dir, sanitize_filename, validate_url,
+    existing_database_file, extract_filename_from_url, normalize_download_dir, sanitize_filename,
+    validate_url,
 };
 
 struct DownloadTarget<'a> {
@@ -93,7 +94,8 @@ impl DownloadManager {
     ///
     /// # 注意
     ///
-    /// 下载目录必须位于项目的 `downloads` 子目录内；回环、私有和链路本地目标地址会被拒绝。
+    /// 成功时返回数据库记录中的绝对文件路径，并确认该文件仍存在。
+    /// 下载目录必须位于项目的 `models` 子目录内；回环、私有和链路本地目标地址会被拒绝。
     pub async fn download(&self, url: &str, dir: &str) -> Result<PathBuf> {
         validate_url(url).await?;
         let filename = extract_filename_from_url(url)
@@ -118,8 +120,10 @@ impl DownloadManager {
             .find_completed(url, &directory_text, &filename)
             .await?
         {
-            if let Some(path) = record.final_path {
-                return Ok(PathBuf::from(path));
+            if let Some(path) = record.final_path.as_deref() {
+                if let Some(path) = existing_database_file(path).await? {
+                    return Ok(path);
+                }
             }
         }
 
@@ -276,7 +280,7 @@ impl DownloadManager {
                 .download_dir
                 .as_deref()
                 .filter(|dir| !dir.is_empty())
-                .unwrap_or("downloads");
+                .unwrap_or("models");
             let directory = normalize_download_dir(saved_dir).await?;
             let directory_text = directory.to_string_lossy().into_owned();
             let filename = record
