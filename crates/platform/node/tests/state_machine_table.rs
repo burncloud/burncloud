@@ -8,7 +8,7 @@
 //! `tests/state.rs` and `tests/reconciler.rs` already cover the properties the plan names one at a time -- the
 //! golden path, that a spawned process does not prove readiness, that `Ready` and `Routable` cannot be claimed
 //! without their evidence, and that failures can retry. What is missing is the **whole table**: `can_transition_to`
-//! has 11 states and therefore 121 ordered pairs, and only a handful are exercised.
+//! has 12 states and therefore 144 ordered pairs, and only a handful are exercised.
 //!
 //! The states and the expected edges are written out **independently** here, transcribed from `state.rs`'s
 //! documentation of its own behaviour rather than derived from the `matches!` arm list, so a change to that list
@@ -105,7 +105,7 @@ fn the_transition_table_has_exactly_the_expected_edges() {
     assert_eq!(
         ALL_STATES.len(),
         12,
-        "the enum has 11 variants; if this fails, a variant was added and `ALL_STATES` must be extended or the \
+        "the enum has 12 variants; if this fails, a variant was added and `ALL_STATES` must be extended or the \
          table below is no longer exhaustive"
     );
 
@@ -154,7 +154,7 @@ fn the_transition_table_has_exactly_the_expected_edges() {
 #[test]
 fn a_state_never_transitions_to_itself() {
     // Reflexivity would make the rail unfalsifiable: a stage that "advanced" to where it already was would
-    // report progress without doing anything, and the reconciler would loop. Checked over all 11 rather than on a
+    // report progress without doing anything, and the reconciler would loop. Checked over all 12 rather than on a
     // sample.
     for state in ALL_STATES {
         assert!(
@@ -467,8 +467,13 @@ fn a_refused_transition_leaves_the_machine_where_it_was() {
                     }
                 }
                 if !reached || machine.state() != from {
-                    // Not every state is on the forward rail (the two failures and LocalUnsupported are not), so
-                    // the illegal pairs from those are covered by the direct construction below instead.
+                    // The walker above breaks **before** applying the step into `from` (the `reached` flag is
+                    // set on the same iteration that breaks), so the machine never arrives at `from` and this
+                    // guard holds for every source state except `Absent`. Only the `Absent` row is therefore
+                    // asserted here -- 11 of the 121 illegal pairs. The other 110, including all pairs from
+                    // the two failures and `LocalUnsupported`, are asserted in
+                    // `state_machine_table_completeness.rs`. (An earlier revision of this comment claimed
+                    // those pairs were covered by a "direct construction below" that did not exist.)
                     continue;
                 }
             }

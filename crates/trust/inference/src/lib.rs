@@ -62,13 +62,8 @@ impl InferenceService {
     /// 启动一个推理实例
     pub async fn start_instance(&self, db: &Database, config: InferenceConfig) -> Result<()> {
         // 1. 检查是否已经在运行
-        {
-            let statuses = self.statuses.lock().await;
-            if let Some(status) = statuses.get(&config.model_id) {
-                if *status == InstanceStatus::Running || *status == InstanceStatus::Starting {
-                    return Ok(()); // Already running
-                }
-            }
+        if self.is_running_or_starting(&config.model_id).await {
+            return Ok(()); // Already running
         }
 
         // 2. 更新状态为 Starting
@@ -113,11 +108,8 @@ impl InferenceService {
                             .await;
                     }
                     Err(e) => {
-                        // 健康检查失败，移除进程并标记为 Failed
-                        processes.remove(&config.model_id);
-                        self.set_status(&config.model_id, InstanceStatus::Failed(e.to_string()))
-                            .await;
-                        return Err(e);
+                        let child = processes.remove(&config.model_id);
+                        return self.abandon_failed_start(&config.model_id, child, e).await;
                     }
                 }
 
@@ -131,6 +123,65 @@ impl InferenceService {
                 self.set_status(&config.model_id, InstanceStatus::Failed(err_msg.clone()))
                     .await;
                 Err(InferenceError::ProcessSpawnFailed(err_msg))
+            }
+        }
+    }
+
+    /// 判断实例是否已经在运行或正在启动。
+    ///
+    /// 单独成函数只为把 `start_instance` 的嵌套深度压下来；行为与内联写法完全一致。
+    async fn is_running_or_starting(&self, model_id: &str) -> bool {
+        let statuses = self.statuses.lock().await;
+        matches!(
+            statuses.get(model_id),
+            Some(InstanceStatus::Running) | Some(InstanceStatus::Starting)
+        )
+    }
+
+    /// 健康检查失败后的收尾：终止已经启动的子进程、标记 `Failed`、并把**原始**健康检查错误
+    /// 原样返回给调用方。
+    ///
+    /// `child` 由调用方在持有 `processes` 锁时摘出后传入——本函数不再去取那把锁，否则会自锁。
+    /// 先摘出来再终止是有意的：`kill()`/`wait()` 都是 await 点，进程不能在这期间仍可从
+    /// `processes` 取到。kill 失败只记日志，绝不用它替换调用方真正关心的失败原因（#886 AC1）。
+    async fn abandon_failed_start(
+        &self,
+        model_id: &str,
+        child: Option<Child>,
+        error: InferenceError,
+    ) -> Result<()> {
+        if let Some(child) = child {
+            Self::kill_and_reap(model_id, child).await;
+        }
+        self.set_status(model_id, InstanceStatus::Failed(error.to_string()))
+            .await;
+        Err(error)
+    }
+
+    /// 终止一个已经不可用的子进程并回收它。
+    ///
+    /// 只在健康检查失败之后调用（#886）。`Child` 默认**不会**在 drop 时结束子进程——tokio 只有
+    /// 在显式设置 `kill_on_drop(true)` 时才那样做——所以「把句柄从 map 里摘掉然后 drop」会把
+    /// llama-server 留成孤儿：它继续占着端口和显存，而调用方已经收到 `Err`。
+    ///
+    /// `kill()` 之后必须 `wait()`：不为退出码，而是因为 tokio 的 `kill()` 把「进程不存在」
+    /// （`ESRCH`）也当作成功，只有 `wait()` 能确认它确实被回收、不会留下僵尸。
+    ///
+    /// kill 失败**不得**掩盖调用方真正关心的失败原因（健康检查超时），因此这里只记日志并返回
+    /// `()`。这种情况下**不会**再调用 `wait()`：那会一直阻塞在一个仍然存活的进程上。
+    async fn kill_and_reap(model_id: &str, mut child: Child) {
+        match child.kill().await {
+            Ok(()) => {
+                if let Err(e) = child.wait().await {
+                    tracing::warn!("Failed to reap inference process for {}: {}", model_id, e);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to kill inference process for {} after a failed health check: {}",
+                    model_id,
+                    e
+                );
             }
         }
     }

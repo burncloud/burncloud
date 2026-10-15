@@ -1,8 +1,9 @@
 //! Commerce Billing domain implementation.
 //!
 //! Owns billing price persistence, price caching, usage normalization, token
-//! counting, and request cost calculation. Raw Traffic request logs and
-//! Identity credential quota state remain outside this crate.
+//! counting, and request cost calculation, plus the schema-backed monthly quota
+//! plan and subscription types. Raw Traffic request logs and Identity credential
+//! quota state remain outside this crate.
 
 mod repository;
 
@@ -19,6 +20,7 @@ pub mod cache;
 pub mod calculator;
 pub mod counter;
 pub mod error;
+pub mod quota;
 pub mod types;
 #[expect(
     clippy::allow_attributes_without_reason,
@@ -30,6 +32,10 @@ pub use cache::PriceCache;
 pub use calculator::{CostCalculator, RequestOptions};
 pub use counter::UnifiedTokenCounter;
 pub use error::{BillingError, ParseError};
+pub use quota::{
+    BillingMode, BillingPlan, BillingPlanInput, BillingPlanRow, BillingSubscription,
+    BillingSubscriptionRow, SubscriptionStatus, SubscriptionStatusResponse, UnknownValueError,
+};
 pub use repository::{current_timestamp, BillingPriceModel, BillingTieredPriceModel};
 pub use types::{CostBreakdown, CostResult, UnifiedUsage};
 pub use usage::{get_parser, parse_chunk_or_default, parse_response_or_default, UsageParser};

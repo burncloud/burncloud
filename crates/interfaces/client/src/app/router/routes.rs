@@ -1,5 +1,6 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
 use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
+use crate::domains::admin::demand::AdminDemand as AdminDemandPage;
 use crate::domains::admin::models::AdminModels as AdminModelsPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
 use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
@@ -254,7 +255,7 @@ pub fn AdminCapacity() -> Element {
 }
 #[component]
 pub fn AdminDemand() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Token Demand".to_string(), role: Role::Admin } }
+    rsx! { AdminDemandPage {} }
 }
 #[component]
 pub fn AdminModels() -> Element {

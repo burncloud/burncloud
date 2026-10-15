@@ -441,6 +441,30 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .admin-capacity-status { overflow: visible !important; color: #111827; font: 500 12px/16px var(--sans); letter-spacing: -.025em; }
 .admin-capacity-status-degraded { color: #92400e; }
 .admin-capacity-status-degraded .status-dot { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.15); }
+.admin-demand-stack { display: flex; flex-direction: column; gap: 0; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-demand-header { margin-bottom: 16px; }
+.admin-demand-conclusion { margin: 0 0 28px; }
+.admin-demand-metrics { gap: 16px; margin-bottom: 24px; }
+.admin-demand-metrics .metric-card { min-height: 130px; padding: 24px; border-color: rgba(229,231,235,.8); border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.02); }
+.admin-demand-metrics .metric-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.admin-demand-metrics .metric-value-row { padding-top: 2px; }
+.admin-demand-metrics .metric-value-row strong { font-size: 30px; }
+.admin-demand-metrics .metric-subtitle { white-space: normal; }
+.admin-demand-metrics .metric-subtitle:empty { display: none; }
+.admin-demand-panel.panel { min-height: 216px; padding: 24px; }
+.admin-demand-table-heading { margin-bottom: 0; }
+.admin-demand-table-scroll { width: 100%; margin-top: 16px; overflow-x: auto; }
+.admin-demand-table { width: 100%; min-width: 900px; border-collapse: collapse; table-layout: auto; font: 400 12px/16px var(--mono); text-align: left; }
+.admin-demand-table-head th { height: auto; padding: 0 0 12px; border: 0; color: #9ca3af; font: 600 10px/13.3333px var(--mono); letter-spacing: .04em; text-align: left; white-space: nowrap; }
+.admin-demand-table th:last-child { text-align: right; }
+.admin-demand-table td { padding: 14px 0; border-bottom: 0; vertical-align: middle; white-space: nowrap; }
+.admin-demand-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+.admin-demand-table tbody tr:last-child { border-bottom: 0; }
+.admin-demand-table tbody tr:hover { background: rgba(249,250,251,.82); }
+.admin-demand-tenant { color: #111827; font: 700 12px/16px var(--sans); }
+.admin-demand-tokens, .admin-demand-spend { color: #111827; font-weight: 600; }
+.admin-demand-model { color: #6b7280; font-family: var(--sans); }
+.admin-demand-model-spend { padding-right: 0; color: #047857; font-weight: 700; text-align: right; }
 .admin-models-stack { display: flex; flex-direction: column; gap: 0; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
 .admin-models-header { margin-bottom: 16px; }
 .admin-models-conclusion { margin: 0 0 28px; }
@@ -932,6 +956,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 @media (max-width: 639px) { .topbar { gap: 10px; } .autopilot { display: none; } .page-header { align-items: flex-start; flex-direction: column; } .page-viewport { padding: 24px; } .page-heading-copy h1 { font-size: 24px; line-height: 1.333333; } .page-heading-copy p { font-size: 14px; } .metric-grid { grid-template-columns: 1fr; gap: 14px; } .metric-card { min-height: 142px; padding: 20px; } .metric-value-row strong { font-size: 24px; } .attention { align-items: stretch; flex-direction: column; } .panel { padding: 24px; } .admin-overview-lower-grid { grid-template-columns: 1fr; gap: 14px; } .admin-overview-events-panel { padding: 20px 16px; } .admin-overview-metrics .metric-card { padding: 20px; } .admin-event-item { flex-direction: column; gap: 12px; } .admin-event-heading { align-items: flex-start; flex-wrap: wrap; } }
 @media (max-width: 639px) { .admin-supply-nodes-panel.panel { padding: 24px; } .admin-supply-table { min-width: 900px; } .admin-supply-metrics .metric-card { padding: 20px; } .admin-supply-metrics .metric-subtitle { overflow: visible; } }
 @media (max-width: 639px) { .admin-capacity-models-panel.panel { padding: 24px; } .admin-capacity-table { min-width: 900px; } .admin-capacity-metrics .metric-card { padding: 20px; } .admin-capacity-autopilot { align-self: flex-start; } }
+@media (max-width: 639px) { .admin-demand-panel.panel { padding: 20px 16px; } .admin-demand-table { min-width: 900px; } .admin-demand-metrics .metric-card { padding: 20px; } }
 @media (max-width: 1260px) {
     .admin-models-table { min-width: 0; font-size: 10px; table-layout: fixed; }
     .admin-models-table-head th { padding: 0 4px 8px; font-size: 9px; line-height: 12px; }

@@ -73,9 +73,7 @@ fn revenue_csv_contains_all_rows_and_escapes_fields() {
 
     let csv = to_csv(&model);
 
-    assert!(csv.starts_with(
-        "Model,Tokens,GMV,Supplier Payout,Platform Net Revenue,Net Margin\r\n"
-    ));
+    assert!(csv.starts_with("Model,Tokens,GMV,Supplier Payout,Platform Net Revenue,Net Margin\r\n"));
     assert_eq!(csv.lines().count(), 5);
     assert!(csv.contains("\"Model, \"\"special\"\"\""));
     assert!(csv.contains("\"$38,200\""));
