@@ -547,6 +547,28 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .admin-settlements-action { padding-right: 0 !important; text-align: right; }
 .admin-settlements-approve { min-height: 30px; padding: 6px 10px; font-size: 11px; }
 .admin-settlements-completed { color: #9ca3af; font: 400 11px/16px var(--mono); }
+.admin-customers-stack { display: flex; flex-direction: column; gap: 0; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-customers-header { margin-bottom: 16px; }
+.admin-customers-conclusion { margin: 0 0 28px; }
+.admin-customers-panel.panel { padding: 24px; }
+.admin-customers-panel-header h3, .admin-customers-panel-header p { margin: 0; }
+.admin-customers-panel-header h3 { color: #030712; font: 700 16px/24px var(--sans); }
+.admin-customers-panel-header p { margin-top: 0; color: #6b7280; font: 400 12px/16px var(--sans); }
+.admin-customers-table-scroll { width: 100%; margin-top: 16px; overflow-x: auto; }
+.admin-customers-table { width: 100%; min-width: 860px; border-collapse: collapse; table-layout: auto; font: 400 12px/16px var(--mono); text-align: left; }
+.admin-customers-table thead tr { border-bottom: 1px solid #f3f4f6; }
+.admin-customers-table th { padding: 0 0 12px; border: 0; color: #9ca3af; font: 600 10px/13.3333px var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.admin-customers-table td { padding: 14px 0; border-bottom: 0; vertical-align: middle; white-space: nowrap; }
+.admin-customers-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+.admin-customers-table tbody tr:last-child { border-bottom: 0; }
+.admin-customers-table tbody tr:hover { background: rgba(249,250,251,.82); }
+.admin-customers-name { color: #111827; font: 700 12px/16px var(--sans); }
+.admin-customers-email { color: #6b7280; font: 400 12px/16px var(--sans); }
+.admin-customers-keys { color: #374151; }
+.admin-customers-spend { color: #030712; font-weight: 700; }
+.admin-customers-balance { color: #047857; font-weight: 700; }
+.admin-customers-risk, .admin-customers-status { font-family: var(--sans); }
+.admin-customers-table td:last-child { padding-right: 0; text-align: right; }
 .admin-overview-stack { display: flex; flex-direction: column; gap: 28px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
 .admin-overview-header { margin-bottom: -12px; }
 .admin-overview-actions { gap: 10px; }
