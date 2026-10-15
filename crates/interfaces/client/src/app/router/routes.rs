@@ -1,7 +1,9 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
 use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
+use crate::domains::admin::customers::AdminCustomers as AdminCustomersPage;
 use crate::domains::admin::demand::AdminDemand as AdminDemandPage;
 use crate::domains::admin::models::AdminModels as AdminModelsPage;
+use crate::domains::admin::operations::AdminOperations as AdminOperationsPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
 use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
 use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
@@ -274,11 +276,11 @@ pub fn AdminSuppliers() -> Element {
 }
 #[component]
 pub fn AdminCustomers() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Enterprise Customers".to_string(), role: Role::Admin } }
+    rsx! { AdminCustomersPage {} }
 }
 #[component]
 pub fn AdminOperations() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Emergency Controls".to_string(), role: Role::Admin } }
+    rsx! { AdminOperationsPage {} }
 }
 #[component]
 pub fn AdminSettings() -> Element {
