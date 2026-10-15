@@ -1,21 +1,25 @@
-//! Post-migration data fixups and seed data initialisation.
+//! Post-migration data fixups.
 //!
 //! The DDL (CREATE TABLE / ALTER TABLE) that used to live here has been moved
 //! to versioned `.sql` files under `crates/platform/storage/database/migrations/` and is now
 //! executed by [`crate::migration::MigrationRunner`] before this module runs.
 //!
-//! This module is responsible for:
-//! 1. **Complex data migrations** — one-time data transformations that are too
-//!    dynamic for plain SQL files (e.g. conditional type coercions, table
-//!    renames with data copy).
-//! 2. **Seed data** — inserting the demo user/token and default protocol
-//!    configs when they don't yet exist.
+//! This module is responsible for **complex data migrations only** — one-time data
+//! transformations that are too dynamic for plain SQL files (e.g. conditional type
+//! coercions, table renames with data copy).
+//!
+//! Platform writes no domain rows itself. Default business records are seeded by their
+//! domain owners, which the application bootstrap calls after infrastructure initialization:
+//! the demo account and demo API key by `identity/user` (`UserDatabase::seed_demo_defaults`)
+//! and the default protocol configs by `supply/channel`
+//! (`ChannelProtocolConfigModel::seed_default_protocol_configs`). Keeping those writes with
+//! their owners is what holds the dependency direction one-way (see [`user`]).
 //!
 //! The implementation is split into domain sub-modules:
 //! - [`rename`] — full table rename data migrations (legacy → canonical names)
 //! - [`router`] — router_logs table fixups
 //! - [`price`]  — price table migrations and format conversions
-//! - [`user`]   — token schema migration, quota conversion and seed data
+//! - [`user`]   — token schema migration and quota conversion
 
 #[expect(
     clippy::cognitive_complexity,

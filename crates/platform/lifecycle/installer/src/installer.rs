@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::fs;
 use tracing::{info, warn};
 use zip::ZipArchive;
@@ -120,6 +121,13 @@ fn npm_install_command(platform: &Platform, args: &[String], current_path: &str)
     command.args(args).env("PATH", current_path);
     command
 }
+
+/// Prefix of the hidden, per-attempt staging roots an install writes into (#903).
+///
+/// The root is a sibling of the software directories rather than a `temp_dir()` path: publishing
+/// renames out of it into `install_dir/<software_id>`, and `rename` only stays atomic within one
+/// filesystem.
+const STAGING_ROOT_PREFIX: &str = ".install-staging-";
 
 /// Installer configuration
 #[derive(Debug, Clone)]
@@ -268,11 +276,150 @@ impl Installer {
         // Check dependencies
         self.check_dependencies(software).await?;
 
-        // Create directories
+        // Create directories. These are SHARED roots (`download_dir`, `install_dir`) that other
+        // installs and the download cache also use, and `install_dir` also holds the staging roots
+        // below, so no failure path in this method may remove either of them.
         fs::create_dir_all(&self.config.download_dir).await?;
         fs::create_dir_all(&self.config.install_dir).await?;
 
+        // #903: the attempt writes into a staging root of its own, never into
+        // `install_dir/<software_id>`. Everything it creates therefore sits under one directory
+        // that only this attempt removes -- which is what keeps a failed re-install from reaching
+        // the installation that already exists.
+        let staging_root = self.new_staging_root();
+        let staged = Installer::new(self.config.clone().with_install_dir(staging_root.clone()));
+
         // Execute installation based on method
+        let outcome = staged.run_install_method(software).await;
+        if let Err(error) = outcome {
+            // #896: a failed install must not leave the per-software tree behind, with no
+            // `.installed` marker to distinguish it from a real installation, so a retry could
+            // find half-written artifacts and `check_status` reported "not installed" over them.
+            // #903: and it must not remove what it did not create -- discarding the staging root is
+            // the entire rollback.
+            Self::discard_dir(&staging_root).await;
+            return Err(error);
+        }
+
+        // Publish, marker included: the staged tree replaces `install_dir/<software_id>` only now
+        // that the attempt has succeeded.
+        self.publish_staged_install(software_id, &staging_root)
+            .await?;
+
+        info!("Successfully installed {}", software.name);
+
+        // Update system PATH environment variable for        #[cfg(target_os = "windows")]
+        if let Err(e) = self.update_system_path() {
+            warn!("Failed to update system PATH: {}", e);
+        }
+
+        Ok(())
+    }
+
+    /// The staging root for one install attempt (#903).
+    ///
+    /// The suffix is per attempt -- the process id plus a process-local counter -- so two
+    /// concurrent attempts cannot discard each other's work, and a root left behind by an
+    /// interrupted run is never the path `check_status` reads: it cannot look like an installation.
+    fn new_staging_root(&self) -> PathBuf {
+        static ATTEMPT: AtomicU64 = AtomicU64::new(0);
+        let attempt = ATTEMPT.fetch_add(1, Ordering::Relaxed);
+        self.config.install_dir.join(format!(
+            "{prefix}{pid}-{attempt}",
+            prefix = STAGING_ROOT_PREFIX,
+            pid = std::process::id()
+        ))
+    }
+
+    /// Publish one successful attempt as `install_dir/<software_id>` (#903).
+    ///
+    /// The marker is written into the staged tree **before** the swap, so an installation that has
+    /// been published always carries it and a discarded staging tree never does.
+    ///
+    /// A previously installed directory is moved aside first: `rename` onto an existing non-empty
+    /// directory fails on POSIX, so publishing over an installation cannot be a single call. It is
+    /// parked *inside* the staging root, which also means discarding that root disposes of the
+    /// replaced installation once the new one is in place. If the swap itself fails, the parked
+    /// installation is put back before the root is discarded: a failed publish leaves the
+    /// installation that already existed exactly where it was.
+    async fn publish_staged_install(
+        &self,
+        software_id: &str,
+        staging_root: &Path,
+    ) -> InstallerResult<()> {
+        let staged = staging_root.join(software_id);
+        if let Err(error) = fs::create_dir_all(&staged).await {
+            Self::discard_dir(staging_root).await;
+            return Err(error.into());
+        }
+        // Installs that do not write into the per-software directory at all (a package manager,
+        // for instance) still publish an empty tree plus this marker, exactly as before.
+        let install_marker = staged.join(".installed");
+        if let Err(error) = fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await {
+            Self::discard_dir(staging_root).await;
+            return Err(error.into());
+        }
+
+        let target = self.config.install_dir.join(software_id);
+        let previous = staging_root.join("previous");
+
+        if target.exists() {
+            if let Err(error) = fs::rename(&target, &previous).await {
+                // The attempt's tree is still only in the staging root, so dropping it leaves the
+                // target where it was.
+                Self::discard_dir(staging_root).await;
+                return Err(InstallerError::FileSystem(format!(
+                    "could not set the previous installation of {software_id} aside at {}: {error}",
+                    previous.display()
+                )));
+            }
+        }
+
+        match fs::rename(&staged, &target).await {
+            Ok(()) => {
+                Self::discard_dir(staging_root).await;
+                Ok(())
+            }
+            Err(error) => {
+                if previous.exists() {
+                    if let Err(restore) = fs::rename(&previous, &target).await {
+                        warn!(
+                            "[cleanup] could not restore the previous installation of \
+                             {software_id} from {}: {restore}",
+                            previous.display()
+                        );
+                    }
+                }
+                Self::discard_dir(staging_root).await;
+                Err(InstallerError::FileSystem(format!(
+                    "could not publish the new installation of {software_id} to {}: {error}",
+                    target.display()
+                )))
+            }
+        }
+    }
+
+    /// Remove a staging root, best effort (#903).
+    ///
+    /// A removal failure is recorded rather than returned: the caller is either already reporting
+    /// the install failure or has a published installation to report, and replacing that with a
+    /// cleanup error would hide which of the two happened. What can remain is a hidden per-attempt
+    /// directory that no other path reads.
+    async fn discard_dir(root: &Path) {
+        match fs::remove_dir_all(root).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // Nothing was written before the failure; this is the common, clean case.
+            }
+            Err(error) => {
+                warn!("[cleanup] could not remove {}: {error}", root.display());
+            }
+        }
+    }
+
+    /// Dispatch one install method. Split out of `install()` so the failure branch there can clean
+    /// up without the dispatch's own `match` being restructured (#896).
+    async fn run_install_method(&self, software: &Software) -> InstallerResult<()> {
         match &software.install_method {
             InstallMethod::Script { url, shell } => {
                 self.install_via_script(software, url, shell).await?;
@@ -348,20 +495,6 @@ impl Installer {
             }
         }
 
-        // Create install marker
-        let install_marker = self.config.install_dir.join(software_id).join(".installed");
-        if let Some(parent) = install_marker.parent() {
-            fs::create_dir_all(parent).await?;
-        }
-        fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
-
-        info!("Successfully installed {}", software.name);
-
-        // Update system PATH environment variable for        #[cfg(target_os = "windows")]
-        if let Err(e) = self.update_system_path() {
-            warn!("Failed to update system PATH: {}", e);
-        }
-
         Ok(())
     }
 
@@ -401,10 +534,36 @@ impl Installer {
             self.check_dependencies(software).await?;
         }
 
-        // Create install directory
-        let install_dir = self.config.install_dir.join(software_id);
-        fs::create_dir_all(&install_dir).await?;
+        // #903: the offline path stages exactly like the online one, so a failed attempt here also
+        // leaves a previously successful installation alone.
+        fs::create_dir_all(&self.config.install_dir).await?;
+        let staging_root = self.new_staging_root();
+        let staging_dir = staging_root.join(software_id);
+        fs::create_dir_all(&staging_dir).await?;
 
+        // #896: anything created below must not survive a failure.
+        // This path is the one that can be driven to a real failure without the network (a corrupt
+        // archive), so it is what the regression test exercises.
+        if let Err(error) = self.populate_from_local(local_path, &staging_dir) {
+            Self::discard_dir(&staging_root).await;
+            return Err(error);
+        }
+
+        self.publish_staged_install(software_id, &staging_root)
+            .await?;
+
+        info!("Successfully installed {} from local file", software.name);
+        Ok(())
+    }
+
+    /// Populate an already-created install directory from a local artifact.
+    ///
+    /// Split out of `install_from_local` so that method can clean up after **any** failure with one
+    /// branch, instead of a `?` on each of the several failure sites below (#896).
+    ///
+    /// Takes no `Software`: none of the per-extension paths reads it, and keeping an unused
+    /// parameter would be dead weight the lints reject.
+    fn populate_from_local(&self, local_path: &Path, install_dir: &Path) -> InstallerResult<()> {
         // Determine file type and handle accordingly
         let extension = local_path
             .extension()
@@ -415,7 +574,7 @@ impl Installer {
         match extension.as_str() {
             "zip" => {
                 // Extract zip archive
-                self.extract_zip(local_path, &install_dir)?;
+                self.extract_zip(local_path, install_dir)?;
                 info!(
                     "Extracted {} to {}",
                     local_path.display(),
@@ -503,16 +662,13 @@ impl Installer {
                     .file_name()
                     .ok_or_else(|| InstallerError::FileSystem("Invalid file name".to_string()))?;
                 let dest_path = install_dir.join(file_name);
-                fs::copy(local_path, &dest_path).await?;
+                // `std::fs`, not the crate's `tokio::fs` alias: this helper is synchronous, like the
+                // `extract_zip` it sits beside, so no runtime is needed to reach it from a test.
+                std::fs::copy(local_path, &dest_path)?;
                 info!("Copied {} to {}", local_path.display(), dest_path.display());
             }
         }
 
-        // Create install marker
-        let install_marker = install_dir.join(".installed");
-        fs::write(&install_marker, chrono::Utc::now().to_rfc3339()).await?;
-
-        info!("Successfully installed {} from local file", software.name);
         Ok(())
     }
 
@@ -2096,6 +2252,250 @@ mod tests {
         assert!(
             target.join("nested").join("deep.txt").exists(),
             "and a nested one"
+        );
+    }
+
+    /// #896: a failed local install must not leave the directory it created behind.
+    ///
+    /// This drives a **real** failure through `install_from_local`: a `.zip` whose bytes are not an
+    /// archive is rejected by `extract_zip`, and that rejection happens *after* the install
+    /// directory was created -- which is exactly the shape of the defect. Nothing here needs the
+    /// network, starts a process or touches a real system directory.
+    ///
+    /// The assertion is on the filesystem, not on the returned error: asserting `is_err()` would
+    /// pass with the defect present, which the plan rules out.
+    #[tokio::test]
+    async fn a_failed_local_install_removes_the_directory_it_created() {
+        let root = TempRoot::new("failed_install_cleanup");
+
+        // `bundle_dir` is set so the dependency check is skipped: this test is about cleanup, and a
+        // dependency probe would shell out to `sh -c`, which tests here must not do.
+        let installer = Installer::new(
+            InstallerConfig::new()
+                .with_download_dir(root.path().join("downloads"))
+                .with_install_dir(root.path().join("install"))
+                .with_bundle_dir(Some(root.path().join("bundle"))),
+        );
+
+        let software_id = "fnm";
+        let install_dir = root.path().join("install").join(software_id);
+        assert!(
+            !install_dir.exists(),
+            "the test must start from an absent install directory"
+        );
+
+        let corrupt = write_zip(root.path(), "corrupt.zip", b"not an archive");
+
+        let outcome = installer.install_from_local(software_id, &corrupt).await;
+        assert!(
+            outcome.is_err(),
+            "a corrupt archive must fail the install: {outcome:?}"
+        );
+
+        // The whole tree, not just the file: a cleanup that only removed the last file would still
+        // leave the directory and any earlier artifact.
+        assert!(
+            !install_dir.exists(),
+            "a failed install left {} behind, so a retry would meet stale artifacts",
+            install_dir.display()
+        );
+
+        // The marker likewise must not exist, which the previous `create_dir_all` + `?` sequence
+        // could not have guaranteed either way.
+        assert!(
+            !install_dir.join(".installed").exists(),
+            "a failed install must not leave an install marker"
+        );
+
+        // The shared roots are deliberately kept: other installs and the download cache use them.
+        assert!(
+            root.path().join("install").is_dir(),
+            "the shared install root must survive; it is not this attempt's to remove"
+        );
+
+        // #903 AC3: the attempt's own staging root is gone too, so a retry cannot meet the remains
+        // of the failed one.
+        let staging = staging_roots(&root.path().join("install"));
+        assert!(
+            staging.is_empty(),
+            "a failed install must not leave its staging root behind: {staging:?}"
+        );
+    }
+
+    /// An installer that skips the dependency probe, which would shell out (see the #896 test).
+    fn offline_installer(root: &Path) -> Installer {
+        Installer::new(
+            InstallerConfig::new()
+                .with_download_dir(root.join("downloads"))
+                .with_install_dir(root.join("install"))
+                .with_bundle_dir(Some(root.join("bundle"))),
+        )
+    }
+
+    /// The staging roots left under `install_root` (#903). A finished attempt leaves none.
+    fn staging_roots(install_root: &Path) -> Vec<String> {
+        let mut found: Vec<String> = std::fs::read_dir(install_root)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .filter(|name| name.starts_with(STAGING_ROOT_PREFIX))
+                    .collect()
+            })
+            .unwrap_or_default();
+        found.sort();
+        found
+    }
+
+    /// Every file below `root` as `relative path -> contents` (#903).
+    ///
+    /// The re-install test compares the **whole** previous installation, contents included: an
+    /// assertion that only checked `.installed` would pass while the files the user actually runs
+    /// had been deleted.
+    fn tree_snapshot(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        let mut snapshot = std::collections::BTreeMap::new();
+        let mut pending = vec![root.to_path_buf()];
+        while let Some(dir) = pending.pop() {
+            let entries =
+                std::fs::read_dir(&dir).expect("a directory from the walk must be readable");
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    let relative = path
+                        .strip_prefix(root)
+                        .expect("a walked path is below the root")
+                        .to_string_lossy()
+                        .into_owned();
+                    let contents =
+                        std::fs::read(&path).expect("a snapshotted file must be readable");
+                    snapshot.insert(relative, contents);
+                }
+            }
+        }
+        snapshot
+    }
+
+    /// #903 AC1 -- **the error-detection case**: a failed re-install must not touch the
+    /// installation that is already there.
+    ///
+    /// A successful local install of a known file list runs first, then a corrupt archive makes a
+    /// second attempt fail. The assertions are on the filesystem, contents included: on
+    /// `b220f5b0` this test fails, because the failure branch deleted `install_dir/<software_id>`
+    /// together with the `.installed` marker the first attempt wrote. Asserting `is_err()` would
+    /// have passed with the defect present, which is why it is not the assertion here.
+    #[tokio::test]
+    async fn a_failed_reinstall_leaves_the_previous_installation_untouched() {
+        let root = TempRoot::new("reinstall_preserves_previous");
+        let installer = offline_installer(root.path());
+        let software_id = "fnm";
+        let install_root = root.path().join("install");
+        let install_dir = install_root.join(software_id);
+
+        // The first attempt: a real install, with a file list to compare against afterwards.
+        let good = write_zip(
+            root.path(),
+            "good.zip",
+            &raw_zip(&[
+                ("readme.txt", b"the first installation"),
+                ("bin/tool.txt", b"a known payload"),
+            ]),
+        );
+        installer
+            .install_from_local(software_id, &good)
+            .await
+            .expect("the first install must succeed, or the test proves nothing");
+        assert!(
+            install_dir.join(".installed").exists(),
+            "a successful install carries the marker"
+        );
+        let before = tree_snapshot(&install_dir);
+        assert_eq!(
+            before.len(),
+            3,
+            "the marker plus the two archive entries: {before:?}"
+        );
+
+        // The second attempt fails, and only after its staging directory already exists.
+        let corrupt = write_zip(root.path(), "corrupt.zip", b"not an archive");
+        let outcome = installer.install_from_local(software_id, &corrupt).await;
+        assert!(
+            outcome.is_err(),
+            "a corrupt archive must fail the install: {outcome:?}"
+        );
+
+        // The previous installation is still exactly what it was, marker included.
+        assert!(
+            install_dir.join(".installed").exists(),
+            "a failed re-install must not remove the previous install marker"
+        );
+        assert_eq!(
+            tree_snapshot(&install_dir),
+            before,
+            "a failed re-install must not change the installation that already existed"
+        );
+        let staging = staging_roots(&install_root);
+        assert!(
+            staging.is_empty(),
+            "the staging root must be gone after a failed attempt: {staging:?}"
+        );
+    }
+
+    /// #903 AC3 -- a successful re-install publishes the new tree and leaves no staging root.
+    ///
+    /// It also pins the replacement semantics the staged publish introduces: the installation is
+    /// exactly the archive that was installed, so a file only the *previous* installation had is
+    /// gone rather than merged. That is a deliberate, visible behaviour change -- a merged tree is
+    /// how a caller ends up running a binary from an older release.
+    #[tokio::test]
+    async fn a_successful_reinstall_replaces_the_tree_and_leaves_no_staging_root() {
+        let root = TempRoot::new("reinstall_replaces");
+        let installer = offline_installer(root.path());
+        let software_id = "fnm";
+        let install_root = root.path().join("install");
+        let install_dir = install_root.join(software_id);
+
+        let first = write_zip(
+            root.path(),
+            "first.zip",
+            &raw_zip(&[
+                ("readme.txt", b"the first installation"),
+                ("only-in-first.txt", b"stale"),
+            ]),
+        );
+        installer
+            .install_from_local(software_id, &first)
+            .await
+            .expect("the first install must succeed");
+
+        let second = write_zip(
+            root.path(),
+            "second.zip",
+            &raw_zip(&[("readme.txt", b"the second installation")]),
+        );
+        installer
+            .install_from_local(software_id, &second)
+            .await
+            .expect("the re-install must succeed");
+
+        assert_eq!(
+            std::fs::read(install_dir.join("readme.txt")).expect("readme.txt must exist"),
+            b"the second installation".to_vec(),
+            "the published tree is the archive that was installed"
+        );
+        assert!(
+            !install_dir.join("only-in-first.txt").exists(),
+            "the replaced installation must not be merged into the new one"
+        );
+        assert!(
+            install_dir.join(".installed").exists(),
+            "the published installation carries the marker"
+        );
+        let staging = staging_roots(&install_root);
+        assert!(
+            staging.is_empty(),
+            "no staging root may remain after a successful attempt: {staging:?}"
         );
     }
 

@@ -35,6 +35,10 @@ path = "tests/e2e_smoke.rs"
 name = "logging_test"
 path = "tests/logging_test.rs"
 
+[[test]]
+name = "bundle_fresh_install"
+path = "tests/installer/bundle_fresh_install.rs"
+
 [dev-dependencies]
 burncloud-router.workspace = true
 burncloud-server.workspace = true
