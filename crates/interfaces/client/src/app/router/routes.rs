@@ -1,6 +1,10 @@
 use super::console::{PlaceholderPage, PlaceholderPageWithRole};
 use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
+use crate::domains::admin::models::AdminModels as AdminModelsPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
+use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
+use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
+use crate::domains::admin::suppliers::page::AdminSuppliers as AdminSuppliersPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
@@ -254,19 +258,19 @@ pub fn AdminDemand() -> Element {
 }
 #[component]
 pub fn AdminModels() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Model Catalog".to_string(), role: Role::Admin } }
+    rsx! { AdminModelsPage {} }
 }
 #[component]
 pub fn AdminRevenue() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Platform Revenue".to_string(), role: Role::Admin } }
+    rsx! { AdminRevenuePage {} }
 }
 #[component]
 pub fn AdminSettlements() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Settlement Batches".to_string(), role: Role::Admin } }
+    rsx! { AdminSettlementsPage {} }
 }
 #[component]
 pub fn AdminSuppliers() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Supplier Accounts".to_string(), role: Role::Admin } }
+    rsx! { AdminSuppliersPage {} }
 }
 #[component]
 pub fn AdminCustomers() -> Element {
