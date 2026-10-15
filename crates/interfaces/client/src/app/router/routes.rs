@@ -6,6 +6,7 @@ use crate::domains::admin::models::AdminModels as AdminModelsPage;
 use crate::domains::admin::operations::AdminOperations as AdminOperationsPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
 use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
+use crate::domains::admin::settings::page::AdminSettings as AdminSettingsPage;
 use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
@@ -284,7 +285,7 @@ pub fn AdminOperations() -> Element {
 }
 #[component]
 pub fn AdminSettings() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Settings".to_string(), role: Role::Admin } }
+    rsx! { AdminSettingsPage {} }
 }
 #[component]
 pub fn NotFound(segments: Vec<String>) -> Element {
