@@ -34,6 +34,7 @@ pub struct DownloadManager {
     pub(super) aria2: Arc<Aria2Manager>,
     pub(super) db: Arc<burncloud_database_sys::DownloadDB>,
     pub(super) monitor_states: Arc<Mutex<HashMap<String, MonitorState>>>,
+    pub(super) start_lock: Arc<Mutex<()>>,
     pub(super) cancellation: CancellationToken,
     pub(super) monitor: Option<JoinHandle<()>>,
 }
@@ -150,3 +151,7 @@ impl Drop for DownloadManager {
 pub(super) fn invalid_record(message: impl Into<String>) -> DownloadError {
     DownloadError::InvalidRecord(message.into())
 }
+
+#[cfg(test)]
+#[path = "../tests/support/manager_state.rs"]
+mod manager_state_tests;

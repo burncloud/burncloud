@@ -48,6 +48,7 @@ impl DownloadManager {
             aria2,
             db,
             monitor_states,
+            start_lock: Arc::new(tokio::sync::Mutex::new(())),
             cancellation,
             monitor: None,
         };
@@ -95,7 +96,7 @@ impl DownloadManager {
     /// # 注意
     ///
     /// 成功时返回数据库记录中的绝对文件路径，并确认该文件仍存在。
-    /// 下载目录必须位于项目的 `models` 子目录内；回环、私有和链路本地目标地址会被拒绝。
+    /// 下载目录必须位于可执行文件同级的 `models` 子目录内；回环、私有和链路本地目标地址会被拒绝。
     pub async fn download(&self, url: &str, dir: &str) -> Result<PathBuf> {
         validate_url(url).await?;
         let filename = extract_filename_from_url(url)
@@ -106,28 +107,34 @@ impl DownloadManager {
         let directory = normalize_download_dir(dir).await?;
         let directory_text = directory.to_string_lossy().into_owned();
 
-        let (sender, receiver) = oneshot::channel();
-        let sender = match self
-            .attach_waiter(url, &directory_text, &filename, sender)
-            .await
-        {
-            Ok(()) => return receive_result(receiver).await,
-            Err(sender) => sender,
-        };
+        let receiver = {
+            let _start_guard = self.start_lock.lock().await;
+            let (sender, receiver) = oneshot::channel();
+            let (receiver, sender) = match self
+                .attach_waiter(url, &directory_text, &filename, sender)
+                .await
+            {
+                Ok(()) => (receiver, None),
+                Err(sender) => (receiver, Some(sender)),
+            };
 
-        if let Some(record) = self
-            .db
-            .find_completed(url, &directory_text, &filename)
-            .await?
-        {
-            if let Some(path) = record.final_path.as_deref() {
-                if let Some(path) = existing_database_file(path).await? {
-                    return Ok(path);
+            if let Some(sender) = sender {
+                if let Some(record) = self
+                    .db
+                    .find_completed(url, &directory_text, &filename)
+                    .await?
+                {
+                    if let Some(path) = record.final_path.as_deref() {
+                        if let Some(path) = existing_database_file(path).await? {
+                            return Ok(path);
+                        }
+                    }
                 }
-            }
-        }
 
-        self.start_or_join(url, directory, filename, sender).await?;
+                self.start_or_join(url, directory, filename, sender).await?;
+            }
+            receiver
+        };
         receive_result(receiver).await
     }
 

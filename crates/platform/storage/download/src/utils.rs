@@ -51,23 +51,21 @@ pub(super) async fn validate_url(url: &str) -> Result<()> {
 }
 
 pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
-    let current_dir = std::env::current_dir()
+    let executable = std::env::current_exe()
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    let project_dir = tokio::fs::canonicalize(current_dir)
+    let executable_parent = executable
+        .parent()
+        .ok_or_else(|| DownloadError::InvalidDirectory("可执行文件没有父目录".to_string()))?;
+    let executable_dir = tokio::fs::canonicalize(executable_parent)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    let models_dir = project_dir.join("models");
+    let models_dir = executable_dir.join("models");
     tokio::fs::create_dir_all(&models_dir)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
     let models_dir = tokio::fs::canonicalize(models_dir)
         .await
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
-    if !models_dir.starts_with(&project_dir) {
-        return Err(DownloadError::InvalidDirectory(
-            "项目 models 目录不能指向项目目录之外".to_string(),
-        ));
-    }
 
     let requested = Path::new(dir);
     let starts_at_models = requested
@@ -77,7 +75,7 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
     let candidate = if requested.is_absolute() {
         requested.to_path_buf()
     } else if starts_at_models {
-        project_dir.join(requested)
+        executable_dir.join(requested)
     } else {
         models_dir.join(requested)
     };
@@ -87,7 +85,7 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
         || !candidate.starts_with(&models_dir)
     {
         return Err(DownloadError::InvalidDirectory(
-            "目录必须位于项目 models 子目录内".to_string(),
+            "目录必须位于可执行文件同级 models 子目录内".to_string(),
         ));
     }
     ensure_existing_path_inside(&models_dir, &candidate).await?;
@@ -100,7 +98,7 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
         .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
     if !candidate.starts_with(&models_dir) {
         return Err(DownloadError::InvalidDirectory(
-            "目录解析后超出项目 models 子目录".to_string(),
+            "目录解析后超出可执行文件同级 models 子目录".to_string(),
         ));
     }
     Ok(candidate)
@@ -124,7 +122,7 @@ pub(super) async fn existing_database_file(final_path: &str) -> Result<Option<Pa
 
 async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()> {
     let relative = candidate.strip_prefix(root).map_err(|_| {
-        DownloadError::InvalidDirectory("目录必须位于项目 models 子目录内".to_string())
+        DownloadError::InvalidDirectory("目录必须位于可执行文件同级 models 子目录内".to_string())
     })?;
     let mut current = root.to_path_buf();
     for component in relative.components() {
@@ -144,7 +142,7 @@ async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()
                     .map_err(|error| DownloadError::InvalidDirectory(error.to_string()))?;
                 if !resolved.starts_with(root) {
                     return Err(DownloadError::InvalidDirectory(
-                        "目录符号链接指向项目 models 子目录之外".to_string(),
+                        "目录符号链接指向可执行文件同级 models 子目录之外".to_string(),
                     ));
                 }
             }
@@ -161,6 +159,10 @@ async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()
 #[cfg(test)]
 #[path = "../tests/support/database_file_path.rs"]
 mod database_file_path_tests;
+
+#[cfg(test)]
+#[path = "../tests/support/dir_norm.rs"]
+mod dir_norm_tests;
 
 pub(super) fn sanitize_filename(filename: &str) -> Result<String> {
     let sanitized = filename
@@ -249,5 +251,5 @@ fn is_non_public_ipv6(address: Ipv6Addr) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../tests/support/utils.rs"]
-mod tests;
+#[path = "../tests/support/url_utils.rs"]
+mod url_utils_tests;

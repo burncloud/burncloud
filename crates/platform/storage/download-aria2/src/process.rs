@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::constants::{DEFAULT_PORT, MAX_PORT_RANGE};
 use crate::error::{Aria2Error, Aria2Result};
+use crate::rpc::Aria2RpcClient;
 use crate::types::{Aria2Config, Aria2Instance};
 
 // ============================================================================
@@ -53,14 +54,27 @@ pub fn kill_existing_aria2() {
     );
 }
 
+pub(crate) async fn find_running_aria2(secret: &Option<String>) -> Option<u16> {
+    for port in DEFAULT_PORT..=DEFAULT_PORT + MAX_PORT_RANGE {
+        if check_port_available(port) {
+            continue;
+        }
+        let client = Aria2RpcClient::new(port, secret.clone());
+        let responds = tokio::time::timeout(Duration::from_secs(1), client.tell_active())
+            .await
+            .is_ok_and(|result| result.is_ok());
+        if responds {
+            return Some(port);
+        }
+    }
+    None
+}
+
 /// 启动 aria2 RPC 服务
 // 输入：aria2 的运行配置。
-// 功能：清理旧进程、启动新的 aria2 子进程并等待 RPC 服务就绪。
+// 功能：启动新的 aria2 子进程并等待 RPC 服务就绪。
 // 错误：端口选择、进程启动或 RPC 就绪等待失败时返回对应 Aria2Error。
 pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance> {
-    // 先终止现有的aria2c.exe进程
-    kill_existing_aria2();
-
     // 选择 RPC 监听端口
     let port = find_available_port()?;
 
@@ -231,7 +245,7 @@ mod tests {
         );
     }
 
-    /// **Recorded, not fixed, and deliberately not invoked.**
+    /// `start_aria2_rpc` 不再调用全局进程清理函数。
     ///
     /// `kill_existing_aria2` runs `taskkill /F /IM aria2c.exe`, which terminates **every** aria2 process on the
     /// machine, and `start_aria2_rpc` calls it unconditionally before starting its own. The plan lists "只终止
@@ -247,35 +261,15 @@ mod tests {
     /// already does through `self.instance`. The initial sweep is the part that cannot distinguish "a process I
     /// left behind" from "a process the user started".
     #[test]
-    fn the_initial_process_sweep_terminates_aria2_processes_this_program_did_not_start() {
+    fn starting_a_new_rpc_service_does_not_sweep_other_aria2_processes() {
         // Read the source of this module, so the assertion is about the shipped code rather than about a copy of
         // its behaviour.
         let source = include_str!("process.rs");
-
-        assert!(
-            source.contains("taskkill"),
-            "the sweep is still performed with `taskkill`"
-        );
-        assert!(
-            source.contains("\"/IM\""),
-            "and it is an image-name match, which selects every aria2c.exe on the machine rather than one \
-             process"
-        );
-        // The call site: the sweep happens before the port is chosen, so it runs on every start.
-        let sweep = source
-            .find("kill_existing_aria2();")
-            .expect("the call site");
-        let port = source
-            .find("let port = find_available_port()?")
-            .expect("the port choice");
-        assert!(
-            sweep < port,
-            "the sweep runs before the port is chosen, so it is unconditional on every start"
-        );
-
-        println!(
-            "recorded: `start_aria2_rpc` terminates every aria2c.exe before starting its own, which the plan \
-             forbids; `Aria2Daemon::stop` correctly kills only its own instance"
-        );
+        let Some(start) = source.find("pub async fn start_aria2_rpc") else {
+            panic!("找不到 start_aria2_rpc 定义");
+        };
+        let body = &source[start..];
+        let body = body.split("\n}\n\n// 输入：").next().unwrap_or(body);
+        assert!(!body.contains("kill_existing_aria2"));
     }
 }

@@ -162,8 +162,10 @@ async fn complete_task(
         finish_failed(db, states, gid, "aria2 完成任务未返回文件信息".to_string()).await;
         return Ok(());
     };
-    let final_path = PathBuf::from(&file.path);
-    if !final_path.starts_with(&snapshot.dir) {
+    let final_path = normalize_aria2_path(&file.path);
+    let snapshot_dir = snapshot.dir.to_string_lossy();
+    let snapshot_dir = normalize_aria2_path(&snapshot_dir);
+    if !final_path.starts_with(&snapshot_dir) {
         finish_failed(
             db,
             states,
@@ -418,6 +420,21 @@ fn parse_length(value: &str, field: &str) -> Result<i64> {
     })
 }
 
+fn normalize_aria2_path(path: &str) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let path = path
+            .strip_prefix("//?/")
+            .or_else(|| path.strip_prefix("\\\\?\\"))
+            .unwrap_or(path);
+        PathBuf::from(path)
+    }
+    #[cfg(not(windows))]
+    {
+        PathBuf::from(path)
+    }
+}
+
 fn is_retryable_error(error_code: Option<&str>) -> bool {
     matches!(
         error_code.and_then(|code| code.parse::<u8>().ok()),
@@ -438,17 +455,5 @@ fn retry_options(dir: &str, filename: &str) -> DownloadOptions {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::is_retryable_error;
-
-    #[test]
-    fn retry_eligibility_uses_aria2_error_codes() {
-        for code in ["2", "6", "19", "29"] {
-            assert!(is_retryable_error(Some(code)), "{code}");
-        }
-        for code in ["1", "3", "5", "24"] {
-            assert!(!is_retryable_error(Some(code)), "{code}");
-        }
-        assert!(!is_retryable_error(None));
-    }
-}
+#[path = "../tests/support/monitor_helpers.rs"]
+mod monitor_helpers_tests;
