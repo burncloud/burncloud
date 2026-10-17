@@ -184,9 +184,8 @@ async fn wait_for_rpc_ready(port: u16, secret: &Option<String>) -> Aria2Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_port_available, find_available_port, terminate_after_failed_start};
+    use super::{check_port_available, find_available_port};
     use crate::constants::{DEFAULT_PORT, MAX_PORT_RANGE};
-    use crate::error::Aria2Error;
 
     /// A port that something is listening on is reported unavailable, and the same port is available once the
     /// listener is gone.

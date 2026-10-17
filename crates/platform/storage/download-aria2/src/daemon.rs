@@ -148,7 +148,7 @@ mod tests {
     use super::*;
     use std::process::{Child, Command, Stdio};
     use std::sync::atomic::AtomicUsize;
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     /// 一个长期存活的 aria2 服务替身：一个只会等待的真实进程。
     ///
@@ -207,6 +207,7 @@ mod tests {
     ) -> Aria2Daemon {
         Aria2Daemon {
             instance: Arc::new(Mutex::new(None)),
+            attached_port: Arc::new(Mutex::new(None)),
             config: Aria2Config::default(),
             is_running: Arc::new(AtomicBool::new(false)),
             add_uri_lock: Arc::new(AsyncMutex::new(())),
