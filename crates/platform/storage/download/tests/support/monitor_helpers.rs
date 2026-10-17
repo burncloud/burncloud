@@ -1,6 +1,10 @@
+#[cfg(windows)]
 use std::path::Path;
 
-use super::{is_retryable_error, normalize_aria2_path, parse_length};
+use super::{is_retryable_error, parse_length};
+
+#[cfg(windows)]
+use super::normalize_aria2_path;
 
 #[test]
 fn recognizes_only_retryable_aria2_error_codes() {

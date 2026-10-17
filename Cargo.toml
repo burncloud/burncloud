@@ -140,7 +140,10 @@ bcrypt = "0.17.1"
 aes-gcm = "0.10"
 
 # Archive
-zip = "9.0"
+# Only the compression methods this workspace actually extracts are enabled: the
+# default feature set pulls in `bzip2`, whose `libbz2-rs-sys` dependency is licensed
+# `bzip2-1.0.6` and therefore rejected by the license allow-list in deny.toml.
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 
 # Testing
 tokio-test = "0.4"

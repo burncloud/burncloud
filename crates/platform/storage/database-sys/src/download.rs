@@ -381,7 +381,7 @@ impl DownloadDB {
     pub async fn get(&self, gid: &str) -> Result<Option<SysDownload>> {
         self.db
             .fetch_optional_with_params::<SysDownload>(
-                "SELECT gid, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, created_at, updated_at \
+                "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at \
                  FROM sys_downloads WHERE gid = ?",
                 vec![gid.to_string()],
             )
