@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use burncloud_database_sys::{DownloadDB, SysDownload};
 use burncloud_download::{DownloadError, DownloadManager};
-use burncloud_download_aria2::kill_existing_aria2;
 use tokio::task::JoinHandle;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -122,9 +121,6 @@ async fn main() -> ExitCode {
         log.push(line);
         failed = true;
     }
-    kill_existing_aria2();
-    log.push("收尾清理：已请求终止 aria2 进程".to_string());
-
     let summary = if failed {
         "真实运行测试结论：FAIL"
     } else {
@@ -169,7 +165,6 @@ where
 
 async fn prepare_clean_state() -> TestResult {
     clear_models().await?;
-    kill_existing_aria2();
 
     let database = DownloadDB::new().await?;
     let known_urls = [
@@ -377,7 +372,6 @@ async fn test_t5b() -> TestResult {
     task.abort();
     join_aborted(task).await?;
     drop(manager);
-    kill_existing_aria2();
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     let restored_manager = DownloadManager::new().await?;

@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::error::{Aria2Error, Aria2Result};
 use crate::process::{find_running_aria2, start_aria2_rpc};
@@ -70,13 +71,46 @@ impl Aria2Daemon {
             return Ok(());
         }
 
-        let instance = start_aria2_rpc(&self.config).await?;
+        let instance = (self.launcher)(&self.config).await?;
         println!("aria2 RPC 服务已启动在端口: {}", instance.port);
         *self
             .instance
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(instance);
         self.is_running.store(true, Ordering::SeqCst);
+
+        // 启动监控任务
+        let instance = Arc::clone(&self.instance);
+        let is_running = Arc::clone(&self.is_running);
+        let config = self.config.clone();
+        let launcher = Arc::clone(&self.launcher);
+
+        // 异步监测进程状态并在退出后尝试重启
+        tokio::spawn(async move {
+            while is_running.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+
+                // 在互斥锁保护下检查当前进程状态
+                let need_restart = {
+                    let mut lock = instance.lock().unwrap_or_else(|e| e.into_inner());
+                    match lock.as_mut() {
+                        Some(inst) => !inst.is_running(), // 检查服务是否还在运行
+                        None => true,
+                    }
+                };
+
+                // 服务确实退出时创建并替换新的运行实例
+                if need_restart {
+                    println!("检测到aria2已退出，重启中...");
+                    if let Ok(new_instance) = (launcher)(&config).await {
+                        let new_port = new_instance.port;
+                        *instance.lock().unwrap_or_else(|e| e.into_inner()) = Some(new_instance);
+                        println!("aria2重启成功，端口: {}", new_port);
+                    }
+                }
+            }
+        });
+
         Ok(())
     }
 

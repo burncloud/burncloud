@@ -140,7 +140,7 @@ bcrypt = "0.17.1"
 aes-gcm = "0.10"
 
 # Archive
-zip = "0.6"
+zip = "9.0"
 
 # Testing
 tokio-test = "0.4"
