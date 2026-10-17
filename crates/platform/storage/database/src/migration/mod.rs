@@ -9,6 +9,7 @@
 //! databases which pre-date the migration framework are upgraded safely.
 
 mod sqlite_0017;
+mod sqlite_0019;
 
 use crate::{Database, DatabaseError, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -103,6 +104,10 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0018_router_request_logs",
         sql: include_str!("../../migrations/sqlite/0018_router_request_logs.sql"),
     },
+    Migration {
+        version: "0019_download_stable_identity",
+        sql: include_str!("../../migrations/sqlite/0019_download_stable_identity.sql"),
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -182,6 +187,10 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
         version: "0018_router_request_logs",
         sql: include_str!("../../migrations/postgres/0018_router_request_logs.sql"),
     },
+    Migration {
+        version: "0019_download_stable_identity",
+        sql: include_str!("../../migrations/postgres/0019_download_stable_identity.sql"),
+    },
 ];
 
 /// Convert a migration file into executable statements.
@@ -242,12 +251,14 @@ impl MigrationRunner {
         };
 
         for migration in migrations {
-            if Self::is_applied(pool, migration.version, &kind).await {
+            if Self::is_applied(pool, migration.version, &kind).await? {
                 continue;
             }
 
             if migration.version == "0017_fix_bool_columns" && kind == "sqlite" {
                 sqlite_0017::apply(pool).await?;
+            } else if migration.version == "0019_download_stable_identity" && kind == "sqlite" {
+                sqlite_0019::apply(pool).await?;
             } else {
                 Self::apply_sql(pool, migration).await?;
             }
@@ -258,21 +269,19 @@ impl MigrationRunner {
         Ok(())
     }
 
-    async fn is_applied(pool: &sqlx::AnyPool, version: &str, kind: &str) -> bool {
+    async fn is_applied(pool: &sqlx::AnyPool, version: &str, kind: &str) -> Result<bool> {
         let count: i64 = if kind == "postgres" {
             sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations WHERE version = $1")
                 .bind(version)
                 .fetch_one(pool)
-                .await
-                .unwrap_or(0)
+                .await?
         } else {
             sqlx::query_scalar("SELECT COUNT(*) FROM _schema_migrations WHERE version = ?")
                 .bind(version)
                 .fetch_one(pool)
-                .await
-                .unwrap_or(0)
+                .await?
         };
-        count > 0
+        Ok(count > 0)
     }
 
     /// Execute every SQL statement in the migration file.

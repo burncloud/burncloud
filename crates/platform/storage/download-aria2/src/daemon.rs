@@ -2,10 +2,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use crate::error::{Aria2Error, Aria2Result};
-use crate::process::start_aria2_rpc;
+use crate::process::{find_running_aria2, start_aria2_rpc};
 use crate::rpc::Aria2RpcClient;
 use crate::types::{Aria2Config, Aria2Instance, ChildTerminator, ProcessTerminator};
 use tokio::sync::Mutex as AsyncMutex;
@@ -26,6 +25,7 @@ pub(crate) type Launcher = Arc<dyn Fn(&Aria2Config) -> InstanceFuture + Send + S
 
 pub struct Aria2Daemon {
     instance: Arc<Mutex<Option<Aria2Instance>>>,
+    attached_port: Arc<Mutex<Option<u16>>>,
     config: Aria2Config,
     is_running: Arc<AtomicBool>,
     add_uri_lock: Arc<AsyncMutex<()>>,
@@ -35,12 +35,12 @@ pub struct Aria2Daemon {
 
 impl Aria2Daemon {
     // 输入：aria2 运行配置。
-    // 功能：创建未启动的 aria2 守护进程管理对象。
+    // 功能：创建未启动的 aria2 统一管理对象。
     // 错误：无，构造过程不执行外部操作。
     pub fn new(config: Aria2Config) -> Self {
-        // 初始化进程槽位、配置、运行标记，以及两处进程生命周期缝（默认为真实启动与真实终止）
         Self {
             instance: Arc::new(Mutex::new(None)),
+            attached_port: Arc::new(Mutex::new(None)),
             config,
             is_running: Arc::new(AtomicBool::new(false)),
             add_uri_lock: Arc::new(AsyncMutex::new(())),
@@ -53,102 +53,86 @@ impl Aria2Daemon {
     }
 
     // 输入：可变的守护进程管理对象。
-    // 功能：启动 aria2 服务并创建自动重启监控任务。
-    // 错误：重复启动、服务启动或重启失败时返回对应 Aria2Error。
+    // 功能：启动 aria2 服务，或接管同一端口上仍在运行的服务。
+    // 错误：重复启动、服务启动或 RPC 探测失败时返回对应 Aria2Error。
     pub async fn start(&mut self) -> Aria2Result<()> {
-        // 防止重复启动守护进程
         if self.is_running.load(Ordering::SeqCst) {
             return Err(Aria2Error::DaemonError("守护进程已在运行".to_string()));
         }
 
-        // 启动 aria2 RPC 服务并保存运行实例
-        let instance = (self.launcher)(&self.config).await?;
+        if let Some(port) = find_running_aria2(&self.config.secret).await {
+            *self
+                .attached_port
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(port);
+            self.is_running.store(true, Ordering::SeqCst);
+            println!("已接管运行中的 aria2 RPC 服务，端口: {port}");
+            return Ok(());
+        }
+
+        let instance = start_aria2_rpc(&self.config).await?;
         println!("aria2 RPC 服务已启动在端口: {}", instance.port);
-
-        *self.instance.lock().unwrap_or_else(|e| e.into_inner()) = Some(instance);
+        *self
+            .instance
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(instance);
         self.is_running.store(true, Ordering::SeqCst);
-
-        // 启动监控任务
-        let instance = Arc::clone(&self.instance);
-        let is_running = Arc::clone(&self.is_running);
-        let config = self.config.clone();
-        let launcher = Arc::clone(&self.launcher);
-
-        // 异步监测进程状态并在退出后尝试重启
-        tokio::spawn(async move {
-            while is_running.load(Ordering::SeqCst) {
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-
-                // 在互斥锁保护下检查当前进程状态
-                let need_restart = {
-                    let mut lock = instance.lock().unwrap_or_else(|e| e.into_inner());
-                    match lock.as_mut() {
-                        Some(inst) => !inst.is_running(), // 检查服务是否还在运行
-                        None => true,
-                    }
-                };
-
-                // 服务确实退出时创建并替换新的运行实例
-                if need_restart {
-                    println!("检测到aria2已退出，重启中...");
-                    if let Ok(new_instance) = (launcher)(&config).await {
-                        let new_port = new_instance.port;
-                        *instance.lock().unwrap_or_else(|e| e.into_inner()) = Some(new_instance);
-                        println!("aria2重启成功，端口: {}", new_port);
-                    }
-                }
-            }
-        });
-
         Ok(())
     }
 
     // 输入：可变的守护进程管理对象。
-    // 功能：停止监控任务并终止当前 aria2 服务。
+    // 功能：停止当前管理的 aria2 子进程并清理本地连接状态。
     // 错误：进程终止错误被忽略，不向调用方返回错误。
     pub async fn stop(&mut self) {
-        // 更新运行标记以结束监控循环
         self.is_running.store(false, Ordering::SeqCst);
 
-        // 终止当前保存的 aria2 服务。终止走注入的缝，目标永远是本结构记录的那个实例，不可能是按
-        // 镜像名选中的进程集合。Stop is best-effort by contract, so explicitly discard the
-        // kill result instead of hiding a #[must_use] value behind `let _ = ...`.
         if let Some(ref mut instance) = self
             .instance
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|error| error.into_inner())
             .as_mut()
         {
             drop(self.terminator.terminate(instance));
         }
 
-        // 清除已停止的运行实例
-        *self.instance.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .instance
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+        *self
+            .attached_port
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
         println!("aria2 守护进程已停止");
     }
 
     // 输入：守护进程管理对象。
-    // 功能：根据当前实例端口创建一个新的 RPC 客户端。
-    // 错误：无，守护进程尚未启动时返回 None。
+    // 功能：根据当前实例或接管的端口创建 RPC 客户端。
+    // 错误：守护进程尚未启动时返回 None。
     pub fn get_rpc_client(&self) -> Option<Aria2RpcClient> {
-        // 读取当前实例并映射为 RPC 客户端
-        let lock = self.instance.lock().unwrap_or_else(|e| e.into_inner());
-        lock.as_ref().map(|instance| {
-            Aria2RpcClient::with_add_uri_lock(
-                instance.port,
-                self.config.secret.clone(),
-                Arc::clone(&self.add_uri_lock),
-            )
-        })
+        let instance = self
+            .instance
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let port = instance.as_ref().map(|value| value.port).or_else(|| {
+            self.attached_port
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .to_owned()
+        })?;
+        Some(Aria2RpcClient::with_add_uri_lock(
+            port,
+            self.config.secret.clone(),
+            Arc::clone(&self.add_uri_lock),
+        ))
     }
 
     // 输入：守护进程管理对象。
-    // 功能：读取守护进程的运行状态标记。
+    // 功能：读取守护进程是否可供 RPC 使用。
     // 错误：无。
     // 说明：这是**监管状态**（已启动且未停止），不是对服务的探测：服务本身是否还在，由
     // `Aria2Instance::is_running` 回答，监控循环用的也是后者。
     pub fn is_running(&self) -> bool {
-        // 返回原子运行标记的当前值
         self.is_running.load(Ordering::SeqCst)
     }
 }
