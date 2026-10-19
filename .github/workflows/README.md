@@ -15,3 +15,5 @@ workflows; do not assume the PR Rust checks replace that coverage.
 
 To change shared PR checks, edit `ci-base.yml`. To change the
 release-only full-workspace gate, edit `maintenance-version-tag.yml`.
+
+<!-- CI-STRUCTURE-TEST: this .github change must fail ci-structure.yml. -->
