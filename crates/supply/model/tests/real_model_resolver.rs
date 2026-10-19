@@ -1,5 +1,5 @@
 use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile, HardwareProfile};
-use burncloud_supply_models::{
+use burncloud_supply_model::{
     LocalModelUnsupportedReason, ModelManifest, ModelResolutionOutcome, RealModelResolver, Variant,
 };
 
