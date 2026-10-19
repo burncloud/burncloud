@@ -1,0 +1,2 @@
+Temporary CI structure guard test fixture.
+This root-level addition must fail ci-structure.yml.
