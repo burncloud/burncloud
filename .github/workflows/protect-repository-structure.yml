@@ -1,0 +1,332 @@
+name: CI / Repository Structure Protection
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  evaluate:
+    name: Evaluate repository structure policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Do not checkout the PR head or execute any file supplied by the PR.
+      # This workflow uses the trusted base-branch definition and read-only
+      # repository APIs. The only write permission creates the required check
+      # run on the exact PR head SHA.
+      - name: Check protected paths and root entries
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const CHECK_NAME = "protect-repository-structure";
+            const MAX_FILES = 3000;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request && context.payload.pull_request.number;
+
+            let checkRunId = null;
+            let checkFinished = false;
+
+            async function finishCheck(conclusion, title, summary) {
+              if (!checkRunId) {
+                return;
+              }
+
+              await github.rest.checks.update({
+                owner,
+                repo,
+                check_run_id: checkRunId,
+                status: "completed",
+                conclusion,
+                completed_at: new Date().toISOString(),
+                output: { title, summary },
+              });
+              checkFinished = true;
+            }
+
+            try {
+              if (!Number.isSafeInteger(prNumber)) {
+                throw new Error("The pull request number is missing or invalid.");
+              }
+
+              const prResponse = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: prNumber,
+              });
+              const pr = prResponse.data;
+
+              if (pr.state !== "open") {
+                throw new Error("The pull request is not open. Refusing to pass the check.");
+              }
+              if (pr.base.ref !== "main") {
+                throw new Error("This guard only accepts pull requests targeting main.");
+              }
+              if (!/^[0-9a-f]{40,64}$/i.test(pr.base.sha) ||
+                  !/^[0-9a-f]{40,64}$/i.test(pr.head.sha)) {
+                throw new Error("The base or head commit SHA is missing or invalid.");
+              }
+
+              // Explicitly attach the required check to this PR head SHA.
+              const createdCheck = await github.rest.checks.create({
+                owner,
+                repo,
+                name: CHECK_NAME,
+                head_sha: pr.head.sha,
+                status: "in_progress",
+                started_at: new Date().toISOString(),
+                output: {
+                  title: "Checking repository structure",
+                  summary: "Checking .github/ changes and root-level entries.",
+                },
+              });
+              checkRunId = createdCheck.data.id;
+
+              try {
+                if (!Number.isSafeInteger(pr.changed_files) || pr.changed_files < 0) {
+                  throw new Error("The pull request changed-file count is missing or invalid.");
+                }
+                if (pr.changed_files > MAX_FILES) {
+                  throw new Error(
+                    "The PR changes " + pr.changed_files +
+                    " files. The GitHub API reliable enumeration limit is " +
+                    MAX_FILES + "; refusing to pass without a complete file list."
+                  );
+                }
+
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                  per_page: 100,
+                });
+
+                if (files.length !== pr.changed_files) {
+                  throw new Error(
+                    "The GitHub API returned " + files.length + " changed files, but the PR reports " +
+                    pr.changed_files + ". The file list may be incomplete; refusing to pass."
+                  );
+                }
+
+                const githubViolations = files.filter((file) => {
+                  const paths = [file.filename, file.previous_filename].filter(Boolean);
+                  return paths.some((path) => path === ".github" || path.startsWith(".github/"));
+                });
+
+                const baseCommitResponse = await github.rest.git.getCommit({
+                  owner,
+                  repo,
+                  commit_sha: pr.base.sha,
+                });
+                const baseCommit = baseCommitResponse.data;
+
+                let headCommit;
+                let headTreeOwner = owner;
+                let headTreeRepo = repo;
+
+                try {
+                  const headCommitResponse = await github.rest.git.getCommit({
+                    owner,
+                    repo,
+                    commit_sha: pr.head.sha,
+                  });
+                  headCommit = headCommitResponse.data;
+                } catch (baseRepositoryError) {
+                  // A fork PR head can be unavailable through the base repository's
+                  // Git API. Try its source repository, but never execute its code.
+                  const headRepository = pr.head.repo;
+                  if (baseRepositoryError.status !== 404 ||
+                      !headRepository ||
+                      headRepository.full_name === owner + "/" + repo) {
+                    throw baseRepositoryError;
+                  }
+
+                  headTreeOwner = headRepository.owner.login;
+                  headTreeRepo = headRepository.name;
+                  const forkCommitResponse = await github.rest.git.getCommit({
+                    owner: headTreeOwner,
+                    repo: headTreeRepo,
+                    commit_sha: pr.head.sha,
+                  });
+                  headCommit = forkCommitResponse.data;
+                }
+
+                if (!baseCommit.tree || !baseCommit.tree.sha ||
+                    !headCommit.tree || !headCommit.tree.sha) {
+                  throw new Error("The base or head commit does not contain a Git tree SHA.");
+                }
+
+                const [baseTreeResponse, headTreeResponse] = await Promise.all([
+                  github.rest.git.getTree({
+                    owner,
+                    repo,
+                    tree_sha: baseCommit.tree.sha,
+                  }),
+                  github.rest.git.getTree({
+                    owner: headTreeOwner,
+                    repo: headTreeRepo,
+                    tree_sha: headCommit.tree.sha,
+                  }),
+                ]);
+
+                const baseTree = baseTreeResponse.data;
+                const headTree = headTreeResponse.data;
+
+                if (baseTree.truncated || headTree.truncated ||
+                    !Array.isArray(baseTree.tree) || !Array.isArray(headTree.tree)) {
+                  throw new Error("A root Git tree is truncated or incomplete. Refusing to pass.");
+                }
+
+                // Non-recursive Git Trees API responses contain only direct root entries.
+                // Ignore object SHAs: content changes inside existing entries are allowed.
+                const baseEntries = baseTree.tree.map(({ path, type, mode }) => ({ path, type, mode }));
+                const headEntries = headTree.tree.map(({ path, type, mode }) => ({ path, type, mode }));
+                const baseByPath = new Map(baseEntries.map((entry) => [entry.path, entry]));
+                const headByPath = new Map(headEntries.map((entry) => [entry.path, entry]));
+                const rootNames = Array.from(new Set([
+                  ...baseByPath.keys(),
+                  ...headByPath.keys(),
+                ])).sort();
+
+                let rootChanges = [];
+                for (const path of rootNames) {
+                  const before = baseByPath.get(path);
+                  const after = headByPath.get(path);
+
+                  if (!before) {
+                    rootChanges.push({
+                      change: "ADDED",
+                      path,
+                      type: after.type,
+                      mode: after.mode,
+                    });
+                  } else if (!after) {
+                    rootChanges.push({
+                      change: "DELETED",
+                      path,
+                      type: before.type,
+                      mode: before.mode,
+                    });
+                  } else if (before.type !== after.type || before.mode !== after.mode) {
+                    rootChanges.push({
+                      change: "TYPE_OR_MODE_CHANGED",
+                      path,
+                      before: { type: before.type, mode: before.mode },
+                      after: { type: after.type, mode: after.mode },
+                    });
+                  }
+                }
+
+                // Identify file renames or moves that cross the root boundary.
+                // Directory renames appear as root-level additions and deletions because
+                // Git tracks files and trees, not directory rename operations.
+                const rootMoves = files
+                  .filter((file) => file.status === "renamed" && file.previous_filename)
+                  .map((file) => {
+                    const fromRoot = !file.previous_filename.includes("/");
+                    const toRoot = !file.filename.includes("/");
+                    if (!fromRoot && !toRoot) {
+                      return null;
+                    }
+                    return {
+                      change: fromRoot && toRoot
+                        ? "RENAMED"
+                        : fromRoot
+                          ? "MOVED_OUT_OF_ROOT"
+                          : "MOVED_INTO_ROOT",
+                      from: file.previous_filename,
+                      to: file.filename,
+                    };
+                  })
+                  .filter(Boolean);
+
+                rootChanges = rootChanges.filter((change) => {
+                  if (change.change === "DELETED" &&
+                      rootMoves.some((move) => move.from === change.path && !move.from.includes("/"))) {
+                    return false;
+                  }
+                  if (change.change === "ADDED" &&
+                      rootMoves.some((move) => move.to === change.path && !move.to.includes("/"))) {
+                    return false;
+                  }
+                  return true;
+                });
+                rootChanges.push(...rootMoves);
+
+                // Confirm that the PR did not change while the API checks were running.
+                const latestPrResponse = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                });
+                const latestPr = latestPrResponse.data;
+                if (latestPr.head.sha !== pr.head.sha || latestPr.base.sha !== pr.base.sha) {
+                  throw new Error("The PR base or head changed during verification. A fresh check is required.");
+                }
+
+                for (const violation of githubViolations) {
+                  core.info("Forbidden .github/ path change: " + JSON.stringify({
+                    status: violation.status,
+                    filename: violation.filename,
+                    previous_filename: violation.previous_filename || null,
+                  }));
+                }
+                for (const change of rootChanges) {
+                  core.info("Forbidden root-level structure change: " + JSON.stringify(change));
+                }
+
+                if (githubViolations.length > 0 || rootChanges.length > 0) {
+                  const summary =
+                    "The PR violates repository structure policy.\n\n" +
+                    "- Prohibited .github/ path changes: " + githubViolations.length + "\n" +
+                    "- Root-level structure changes: " + rootChanges.length + "\n\n" +
+                    "Affected paths are listed in the workflow log. Remove the prohibited changes.";
+                  await finishCheck(
+                    "failure",
+                    "Repository structure policy failed",
+                    summary
+                  );
+                  core.setFailed(
+                    "Repository structure protection failed: .github/ must not change and root-level entries must remain stable."
+                  );
+                } else {
+                  await finishCheck(
+                    "success",
+                    "Repository structure policy passed",
+                    "No prohibited .github/ path changes or root-level structure changes were found."
+                  );
+                  core.info("Repository structure protection passed.");
+                }
+              } catch (verificationError) {
+                if (!checkFinished) {
+                  try {
+                    await finishCheck(
+                      "failure",
+                      "Verification failed closed",
+                      "The guard could not verify the complete PR file list or Git trees. The check fails closed. See workflow logs for details."
+                    );
+                  } catch (checkUpdateError) {
+                    core.error("Could not update the required check run to failure: " + String(checkUpdateError));
+                  }
+                }
+                throw verificationError;
+              }
+            } catch (error) {
+              core.setFailed(
+                "Repository structure verification failed closed: " +
+                (error && error.message ? error.message : String(error))
+              );
+            }
