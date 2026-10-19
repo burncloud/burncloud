@@ -1,0 +1,2 @@
+CI structure guard test fixture.
+This file is inside an existing root directory and should be allowed by ci-structure.yml.
