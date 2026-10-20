@@ -15,7 +15,6 @@ mod prepared_artifact;
 
 pub use artifact_prepare_error::ArtifactPrepareError;
 pub use artifact_preparer::{ArtifactPreparation, ArtifactPreparer};
-pub use artifact_request::ArtifactRequest;
 pub use artifact_source::ArtifactSource;
 pub use artifact_source_error::ArtifactSourceError;
 pub use artifact_verification_status::ArtifactVerificationStatus;

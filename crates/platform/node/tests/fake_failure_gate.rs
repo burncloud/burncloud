@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPreparation, ArtifactPrepareError, ArtifactRequest, ArtifactSource, DemandReconciler,
-    PreparedArtifact, ReconcileEvidence,
+    ArtifactPreparation, ArtifactPrepareError, DemandReconciler, Digest, PreparedArtifact,
+    ReconcileEvidence,
 };
+use url::Url;
 
 struct FailingArtifactPreparer;
 
@@ -10,7 +11,8 @@ struct FailingArtifactPreparer;
 impl ArtifactPreparation for FailingArtifactPreparer {
     async fn prepare(
         &self,
-        _request: ArtifactRequest,
+        _url: Url,
+        _expected_digest: Digest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
         Err(ArtifactPrepareError::PrepareFailed(
             "expected fake failure".into(),
@@ -26,11 +28,13 @@ async fn failed_artifact_preparation_does_not_emit_success_evidence() {
     let before = r.state();
 
     let result = FailingArtifactPreparer
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("https://modelscope.cn/models/missing/resolve/main/fake.gguf")
-                .unwrap(),
-            None,
-        ))
+        .prepare(
+            Url::parse("https://modelscope.cn/models/missing/resolve/main/fake.gguf").unwrap(),
+            Digest::parse(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        )
         .await;
 
     assert!(result.is_err());

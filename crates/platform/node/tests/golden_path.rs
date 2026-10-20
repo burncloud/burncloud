@@ -8,14 +8,15 @@
 )]
 
 use burncloud_node_runtime::{
-    ArtifactPreparation, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
-    FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
-    HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
-    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, Digest, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
+    FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe,
+    NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget,
+    ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
 use burncloud_supply_model::{
     FakeModelResolver, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
 };
+use url::Url;
 
 type FakeNode = NodeComposition<
     FakeHardwareProbe,
@@ -78,15 +79,10 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     );
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse(resolved.artifact_source).unwrap(),
-            resolved
-                .artifact_digest
-                .as_deref()
-                .map(burncloud_node_runtime::Digest::parse)
-                .transpose()
-                .unwrap(),
-        ))
+        .prepare(
+            Url::parse(&resolved.artifact_source).unwrap(),
+            Digest::parse(resolved.artifact_digest.as_deref().unwrap()).unwrap(),
+        )
         .await
         .unwrap();
     node.reconciler_mut()
@@ -154,15 +150,10 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
         .unwrap();
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse(resolved.artifact_source).unwrap(),
-            resolved
-                .artifact_digest
-                .as_deref()
-                .map(burncloud_node_runtime::Digest::parse)
-                .transpose()
-                .unwrap(),
-        ))
+        .prepare(
+            Url::parse(&resolved.artifact_source).unwrap(),
+            Digest::parse(resolved.artifact_digest.as_deref().unwrap()).unwrap(),
+        )
         .await
         .unwrap();
     node.reconciler_mut()

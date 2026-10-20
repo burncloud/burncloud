@@ -1,8 +1,8 @@
 use burncloud_node_runtime::{
-    ArtifactPreparation, ArtifactRequest, ArtifactSource, DemandReconciler, Digest, HardwareProbe,
-    HealthProbe, NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle,
-    ProcessManager, ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence,
-    RuntimeAdapter, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, DemandReconciler, Digest, HardwareProbe, HealthProbe, NodeComposition,
+    NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager, ProcessPlan,
+    ReadinessProbe, ReconcileAction, ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
+    RuntimeRequest,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_supply_model::{
@@ -339,34 +339,36 @@ where
                         .get(&demand.model)
                         .and_then(|workload| workload.resolved.clone())
                         .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
+                    let artifact_url = match reqwest::Url::parse(&resolved.artifact_source) {
+                        Ok(url) => url,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(anyhow::anyhow!(
+                                "invalid artifact source '{}': {error}",
+                                resolved.artifact_source
+                            ));
+                        }
+                    };
+                    let expected_digest = match resolved.artifact_digest {
+                        Some(value) => match Digest::parse(&value) {
+                            Ok(digest) => digest,
+                            Err(error) => {
+                                self.mark_failed(&demand.model)?;
+                                return Err(anyhow::anyhow!(
+                                    "invalid artifact digest '{}': {error}",
+                                    value
+                                ));
+                            }
+                        },
+                        None => {
+                            self.mark_failed(&demand.model)?;
+                            anyhow::bail!("artifact digest is required");
+                        }
+                    };
                     let artifact = match self
                         .machine
                         .artifacts()
-                        .prepare(ArtifactRequest::new(
-                            match ArtifactSource::parse(&resolved.artifact_source) {
-                                Ok(source) => source,
-                                Err(error) => {
-                                    self.mark_failed(&demand.model)?;
-                                    return Err(anyhow::anyhow!(
-                                        "invalid artifact source '{}': {error}",
-                                        resolved.artifact_source
-                                    ));
-                                }
-                            },
-                            match resolved.artifact_digest {
-                                Some(value) => match Digest::parse(&value) {
-                                    Ok(digest) => Some(digest),
-                                    Err(error) => {
-                                        self.mark_failed(&demand.model)?;
-                                        return Err(anyhow::anyhow!(
-                                            "invalid artifact digest '{}': {error}",
-                                            value
-                                        ));
-                                    }
-                                },
-                                None => None,
-                            },
-                        ))
+                        .prepare(artifact_url, expected_digest)
                         .await
                     {
                         Ok(artifact) => artifact,

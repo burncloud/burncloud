@@ -25,7 +25,7 @@ pub use fake::{
 };
 pub use lifecycle::NodeRuntime;
 pub use preparation::{
-    ArtifactPreparation, ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactPreparer, ArtifactSource,
     ArtifactSourceError, ArtifactVerificationStatus, Digest, DigestAlgorithm, DigestError,
     HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessPlan, ReadinessError,
     ReadinessProbe, ReadinessTarget, RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError,

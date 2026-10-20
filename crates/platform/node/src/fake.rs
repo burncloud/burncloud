@@ -2,12 +2,12 @@ use async_trait::async_trait;
 
 use crate::{
     AcceleratorKind, AcceleratorProfile, ArtifactPreparation, ArtifactPrepareError,
-    ArtifactRequest, ArtifactSource, ArtifactVerificationStatus, HardwareProbe, HardwareProbeError,
-    HardwareProfile, HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError,
-    ProcessHandle, ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe,
-    ReadinessTarget, RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer,
-    RuntimeRequest,
+    ArtifactVerificationStatus, Digest, HardwareProbe, HardwareProbeError, HardwareProfile,
+    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
+    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
+    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
+use url::Url;
 
 /// Deterministic fake used to assemble and test the Node skeleton before real
 /// hardware detection exists.
@@ -58,11 +58,10 @@ impl ArtifactPreparation for FakeArtifactPreparer {
     /// 根据工件来源构造确定性的本地伪工件回执。
     async fn prepare(
         &self,
-        request: ArtifactRequest,
+        url: Url,
+        _expected_digest: Digest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
-        let source = match request.source() {
-            ArtifactSource::Http(url) => url.to_string(),
-        };
+        let source = url.to_string();
         // 将来源转换为文件名片段，避免伪回执路径包含平台路径分隔符。
         // Build the fake receipt under the platform temporary directory so the
         // resulting path is absolute on Windows, Linux, and macOS alike.

@@ -3,8 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use burncloud_download::DownloadManager;
 use tokio::sync::Mutex;
+use url::Url;
 
-use super::{ArtifactPrepareError, ArtifactRequest, PreparedArtifact};
+use super::{ArtifactPrepareError, Digest, PreparedArtifact};
 
 /// 由 Node 组合根使用的工件准备端口。
 #[async_trait]
@@ -12,7 +13,8 @@ pub trait ArtifactPreparation: Send + Sync {
     /// 准备请求中的工件，并返回本地工件或准备错误。
     async fn prepare(
         &self,
-        request: ArtifactRequest,
+        url: Url,
+        expected_digest: Digest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError>;
 }
 
