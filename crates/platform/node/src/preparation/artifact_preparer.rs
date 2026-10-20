@@ -1,13 +1,19 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use burncloud_download::DownloadManager;
+use md5::Context as Md5Context;
+use sha1::Sha1;
+use sha2::{Digest as HashDigest, Sha256, Sha384, Sha512};
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use url::Url;
 
 use super::artifact_request::ArtifactRequest;
-use super::{ArtifactPrepareError, ArtifactVerificationStatus, Digest, PreparedArtifact};
+use super::{
+    ArtifactPrepareError, ArtifactVerificationStatus, Digest, DigestAlgorithm, PreparedArtifact,
+};
 
 /// 由 Node 组合根使用的工件准备端口。
 #[async_trait]
@@ -120,6 +126,71 @@ impl ArtifactPreparer {
         }
         Ok(path)
     }
+
+    async fn verify_file_digest(
+        &self,
+        path: &Path,
+        expected_digest: &Digest,
+    ) -> Result<bool, ArtifactPrepareError> {
+        let mut file = tokio::fs::File::open(path)
+            .await
+            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))?;
+        let mut digest = FileDigest::new(expected_digest.algorithm());
+        let mut buffer = vec![0_u8; 64 * 1024];
+
+        loop {
+            let bytes_read = file
+                .read(&mut buffer)
+                .await
+                .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))?;
+            if bytes_read == 0 {
+                break;
+            }
+            digest.update(&buffer[..bytes_read]);
+        }
+
+        Ok(digest.finalize() == expected_digest.value())
+    }
+}
+
+enum FileDigest {
+    Md5(Md5Context),
+    Sha1(Sha1),
+    Sha256(Sha256),
+    Sha384(Sha384),
+    Sha512(Sha512),
+}
+
+impl FileDigest {
+    fn new(algorithm: DigestAlgorithm) -> Self {
+        match algorithm {
+            DigestAlgorithm::Md5 => Self::Md5(Md5Context::new()),
+            DigestAlgorithm::Sha1 => Self::Sha1(Sha1::new()),
+            DigestAlgorithm::Sha256 => Self::Sha256(Sha256::new()),
+            DigestAlgorithm::Sha384 => Self::Sha384(Sha384::new()),
+            DigestAlgorithm::Sha512 => Self::Sha512(Sha512::new()),
+        }
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Md5(context) => context.consume(bytes),
+            Self::Sha1(digest) => digest.update(bytes),
+            Self::Sha256(digest) => digest.update(bytes),
+            Self::Sha384(digest) => digest.update(bytes),
+            Self::Sha512(digest) => digest.update(bytes),
+        }
+    }
+
+    fn finalize(self) -> String {
+        match self {
+            Self::Md5(context) => hex::encode(context.compute().0),
+            Self::Sha1(digest) => hex::encode(digest.finalize()),
+            Self::Sha256(digest) => hex::encode(digest.finalize()),
+            Self::Sha384(digest) => hex::encode(digest.finalize()),
+            Self::Sha512(digest) => hex::encode(digest.finalize()),
+        }
+    }
 }
 
 impl Default for ArtifactPreparer {
@@ -135,3 +206,7 @@ mod lifecycle_tests;
 #[cfg(test)]
 #[path = "../../tests/support/artifact_preparer_receipt.rs"]
 mod receipt_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/artifact_preparer_digest.rs"]
+mod digest_tests;
