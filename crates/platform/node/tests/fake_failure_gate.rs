@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactRequest, ArtifactSource, DemandReconciler,
     PreparedArtifact, ReconcileEvidence,
 };
 
 struct FailingArtifactPreparer;
 
 #[async_trait]
-impl ArtifactPreparer for FailingArtifactPreparer {
+impl ArtifactPreparation for FailingArtifactPreparer {
     async fn prepare(
         &self,
         _request: ArtifactRequest,
@@ -27,7 +27,8 @@ async fn failed_artifact_preparation_does_not_emit_success_evidence() {
 
     let result = FailingArtifactPreparer
         .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("missing").unwrap(),
+            ArtifactSource::parse("https://modelscope.cn/models/missing/resolve/main/fake.gguf")
+                .unwrap(),
             None,
         ))
         .await;

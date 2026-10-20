@@ -8,7 +8,7 @@
 )]
 
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
+    ArtifactPreparation, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
     FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
     HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
     ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,

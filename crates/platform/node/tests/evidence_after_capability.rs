@@ -1,5 +1,5 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler, FakeArtifactPreparer,
+    ArtifactPreparation, ArtifactRequest, ArtifactSource, DemandReconciler, FakeArtifactPreparer,
     FakeReadinessProbe, FakeRuntimePreparer, NodeState, ReadinessProbe, ReadinessTarget,
     ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
@@ -17,7 +17,8 @@ async fn evidence_follows_successful_capability_calls() {
 
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("qwen-4b.gguf").unwrap(),
+            ArtifactSource::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf")
+                .unwrap(),
             None,
         ))
         .await

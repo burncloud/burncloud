@@ -1,11 +1,12 @@
 use async_trait::async_trait;
 
 use crate::{
-    AcceleratorKind, AcceleratorProfile, ArtifactPrepareError, ArtifactPreparer, ArtifactRequest,
-    ArtifactSource, ArtifactVerificationStatus, HardwareProbe, HardwareProbeError, HardwareProfile,
-    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
-    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
-    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    AcceleratorKind, AcceleratorProfile, ArtifactPreparation, ArtifactPrepareError,
+    ArtifactRequest, ArtifactSource, ArtifactVerificationStatus, HardwareProbe, HardwareProbeError,
+    HardwareProfile, HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError,
+    ProcessHandle, ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe,
+    ReadinessTarget, RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer,
+    RuntimeRequest,
 };
 
 /// Deterministic fake used to assemble and test the Node skeleton before real
@@ -53,7 +54,7 @@ impl HardwareProbe for FakeHardwareProbe {
 pub struct FakeArtifactPreparer;
 
 #[async_trait]
-impl ArtifactPreparer for FakeArtifactPreparer {
+impl ArtifactPreparation for FakeArtifactPreparer {
     /// 根据工件来源构造确定性的本地伪工件回执。
     async fn prepare(
         &self,

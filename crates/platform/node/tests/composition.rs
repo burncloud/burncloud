@@ -1,5 +1,5 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
+    ArtifactPreparation, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
     FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
     HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
     ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
@@ -34,7 +34,8 @@ async fn composition_root_wires_every_machine_socket() {
     let artifact = node
         .artifacts()
         .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("qwen/fake.gguf").unwrap(),
+            ArtifactSource::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf")
+                .unwrap(),
             None,
         ))
         .await

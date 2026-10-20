@@ -1,5 +1,5 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler, Digest, HardwareProbe,
+    ArtifactPreparation, ArtifactRequest, ArtifactSource, DemandReconciler, Digest, HardwareProbe,
     HealthProbe, NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle,
     ProcessManager, ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence,
     RuntimeAdapter, RuntimePreparer, RuntimeRequest,
@@ -86,7 +86,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -795,7 +795,7 @@ mod tests {
             .expect("workload")
             .resolved = Some(ResolvedModel {
             model: model.into(),
-            artifact_source: "qwen/fake.gguf".into(),
+            artifact_source: "https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf".into(),
             artifact_digest: Some(
                 "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
             ),
@@ -833,7 +833,8 @@ mod tests {
             let workload = orchestrator.workloads.get_mut(model).expect("workload");
             workload.resolved = Some(ResolvedModel {
                 model: model.into(),
-                artifact_source: "qwen/fake.gguf".into(),
+                artifact_source: "https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf"
+                    .into(),
                 artifact_digest: Some(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                         .into(),
@@ -890,7 +891,8 @@ mod tests {
             let workload = orchestrator.workloads.get_mut(model).expect("workload");
             workload.resolved = Some(ResolvedModel {
                 model: model.into(),
-                artifact_source: "qwen/fake.gguf".into(),
+                artifact_source: "https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf"
+                    .into(),
                 artifact_digest: Some(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                         .into(),

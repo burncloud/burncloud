@@ -14,7 +14,7 @@ mod digest_error;
 mod prepared_artifact;
 
 pub use artifact_prepare_error::ArtifactPrepareError;
-pub use artifact_preparer::ArtifactPreparer;
+pub use artifact_preparer::{ArtifactPreparation, ArtifactPreparer};
 pub use artifact_request::ArtifactRequest;
 pub use artifact_source::ArtifactSource;
 pub use artifact_source_error::ArtifactSourceError;

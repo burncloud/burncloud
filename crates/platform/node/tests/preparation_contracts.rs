@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactRequest, ArtifactSource,
     ArtifactVerificationStatus, HealthError, HealthProbe, PreparedArtifact, PreparedRuntime,
     ReadinessError, ReadinessProbe, ReadinessTarget, RuntimePrepareError, RuntimePreparer,
     RuntimeRequest,
@@ -8,7 +8,7 @@ use burncloud_node_runtime::{
 
 struct TestArtifact;
 #[async_trait]
-impl ArtifactPreparer for TestArtifact {
+impl ArtifactPreparation for TestArtifact {
     async fn prepare(
         &self,
         _request: ArtifactRequest,
@@ -54,7 +54,8 @@ impl HealthProbe for TestHealth {
 async fn preparation_ports_accept_independent_implementations() {
     let artifact = TestArtifact
         .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("ignored").unwrap(),
+            ArtifactSource::parse("https://modelscope.cn/models/ignored/resolve/main/fake.gguf")
+                .unwrap(),
             None,
         ))
         .await

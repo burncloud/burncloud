@@ -1,5 +1,5 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, Digest, FakeArtifactPreparer,
+    ArtifactPreparation, ArtifactRequest, ArtifactSource, Digest, FakeArtifactPreparer,
     FakeHealthProbe, FakeReadinessProbe, FakeRuntimePreparer, HealthProbe, ReadinessProbe,
     ReadinessTarget, RuntimePreparer, RuntimeRequest,
 };
@@ -8,7 +8,8 @@ use burncloud_node_runtime::{
 async fn fake_artifact_preparer_returns_verified_local_artifact() {
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("models/qwen-4b.gguf").unwrap(),
+            ArtifactSource::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf")
+                .unwrap(),
             Some(
                 Digest::parse(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000",

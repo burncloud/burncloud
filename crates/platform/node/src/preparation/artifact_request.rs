@@ -51,7 +51,9 @@ mod tests {
 
     #[test]
     fn constructs_requests_and_exposes_read_only_accessors() {
-        let source = ArtifactSource::parse("models/model.gguf").unwrap();
+        let source =
+            ArtifactSource::parse("https://modelscope.cn/models/example/resolve/main/model.gguf")
+                .unwrap();
         let digest = Digest::parse(SHA256).unwrap();
         let request = ArtifactRequest::new(source.clone(), Some(digest.clone()));
 
@@ -61,14 +63,18 @@ mod tests {
 
     #[test]
     fn displays_source_with_optional_digest() {
-        let source = ArtifactSource::parse("models/model.gguf").unwrap();
+        let source =
+            ArtifactSource::parse("https://modelscope.cn/models/example/resolve/main/model.gguf")
+                .unwrap();
         assert_eq!(
             ArtifactRequest::new(source.clone(), None).to_string(),
-            "models/model.gguf"
+            "https://modelscope.cn/models/example/resolve/main/model.gguf"
         );
         assert_eq!(
             ArtifactRequest::new(source, Some(Digest::parse(SHA256).unwrap())).to_string(),
-            format!("models/model.gguf (expected digest: {SHA256})")
+            format!(
+                "https://modelscope.cn/models/example/resolve/main/model.gguf (expected digest: {SHA256})"
+            )
         );
     }
 }

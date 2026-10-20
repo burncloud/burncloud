@@ -1,13 +1,14 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeRuntimePreparer,
-    RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, ArtifactRequest, ArtifactSource, FakeArtifactPreparer,
+    FakeRuntimePreparer, RuntimePreparer, RuntimeRequest,
 };
 
 #[tokio::test]
 async fn preparation_fakes_return_virtual_paths_only() {
     let artifact = FakeArtifactPreparer
         .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("qwen-4b.gguf").unwrap(),
+            ArtifactSource::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf")
+                .unwrap(),
             None,
         ))
         .await
