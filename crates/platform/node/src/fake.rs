@@ -60,7 +60,6 @@ impl ArtifactPreparer for FakeArtifactPreparer {
         request: ArtifactRequest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
         let source = match request.source() {
-            ArtifactSource::File(path) => path.to_string_lossy().into_owned(),
             ArtifactSource::Http(url) => url.to_string(),
         };
         // 将来源转换为文件名片段，避免伪回执路径包含平台路径分隔符。
