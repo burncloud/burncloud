@@ -852,9 +852,7 @@ mod tests {
             .artifact = Some(
             PreparedArtifact::new(
                 std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
-                // The status replaced a bool that meant "verification succeeded". `Verified` is the
-                // faithful translation; `NotRequired` also maps to `is_verified() == true` but would
-                // describe a different scenario, and `Failed` would reverse the fixture.
+                // 测试回执必须明确表示已完成摘要校验并通过。
                 ArtifactVerificationStatus::Verified,
             )
             .unwrap(),
@@ -911,9 +909,7 @@ mod tests {
             .artifact = Some(
             PreparedArtifact::new(
                 std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
-                // The status replaced a bool that meant "verification succeeded". `Verified` is the
-                // faithful translation; `NotRequired` also maps to `is_verified() == true` but would
-                // describe a different scenario, and `Failed` would reverse the fixture.
+                // 测试回执必须明确表示已完成摘要校验并通过。
                 ArtifactVerificationStatus::Verified,
             )
             .unwrap(),
