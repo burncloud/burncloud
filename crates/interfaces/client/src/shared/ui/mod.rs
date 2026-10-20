@@ -569,6 +569,26 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .admin-customers-balance { color: #047857; font-weight: 700; }
 .admin-customers-risk, .admin-customers-status { font-family: var(--sans); }
 .admin-customers-table td:last-child { padding-right: 0; text-align: right; }
+.admin-suppliers-stack { display: flex; min-width: 0; flex-direction: column; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-suppliers-header { margin-bottom: 16px; }
+.admin-suppliers-conclusion { margin: 0 0 28px; }
+.admin-suppliers-panel.panel { padding: 24px; }
+.admin-suppliers-panel-heading h2 { margin: 0; color: #111827; font: 700 16px/22px var(--sans); }
+.admin-suppliers-table-scroll { width: 100%; margin-top: 16px; overflow-x: auto; }
+.admin-suppliers-table { width: 100%; min-width: 1050px; border-collapse: collapse; table-layout: auto; text-align: left; font: 400 12px/16px var(--mono); }
+.admin-suppliers-table-head tr { border-bottom: 1px solid #f3f4f6; }
+.admin-suppliers-table-head th { padding: 0 12px 12px 0; border: 0; color: #9ca3af; font: 600 10px/14px var(--mono); text-transform: uppercase; white-space: nowrap; }
+.admin-suppliers-table-head th:last-child { padding-right: 0; text-align: right; }
+.admin-suppliers-table td { padding: 14px 12px 14px 0; border: 0; color: #4b5563; vertical-align: middle; white-space: nowrap; }
+.admin-suppliers-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+.admin-suppliers-table tbody tr:last-child { border-bottom: 0; }
+.admin-suppliers-table tbody tr:hover { background: rgba(249,250,251,.82); }
+.admin-suppliers-name { color: #111827 !important; font: 700 12px/16px var(--sans) !important; }
+.admin-suppliers-gpus { color: #374151 !important; font-family: var(--sans) !important; }
+.admin-suppliers-uptime, .admin-suppliers-earnings { color: #047857 !important; font-weight: 700 !important; }
+.admin-suppliers-share { color: #111827 !important; font-weight: 700 !important; }
+.admin-suppliers-status-cell { padding-right: 0 !important; text-align: right; }
+.admin-suppliers-status { letter-spacing: 0; }
 .admin-overview-stack { display: flex; flex-direction: column; gap: 28px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
 .admin-overview-header { margin-bottom: -12px; }
 .admin-overview-actions { gap: 10px; }
@@ -991,6 +1011,10 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 @media (max-width: 639px) {
     .admin-settlements-panel.panel { padding: 20px 16px 8px; }
     .admin-settlements-table { min-width: 1080px; }
+}
+@media (max-width: 639px) {
+    .admin-suppliers-panel.panel { padding: 20px 16px 8px; }
+    .admin-suppliers-table { min-width: 1050px; }
 }
 @media (max-width: 639px) { .supplier-page-header-row { align-items: flex-start; } .supplier-page-header .page-heading-copy { min-width: 0; } .supplier-page-actions { flex: 0 0 auto; } .supplier-cluster-alert { padding: 16px; } .supplier-nodes-panel { padding: 20px 16px 8px; } .supplier-node-table { min-width: 820px; } .supplier-install-modal { padding: 20px; } }
 @media (max-width: 639px) { .supplier-resource-grid { grid-template-columns: 1fr; gap: 14px; } .supplier-resource-card { padding: 20px; } .supplier-resource-card-header { gap: 10px; } .supplier-resource-name-row { align-items: flex-start; flex-direction: column; gap: 4px; } .supplier-resource-earnings { font-size: 14px; line-height: 20px; } .supplier-drain-modal { padding: 20px; } }
