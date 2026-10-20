@@ -6,6 +6,7 @@ use burncloud_download::DownloadManager;
 use tokio::sync::Mutex;
 use url::Url;
 
+use super::artifact_request::ArtifactRequest;
 use super::{ArtifactPrepareError, ArtifactVerificationStatus, Digest, PreparedArtifact};
 
 /// 由 Node 组合根使用的工件准备端口。
@@ -99,6 +100,25 @@ impl ArtifactPreparer {
         let receipt_path = if verified { path } else { PathBuf::new() };
         PreparedArtifact::new(receipt_path, status)
             .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))
+    }
+
+    async fn download_artifact(
+        &self,
+        manager: &DownloadManager,
+        request: &ArtifactRequest,
+    ) -> Result<PathBuf, ArtifactPrepareError> {
+        let path = match request.source() {
+            super::ArtifactSource::Http(url) => manager
+                .download(url.as_str(), "models")
+                .await
+                .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))?,
+        };
+        if path.as_os_str().is_empty() || !path.is_absolute() {
+            return Err(ArtifactPrepareError::PrepareFailed(
+                "download manager returned an unavailable artifact path".to_string(),
+            ));
+        }
+        Ok(path)
     }
 }
 
