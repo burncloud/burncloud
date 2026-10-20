@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -5,7 +6,7 @@ use burncloud_download::DownloadManager;
 use tokio::sync::Mutex;
 use url::Url;
 
-use super::{ArtifactPrepareError, Digest, PreparedArtifact};
+use super::{ArtifactPrepareError, ArtifactVerificationStatus, Digest, PreparedArtifact};
 
 /// 由 Node 组合根使用的工件准备端口。
 #[async_trait]
@@ -83,6 +84,22 @@ impl ArtifactPreparer {
             lifecycle.download_manager = None;
         }
     }
+
+    fn build_receipt(
+        &self,
+        path: PathBuf,
+        verified: bool,
+    ) -> Result<PreparedArtifact, ArtifactPrepareError> {
+        let status = if verified {
+            ArtifactVerificationStatus::Verified
+        } else {
+            ArtifactVerificationStatus::Failed
+        };
+        // 失败回执不能泄露已删除或待删除的下载路径，避免下游误用未验证文件。
+        let receipt_path = if verified { path } else { PathBuf::new() };
+        PreparedArtifact::new(receipt_path, status)
+            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))
+    }
 }
 
 impl Default for ArtifactPreparer {
@@ -94,3 +111,7 @@ impl Default for ArtifactPreparer {
 #[cfg(test)]
 #[path = "../../tests/support/artifact_preparer_lifecycle.rs"]
 mod lifecycle_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/artifact_preparer_receipt.rs"]
+mod receipt_tests;
