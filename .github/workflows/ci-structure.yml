@@ -14,48 +14,24 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  checks: write
 
 jobs:
-  evaluate:
-    name: Evaluate repository structure policy
+  protect-repository-structure:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       # Do not checkout the PR head or execute any file supplied by the PR.
       # This workflow uses the trusted base-branch definition and read-only
-      # repository APIs. The only write permission creates the required check
-      # run on the exact PR head SHA.
-      - name: Check protected paths and root entries
+      # repository APIs. The workflow does not write to the repository.
+      - name: Check protected paths, root entries, and Rust-only files
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const CHECK_NAME = "protect-repository-structure";
             const MAX_FILES = 3000;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const prNumber = context.payload.pull_request && context.payload.pull_request.number;
-
-            let checkRunId = null;
-            let checkFinished = false;
-
-            async function finishCheck(conclusion, title, summary) {
-              if (!checkRunId) {
-                return;
-              }
-
-              await github.rest.checks.update({
-                owner,
-                repo,
-                check_run_id: checkRunId,
-                status: "completed",
-                conclusion,
-                completed_at: new Date().toISOString(),
-                output: { title, summary },
-              });
-              checkFinished = true;
-            }
 
             try {
               if (!Number.isSafeInteger(prNumber)) {
@@ -79,21 +55,6 @@ jobs:
                   !/^[0-9a-f]{40,64}$/i.test(pr.head.sha)) {
                 throw new Error("The base or head commit SHA is missing or invalid.");
               }
-
-              // Explicitly attach the required check to this PR head SHA.
-              const createdCheck = await github.rest.checks.create({
-                owner,
-                repo,
-                name: CHECK_NAME,
-                head_sha: pr.head.sha,
-                status: "in_progress",
-                started_at: new Date().toISOString(),
-                output: {
-                  title: "Checking repository structure",
-                  summary: "Checking .github/ changes and root-level entries.",
-                },
-              });
-              checkRunId = createdCheck.data.id;
 
               try {
                 if (!Number.isSafeInteger(pr.changed_files) || pr.changed_files < 0) {
@@ -124,6 +85,34 @@ jobs:
                 const githubViolations = files.filter((file) => {
                   const paths = [file.filename, file.previous_filename].filter(Boolean);
                   return paths.some((path) => path === ".github" || path.startsWith(".github/"));
+                });
+
+                // Allow Rust source and the minimum Cargo/Rust toolchain metadata.
+                // Check both paths for renames, so renaming a forbidden file cannot bypass policy.
+                const allowedRustMetadataNames = new Set([
+                  "Cargo.toml",
+                  "Cargo.lock",
+                  "rust-toolchain",
+                  "rust-toolchain.toml",
+                  "rustfmt.toml",
+                  ".rustfmt.toml",
+                  "clippy.toml",
+                  ".clippy.toml",
+                  "deny.toml",
+                ]);
+                function isAllowedRustRelatedFile(path) {
+                  if (path.endsWith(".rs")) {
+                    return true;
+                  }
+                  const basename = path.split("/").pop();
+                  if (allowedRustMetadataNames.has(basename)) {
+                    return true;
+                  }
+                  return path === ".cargo/config" || path === ".cargo/config.toml";
+                }
+                const nonRustViolations = files.filter((file) => {
+                  const paths = [file.filename, file.previous_filename].filter(Boolean);
+                  return paths.some((path) => !isAllowedRustRelatedFile(path));
                 });
 
                 const baseCommitResponse = await github.rest.git.getCommit({
@@ -284,44 +273,30 @@ jobs:
                     previous_filename: violation.previous_filename || null,
                   }));
                 }
+                for (const violation of nonRustViolations) {
+                  core.info("Forbidden non-Rust-related file change: " + JSON.stringify({
+                    status: violation.status,
+                    filename: violation.filename,
+                    previous_filename: violation.previous_filename || null,
+                  }));
+                }
                 for (const change of rootChanges) {
                   core.info("Forbidden root-level structure change: " + JSON.stringify(change));
                 }
 
-                if (githubViolations.length > 0 || rootChanges.length > 0) {
-                  const summary =
-                    "The PR violates repository structure policy.\n\n" +
-                    "- Prohibited .github/ path changes: " + githubViolations.length + "\n" +
-                    "- Root-level structure changes: " + rootChanges.length + "\n\n" +
-                    "Affected paths are listed in the workflow log. Remove the prohibited changes.";
-                  await finishCheck(
-                    "failure",
-                    "Repository structure policy failed",
-                    summary
-                  );
+                if (githubViolations.length > 0 ||
+                    rootChanges.length > 0 ||
+                    nonRustViolations.length > 0) {
                   core.setFailed(
-                    "Repository structure protection failed: .github/ must not change and root-level entries must remain stable."
+                    "Repository policy failed. .github/ changes: " + githubViolations.length +
+                    "; root-level structure changes: " + rootChanges.length +
+                    "; non-Rust-related file changes: " + nonRustViolations.length +
+                    ". Only Rust source and approved Cargo/Rust toolchain metadata files are allowed."
                   );
                 } else {
-                  await finishCheck(
-                    "success",
-                    "Repository structure policy passed",
-                    "No prohibited .github/ path changes or root-level structure changes were found."
-                  );
-                  core.info("Repository structure protection passed.");
+                  core.info("Repository structure and Rust-only file policy passed.");
                 }
               } catch (verificationError) {
-                if (!checkFinished) {
-                  try {
-                    await finishCheck(
-                      "failure",
-                      "Verification failed closed",
-                      "The guard could not verify the complete PR file list or Git trees. The check fails closed. See workflow logs for details."
-                    );
-                  } catch (checkUpdateError) {
-                    core.error("Could not update the required check run to failure: " + String(checkUpdateError));
-                  }
-                }
                 throw verificationError;
               }
             } catch (error) {
