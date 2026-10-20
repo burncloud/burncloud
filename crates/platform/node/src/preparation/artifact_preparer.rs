@@ -19,6 +19,31 @@ use super::{
 #[async_trait]
 pub trait ArtifactPreparation: Send + Sync {
     /// 准备请求中的工件，并返回本地工件或准备错误。
+    ///
+    /// # 示例
+    ///
+    /// ```no_run
+    /// use burncloud_node_runtime::{ArtifactPreparation, Digest};
+    /// use url::Url;
+    ///
+    /// # async fn example<P: ArtifactPreparation>(
+    /// #     preparer: &P,
+    /// # ) -> Result<(), Box<dyn std::error::Error>> {
+    /// let _artifact = preparer
+    ///     .prepare(
+    ///         Url::parse("https://modelscope.cn/models/example/resolve/main/model.gguf")?,
+    ///         Digest::parse(
+    ///             "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    ///         )?,
+    ///     )
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # 注意
+    ///
+    /// 实现必须拒绝不支持的来源，并且不能把未通过摘要校验的路径作为成功回执返回。
     async fn prepare(
         &self,
         url: Url,
@@ -55,6 +80,49 @@ impl ArtifactPreparer {
         Self {
             lifecycle: Mutex::new(ArtifactPreparerLifecycle::default()),
         }
+    }
+
+    /// 下载并校验指定的远程工件。
+    ///
+    /// # 示例
+    ///
+    /// ```no_run
+    /// use burncloud_node_runtime::{ArtifactPreparer, Digest};
+    /// use url::Url;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let preparer = ArtifactPreparer::new();
+    /// let artifact = preparer
+    ///     .prepare(
+    ///         Url::parse("https://modelscope.cn/models/example/resolve/main/model.gguf")?,
+    ///         Digest::parse(
+    ///             "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    ///         )?,
+    ///     )
+    ///     .await?;
+    /// assert!(artifact.is_verified());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # 注意
+    ///
+    /// 只接受受支持主机名的 HTTP(S) URL。摘要不匹配时最多重新下载并校验一次；
+    /// 两次校验均失败会返回 `Failed` 回执而不是未校验路径。
+    pub async fn prepare(
+        &self,
+        url: Url,
+        expected_digest: Digest,
+    ) -> Result<PreparedArtifact, ArtifactPrepareError> {
+        let source = super::ArtifactSource::try_from(&url)
+            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))?;
+        let request = ArtifactRequest::new(source, expected_digest);
+        let manager = self.acquire_manager().await?;
+        let result = self.prepare_with_manager(&manager, &request).await;
+        // 先释放当前请求持有的引用，再让生命周期计数归零，确保管理器可以立即停止。
+        drop(manager);
+        self.release_manager().await;
+        result
     }
 
     async fn acquire_manager(&self) -> Result<Arc<DownloadManager>, ArtifactPrepareError> {
@@ -151,6 +219,48 @@ impl ArtifactPreparer {
 
         Ok(digest.finalize() == expected_digest.value())
     }
+
+    async fn prepare_with_manager(
+        &self,
+        manager: &DownloadManager,
+        request: &ArtifactRequest,
+    ) -> Result<PreparedArtifact, ArtifactPrepareError> {
+        let first_path = self.download_artifact(manager, request).await?;
+        if self
+            .verify_file_digest(&first_path, request.expected_digest())
+            .await?
+        {
+            return self.build_receipt(first_path, true);
+        }
+
+        tokio::fs::remove_file(&first_path)
+            .await
+            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))?;
+
+        let retry_path = self.download_artifact(manager, request).await?;
+        if self
+            .verify_file_digest(&retry_path, request.expected_digest())
+            .await?
+        {
+            return self.build_receipt(retry_path, true);
+        }
+
+        tokio::fs::remove_file(&retry_path)
+            .await
+            .map_err(|error| ArtifactPrepareError::PrepareFailed(error.to_string()))?;
+        self.build_receipt(PathBuf::new(), false)
+    }
+}
+
+#[async_trait]
+impl ArtifactPreparation for ArtifactPreparer {
+    async fn prepare(
+        &self,
+        url: Url,
+        expected_digest: Digest,
+    ) -> Result<PreparedArtifact, ArtifactPrepareError> {
+        ArtifactPreparer::prepare(self, url, expected_digest).await
+    }
 }
 
 enum FileDigest {
@@ -210,3 +320,7 @@ mod receipt_tests;
 #[cfg(test)]
 #[path = "../../tests/support/artifact_preparer_digest.rs"]
 mod digest_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/artifact_preparer_prepare.rs"]
+mod prepare_tests;
