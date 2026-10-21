@@ -128,7 +128,9 @@ impl Aria2RpcClient {
         // HTTP 非成功状态可能携带代理或服务端错误正文，先保留状态码和正文。
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = response.text().await.map_err(|error| {
+                Aria2Error::RpcError(format!("读取 HTTP 错误正文失败: {error}"))
+            })?;
             return Err(Aria2Error::HttpError { status, body });
         }
 
@@ -200,19 +202,47 @@ impl Aria2RpcClient {
         uris: &[String],
         options: &Option<DownloadOptions>,
     ) -> Aria2Result<Option<String>> {
-        // 仅获取活跃任务，等待和已停止任务不参与重复检查。
-        let active_tasks = self.tell_active().await.unwrap_or_default();
-
-        // 检查每个任务
-        for task in active_tasks {
-            if let Ok(status) = self.tell_status(&task.gid).await {
-                if self.is_same_task(&status, uris, options).await? {
-                    return Ok(Some(task.gid));
-                }
-            }
+        // aria2 查询失败必须返回给调用方，不能被当成“没有重复任务”。
+        if let Some(gid) = self
+            .find_matching_task(self.tell_active().await?, uris, options)
+            .await?
+        {
+            return Ok(Some(gid));
         }
 
-        // 未匹配到重复任务
+        let page_size = 1000;
+        let mut offset = 0_u32;
+        loop {
+            let waiting_tasks = self.tell_waiting(offset, page_size).await?;
+            let count = u32::try_from(waiting_tasks.len())
+                .map_err(|error| Aria2Error::RpcError(error.to_string()))?;
+            if let Some(gid) = self
+                .find_matching_task(waiting_tasks, uris, options)
+                .await?
+            {
+                return Ok(Some(gid));
+            }
+            if count < page_size {
+                return Ok(None);
+            }
+            offset = offset
+                .checked_add(count)
+                .ok_or_else(|| Aria2Error::RpcError("等待任务分页偏移量溢出".to_string()))?;
+        }
+    }
+
+    async fn find_matching_task(
+        &self,
+        tasks: Vec<DownloadStatus>,
+        uris: &[String],
+        options: &Option<DownloadOptions>,
+    ) -> Aria2Result<Option<String>> {
+        for task in tasks {
+            let status = self.tell_status(&task.gid).await?;
+            if self.is_same_task(&status, uris, options).await? {
+                return Ok(Some(task.gid));
+            }
+        }
         Ok(None)
     }
 
@@ -230,20 +260,25 @@ impl Aria2RpcClient {
         // 实际实现中可能需要调用 aria2.getFiles 等方法获取完整信息
 
         // 比较URI（简化版本，实际可能需要更复杂的逻辑）
-        if let Ok(files) = self.get_files(&status.gid).await {
-            for file in files {
-                for uri in uris {
-                    if file.uris.iter().any(|u| u.uri == *uri) {
-                        // 比较存储路径
-                        let target_dir = options.as_ref().and_then(|o| o.dir.as_ref());
-                        if let Some(dir) = target_dir {
-                            if file.path.starts_with(dir) {
-                                return Ok(true);
-                            }
-                        } else {
-                            // 如果没有指定目录，认为是相同的（使用默认目录）
-                            return Ok(true);
-                        }
+        let files = self.get_files(&status.gid).await?;
+        for file in files {
+            for uri in uris {
+                if file.uris.iter().any(|item| item.uri == *uri) {
+                    // 比较 URI 对应文件的目标目录。
+                    let path = std::path::Path::new(&file.path);
+                    let directory_matches = options
+                        .as_ref()
+                        .and_then(|value| value.dir.as_ref())
+                        .is_none_or(|dir| path.starts_with(dir));
+                    let filename_matches = options
+                        .as_ref()
+                        .and_then(|value| value.out.as_ref())
+                        .is_none_or(|filename| {
+                            path.file_name().and_then(|name| name.to_str())
+                                == Some(filename.as_str())
+                        });
+                    if directory_matches && filename_matches {
+                        return Ok(true);
                     }
                 }
             }
@@ -576,6 +611,56 @@ mod tests {
             Err(Aria2Error::RpcError(message))
                 if message == "aria2.addUri 的 URI 列表不能为空"
         ));
+    }
+
+    /// 等待队列中已有相同目标时复用 GID，不再创建 aria2 任务。
+    #[tokio::test]
+    async fn add_uri_reuses_matching_waiting_task(
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (port, seen) = start_scripted_server(4, |index, _request| {
+            match index {
+                0 => r#"{"jsonrpc":"2.0","id":"1","result":[]}"#.to_string(),
+                1 => r#"{"jsonrpc":"2.0","id":"1","result":[{"gid":"waiting-gid","status":"waiting","errorCode":"0","errorMessage":"","totalLength":"0","completedLength":"0","downloadSpeed":"0"}]}"#.to_string(),
+                2 => r#"{"jsonrpc":"2.0","id":"1","result":{"gid":"waiting-gid","status":"waiting","errorCode":"0","errorMessage":"","totalLength":"0","completedLength":"0","downloadSpeed":"0"}}"#.to_string(),
+                3 => r#"{"jsonrpc":"2.0","id":"1","result":[{"path":"downloads/model.bin","uris":[{"uri":"https://example.invalid/model.bin","status":"used"}]}]}"#.to_string(),
+                _ => r#"{"jsonrpc":"2.0","id":"1","error":{"code":1,"message":"unexpected RPC call"}}"#.to_string(),
+            }
+        })
+        .await?;
+        let client = Aria2RpcClient::new(port, None);
+        let url = "https://example.invalid/model.bin";
+        let options = crate::types::DownloadOptions {
+            dir: Some("downloads".to_string()),
+            out: Some("model.bin".to_string()),
+            split: None,
+            max_connection_per_server: None,
+            continue_download: Some(true),
+            allow_overwrite: Some(true),
+            auto_file_renaming: Some(false),
+        };
+
+        let outcome = client.add_uri(vec![url.to_string()], Some(options)).await?;
+
+        assert_eq!(
+            outcome,
+            super::AddUriOutcome::Existing("waiting-gid".to_string())
+        );
+        let requests = seen.lock().expect("RPC request recorder is not poisoned");
+        let methods: Vec<_> = requests
+            .iter()
+            .filter_map(|request| request["method"].as_str())
+            .collect();
+        assert_eq!(
+            methods,
+            [
+                "aria2.tellActive",
+                "aria2.tellWaiting",
+                "aria2.tellStatus",
+                "aria2.getFiles"
+            ]
+        );
+
+        Ok(())
     }
 
     // ===================================================================================

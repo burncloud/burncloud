@@ -280,13 +280,12 @@ async fn a_new_uri_is_created_and_the_request_shape_matches_the_contract(
     let first_uri = "https://example.invalid/first.bin";
     let second_uri = "https://example.invalid/second.bin";
 
-    let (port, seen) = start_scripted_server(2, move |index| {
-        if index == 0 {
-            // Nothing is downloading: an empty active list is what makes the add path reachable.
-            active_tasks(&[])
-        } else {
-            added(new_gid)
-        }
+    // Three calls: tellActive, tellWaiting, then aria2.addUri. `add_uri` probes both queues before
+    // it treats a URI as new, so the add is the third request on the wire. Empty task pages answer
+    // either queue, which is why the same helper covers both probes.
+    let (port, seen) = start_scripted_server(3, move |index| match index {
+        0 | 1 => active_tasks(&[]),
+        _ => added(new_gid),
     })
     .await?;
 
@@ -306,9 +305,13 @@ async fn a_new_uri_is_created_and_the_request_shape_matches_the_contract(
     }
 
     let seen = requests_seen(&seen);
-    assert_eq!(seen.len(), 2, "expected tellActive then addUri: {seen:#?}");
+    assert_eq!(
+        seen.len(),
+        3,
+        "expected tellActive, tellWaiting then addUri: {seen:#?}"
+    );
 
-    let add = &seen[1];
+    let add = &seen[2];
     assert_eq!(
         add["method"], "aria2.addUri",
         "the created task must be requested through aria2.addUri"
@@ -370,11 +373,11 @@ async fn both_branches_send_the_uri_list_as_one_array_parameter(
     let second_uri = "https://example.invalid/beta.bin";
     let dir = "/tmp/bc-893-dir";
 
-    // Four calls: tellActive then addUri, twice -- once per branch.
-    let (port, seen) = start_scripted_server(4, move |index| match index {
-        0 => active_tasks(&[]),
-        1 => added(gid_without),
-        2 => active_tasks(&[]),
+    // Six calls: tellActive/tellWaiting/addUri, twice -- once per branch. Both branches probe the
+    // active and the waiting queue before adding, so each branch costs two empty pages then an add.
+    let (port, seen) = start_scripted_server(6, move |index| match index {
+        0 | 1 | 3 | 4 => active_tasks(&[]),
+        2 => added(gid_without),
         _ => added(gid_with),
     })
     .await?;
@@ -410,8 +413,8 @@ async fn both_branches_send_the_uri_list_as_one_array_parameter(
     let seen = requests_seen(&seen);
     assert_eq!(
         seen.len(),
-        4,
-        "expected two tellActive/addUri pairs: {seen:#?}"
+        6,
+        "expected two tellActive/tellWaiting/addUri triples: {seen:#?}"
     );
 
     let adds: Vec<&serde_json::Value> = seen
