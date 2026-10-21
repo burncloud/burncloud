@@ -1561,4 +1561,21 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
     .logs-detail-card strong { text-align: left; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
-"#;
+.admin-settings-stack { display: flex; min-width: 0; flex-direction: column; gap: 24px; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-settings-header { align-items: stretch; flex-direction: column; gap: 16px; margin-bottom: 0; }
+.admin-settings-conclusion { margin: 0; }
+.admin-settings-card { width: 100%; max-width: 672px; padding: 24px; }
+.admin-settings-form { display: flex; min-width: 0; flex-direction: column; gap: 16px; font: 400 12px/16px var(--sans); }
+.admin-settings-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.admin-settings-field label { color: #374151; font: 600 12px/16px var(--sans); }
+.admin-settings-field input { width: 100%; height: 38px; min-width: 0; padding: 0 14px; border: 1px solid rgba(229,231,235,.9); border-radius: 12px; outline: 0; color: #111827; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.02); font: 400 12px/16px var(--sans); transition: border-color 150ms,box-shadow 150ms; }
+.admin-settings-field input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,.08); }
+.admin-settings-helper { display: block; color: #9ca3af; font: 400 10px/15px var(--mono); }
+.admin-settings-actions { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+.admin-settings-save { cursor: pointer; }
+.admin-settings-saved-icon { display: inline-flex; color: #34d399; }
+@media (max-width: 639px) {
+    .admin-settings-header { gap: 16px; }
+    .admin-settings-header h1 { font-size: 24px; }
+    .admin-settings-card { padding: 20px; }
+}"#;

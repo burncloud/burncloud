@@ -1,4 +1,4 @@
-use super::console::{PlaceholderPage, PlaceholderPageWithRole};
+use super::console::PlaceholderPage;
 use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
 use crate::domains::admin::customers::AdminCustomers as AdminCustomersPage;
 use crate::domains::admin::demand::AdminDemand as AdminDemandPage;
@@ -6,6 +6,7 @@ use crate::domains::admin::models::AdminModels as AdminModelsPage;
 use crate::domains::admin::operations::AdminOperations as AdminOperationsPage;
 use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
 use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
+use crate::domains::admin::settings::page::AdminSettings as AdminSettingsPage;
 use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
 use crate::domains::admin::suppliers::page::AdminSuppliers as AdminSuppliersPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
@@ -20,7 +21,6 @@ use crate::domains::supplier::reliability::page::SupplierReliability as Supplier
 use crate::domains::supplier::resources::page::SupplierResources as SupplierResourcesPage;
 use crate::domains::supplier::settings::page::SupplierSettings as SupplierSettingsPage;
 use crate::domains::supplier::settlements::page::SupplierSettlements as SupplierSettlementsPage;
-use crate::shared::types::Role;
 use dioxus::prelude::*;
 
 #[derive(Clone, Routable, Debug, PartialEq)]
@@ -285,7 +285,7 @@ pub fn AdminOperations() -> Element {
 }
 #[component]
 pub fn AdminSettings() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Settings".to_string(), role: Role::Admin } }
+    rsx! { AdminSettingsPage {} }
 }
 #[component]
 pub fn NotFound(segments: Vec<String>) -> Element {
