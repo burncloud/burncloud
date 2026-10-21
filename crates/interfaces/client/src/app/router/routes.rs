@@ -1,4 +1,4 @@
-use super::console::{PlaceholderPage, PlaceholderPageWithRole};
+use super::console::PlaceholderPage;
 use crate::domains::admin::capacity::AdminCapacity as AdminCapacityPage;
 use crate::domains::admin::customers::AdminCustomers as AdminCustomersPage;
 use crate::domains::admin::demand::AdminDemand as AdminDemandPage;
@@ -21,7 +21,6 @@ use crate::domains::supplier::reliability::page::SupplierReliability as Supplier
 use crate::domains::supplier::resources::page::SupplierResources as SupplierResourcesPage;
 use crate::domains::supplier::settings::page::SupplierSettings as SupplierSettingsPage;
 use crate::domains::supplier::settlements::page::SupplierSettlements as SupplierSettlementsPage;
-use crate::shared::types::Role;
 use dioxus::prelude::*;
 
 #[derive(Clone, Routable, Debug, PartialEq)]
