@@ -8,6 +8,7 @@ use crate::domains::admin::overview::AdminOverview as AdminOverviewPage;
 use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
 use crate::domains::admin::settings::page::AdminSettings as AdminSettingsPage;
 use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
+use crate::domains::admin::suppliers::page::AdminSuppliers as AdminSuppliersPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
@@ -273,7 +274,7 @@ pub fn AdminSettlements() -> Element {
 }
 #[component]
 pub fn AdminSuppliers() -> Element {
-    rsx! { PlaceholderPageWithRole { title: "Supplier Accounts".to_string(), role: Role::Admin } }
+    rsx! { AdminSuppliersPage {} }
 }
 #[component]
 pub fn AdminCustomers() -> Element {

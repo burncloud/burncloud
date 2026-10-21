@@ -95,6 +95,7 @@ dotenvy = "0.15"
 log = "0.4"
 semver = "1.0"
 tokio = { version = "1.0", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -139,7 +140,10 @@ bcrypt = "0.17.1"
 aes-gcm = "0.10"
 
 # Archive
-zip = "0.6"
+# Only the compression methods this workspace actually extracts are enabled: the
+# default feature set pulls in `bzip2`, whose `libbz2-rs-sys` dependency is licensed
+# `bzip2-1.0.6` and therefore rejected by the license allow-list in deny.toml.
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 
 # Testing
 tokio-test = "0.4"
