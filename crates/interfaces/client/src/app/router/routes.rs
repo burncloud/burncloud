@@ -7,8 +7,9 @@ use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
 use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
-    api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
-    overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
+    api_keys::BuyerApiKeys, billing::BuyerBilling, chat::BuyerChat, logs::BuyerLogs,
+    marketplace::BuyerMarketplace, overview::BuyerOverview, playground::BuyerPlayground,
+    usage::BuyerUsage,
 };
 use crate::domains::supplier::deployments::page::SupplierDeployments as SupplierDeploymentsPage;
 use crate::domains::supplier::earnings::page::SupplierEarnings as SupplierEarningsPage;
@@ -114,7 +115,7 @@ pub enum Route {
 
 #[component]
 pub fn Home() -> Element {
-    rsx! { BuyerOverview {} }
+    rsx! { BuyerChat {} }
 }
 #[component]
 pub fn PublicHome() -> Element {
