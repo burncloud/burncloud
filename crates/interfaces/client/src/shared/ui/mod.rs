@@ -975,6 +975,29 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 @media (max-width: 1023px) { .topbar { padding: 0 24px; } .page-viewport { padding: 32px; } .metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 1100px) { .global-search { width: auto; flex: 1 1 auto; min-width: 0; } .supplier-earnings-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 800px) { .sidebar { position: fixed; inset: 0 auto 0 0; width: 240px; flex-basis: auto; box-shadow: 20px 0 45px rgba(0,0,0,.12); transform: translateX(-105%); transition: transform 220ms ease; } .sidebar.open { transform: translateX(0); } .sidebar-close { position: absolute; z-index: 2; top: 6px; right: 6px; display: inline-flex; border: 1px solid #e5e7eb; background: #fff; } .mobile-scrim { position: fixed; z-index: 25; inset: 0; border: 0; background: rgba(17,24,39,.28); backdrop-filter: blur(2px); } .mobile-menu-button { display: inline-flex; flex: 0 0 auto; } .global-search { max-width: none; } }
+
+.admin-operations-stack { display: flex; flex-direction: column; gap: 0; padding-bottom: 4px; animation: page-in 300ms ease-out both; }
+.admin-operations-header { margin-bottom: 16px; }
+.admin-operations-breaker { flex: 0 0 auto; }
+.admin-operations-breaker-state { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .06em; }
+.admin-operations-conclusion { margin: 0 0 28px; }
+.admin-operations-log-panel.panel { padding: 24px; }
+.admin-operations-log-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+.admin-operations-log-header h2 { margin: 0; color: #030712; font-size: 16px; font-weight: 700; line-height: 20px; }
+.admin-operations-log-header p { margin: 4px 0 0; color: #6b7280; font-size: 12px; font-weight: 500; line-height: 16px; }
+.admin-operations-log-list { display: flex; flex-direction: column; gap: 12px; }
+.admin-operations-log-row { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid #f3f4f6; border-radius: 12px; background: rgba(249,250,251,.82); font-size: 12px; }
+.admin-operations-log-copy { min-width: 0; }
+.admin-operations-log-heading { display: flex; min-width: 0; align-items: center; gap: 8px; margin-bottom: 6px; }
+.admin-operations-log-heading strong { min-width: 0; color: #111827; font-size: 12px; font-weight: 700; line-height: 16px; }
+.admin-operations-log-row p { margin: 0 0 4px; color: #4b5563; font-size: 11px; line-height: 1.625; }
+.admin-operations-log-row time { flex: 0 0 auto; color: #9ca3af; font: 500 10px/15px var(--mono); white-space: nowrap; }
+.admin-operations-log-impact { display: flex; align-items: center; gap: 12px; padding-top: 4px; font: 400 11px/1.3333 var(--mono); }
+.admin-operations-log-impact-primary { color: #047857; font-weight: 600; }
+.admin-operations-log-impact-separator { color: #9ca3af; }
+.admin-operations-log-impact-secondary { color: #6b7280; }
+
+@media (max-width: 639px) { .admin-operations-log-panel.panel { padding: 20px 16px; } .admin-operations-log-row { flex-direction: column; gap: 12px; } .admin-operations-log-heading { align-items: flex-start; flex-wrap: wrap; } .admin-operations-log-impact { align-items: flex-start; flex-wrap: wrap; gap: 6px 12px; } .admin-operations-breaker { align-self: flex-start; } }
 @media (max-width: 639px) { .topbar { gap: 10px; } .autopilot { display: none; } .page-header { align-items: flex-start; flex-direction: column; } .page-viewport { padding: 24px; } .page-heading-copy h1 { font-size: 24px; line-height: 1.333333; } .page-heading-copy p { font-size: 14px; } .metric-grid { grid-template-columns: 1fr; gap: 14px; } .metric-card { min-height: 142px; padding: 20px; } .metric-value-row strong { font-size: 24px; } .attention { align-items: stretch; flex-direction: column; } .panel { padding: 24px; } .admin-overview-lower-grid { grid-template-columns: 1fr; gap: 14px; } .admin-overview-events-panel { padding: 20px 16px; } .admin-overview-metrics .metric-card { padding: 20px; } .admin-event-item { flex-direction: column; gap: 12px; } .admin-event-heading { align-items: flex-start; flex-wrap: wrap; } }
 @media (max-width: 639px) { .admin-supply-nodes-panel.panel { padding: 24px; } .admin-supply-table { min-width: 900px; } .admin-supply-metrics .metric-card { padding: 20px; } .admin-supply-metrics .metric-subtitle { overflow: visible; } }
 @media (max-width: 639px) { .admin-capacity-models-panel.panel { padding: 24px; } .admin-capacity-table { min-width: 900px; } .admin-capacity-metrics .metric-card { padding: 20px; } .admin-capacity-autopilot { align-self: flex-start; } }
