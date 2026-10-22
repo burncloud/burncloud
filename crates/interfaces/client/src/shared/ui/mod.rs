@@ -1544,6 +1544,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-model-trigger { display: flex; min-width: 250px; max-width: 390px; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid transparent; border-radius: 10px; color: #111827; background: transparent; text-align: left; cursor: pointer; }
 .chat-model-trigger:hover { border-color: #e5e7eb; background: #fafafa; }
 .chat-online-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.12); }
+.chat-online-dot.offline { background: #9ca3af; box-shadow: 0 0 0 3px rgba(156,163,175,.12); }
 .chat-model-trigger-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 2px; }
 .chat-model-trigger-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .chat-model-trigger-copy small { color: #9ca3af; font-size: 10px; font-weight: 600; }
@@ -1602,7 +1603,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-markdown { color: #374151; font-size: 14px; line-height: 1.75; }
 .chat-markdown h3 { margin: 8px 0 6px; color: #111827; font-size: 17px; letter-spacing: -.02em; }
 .chat-markdown p { margin: 0 0 13px; white-space: pre-wrap; }
-.chat-markdown li { margin: 4px 0 4px 20px; list-style: disc; }
+.chat-markdown-list-item { margin: 4px 0 4px 2px !important; }
 .chat-markdown pre { margin: 13px 0; padding: 14px 16px; overflow-x: auto; border-radius: 10px; color: #e5e7eb; background: #111827; font: 12px/1.7 var(--mono); }
 .chat-inference-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 17px; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa; }
 .chat-inference-metrics > div { display: flex; min-width: 90px; flex-direction: column; gap: 3px; padding-right: 13px; border-right: 1px solid #e5e7eb; }
@@ -1645,6 +1646,8 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-empty-state p { max-width: 430px; margin: 0; color: #9ca3af; font-size: 13px; line-height: 1.6; }
 .chat-empty-hints { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
 .chat-empty-hints span { padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 7px; color: #9ca3af; font-family: var(--mono); font-size: 9px; }
+.chat-main-notice { width: min(900px, calc(100% - 48px)); margin: 0 auto 10px; padding: 8px 11px; border: 1px solid #d1fae5; border-radius: 8px; color: #047857; background: #ecfdf5; font-size: 11px; line-height: 1.4; }
+.chat-main-notice.error { border-color: #fecaca; color: #b91c1c; background: #fef2f2; }
 .chat-footer { padding: 0 24px 14px; color: #c4c8cf; font-family: var(--mono); font-size: 9px; text-align: center; }
 .chat-mobile-scrim { display: none; }
 @media (max-width: 1023px) {

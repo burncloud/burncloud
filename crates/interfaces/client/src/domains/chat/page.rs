@@ -151,9 +151,6 @@ pub fn ChatHome() -> Element {
                     }
                 }
                 div { class: "chat-sidebar-bottom",
-                    if let Some(notice) = copy_notice() {
-                        div { class: if notice.starts_with("复制失败") { "chat-notice error" } else { "chat-notice" }, role: "status", {notice.clone()} }
-                    }
                     div { class: "chat-sidebar-footer",
                         span { class: "chat-version", "BurnCloud v2.4" }
                         div { class: "chat-language-wrap",
@@ -260,6 +257,9 @@ pub fn ChatHome() -> Element {
                         snapshot: snapshot.clone(),
                         on_send: move |_| start_generation(state),
                     }
+                    if let Some(notice) = copy_notice() {
+                        div { class: if notice.starts_with("复制失败") { "chat-main-notice error" } else { "chat-main-notice" }, role: "status", {notice.clone()} }
+                    }
                 }
                 footer { class: "chat-footer", "BurnCloud Gateway v2.4 · Verifiable P2P Decentralized Inference" }
             }
@@ -281,6 +281,7 @@ fn ModelSelector(
     let context_label = selected_model
         .map(|model| model.model.context_window)
         .unwrap_or("请先配置在线模型");
+    let model_is_online = selected_model.is_some_and(|model| model.is_online());
 
     rsx! {
         div { class: "chat-model-selector",
@@ -291,7 +292,7 @@ fn ModelSelector(
                 aria_expanded: snapshot.model_menu_open(),
                 disabled: snapshot.is_generating(),
                 onclick: move |_| state.with_mut(ChatState::toggle_model_menu),
-                span { class: "chat-online-dot" }
+                span { class: if model_is_online { "chat-online-dot" } else { "chat-online-dot offline" } }
                 span { class: "chat-model-trigger-copy",
                     strong { {model_label} }
                     small { {context_label} }
@@ -718,7 +719,7 @@ fn render_markdown(content: &str) -> Element {
                 match block {
                     MarkdownBlock::Heading(value) => rsx! { h3 { key: "heading-{index}", {value} } },
                     MarkdownBlock::Text(value) => rsx! { p { key: "text-{index}", {value} } },
-                    MarkdownBlock::ListItem(value) => rsx! { li { key: "list-{index}", {value} } },
+                    MarkdownBlock::ListItem(value) => rsx! { p { class: "chat-markdown-list-item", key: "list-{index}", "• " {value} } },
                     MarkdownBlock::Code(value) => rsx! { pre { key: "code-{index}", code { {value} } } },
                 }
             }
