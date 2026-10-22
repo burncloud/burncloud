@@ -64,7 +64,7 @@ impl ArtifactSource {
 
     fn validate_allowed_host(host: &str) -> Result<(), ArtifactSourceError> {
         match host {
-            "modelscope.cn" | "hf-mirror.com" | "huggingface.com" => Ok(()),
+            "modelscope.cn" | "hf-mirror.com" | "huggingface.com" | "huggingface.co" => Ok(()),
             _ => Err(ArtifactSourceError::UnsupportedHost(host.to_owned())),
         }
     }
