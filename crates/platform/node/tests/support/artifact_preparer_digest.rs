@@ -3,68 +3,55 @@ use std::path::PathBuf;
 use super::ArtifactPreparer;
 use crate::preparation::{ArtifactPrepareError, Digest, DigestAlgorithm};
 
-const CONTENT: &[u8] = b"hello";
+const CONTENT_LENGTH: usize = 128 * 1024 + 17;
+const CONTENT_BYTE: u8 = 0x5a;
+const DIGESTS: [(DigestAlgorithm, &str); 5] = [
+    (DigestAlgorithm::Md5, "0cde602fd99c10336cbda2e61ae8ebb9"),
+    (DigestAlgorithm::Sha1, "0e2d5ca58c38d8d7add2f0cd7285ff1baf6c06f4"),
+    (
+        DigestAlgorithm::Sha256,
+        "5a58a1e2c15da6e63673dcebcae452797792758e89d08a41f2c26a8eb1971e8b",
+    ),
+    (
+        DigestAlgorithm::Sha384,
+        "ba3a244a2d705f5a6546d54ca8abe5ba0d062f3da10919ffa46106253ee256df5096d743e7161d5f477aaa5ef2341102",
+    ),
+    (
+        DigestAlgorithm::Sha512,
+        "ee8ee7bbe9856310248725821976ba0b3fbf05df347d2859d809905fd298f1bf89ba5e4021e990162103a3d99193cf3837aa8f664781d8be19ed72c16b2e0e39",
+    ),
+];
 
 #[tokio::test]
-async fn verifies_all_supported_digest_algorithms_without_loading_the_whole_file() {
+async fn verifies_all_algorithms_over_multiple_read_chunks(
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = temporary_path();
-    tokio::fs::write(&path, CONTENT)
-        .await
-        .expect("test artifact should be written");
+    let content = vec![CONTENT_BYTE; CONTENT_LENGTH];
+    tokio::fs::write(&path, content).await?;
+
     let preparer = ArtifactPreparer::new();
-    let expected = [
-        (
-            DigestAlgorithm::Md5,
-            "5d41402abc4b2a76b9719d911017c592",
-        ),
-        (
-            DigestAlgorithm::Sha1,
-            "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d",
-        ),
-        (
-            DigestAlgorithm::Sha256,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
-        ),
-        (
-            DigestAlgorithm::Sha384,
-            "59e1748777448c69de6b800d7a33bbfb9ff1b463e44354c3553bcdb9c666fa90125a3c79f90397bdf5f6a13de828684f",
-        ),
-        (
-            DigestAlgorithm::Sha512,
-            "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043",
-        ),
-    ];
+    for (algorithm, value) in DIGESTS {
+        let expected = Digest::new(algorithm, value)?;
+        assert!(preparer.verify_file_digest(&path, &expected).await?);
 
-    for (algorithm, value) in expected {
-        let digest = Digest::new(algorithm, value).expect("known digest should parse");
-        assert!(preparer
-            .verify_file_digest(&path, &digest)
-            .await
-            .expect("digest calculation should succeed"));
-
-        let wrong = Digest::new(algorithm, "0".repeat(algorithm.expected_hex_length()))
-            .expect("zero digest should have the expected shape");
-        assert!(!preparer
-            .verify_file_digest(&path, &wrong)
-            .await
-            .expect("mismatched digest calculation should succeed"));
+        let wrong = Digest::new(algorithm, "0".repeat(algorithm.expected_hex_length()))?;
+        assert!(!preparer.verify_file_digest(&path, &wrong).await?);
     }
 
-    tokio::fs::remove_file(path)
-        .await
-        .expect("test artifact should be removed");
+    tokio::fs::remove_file(path).await?;
+    Ok(())
 }
 
 #[tokio::test]
 async fn returns_prepare_failed_when_the_file_cannot_be_opened() {
     let preparer = ArtifactPreparer::new();
-    let digest = Digest::new(DigestAlgorithm::Sha256, "0".repeat(64))
-        .expect("zero digest should have the expected shape");
+    let digest =
+        Digest::new(DigestAlgorithm::Sha256, "0".repeat(64)).expect("测试摘要的格式应合法");
 
     let error = preparer
         .verify_file_digest(&temporary_path(), &digest)
         .await
-        .expect_err("missing artifact should fail");
+        .expect_err("缺失文件必须返回准备失败");
 
     assert!(matches!(error, ArtifactPrepareError::PrepareFailed(_)));
 }

@@ -324,3 +324,7 @@ mod digest_tests;
 #[cfg(test)]
 #[path = "../../tests/support/artifact_preparer_prepare.rs"]
 mod prepare_tests;
+
+#[cfg(test)]
+#[path = "../../tests/support/artifact_preparer_test_database.rs"]
+mod test_database;

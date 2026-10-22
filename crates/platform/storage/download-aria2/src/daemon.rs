@@ -89,6 +89,9 @@ impl Aria2Daemon {
         tokio::spawn(async move {
             while is_running.load(Ordering::SeqCst) {
                 tokio::time::sleep(Duration::from_millis(1000)).await;
+                if !is_running.load(Ordering::SeqCst) {
+                    break;
+                }
 
                 // 在互斥锁保护下检查当前进程状态
                 let need_restart = {
@@ -380,6 +383,24 @@ mod tests {
         );
 
         daemon.stop().await;
+    }
+
+    /// 停止期间监控从睡眠中唤醒后不得再启动替代服务。
+    #[tokio::test]
+    async fn stopping_during_monitor_sleep_does_not_restart_the_service() {
+        let launches = Arc::new(AtomicUsize::new(0));
+        let mut daemon = stub_daemon(Arc::clone(&launches), Arc::new(ChildTerminator));
+
+        daemon.start().await.expect("桩服务启动成功");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        daemon.stop().await;
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
+        assert_eq!(
+            launches.load(Ordering::SeqCst),
+            1,
+            "主动停止后监控不得启动替代服务"
+        );
     }
 
     /// **`stop()` 终止的正是被记录的服务，且事后服务确实消失（#904 AC2b/AC3）。**
