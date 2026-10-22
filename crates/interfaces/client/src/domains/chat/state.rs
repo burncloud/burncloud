@@ -27,6 +27,7 @@ pub(super) struct ChatState {
     selected_model_id: String,
     draft: String,
     temperature: f32,
+    system_prompt: String,
     is_generating: bool,
     sidebar_collapsed: bool,
     model_menu_open: bool,
@@ -43,6 +44,7 @@ impl Default for ChatState {
             selected_model_id: "deepseek-r1".to_string(),
             draft: String::new(),
             temperature: 0.6,
+            system_prompt: "You are a helpful, cryptographically attested AI model running on BurnCloud decentralized hardware enclaves.".to_string(),
             is_generating: false,
             sidebar_collapsed: false,
             model_menu_open: false,
@@ -88,6 +90,10 @@ impl ChatState {
         self.temperature
     }
 
+    pub(super) fn system_prompt(&self) -> &str {
+        &self.system_prompt
+    }
+
     pub(super) fn is_generating(&self) -> bool {
         self.is_generating
     }
@@ -106,6 +112,10 @@ impl ChatState {
 
     pub(super) fn set_draft(&mut self, draft: String) {
         self.draft = draft;
+    }
+
+    pub(super) fn set_system_prompt(&mut self, system_prompt: String) {
+        self.system_prompt = system_prompt;
     }
 
     pub(super) fn ensure_selected_model(&mut self) {
@@ -217,6 +227,28 @@ impl ChatState {
         self.sidebar_collapsed = !self.sidebar_collapsed;
     }
 
+    pub(super) fn collapse_sidebar(&mut self) {
+        self.sidebar_collapsed = true;
+    }
+
+    pub(super) fn toggle_thinking(&mut self, conversation_id: &str, message_index: usize) -> bool {
+        let Some(conversation) = self
+            .conversations
+            .iter_mut()
+            .find(|conversation| conversation.id == conversation_id)
+        else {
+            return false;
+        };
+        let Some(message) = conversation.messages.get_mut(message_index) else {
+            return false;
+        };
+        if message.role != MessageRole::Assistant || message.thinking.is_none() {
+            return false;
+        }
+        message.thinking_open = !message.thinking_open;
+        true
+    }
+
     pub(super) fn toggle_model_menu(&mut self) {
         self.model_menu_open = !self.model_menu_open;
         if self.model_menu_open {
@@ -265,6 +297,7 @@ impl ChatState {
             role: MessageRole::User,
             content: draft,
             thinking: None,
+            thinking_open: false,
             streaming: false,
             copied: false,
             metrics: None,
@@ -273,6 +306,7 @@ impl ChatState {
             role: MessageRole::Assistant,
             content: String::new(),
             thinking: Some("正在校验请求上下文、模型能力和硬件证明链。".to_string()),
+            thinking_open: true,
             streaming: true,
             copied: false,
             metrics: None,
@@ -321,14 +355,11 @@ impl ChatState {
         if !self.is_generation_active(plan) {
             return false;
         }
-        let model = self.selected_model();
         let metrics = InferenceMetrics {
-            tokens_per_second: model
-                .map(|value| value.model.throughput_tokens_per_sec as f32)
-                .unwrap_or(0.0),
-            ttft_ms: 148,
-            node: "US-West · H100",
-            cost_usd: estimate_cost(model),
+            tokens_per_second: 128.4,
+            ttft_ms: 41,
+            node: "AMD SEV-SNP #H100-08",
+            cost_usd: 0.00014,
             prompt_tokens: 42,
             completion_tokens: 184,
         };
@@ -395,14 +426,4 @@ impl ChatState {
             .iter_mut()
             .find(|conversation| conversation.id == id)
     }
-}
-
-fn estimate_cost(model: Option<super::model::ChatModel>) -> f64 {
-    let Some(model) = model else {
-        return 0.0;
-    };
-    let cost = (42.0 * model.model.input_price_per_million
-        + 184.0 * model.model.output_price_per_million)
-        / 1_000_000.0;
-    (cost * 1_000_000.0).round() / 1_000_000.0
 }

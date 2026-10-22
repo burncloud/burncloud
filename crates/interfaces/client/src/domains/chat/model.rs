@@ -18,8 +18,10 @@ impl ChatModel {
     }
 }
 
-pub(super) fn catalog() -> [ChatModel; 6] {
-    MODEL_CATALOG.map(|model| ChatModel { model })
+/// Chat 首页菜单展示的五个在线模型。
+pub(super) fn catalog() -> [ChatModel; 5] {
+    let [first, second, third, fourth, fifth, _] = MODEL_CATALOG;
+    [first, second, third, fourth, fifth].map(|model| ChatModel { model })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,6 +49,7 @@ pub(super) struct ChatMessage {
     pub(super) role: MessageRole,
     pub(super) content: String,
     pub(super) thinking: Option<String>,
+    pub(super) thinking_open: bool,
     pub(super) streaming: bool,
     pub(super) copied: bool,
     pub(super) metrics: Option<InferenceMetrics>,
@@ -63,13 +66,14 @@ pub(super) struct ChatConversation {
 
 /// 模拟回复的固定分段，保证 v1 不引入远端推理依赖。
 pub(super) const SIMULATED_REPLY_SEGMENTS: [&str; 5] = [
-    "## 结论\n\nBurnCloud 将模型请求路由到具备硬件证明的推理节点，并把每次回复的验证结果保留在本地展示状态中。",
-    "\n\n- 首先，网关确认模型、温度和上下文配置。",
-    "\n- 其次，节点在生成前完成隔离环境证明。",
-    "\n\n```rust\nfn verify_attestation() -> bool {\n    true\n}\n```",
-    "\n\n因此，用户可以同时看到可读的回复、推理指标和安全说明；这段回复是 Chat v1 的确定性模拟数据。",
+    "BurnCloud 通过 **AMD SEV-SNP** 与 **AWS Nitro Enclaves** 的硬件级根信任签名机制，保障本轮推理不会留下可恢复的数据残留。",
+    "\n\n1. **硬件级内存加密**：请求上下文只在独立密钥保护的 Enclave 内存中处理。",
+    "\n2. **远程认证收据**：客户端可以校验 TPM 2.0 测量值和节点签名，确认运行环境没有被替换。",
+    "\n3. **内存即时零化**：TLS 1.3 会话结束后，推理缓冲区会被覆写清零。",
+    "\n\n这是一条由 Chat v1 提供的确定性本地模拟回复。",
 ];
 
+/// 返回参考站首页首次加载时展示的三条本地会话。
 pub(super) fn sample_conversations() -> Vec<ChatConversation> {
     vec![
         ChatConversation {
@@ -79,23 +83,42 @@ pub(super) fn sample_conversations() -> Vec<ChatConversation> {
             messages: vec![
                 ChatMessage {
                     role: MessageRole::User,
-                    content: "硬件证明如何保证多租户 LLM 推理的安全？".to_string(),
+                    content: "请说明 BurnCloud 的硬件 Enclave 机密计算是如何证明零数据残留的？"
+                        .to_string(),
                     thinking: None,
+                    thinking_open: false,
                     streaming: false,
                     copied: false,
                     metrics: None,
                 },
                 ChatMessage {
                     role: MessageRole::Assistant,
-                    content: "## 核心机制\n\n硬件证明把模型权重加载、请求处理和密钥使用限制在可验证的隔离环境内。平台可以在返回 Token 前验证节点身份、运行时哈希和策略签名。\n\n这使得路由层可以提供可追溯的执行结果，而不需要读取租户的提示词或中间激活值。".to_string(),
-                    thinking: Some("先确认威胁模型，再分别说明节点身份、内存隔离和结果签名之间的关系。".to_string()),
+                    content: r#"BurnCloud 采用 **AMD SEV-SNP** 与 **AWS Nitro Enclaves** 硬件级根信任签名机制保障零数据残留：
+
+1. **硬件级内存加密**：虚拟机内部内存均由处理器内置的安全处理器（ASP）使用独立密钥硬件级加密，宿主机操作系统和物理机所有者均无法窥探。
+2. **密码学硬件认证（Remote Attestation）**：每次推理请求返回的响应头均包含来自 TPM 2.0 芯片的私钥签名哈希，可由客户端通过厂商根证书公钥直接验证。
+3. **内存即时零化（Memory Zeroization）**：TLS 1.3 会话结束时，Enclave 内部微内核会自动执行内存零化覆写，确保上下文不持久化至磁盘。
+
+```json
+{
+  "burncloud_receipt": {
+    "enclave_type": "AMD_SEV_SNP_GEN4",
+    "pcr0_measurement": "a8f94e2b0c11d94f...",
+    "zeroization_policy": "STRICT_EPHEMERAL",
+    "verified_at": "2026-10-20T05:50:00Z"
+  }
+}
+```"#
+                        .to_string(),
+                    thinking: Some("分析用户对去中心化算力隐私与零残留机密性的关注点：需从硬件根信任（AMD SEV-SNP）、PCR度量证明、以及传输断开时的内存覆写技术机制进行详细阐述。".to_string()),
+                    thinking_open: false,
                     streaming: false,
                     copied: false,
                     metrics: Some(InferenceMetrics {
-                        tokens_per_second: 55.0,
-                        ttft_ms: 148,
-                        node: "US-West · H100",
-                        cost_usd: 0.000426,
+                        tokens_per_second: 128.4,
+                        ttft_ms: 41,
+                        node: "AMD SEV-SNP #H100-08",
+                        cost_usd: 0.00014,
                         prompt_tokens: 42,
                         completion_tokens: 184,
                     }),
@@ -104,38 +127,14 @@ pub(super) fn sample_conversations() -> Vec<ChatConversation> {
         },
         ChatConversation {
             id: "conversation-2".to_string(),
-            title: "模型路由与 SLA 保障".to_string(),
+            title: "Python 异步流式客户端".to_string(),
             model_id: "deepseek-v3".to_string(),
-            messages: vec![
-                ChatMessage {
-                    role: MessageRole::User,
-                    content: "如何为高并发应用选择模型路由策略？".to_string(),
-                    thinking: None,
-                    streaming: false,
-                    copied: false,
-                    metrics: None,
-                },
-                ChatMessage {
-                    role: MessageRole::Assistant,
-                    content: "可以先按延迟、吞吐量和成本设置路由优先级，再使用节点健康度和容量进行实时回退。对高并发场景，建议把低延迟模型作为默认路径，把深度推理模型保留给复杂请求。".to_string(),
-                    thinking: Some("比较吞吐量、P95 延迟和路由回退的约束。".to_string()),
-                    streaming: false,
-                    copied: false,
-                    metrics: Some(InferenceMetrics {
-                        tokens_per_second: 85.0,
-                        ttft_ms: 112,
-                        node: "EU-Central · H100",
-                        cost_usd: 0.000057,
-                        prompt_tokens: 31,
-                        completion_tokens: 97,
-                    }),
-                },
-            ],
+            messages: Vec::new(),
         },
         ChatConversation {
             id: "conversation-3".to_string(),
-            title: "零留存推理说明".to_string(),
-            model_id: "qwen-2.5-72b-instruct".to_string(),
+            title: "Solana 质押与 SLA 罚没".to_string(),
+            model_id: "llama-3.3-70b-instruct".to_string(),
             messages: Vec::new(),
         },
     ]

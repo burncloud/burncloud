@@ -10,6 +10,10 @@ fn default_state_matches_reference_chat() {
 
     assert_eq!(state.selected_model_id(), "deepseek-r1");
     assert_eq!(state.temperature(), 0.6);
+    assert_eq!(
+        state.system_prompt(),
+        "You are a helpful, cryptographically attested AI model running on BurnCloud decentralized hardware enclaves."
+    );
     assert_eq!(state.conversations().len(), 3);
     assert_eq!(
         state
@@ -23,12 +27,22 @@ fn default_state_matches_reference_chat() {
             .map(|conversation| conversation.messages.len()),
         Some(2)
     );
+    let conversation = state.active_conversation().expect("默认会话应存在");
+    assert_eq!(
+        conversation.messages[0].content,
+        "请说明 BurnCloud 的硬件 Enclave 机密计算是如何证明零数据残留的？"
+    );
+    assert!(!conversation.messages[1].thinking_open);
+    assert_eq!(
+        conversation.messages[1].metrics.map(|value| value.ttft_ms),
+        Some(41)
+    );
 }
 
 #[test]
 fn catalog_reuses_the_buyer_model_directory() {
     let models = catalog();
-    assert_eq!(models.len(), 6);
+    assert_eq!(models.len(), 5);
     assert_eq!(models[0].id(), "deepseek-v3");
     assert_eq!(models[1].id(), "deepseek-r1");
     assert_eq!(models[2].id(), "qwen-2.5-72b-instruct");
@@ -79,7 +93,7 @@ fn switching_conversations_restores_messages() {
     assert_eq!(state.selected_model_id(), "deepseek-v3");
     assert!(state
         .active_conversation()
-        .is_some_and(|conversation| conversation.messages.len() == 2));
+        .is_some_and(|conversation| conversation.messages.is_empty()));
 }
 
 #[test]
@@ -126,6 +140,31 @@ fn temperature_accepts_the_closed_interval_and_rejects_invalid_values() {
 }
 
 #[test]
+fn thinking_process_can_be_toggled_without_changing_other_messages() {
+    let mut state = ChatState::default();
+
+    assert!(state.toggle_thinking("conversation-1", 1));
+    assert!(state
+        .active_conversation()
+        .is_some_and(|conversation| conversation.messages[1].thinking_open));
+    assert!(state.toggle_thinking("conversation-1", 1));
+    assert!(state
+        .active_conversation()
+        .is_some_and(|conversation| !conversation.messages[1].thinking_open));
+    assert!(!state.toggle_thinking("conversation-1", 0));
+}
+
+#[test]
+fn system_prompt_can_be_updated_without_affecting_temperature_validation() {
+    let mut state = ChatState::default();
+    state.set_system_prompt("只输出 JSON".to_string());
+
+    assert_eq!(state.system_prompt(), "只输出 JSON");
+    assert!(state.set_temperature(2.0).is_ok());
+    assert_eq!(state.temperature(), 2.0);
+}
+
+#[test]
 fn empty_message_does_not_start_generation() {
     let mut state = ChatState::default();
     state.set_draft(" \n\t".to_string());
@@ -163,7 +202,7 @@ fn simulated_generation_streams_and_writes_metrics() {
     assert_eq!(message.role, MessageRole::Assistant);
     assert_eq!(message.content, "第一段第二段");
     assert!(!message.streaming);
-    assert_eq!(message.metrics.map(|metrics| metrics.ttft_ms), Some(148));
+    assert_eq!(message.metrics.map(|metrics| metrics.ttft_ms), Some(41));
     assert_eq!(
         message.metrics.map(|metrics| metrics.completion_tokens),
         Some(184)
