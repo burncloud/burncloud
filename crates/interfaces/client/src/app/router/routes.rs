@@ -10,6 +10,7 @@ use crate::domains::buyer::{
     api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
     overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
 };
+use crate::domains::chat::ChatHome;
 use crate::domains::supplier::deployments::page::SupplierDeployments as SupplierDeploymentsPage;
 use crate::domains::supplier::earnings::page::SupplierEarnings as SupplierEarningsPage;
 use crate::domains::supplier::overview::SupplierOverview as SupplierOverviewPage;
@@ -114,11 +115,11 @@ pub enum Route {
 
 #[component]
 pub fn Home() -> Element {
-    rsx! { BuyerOverview {} }
+    rsx! { ChatHome {} }
 }
 #[component]
 pub fn PublicHome() -> Element {
-    rsx! { PlaceholderPage { title: "Public Portal".to_string() } }
+    rsx! { ChatHome {} }
 }
 #[component]
 pub fn Landing() -> Element {
