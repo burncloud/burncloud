@@ -1,5 +1,5 @@
 use crate::{
-    ArtifactPreparer, DemandReconciler, HardwareProbe, HealthProbe, NodeContext, NodeRuntime,
+    ArtifactPreparation, DemandReconciler, HardwareProbe, HealthProbe, NodeContext, NodeRuntime,
     ProcessManager, ReadinessProbe, RuntimePreparer,
 };
 
@@ -24,7 +24,7 @@ pub struct NodeComposition<H, A, R, P, Q, E> {
 impl<H, A, R, P, Q, E> NodeComposition<H, A, R, P, Q, E>
 where
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,

@@ -10,7 +10,13 @@ workspace = true
 
 [dependencies]
 async-trait.workspace = true
+burncloud-download.workspace = true
+hex.workspace = true
+md5.workspace = true
+sha1.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
 

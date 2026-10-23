@@ -1,7 +1,7 @@
 use crate::node_orchestrator::{LocalPreparationOutcome, ModelDemand, NodeOrchestrator};
 use burncloud_node_runtime::{
-    ArtifactPreparer, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe, RuntimeAdapter,
-    RuntimePreparer,
+    ArtifactPreparation, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe,
+    RuntimeAdapter, RuntimePreparer,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_supply_model::{LocalModelUnsupported, ModelResolver};
@@ -46,7 +46,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -82,7 +82,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -128,7 +128,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -179,7 +179,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
