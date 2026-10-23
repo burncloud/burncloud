@@ -27,7 +27,7 @@ const DIGESTS: [(DigestAlgorithm, &str); 5] = [
 #[tokio::test]
 async fn verifies_all_algorithms_over_multiple_read_chunks(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = temporary_path();
+    let path = temporary_path("chunks");
     let content = vec![CONTENT_BYTE; CONTENT_LENGTH];
     tokio::fs::write(&path, content).await?;
 
@@ -51,16 +51,16 @@ async fn returns_prepare_failed_when_the_file_cannot_be_opened() {
         Digest::new(DigestAlgorithm::Sha256, "0".repeat(64)).expect("测试摘要的格式应合法");
 
     let error = preparer
-        .verify_file_digest(&temporary_path(), &digest)
+        .verify_file_digest(&temporary_path("missing"), &digest)
         .await
         .expect_err("缺失文件必须返回准备失败");
 
     assert!(matches!(error, ArtifactPrepareError::PrepareFailed(_)));
 }
 
-fn temporary_path() -> PathBuf {
+fn temporary_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "burncloud-artifact-digest-{}.bin",
-        std::process::id()
+        "burncloud-artifact-digest-{}-{name}.bin",
+        std::process::id(),
     ))
 }
