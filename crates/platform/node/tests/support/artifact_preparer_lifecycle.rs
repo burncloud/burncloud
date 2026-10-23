@@ -1,3 +1,5 @@
+#![allow(clippy::panic_in_result_fn, reason = "测试断言用于报告生命周期失败")]
+
 use super::ArtifactPreparer;
 
 #[tokio::test]
@@ -9,6 +11,10 @@ async fn new_preparer_starts_idle_with_no_manager_or_references() {
     assert!(lifecycle.download_manager.is_none());
 }
 
+#[cfg_attr(
+    not(windows),
+    ignore = "真实 aria2 生命周期测试需要 Windows 可执行文件"
+)]
 #[tokio::test]
 async fn manager_references_are_reused_and_released_in_order(
 ) -> Result<(), Box<dyn std::error::Error>> {

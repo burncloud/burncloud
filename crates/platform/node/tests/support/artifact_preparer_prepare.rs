@@ -1,3 +1,5 @@
+#![allow(clippy::panic_in_result_fn, reason = "测试断言用于报告准备流程失败")]
+
 use std::path::PathBuf;
 
 use super::super::artifact_request::ArtifactRequest;
@@ -36,6 +38,7 @@ async fn rejects_unsupported_sources_before_starting_the_download_manager() {
     assert!(lifecycle.download_manager.is_none());
 }
 
+#[cfg_attr(not(windows), ignore = "真实 aria2 下载测试需要 Windows 可执行文件")]
 #[tokio::test]
 async fn downloads_a_supported_artifact_into_models() -> Result<(), Box<dyn std::error::Error>> {
     let _database = super::test_database::isolated_database("download")?;
@@ -57,6 +60,7 @@ async fn downloads_a_supported_artifact_into_models() -> Result<(), Box<dyn std:
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "真实 aria2 下载测试需要 Windows 可执行文件")]
 #[tokio::test]
 async fn prepares_a_correctly_verified_artifact_once() -> Result<(), Box<dyn std::error::Error>> {
     let _database = super::test_database::isolated_database("verified")?;
@@ -82,6 +86,7 @@ async fn prepares_a_correctly_verified_artifact_once() -> Result<(), Box<dyn std
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "真实 aria2 下载测试需要 Windows 可执行文件")]
 #[tokio::test]
 async fn retries_once_and_returns_a_failed_empty_receipt_on_digest_mismatch(
 ) -> Result<(), Box<dyn std::error::Error>> {

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::panic_in_result_fn,
+    reason = "测试断言用于报告真实部署场景失败"
+)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,6 +36,7 @@ const S4_SHA256: &str = "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4f
 const S4_FILE: &str = "all-MiniLM-L6-v2";
 const S4_SIZE: u64 = 90_868_376;
 
+#[cfg_attr(not(windows), ignore = "真实部署测试需要 Windows aria2 可执行文件")]
 #[tokio::test]
 async fn d001_small_file_is_prepared_and_verified() -> Result<(), Box<dyn std::error::Error>> {
     let _database = test_database::isolated_database("d001")?;
@@ -47,7 +53,7 @@ async fn d001_small_file_is_prepared_and_verified() -> Result<(), Box<dyn std::e
     );
     assert!(artifact.local_path().is_absolute());
     assert!(artifact.local_path().is_file());
-    assert!(artifact.local_path().starts_with(models_directory()));
+    assert!(artifact.local_path().starts_with(models_directory()?));
     assert_eq!(
         tokio::fs::metadata(artifact.local_path()).await?.len(),
         S1_SIZE
@@ -59,6 +65,7 @@ async fn d001_small_file_is_prepared_and_verified() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "真实部署测试需要 Windows aria2 可执行文件")]
 #[tokio::test]
 async fn d002_mismatched_digest_returns_failed_receipt_and_allows_recovery(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -79,8 +86,10 @@ async fn d002_mismatched_digest_returns_failed_receipt_and_allows_recovery(
         ArtifactVerificationStatus::Failed
     );
     assert!(failed.local_path().as_os_str().is_empty());
-    assert!(!models_directory().join(S2_FILE).exists());
-    assert!(!models_directory().join(format!("{S2_FILE}.aria2")).exists());
+    assert!(!models_directory()?.join(S2_FILE).exists());
+    assert!(!models_directory()?
+        .join(format!("{S2_FILE}.aria2"))
+        .exists());
 
     let recovered = preparer
         .prepare(Url::parse(S1_URL)?, sha256_digest(S1_SHA256)?)
@@ -95,6 +104,7 @@ async fn d002_mismatched_digest_returns_failed_receipt_and_allows_recovery(
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "真实部署测试需要 Windows aria2 可执行文件")]
 #[tokio::test]
 async fn d003_same_resource_concurrent_requests_share_one_result(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -122,6 +132,7 @@ async fn d003_same_resource_concurrent_requests_share_one_result(
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "真实部署测试需要 Windows aria2 可执行文件")]
 #[tokio::test]
 async fn d004_different_resource_concurrent_requests_remain_independent(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -155,6 +166,7 @@ async fn d004_different_resource_concurrent_requests_remain_independent(
     Ok(())
 }
 
+#[cfg_attr(not(windows), ignore = "真实部署测试需要 Windows aria2 可执行文件")]
 #[tokio::test]
 async fn d005_source_and_missing_resource_errors_do_not_block_next_prepare(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -187,7 +199,7 @@ async fn d005_source_and_missing_resource_errors_do_not_block_next_prepare(
         .prepare(Url::parse(S1_URL)?, sha256_digest(S1_SHA256)?)
         .await?;
     assert!(recovered.is_verified());
-    assert!(recovered.local_path().starts_with(models_directory()));
+    assert!(recovered.local_path().starts_with(models_directory()?));
 
     drop(preparer);
     _database.cleanup().await?;
@@ -217,23 +229,19 @@ async fn prepare_with(
         .await
 }
 
-fn models_directory() -> PathBuf {
-    std::env::current_exe()
-        .expect("测试可执行文件路径应可取得")
-        .parent()
-        .expect("测试可执行文件应有父目录")
-        .join("models")
+fn models_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let executable = std::env::current_exe()?;
+    let parent = executable.parent().ok_or("测试可执行文件应有父目录")?;
+    Ok(parent.join("models"))
 }
 
-async fn remove_download_artifacts(name: &str) -> Result<(), std::io::Error> {
-    for path in [
-        models_directory().join(name),
-        models_directory().join(format!("{name}.aria2")),
-    ] {
+async fn remove_download_artifacts(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let models = models_directory()?;
+    for path in [models.join(name), models.join(format!("{name}.aria2"))] {
         match tokio::fs::remove_file(path).await {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+            Err(error) => return Err(Box::new(error)),
         }
     }
     Ok(())
