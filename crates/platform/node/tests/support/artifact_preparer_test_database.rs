@@ -1,14 +1,23 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 pub(super) struct IsolatedDatabase {
+    _environment_lock: MutexGuard<'static, ()>,
     previous_url: Option<OsString>,
     path: PathBuf,
 }
 
+static DATABASE_ENVIRONMENT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
 pub(super) fn isolated_database(
     name: &str,
 ) -> Result<IsolatedDatabase, Box<dyn std::error::Error>> {
+    // 测试通过进程环境变量选择数据库，必须串行修改和恢复，避免并发测试互相覆盖连接地址。
+    let environment_lock = DATABASE_ENVIRONMENT_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| std::io::Error::other("测试数据库环境变量锁已中毒"))?;
     let executable = std::env::current_exe()?;
     let executable_parent = executable.parent().ok_or("测试可执行文件应有父目录")?;
     let directory = executable_parent.join("burncloud-node-runtime-test-databases");
@@ -28,7 +37,11 @@ pub(super) fn isolated_database(
         format!("sqlite:///{normalized}?mode=rwc"),
     );
 
-    Ok(IsolatedDatabase { previous_url, path })
+    Ok(IsolatedDatabase {
+        _environment_lock: environment_lock,
+        previous_url,
+        path,
+    })
 }
 
 impl IsolatedDatabase {

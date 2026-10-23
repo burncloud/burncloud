@@ -1,3 +1,5 @@
+#![allow(clippy::panic_in_result_fn, reason = "测试断言用于报告摘要校验失败")]
+
 use std::path::PathBuf;
 
 use super::ArtifactPreparer;
