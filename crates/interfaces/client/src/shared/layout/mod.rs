@@ -18,6 +18,7 @@ fn route_path(route: &Route) -> &'static str {
         Route::Register {} => "/register",
         Route::Buyer {}
         | Route::BuyerOverviewRoute {}
+        | Route::BuyerChatRoute {}
         | Route::Console {}
         | Route::ConsoleDashboard {}
         | Route::ConsoleBuyerOverview {} => "/buyer/overview",

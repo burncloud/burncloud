@@ -7,8 +7,9 @@ use crate::domains::admin::revenue::AdminRevenue as AdminRevenuePage;
 use crate::domains::admin::settlements::AdminSettlements as AdminSettlementsPage;
 use crate::domains::admin::supply::AdminSupply as AdminSupplyPage;
 use crate::domains::buyer::{
-    api_keys::BuyerApiKeys, billing::BuyerBilling, logs::BuyerLogs, marketplace::BuyerMarketplace,
-    overview::BuyerOverview, playground::BuyerPlayground, usage::BuyerUsage,
+    api_keys::BuyerApiKeys, billing::BuyerBilling, chat::BuyerChat, logs::BuyerLogs,
+    marketplace::BuyerMarketplace, overview::BuyerOverview, playground::BuyerPlayground,
+    usage::BuyerUsage,
 };
 use crate::domains::chat::ChatHome;
 use crate::domains::supplier::deployments::page::SupplierDeployments as SupplierDeploymentsPage;
@@ -37,6 +38,9 @@ pub enum Route {
     Buyer {},
     #[route("/buyer/overview")]
     BuyerOverviewRoute {},
+    /// 买方聊天模型选择页。
+    #[route("/buyer/chat")]
+    BuyerChatRoute {},
     #[route("/console")]
     Console {},
     #[route("/console/dashboard")]
@@ -140,6 +144,19 @@ pub fn Buyer() -> Element {
 #[component]
 pub fn BuyerOverviewRoute() -> Element {
     rsx! { BuyerOverview {} }
+}
+/// 渲染买方聊天模型选择页。
+///
+/// # Examples
+///
+/// 访问 `/buyer/chat` 时由路由系统调用此组件。
+///
+/// # Notes
+///
+/// 页面状态仅存在于当前客户端会话。
+#[component]
+pub fn BuyerChatRoute() -> Element {
+    rsx! { BuyerChat {} }
 }
 #[component]
 pub fn Console() -> Element {

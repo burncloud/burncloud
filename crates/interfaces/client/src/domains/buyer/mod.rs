@@ -1,5 +1,6 @@
 pub mod api_keys;
 pub mod billing;
+pub mod chat;
 pub mod logs;
 pub mod marketplace;
 pub mod navigation;
