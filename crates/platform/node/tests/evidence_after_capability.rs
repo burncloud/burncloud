@@ -1,8 +1,9 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler, FakeArtifactPreparer,
-    FakeReadinessProbe, FakeRuntimePreparer, NodeState, ReadinessProbe, ReadinessTarget,
-    ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, DemandReconciler, Digest, FakeArtifactPreparer, FakeReadinessProbe,
+    FakeRuntimePreparer, NodeState, ReadinessProbe, ReadinessTarget, ReconcileAction,
+    ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
+use url::Url;
 
 /// Evidence is a receipt for a completed capability call, not permission to
 /// skip the capability. This test demonstrates the intended orchestration
@@ -16,10 +17,13 @@ async fn evidence_follows_successful_capability_calls() {
     r.observe(ReconcileEvidence::Resolved).unwrap();
 
     let artifact = FakeArtifactPreparer
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("qwen-4b.gguf").unwrap(),
-            None,
-        ))
+        .prepare(
+            Url::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf").unwrap(),
+            Digest::parse(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        )
         .await
         .unwrap();
     assert!(artifact.is_verified());

@@ -1,9 +1,10 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
-    FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
-    HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
-    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, Digest, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
+    FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe,
+    NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget,
+    ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
+use url::Url;
 
 fn fake_composition() -> NodeComposition<
     FakeHardwareProbe,
@@ -33,10 +34,13 @@ async fn composition_root_wires_every_machine_socket() {
 
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("qwen/fake.gguf").unwrap(),
-            None,
-        ))
+        .prepare(
+            Url::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf").unwrap(),
+            Digest::parse(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        )
         .await
         .unwrap();
     assert!(artifact.is_verified());

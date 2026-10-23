@@ -1,17 +1,18 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPrepareError, ArtifactPreparer, ArtifactRequest, ArtifactSource,
-    ArtifactVerificationStatus, HealthError, HealthProbe, PreparedArtifact, PreparedRuntime,
-    ReadinessError, ReadinessProbe, ReadinessTarget, RuntimePrepareError, RuntimePreparer,
-    RuntimeRequest,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactVerificationStatus, Digest, HealthError,
+    HealthProbe, PreparedArtifact, PreparedRuntime, ReadinessError, ReadinessProbe,
+    ReadinessTarget, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
+use url::Url;
 
 struct TestArtifact;
 #[async_trait]
-impl ArtifactPreparer for TestArtifact {
+impl ArtifactPreparation for TestArtifact {
     async fn prepare(
         &self,
-        _request: ArtifactRequest,
+        _url: Url,
+        _expected_digest: Digest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
         PreparedArtifact::new(
             std::env::temp_dir().join("model.gguf"),
@@ -53,10 +54,13 @@ impl HealthProbe for TestHealth {
 #[tokio::test]
 async fn preparation_ports_accept_independent_implementations() {
     let artifact = TestArtifact
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("ignored").unwrap(),
-            None,
-        ))
+        .prepare(
+            Url::parse("https://modelscope.cn/models/ignored/resolve/main/fake.gguf").unwrap(),
+            Digest::parse(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        )
         .await
         .unwrap();
     let runtime = TestRuntime
