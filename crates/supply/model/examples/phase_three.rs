@@ -1,10 +1,12 @@
 use std::{env, error::Error, fs, path::PathBuf};
 
 use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile, HardwareProfile};
-use burncloud_supply_model::{CandidateResolutionOutcome, ModelManifest, RealModelResolver};
+use burncloud_supply_model::{
+    CandidateResolutionOutcome, ModelManifest, RealModelResolver, Variant,
+};
 
 struct Arguments {
-    manifest: PathBuf,
+    manifest: Option<PathBuf>,
     model: String,
     ram_bytes: u64,
     vram_bytes: Vec<u64>,
@@ -14,7 +16,7 @@ struct Arguments {
 
 fn usage() -> &'static str {
     "用法: cargo run -p burncloud-supply-model --example phase_three -- \
---manifest <manifest.json> --model <model> --ram-bytes <bytes> \
+[--manifest <manifest.json>] --model <model> --ram-bytes <bytes> \
 --vram-bytes <bytes[,bytes...]> --disk-bytes <bytes> --runtime <backend> [--runtime <backend>]"
 }
 
@@ -80,7 +82,7 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
     }
 
     Ok(Arguments {
-        manifest: manifest.ok_or_else(|| format!("缺少 --manifest\n{}", usage()))?,
+        manifest,
         model: model.ok_or_else(|| format!("缺少 --model\n{}", usage()))?,
         ram_bytes: ram_bytes.ok_or_else(|| format!("缺少 --ram-bytes\n{}", usage()))?,
         vram_bytes: vram_bytes.ok_or_else(|| format!("缺少 --vram-bytes\n{}", usage()))?,
@@ -93,10 +95,48 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
     })
 }
 
+fn demo_manifests() -> Vec<ModelManifest> {
+    vec![ModelManifest {
+        model_name: "phase-three-model".into(),
+        description: "阶段三内置示例模型".into(),
+        supported_backends: vec!["llama.cpp".into(), "vllm".into()],
+        version: "1".into(),
+        variants: vec![
+            Variant {
+                id: "phase-three-q4".into(),
+                model_size: Some("7b".into()),
+                quantization: "Q4_K_M".into(),
+                backend: "llama.cpp".into(),
+                min_ram_bytes: 8 * 1024 * 1024 * 1024,
+                min_vram_bytes: 4 * 1024 * 1024 * 1024,
+                disk_size_bytes: 5 * 1024 * 1024 * 1024,
+                checksum: "sha256:phase-three-q4".into(),
+                artifact_uri: "https://example.invalid/phase-three-q4.gguf".into(),
+            },
+            Variant {
+                id: "phase-three-q8".into(),
+                model_size: Some("7b".into()),
+                quantization: "Q8_0".into(),
+                backend: "llama.cpp".into(),
+                min_ram_bytes: 16 * 1024 * 1024 * 1024,
+                min_vram_bytes: 8 * 1024 * 1024 * 1024,
+                disk_size_bytes: 10 * 1024 * 1024 * 1024,
+                checksum: "sha256:phase-three-q8".into(),
+                artifact_uri: "https://example.invalid/phase-three-q8.gguf".into(),
+            },
+        ],
+    }]
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments = parse_arguments()?;
-    let manifest_json = fs::read_to_string(&arguments.manifest)?;
-    let manifests: Vec<ModelManifest> = serde_json::from_str(&manifest_json)?;
+    let manifests = match arguments.manifest {
+        Some(path) => {
+            let manifest_json = fs::read_to_string(path)?;
+            serde_json::from_str(&manifest_json)?
+        }
+        None => demo_manifests(),
+    };
     let resolver = RealModelResolver::new(manifests);
     let hardware = HardwareProfile {
         cpu_threads: 0,
