@@ -20,6 +20,35 @@ The Cargo package is `burncloud-supply-model`, and the Rust crate import is
 `burncloud_supply_model`. The temporary `burncloud_service_models`
 compatibility surface used during #778 was removed by #780.
 
+## Model Resolver 阶段三
+
+阶段三复用已有的 RAM、VRAM 和 Runtime 过滤规则，并新增模型工件磁盘空间过滤。
+Variant 只有同时满足以下条件时才会进入候选列表：
+
+```text
+hardware.memory_bytes >= variant.min_ram_bytes
+available_vram_bytes >= variant.min_vram_bytes
+supported_runtimes 中存在与 variant.backend 完全相等的值
+hardware.disk_available_bytes >= variant.disk_size_bytes
+```
+
+其中 `available_vram_bytes` 是所有加速器可用显存中的最大值；
+`disk_size_bytes` 只表示模型工件本身占用的磁盘空间，不表示整套运行环境的磁盘需求。
+
+`RealModelResolver::resolve_with_capabilities` 返回全部通过过滤的候选，保持 Manifest 中的
+原始顺序，不进行打分、排序或推荐选择。对外展示字段为：
+
+```text
+model_name
+quantization
+min_ram_bytes
+min_vram_bytes
+disk_size_bytes
+```
+
+如果所有 Variant 都被过滤，结果使用
+`LocalModelUnsupportedReason::NoCompatibleVariant` 表示没有兼容候选。
+
 ## Domain Crate 10 问
 
 1. **Owner** — Supply. Business capability: local model capability truth, model manifest/variant
@@ -31,7 +60,8 @@ compatibility surface used during #778 was removed by #780.
 2. **Responsibility** — read/write the `model_capabilities` capability projection
    (`ModelCapabilityModel::{get, upsert}`); define the manifest and variant value types
    (`ModelManifest`, `Variant`) and the resolver contract with its implementations (`ModelResolver`,
-   `RealModelResolver`, `FakeModelResolver`); filter variants by RAM/VRAM and runtime backend; and
+   `RealModelResolver`, `FakeModelResolver`); filter variants by RAM/VRAM, runtime backend, and
+   artifact disk size; and
    provide HuggingFace discovery plus download/data-directory URL helpers.
    **Not responsible for**: canonical pricing and cost calculation (Commerce — `input_price` /
    `output_price` are only a legacy projection in this mixed historical table, not a second pricing
@@ -57,7 +87,8 @@ compatibility surface used during #778 was removed by #780.
    - persistence: `ModelCapability` (row), `ModelCapabilityInput` (write projection),
      `ModelCapabilityModel::{get, upsert}`, `current_timestamp`;
    - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest`, `ResolvedModel`,
-     `ModelResolutionOutcome` (`Local` / `Unsupported`), `LocalModelUnsupported`,
+     `ModelResolutionOutcome` (`Local` / `Unsupported`), `CandidateResolutionOutcome`
+     (`Candidates` / `Unsupported`), `ResolvedModelCandidate`, `LocalModelUnsupported`,
      `LocalModelUnsupportedReason`, `ModelResolutionError`, the `ModelResolver` trait,
      `RealModelResolver`, `FakeModelResolver`;
    - HuggingFace: `ModelService`, `HfApiModel`, `HfFileItem`, `get_huggingface_host`,
@@ -92,7 +123,7 @@ compatibility surface used during #778 was removed by #780.
    ├── model_capability.rs    ModelCapability/Input/Model, private row mapping, all SQL
    ├── manifest.rs            ModelManifest, Variant
    ├── resolver.rs            ModelResolver contract, DTOs, FakeModelResolver
-   ├── real_model_resolver.rs RealModelResolver, hardware/runtime filters
+   ├── real_model_resolver.rs RealModelResolver, hardware/runtime/disk filters
    └── common.rs              current_timestamp (re-exported)
    tests/    model_capability.rs (SQLite), resolver.rs
    examples/ ten HuggingFace discovery/download examples
@@ -117,7 +148,8 @@ compatibility surface used during #778 was removed by #780.
      legacy price projections. This is the only test touching the real table.
    - `tests/resolver.rs::fake_resolver_returns_runtime_and_artifact_choice`, plus unit tests in
      `src/manifest.rs`, `src/resolver.rs` and `src/real_model_resolver.rs` (hardware and runtime
-     filtering).
+     filtering). `tests/real_model_resolver.rs` covers candidate order, disk boundaries, and
+     the no-compatible-variant result.
    - Downstream contract proof: `crates/platform/node/tests/golden_path.rs`,
      `crates/interfaces/server/tests/node_framework_e2e.rs` and
      `node_route_visibility_lifecycle.rs`.
@@ -131,6 +163,8 @@ compatibility surface used during #778 was removed by #780.
 
     ```text
     Correct:   Consumer        -> ModelResolver (ModelResolutionRequest -> ModelResolutionOutcome)
+    Correct:   Phase 3         -> RealModelResolver::resolve_with_capabilities
+                                  (filtered candidates in manifest order -> direct result)
     Correct:   Traffic price sync -> ModelCapabilityModel::upsert(&db, &ModelCapabilityInput { .. })
     Correct:   Consumer        -> ModelService / get_model_files / build_download_url / get_data_dir
     Incorrect: Any crate       -> raw SELECT/INSERT/UPDATE on model_capabilities
