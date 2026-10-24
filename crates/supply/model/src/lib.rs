@@ -19,8 +19,9 @@ pub use manifest::{ModelManifest, Variant};
 pub use model_capability::{ModelCapability, ModelCapabilityInput, ModelCapabilityModel};
 pub use real_model_resolver::RealModelResolver;
 pub use resolver::{
-    FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelResolutionError,
-    ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel,
+    CandidateResolutionOutcome, FakeModelResolver, LocalModelUnsupported,
+    LocalModelUnsupportedReason, ModelResolutionError, ModelResolutionOutcome,
+    ModelResolutionRequest, ModelResolver, ResolvedModel, ResolvedModelCandidate,
 };
 
 use burncloud_service_setting::{SettingDatabase, SettingService};
