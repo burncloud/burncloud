@@ -8,7 +8,8 @@ use tokio::time::sleep;
 
 use super::types::{Analysis, ApiChange, BeforeAfter, Claim, FactBundle, ImpactGroup, ReadingStep};
 
-const MODEL_INPUT_LIMIT: usize = 600_000;
+// Keep model context bounded for high-volume PR traffic. This is a byte cap, not a token guarantee.
+const MODEL_INPUT_LIMIT: usize = 180_000;
 const MODEL_OUTPUT_LIMIT: usize = 512_000;
 
 #[allow(
@@ -123,6 +124,13 @@ async fn call_model(config: &ModelConfig, facts: &FactBundle) -> Result<Analysis
         }
         let response: ProtocolJson =
             serde_json::from_slice(&bytes).context("model response is not JSON")?;
+        let prompt_tokens = response.pointer("/usage/prompt_tokens").and_then(ProtocolJson::as_u64);
+        let completion_tokens = response
+            .pointer("/usage/completion_tokens")
+            .and_then(ProtocolJson::as_u64);
+        if let (Some(input), Some(output)) = (prompt_tokens, completion_tokens) {
+            eprintln!("PR guide model token usage: input={input}, output={output}");
+        }
         let content = response
             .pointer("/choices/0/message/content")
             .and_then(ProtocolJson::as_str)
@@ -147,7 +155,7 @@ fn model_input(facts: &FactBundle) -> Result<String> {
             file["before_excerpt"] = ProtocolJson::Null;
             file["after_excerpt"] = ProtocolJson::Null;
             if let Some(patch) = file.get("patch").and_then(ProtocolJson::as_str) {
-                file["patch"] = ProtocolJson::String(truncate(patch, 4_000));
+                file["patch"] = ProtocolJson::String(truncate(patch, 1_500));
                 file["patch_truncated"] = ProtocolJson::Bool(true);
             }
         }
@@ -156,14 +164,62 @@ fn model_input(facts: &FactBundle) -> Result<String> {
         .pointer_mut("/context")
         .and_then(ProtocolJson::as_array_mut)
     {
-        context.truncate(24);
+        context.truncate(16);
         for item in context {
             if let Some(excerpt) = item.get("excerpt").and_then(ProtocolJson::as_str) {
-                item["excerpt"] = ProtocolJson::String(truncate(excerpt, 1_000));
+                item["excerpt"] = ProtocolJson::String(truncate(excerpt, 500));
             }
         }
     }
     encoded = serde_json::to_vec(&view)?;
+    if encoded.len() > MODEL_INPUT_LIMIT {
+        if let Some(files) = view
+            .pointer_mut("/files")
+            .and_then(ProtocolJson::as_array_mut)
+        {
+            for file in files {
+                if let Some(patch) = file.get("patch").and_then(ProtocolJson::as_str) {
+                    file["patch"] = ProtocolJson::String(truncate(patch, 400));
+                }
+            }
+        }
+        if let Some(context) = view
+            .pointer_mut("/context")
+            .and_then(ProtocolJson::as_array_mut)
+        {
+            context.truncate(8);
+            for item in context {
+                if let Some(excerpt) = item.get("excerpt").and_then(ProtocolJson::as_str) {
+                    item["excerpt"] = ProtocolJson::String(truncate(excerpt, 250));
+                }
+            }
+        }
+        if let Some(symbols) = view
+            .pointer_mut("/symbols")
+            .and_then(ProtocolJson::as_array_mut)
+        {
+            symbols.truncate(80);
+        }
+        if let Some(evidence) = view
+            .pointer_mut("/evidence")
+            .and_then(ProtocolJson::as_array_mut)
+        {
+            evidence.truncate(80);
+        }
+        if let Some(checks) = view
+            .pointer_mut("/checks")
+            .and_then(ProtocolJson::as_array_mut)
+        {
+            checks.truncate(40);
+        }
+        if let Some(issues) = view
+            .pointer_mut("/linked_issues")
+            .and_then(ProtocolJson::as_array_mut)
+        {
+            issues.truncate(20);
+        }
+        encoded = serde_json::to_vec(&view)?;
+    }
     if encoded.len() > MODEL_INPUT_LIMIT {
         anyhow::bail!(
             "facts remain {} bytes after deterministic trimming; limit is {MODEL_INPUT_LIMIT}",
