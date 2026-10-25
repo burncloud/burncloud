@@ -23,6 +23,203 @@ pub(crate) struct ModelOutcome {
     pub(crate) model_name: Option<String>,
 }
 
+pub(crate) struct HtmlOutcome {
+    pub(crate) html: Option<String>,
+    pub(crate) status: String,
+}
+
+pub(crate) async fn generate_html(facts: &FactBundle, analysis: &Analysis) -> HtmlOutcome {
+    let config = match ModelConfig::from_env() {
+        Ok(Some(config)) => config,
+        Ok(None) => {
+            return HtmlOutcome {
+                html: None,
+                status: "configuration_missing".to_owned(),
+            };
+        }
+        Err(error) => {
+            eprintln!("AI HTML generation configuration is invalid: {}", truncate(&format!("{error:#}"), 300));
+            return HtmlOutcome {
+                html: None,
+                status: "configuration_invalid".to_owned(),
+            };
+        }
+    };
+
+    match call_html_model(&config, facts, analysis).await {
+        Ok(raw_html) => match validate_generated_html(&raw_html, facts.pull_request.number) {
+            Ok(html) => HtmlOutcome {
+                html: Some(html),
+                status: "model_generated".to_owned(),
+            },
+            Err(error) => {
+                eprintln!("AI HTML output rejected: {}", truncate(&format!("{error:#}"), 500));
+                HtmlOutcome {
+                    html: None,
+                    status: "model_output_rejected".to_owned(),
+                }
+            }
+        },
+        Err(error) => {
+            eprintln!("AI HTML generation failed: {}", truncate(&format!("{error:#}"), 500));
+            HtmlOutcome {
+                html: None,
+                status: "model_failed".to_owned(),
+            }
+        }
+    }
+}
+
+async fn call_html_model(
+    config: &ModelConfig,
+    facts: &FactBundle,
+    analysis: &Analysis,
+) -> Result<String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(150))
+        .user_agent("burncloud-pr-guide/1")
+        .build()
+        .context("failed to construct HTML model HTTP client")?;
+    let fact_json = model_input(facts)?;
+    let analysis_json = serde_json::to_string(analysis)?;
+    let system = include_str!("effective_html_prompt.md");
+    let user = format!(
+        "<FACT_BUNDLE schema=\"burncloud.pr-guide.facts.v1\">\n{fact_json}\n</FACT_BUNDLE>\n<ANALYSIS_JSON>\n{analysis_json}\n</ANALYSIS_JSON>\nGenerate the HTML report for PR #{}.",
+        facts.pull_request.number
+    );
+    let payload = json!({
+        "model": config.model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ],
+        "temperature": 0.2,
+        "max_tokens": html_max_output_tokens()?
+    });
+
+    for attempt in 0..3_u64 {
+        let response = client
+            .post(&config.api_url)
+            .bearer_auth(&config.api_key)
+            .json(&payload)
+            .send()
+            .await
+            .context("HTML model request failed")?;
+        let status = response.status();
+        let retryable = status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+        if retryable && attempt < 2 {
+            sleep(Duration::from_secs(2_u64.pow(attempt as u32))).await;
+            continue;
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read HTML model response")?;
+        if bytes.len() > MODEL_OUTPUT_LIMIT {
+            anyhow::bail!("HTML model response exceeded {MODEL_OUTPUT_LIMIT} bytes")
+        }
+        if !status.is_success() {
+            let value: ProtocolJson =
+                serde_json::from_slice(&bytes).unwrap_or(ProtocolJson::Null);
+            let message = value
+                .pointer("/error/message")
+                .and_then(ProtocolJson::as_str)
+                .unwrap_or("provider returned an error without a safe message");
+            anyhow::bail!(
+                "HTML model provider returned {status}: {}",
+                truncate(message, 500)
+            )
+        }
+        let response: ProtocolJson =
+            serde_json::from_slice(&bytes).context("HTML model response is not JSON")?;
+        if response
+            .pointer("/choices/0/finish_reason")
+            .and_then(ProtocolJson::as_str)
+            == Some("length")
+        {
+            anyhow::bail!("HTML model output was truncated by the token limit")
+        }
+        let content = response
+            .pointer("/choices/0/message/content")
+            .and_then(ProtocolJson::as_str)
+            .context("HTML model response is missing choices[0].message.content")?;
+        return Ok(strip_html_fence(content).to_owned());
+    }
+    anyhow::bail!("HTML model retry loop ended unexpectedly")
+}
+
+fn html_max_output_tokens() -> Result<u64> {
+    let value = std::env::var("PR_GUIDE_HTML_MAX_OUTPUT_TOKENS")
+        .unwrap_or_else(|_| "10000".to_owned());
+    let parsed = value
+        .parse::<u64>()
+        .context("PR_GUIDE_HTML_MAX_OUTPUT_TOKENS must be an integer")?;
+    if !(2_048..=12_000).contains(&parsed) {
+        anyhow::bail!("PR_GUIDE_HTML_MAX_OUTPUT_TOKENS must be between 2048 and 12000")
+    }
+    Ok(parsed)
+}
+
+fn validate_generated_html(value: &str, pr_number: u64) -> Result<String> {
+    let html = strip_html_fence(value).trim();
+    if html.len() > MODEL_OUTPUT_LIMIT {
+        anyhow::bail!("generated HTML exceeded {MODEL_OUTPUT_LIMIT} bytes")
+    }
+    let lower = html.to_ascii_lowercase();
+    if !(lower.starts_with("<!doctype html") || lower.starts_with("<html")) {
+        anyhow::bail!("generated output is not a complete HTML document")
+    }
+    for required in ["<html", "<head", "</head>", "<body", "</body>", "</html>"] {
+        if !lower.contains(required) {
+            anyhow::bail!("generated HTML is missing required document element: {required}")
+        }
+    }
+    if !lower.contains("<svg")
+        || !(lower.contains("<path") || lower.contains("<line") || lower.contains("<polyline"))
+    {
+        anyhow::bail!("generated HTML is missing an SVG relationship/change diagram")
+    }
+    if !lower.contains(&format!("#{pr_number}")) {
+        anyhow::bail!("generated HTML does not identify the expected PR number")
+    }
+    for forbidden in [
+        "<script src",
+        "<iframe",
+        "<object",
+        "<embed",
+        "<form",
+        "@import",
+        "fetch(",
+        "xmlhttprequest",
+        "websocket",
+        "sendbeacon",
+        "localstorage",
+        "sessionstorage",
+        "document.cookie",
+    ] {
+        if lower.contains(forbidden) {
+            anyhow::bail!("generated HTML contains disallowed active content: {forbidden}")
+        }
+    }
+
+    let head_end = lower
+        .find("</head>")
+        .context("generated HTML has no closing head element")?;
+    let csp = "\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">\n";
+    let mut secured = html.to_owned();
+    secured.insert_str(head_end, csp);
+    Ok(secured)
+}
+
+fn strip_html_fence(value: &str) -> &str {
+    let trimmed = value.trim();
+    let trimmed = trimmed
+        .strip_prefix("```html")
+        .or_else(|| trimmed.strip_prefix("```HTML"))
+        .unwrap_or(trimmed);
+    trimmed.strip_suffix("```").unwrap_or(trimmed).trim()
+}
+
 pub(crate) async fn analyze(facts: &FactBundle) -> ModelOutcome {
     let config = match ModelConfig::from_env() {
         Ok(Some(config)) => config,
