@@ -197,8 +197,7 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
     .context("fixture facts JSON is invalid")?;
     let fingerprint = fingerprint(&facts)?;
     let outcome = model::analyze(&facts).await;
-    let html_outcome =
-        model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
+    let html_outcome = model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
     let generated_html = html_outcome.html;
     let state = RunState {
         reused: false,
