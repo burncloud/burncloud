@@ -607,6 +607,7 @@ const detail=document.getElementById('node-detail');document.querySelectorAll('[
     )
 }
 
+#[allow(clippy::too_many_lines, reason = "SVG layout and serialization are kept together for deterministic rendering")]
 fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
     let relations = combined_relations(facts, analysis);
     let mut labels = BTreeSet::new();
@@ -827,11 +828,11 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
         )
         .ok();
     }
-    if edge_markup.is_empty() {
-        edge_markup.push_str("<text class=\"graph-edge-label\" x=\"42\" y=\"66\">未发现可确认的关系边；此图仅展示真实变更文件分组。</text>");
+    if edge_markup.is_empty() && !relations.is_empty() {
+        edge_markup.push_str("<text class=\"graph-edge-label\" x=\"42\" y=\"18\">关系端点超过图表显示上限；未绘制未经确认的连接。</text>");
     }
     let legend = if relations.is_empty() {
-        "<text class=\"graph-edge-label\" x=\"42\" y=\"52\">没有程序化确认或模型推断的关系；不虚构连接。</text>"
+        "<text class=\"graph-edge-label\" x=\"42\" y=\"18\">没有程序化确认或模型推断的关系；不虚构连接。</text>"
     } else {
         ""
     };
