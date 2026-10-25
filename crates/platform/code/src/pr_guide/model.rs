@@ -124,7 +124,9 @@ async fn call_model(config: &ModelConfig, facts: &FactBundle) -> Result<Analysis
         }
         let response: ProtocolJson =
             serde_json::from_slice(&bytes).context("model response is not JSON")?;
-        let prompt_tokens = response.pointer("/usage/prompt_tokens").and_then(ProtocolJson::as_u64);
+        let prompt_tokens = response
+            .pointer("/usage/prompt_tokens")
+            .and_then(ProtocolJson::as_u64);
         let completion_tokens = response
             .pointer("/usage/completion_tokens")
             .and_then(ProtocolJson::as_u64);
