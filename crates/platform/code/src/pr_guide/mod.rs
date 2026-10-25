@@ -230,6 +230,26 @@ fn fingerprint(facts: &FactBundle) -> Result<String> {
     digest.update(include_bytes!("model.rs"));
     digest.update(include_bytes!("render.rs"));
     digest.update(include_bytes!("mod.rs"));
+    for name in [
+        "PR_GUIDE_API_URL",
+        "PR_GUIDE_MODEL",
+        "PR_GUIDE_RESPONSE_FORMAT",
+        "PR_GUIDE_MAX_OUTPUT_TOKENS",
+        "PR_GUIDE_HTML_MAX_OUTPUT_TOKENS",
+    ] {
+        digest.update(name.as_bytes());
+        digest.update(b"\\0");
+        digest.update(std::env::var(name).unwrap_or_default().as_bytes());
+        digest.update(b"\\0");
+    }
+    if std::env::var("PR_GUIDE_API_KEY")
+        .map(|value| !value.is_empty())
+        .unwrap_or(false)
+    {
+        digest.update(b"api-key-present");
+    } else {
+        digest.update(b"api-key-missing");
+    }
     digest.update(encoded);
     let digest = digest.finalize();
     Ok(format!("{digest:x}"))
