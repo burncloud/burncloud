@@ -122,9 +122,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
     }
 
     let outcome = model::analyze(&facts).await;
-    let html_outcome = model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
-    let generated_html = html_outcome.html;
-    let html_status = html_outcome.status;
+    let html_status = "deterministic_svg".to_owned();
     let analysis_status = if facts.coverage.complete && outcome.status == "model_completed" {
         "complete"
     } else {
@@ -148,7 +146,6 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         &facts,
         &outcome.analysis,
         &state,
-        generated_html.as_deref(),
     )?;
     println!("Generated deterministic facts, Markdown guide, and standalone HTML report.");
     Ok(())
@@ -202,8 +199,6 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
     .context("fixture facts JSON is invalid")?;
     let fingerprint = fingerprint(&facts)?;
     let outcome = model::analyze(&facts).await;
-    let html_outcome = model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
-    let generated_html = html_outcome.html;
     let state = RunState {
         reused: false,
         fingerprint,
@@ -211,7 +206,7 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
         analysis_status: "fixture".to_owned(),
         model_status: outcome.status,
         model_name: outcome.model_name,
-        html_status: html_outcome.status,
+        html_status: "deterministic_svg".to_owned(),
         comment_id: None,
         artifact_name: artifact_name(facts.pull_request.number, &facts.pull_request.head_sha),
         generated_at: Utc::now().to_rfc3339(),
@@ -240,7 +235,6 @@ fn fingerprint(facts: &FactBundle) -> Result<String> {
         "PR_GUIDE_MODEL",
         "PR_GUIDE_RESPONSE_FORMAT",
         "PR_GUIDE_MAX_OUTPUT_TOKENS",
-        "PR_GUIDE_HTML_MAX_OUTPUT_TOKENS",
     ] {
         digest.update(name.as_bytes());
         digest.update(b"\0");
