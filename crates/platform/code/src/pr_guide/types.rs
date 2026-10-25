@@ -218,4 +218,6 @@ pub(crate) struct MarkerState {
     pub(crate) fingerprint: String,
     pub(crate) head_sha: String,
     pub(crate) status: String,
+    #[serde(default)]
+    pub(crate) html_status: String,
 }
