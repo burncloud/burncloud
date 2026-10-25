@@ -24,6 +24,42 @@ pub(crate) struct ModelOutcome {
     pub(crate) model_name: Option<String>,
 }
 
+pub(crate) async fn analyze(facts: &FactBundle) -> ModelOutcome {
+    let config = match ModelConfig::from_env() {
+        Ok(Some(config)) => config,
+        Ok(None) => {
+            return ModelOutcome {
+                analysis: deterministic_analysis(facts, "模型凭据或配置缺失"),
+                status: "configuration_missing".to_owned(),
+                model_name: None,
+            };
+        }
+        Err(error) => {
+            return ModelOutcome {
+                analysis: deterministic_analysis(facts, &format!("模型配置无效：{error}")),
+                status: "configuration_invalid".to_owned(),
+                model_name: None,
+            };
+        }
+    };
+    let model_name = Some(config.model.clone());
+    match call_model(&config, facts).await {
+        Ok(mut analysis) => {
+            validate_analysis(&mut analysis, facts);
+            ModelOutcome {
+                analysis,
+                status: "model_completed".to_owned(),
+                model_name,
+            }
+        }
+        Err(error) => ModelOutcome {
+            analysis: deterministic_analysis(facts, &format!("模型分析失败：{error:#}")),
+            status: "model_failed".to_owned(),
+            model_name,
+        },
+    }
+}
+
 struct ModelConfig {
     api_key: String,
     api_url: String,
