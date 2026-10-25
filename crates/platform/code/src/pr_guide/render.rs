@@ -12,6 +12,7 @@ pub(crate) fn write_outputs(
     facts: &FactBundle,
     analysis: &Analysis,
     state: &RunState,
+    generated_html: Option<&str>,
 ) -> Result<()> {
     fs::create_dir_all(output).with_context(|| format!("failed to create {}", output.display()))?;
     write_json(&output.join("facts.json"), facts)?;
@@ -19,7 +20,10 @@ pub(crate) fn write_outputs(
     write_json(&output.join("state.json"), state)?;
     fs::write(output.join("comment.md"), markdown(facts, analysis, state))
         .context("failed to write PR comment")?;
-    fs::write(output.join("report.html"), html(facts, analysis, state))
+    let report_html = generated_html
+        .map(str::to_owned)
+        .unwrap_or_else(|| html(facts, analysis, state));
+    fs::write(output.join("report.html"), report_html)
         .context("failed to write HTML report")?;
     Ok(())
 }
@@ -225,13 +229,19 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
     .ok();
     writeln!(
         output,
-        "**模型状态**：`{}`{}。本导读只辅助理解，不构成正确性证明，也不会批准、关闭或合并 PR。",
+        "**模型分析状态**：`{}`{}。",
         md(&state.model_status),
         state
             .model_name
             .as_ref()
             .map(|name| format!(" / `{}`", code(name)))
             .unwrap_or_default()
+    )
+    .ok();
+    writeln!(
+        output,
+        "**HTML 渲染状态**：`{}`。只有 `model_generated` 表示本次 HTML 由模型生成；其他状态使用固定渲染器作为备用。本导读只辅助理解，不构成正确性证明，也不会批准、关闭或合并 PR。",
+        md(&state.html_status)
     )
     .ok();
     output
