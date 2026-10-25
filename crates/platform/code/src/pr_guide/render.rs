@@ -48,6 +48,7 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
         fingerprint: state.fingerprint.clone(),
         head_sha: state.head_sha.clone(),
         status: state.analysis_status.clone(),
+        html_status: state.html_status.clone(),
     };
     let marker_json = serde_json::to_string(&marker).unwrap_or_else(|_| "{}".to_owned());
     writeln!(output, "<!-- burncloud-pr-guide:v1 {marker_json} -->").ok();
