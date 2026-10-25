@@ -622,7 +622,8 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
     }
     let labels: Vec<String> = labels.into_iter().take(24).collect();
     if labels.is_empty() {
-        return "<p class=\"graph-note\">没有可视化节点；当前差异可能为空或事实采集未完成。</p>".to_owned();
+        return "<p class=\"graph-note\">没有可视化节点；当前差异可能为空或事实采集未完成。</p>"
+            .to_owned();
     }
 
     let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -641,7 +642,9 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
                     "关联组件".to_owned()
                 }
             });
-        let status = file.map(|file| file.status.clone()).unwrap_or_else(|| "context".to_owned());
+        let status = file
+            .map(|file| file.status.clone())
+            .unwrap_or_else(|| "context".to_owned());
         metadata.insert(label.clone(), (group.clone(), status));
         grouped.entry(group).or_default().push(label);
     }
@@ -659,7 +662,9 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
         groups.push(("其他组件".to_owned(), merged));
     }
     let row_height = |row: usize, groups: &[(String, Vec<String>)]| -> i32 {
-        groups.iter().enumerate()
+        groups
+            .iter()
+            .enumerate()
             .filter(|(index, _)| *index / 3 == row)
             .map(|(_, (_, nodes))| 52 + nodes.len() as i32 * 76)
             .max()
@@ -667,7 +672,15 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
     };
     let top_height = row_height(0, &groups);
     let bottom_height = row_height(1, &groups);
-    let height = (70 + top_height + (if groups.len() > 3 { 40 + bottom_height } else { 0 }) + 50).max(240);
+    let height = (70
+        + top_height
+        + (if groups.len() > 3 {
+            40 + bottom_height
+        } else {
+            0
+        })
+        + 50)
+        .max(240);
     let mut positions: BTreeMap<String, (i32, i32, i32, i32)> = BTreeMap::new();
     let mut group_markup = String::new();
     let mut node_markup = String::new();
@@ -689,7 +702,10 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
             let nx = x + 16;
             let ny = y + 34 + node_index as i32 * 76;
             positions.insert(label.clone(), (nx, ny, 338, 56));
-            let (_, status) = metadata.get(label).cloned().unwrap_or_else(|| (name.clone(), "context".to_owned()));
+            let (_, status) = metadata
+                .get(label)
+                .cloned()
+                .unwrap_or_else(|| (name.clone(), "context".to_owned()));
             let title = label.chars().take(42).collect::<String>();
             let meta = format!("{} · {}", name, status);
             write!(
@@ -723,28 +739,72 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
             let x2 = tx;
             let y2 = ty + th / 2;
             let bend = ((x2 - x1).abs() / 2).max(26);
-            (x1, y1, x2, y2, format!("M {x1} {y1} C {} {y1}, {} {y2}, {x2} {y2}", x1 + bend, x2 - bend))
+            (
+                x1,
+                y1,
+                x2,
+                y2,
+                format!(
+                    "M {x1} {y1} C {} {y1}, {} {y2}, {x2} {y2}",
+                    x1 + bend,
+                    x2 - bend
+                ),
+            )
         } else if tx < sx {
             let x1 = sx;
             let y1 = sy + sh / 2;
             let x2 = tx + tw;
             let y2 = ty + th / 2;
             let bend = ((x1 - x2).abs() / 2).max(26);
-            (x1, y1, x2, y2, format!("M {x1} {y1} C {} {y1}, {} {y2}, {x2} {y2}", x1 - bend, x2 + bend))
+            (
+                x1,
+                y1,
+                x2,
+                y2,
+                format!(
+                    "M {x1} {y1} C {} {y1}, {} {y2}, {x2} {y2}",
+                    x1 - bend,
+                    x2 + bend
+                ),
+            )
         } else if ty >= sy {
             let x1 = sx + sw / 2;
             let y1 = sy + sh;
             let x2 = tx + tw / 2;
             let y2 = ty;
-            (x1, y1, x2, y2, format!("M {x1} {y1} C {x1} {}, {x2} {}, {x2} {y2}", y1 + 20, y2 - 20))
+            (
+                x1,
+                y1,
+                x2,
+                y2,
+                format!(
+                    "M {x1} {y1} C {x1} {}, {x2} {}, {x2} {y2}",
+                    y1 + 20,
+                    y2 - 20
+                ),
+            )
         } else {
             let x1 = sx + sw / 2;
             let y1 = sy;
             let x2 = tx + tw / 2;
             let y2 = ty + th;
-            (x1, y1, x2, y2, format!("M {x1} {y1} C {x1} {}, {x2} {}, {x2} {y2}", y1 - 20, y2 + 20))
+            (
+                x1,
+                y1,
+                x2,
+                y2,
+                format!(
+                    "M {x1} {y1} C {x1} {}, {x2} {}, {x2} {y2}",
+                    y1 - 20,
+                    y2 + 20
+                ),
+            )
         };
-        let class = if relation.certainty.starts_with("confirmed") { "confirmed" } else { "inferred" };
+        let class = if relation.certainty.starts_with("confirmed") {
+            "confirmed"
+        } else {
+            "inferred"
+        };
         write!(
             edge_markup,
             "<path class=\"graph-edge {class}\" data-relation=\"{}\" data-from=\"{}\" data-to=\"{}\" d=\"{}\"><title>{} → {} · {} · {} · {}</title></path>",
@@ -764,7 +824,8 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
             edge_markup,
             "<text class=\"graph-edge-label\" x=\"{label_x}\" y=\"{label_y}\">{}</text>",
             h(&relation.relation_type.chars().take(18).collect::<String>())
-        ).ok();
+        )
+        .ok();
     }
     if edge_markup.is_empty() {
         edge_markup.push_str("<text class=\"graph-edge-label\" x=\"42\" y=\"66\">未发现可确认的关系边；此图仅展示真实变更文件分组。</text>");
