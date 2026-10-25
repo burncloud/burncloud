@@ -909,7 +909,7 @@ fn code(value: &str) -> String {
 #[cfg(test)]
 mod svg_diagram_tests {
     use super::svg_diagram;
-    use super::types::{Analysis, FactBundle};
+    use super::super::types::{Analysis, FactBundle};
 
     fn facts(with_relation: bool) -> FactBundle {
         let relations = if with_relation {
