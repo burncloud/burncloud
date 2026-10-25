@@ -314,7 +314,7 @@ fn script_contains_disallowed_api(document: &str) -> bool {
             "serviceworker",
         ]
         .iter()
-        .any(|pattern| script.contains(pattern))
+        .any(|pattern| script.contains(*pattern))
         {
             return true;
         }
