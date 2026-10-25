@@ -117,8 +117,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
     }
 
     let outcome = model::analyze(&facts).await;
-    let html_outcome =
-        model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
+    let html_outcome = model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
     let generated_html = html_outcome.html;
     let html_status = html_outcome.status;
     let analysis_status = if facts.coverage.complete && outcome.status == "model_completed" {
@@ -139,7 +138,13 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         artifact_name,
         generated_at,
     };
-    render::write_outputs(&output, &facts, &outcome.analysis, &state, generated_html.as_deref())?;
+    render::write_outputs(
+        &output,
+        &facts,
+        &outcome.analysis,
+        &state,
+        generated_html.as_deref(),
+    )?;
     println!("Generated deterministic facts, Markdown guide, and standalone HTML report.");
     Ok(())
 }
@@ -207,7 +212,13 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
         artifact_name: artifact_name(facts.pull_request.number, &facts.pull_request.head_sha),
         generated_at: Utc::now().to_rfc3339(),
     };
-    render::write_outputs(&output, &facts, &outcome.analysis, &state, generated_html.as_deref())
+    render::write_outputs(
+        &output,
+        &facts,
+        &outcome.analysis,
+        &state,
+        generated_html.as_deref(),
+    )
 }
 
 fn fingerprint(facts: &FactBundle) -> Result<String> {
