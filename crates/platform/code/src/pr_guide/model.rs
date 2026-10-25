@@ -3,13 +3,19 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode};
-use serde_json::{json, Value};
+use serde_json::json;
 use tokio::time::sleep;
 
 use super::types::{Analysis, ApiChange, BeforeAfter, Claim, FactBundle, ImpactGroup, ReadingStep};
 
 const MODEL_INPUT_LIMIT: usize = 600_000;
 const MODEL_OUTPUT_LIMIT: usize = 512_000;
+
+#[allow(
+    clippy::disallowed_types,
+    reason = "the configured model API wire format is an explicit protocol adapter boundary"
+)]
+type ProtocolJson = serde_json::Value;
 
 pub(crate) struct ModelOutcome {
     pub(crate) analysis: Analysis,
@@ -141,21 +147,21 @@ async fn call_model(config: &ModelConfig, facts: &FactBundle) -> Result<Analysis
             anyhow::bail!("model response exceeded {MODEL_OUTPUT_LIMIT} bytes")
         }
         if !status.is_success() {
-            let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            let value: ProtocolJson = serde_json::from_slice(&bytes).unwrap_or(ProtocolJson::Null);
             let message = value
                 .pointer("/error/message")
-                .and_then(Value::as_str)
+                .and_then(ProtocolJson::as_str)
                 .unwrap_or("provider returned an error without a safe message");
             anyhow::bail!(
                 "model provider returned {status}: {}",
                 truncate(message, 500)
             )
         }
-        let response: Value =
+        let response: ProtocolJson =
             serde_json::from_slice(&bytes).context("model response is not JSON")?;
         let content = response
             .pointer("/choices/0/message/content")
-            .and_then(Value::as_str)
+            .and_then(ProtocolJson::as_str)
             .context("model response is missing choices[0].message.content")?;
         let content = strip_json_fence(content);
         return serde_json::from_str(content).context("model content is not valid analysis JSON");
@@ -169,21 +175,21 @@ fn model_input(facts: &FactBundle) -> Result<String> {
     if encoded.len() <= MODEL_INPUT_LIMIT {
         return String::from_utf8(encoded).context("serialized facts are not UTF-8");
     }
-    if let Some(files) = view.pointer_mut("/files").and_then(Value::as_array_mut) {
+    if let Some(files) = view.pointer_mut("/files").and_then(ProtocolJson::as_array_mut) {
         for file in files {
-            file["before_excerpt"] = Value::Null;
-            file["after_excerpt"] = Value::Null;
-            if let Some(patch) = file.get("patch").and_then(Value::as_str) {
-                file["patch"] = Value::String(truncate(patch, 4_000));
-                file["patch_truncated"] = Value::Bool(true);
+            file["before_excerpt"] = ProtocolJson::Null;
+            file["after_excerpt"] = ProtocolJson::Null;
+            if let Some(patch) = file.get("patch").and_then(ProtocolJson::as_str) {
+                file["patch"] = ProtocolJson::String(truncate(patch, 4_000));
+                file["patch_truncated"] = ProtocolJson::Bool(true);
             }
         }
     }
-    if let Some(context) = view.pointer_mut("/context").and_then(Value::as_array_mut) {
+    if let Some(context) = view.pointer_mut("/context").and_then(ProtocolJson::as_array_mut) {
         context.truncate(24);
         for item in context {
-            if let Some(excerpt) = item.get("excerpt").and_then(Value::as_str) {
-                item["excerpt"] = Value::String(truncate(excerpt, 1_000));
+            if let Some(excerpt) = item.get("excerpt").and_then(ProtocolJson::as_str) {
+                item["excerpt"] = ProtocolJson::String(truncate(excerpt, 1_000));
             }
         }
     }

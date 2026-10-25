@@ -4,13 +4,19 @@ use anyhow::{Context, Result};
 use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use tokio::time::sleep;
 
 use super::types::{CheckFact, LinkedIssue, PullRequest, COMMENT_MARKER};
 
 const PAGE_SIZE: u64 = 100;
 const MAX_PAGES: u64 = 30;
+
+#[allow(
+    clippy::disallowed_types,
+    reason = "GitHub's REST wire format is an explicit protocol adapter boundary"
+)]
+type ProtocolJson = serde_json::Value;
 
 pub(crate) struct GitHub {
     client: Client,
@@ -64,7 +70,7 @@ impl GitHub {
     }
 
     pub(crate) async fn pull_request(&self, number: u64) -> Result<PullRequest> {
-        let value: Value = self
+        let value: ProtocolJson = self
             .request_json(
                 Method::GET,
                 &format!("/repos/{}/{}/pulls/{number}", self.owner, self.repo),
@@ -76,18 +82,18 @@ impl GitHub {
             title: string_at(&value, "/title")?,
             body: value
                 .pointer("/body")
-                .and_then(Value::as_str)
+                .and_then(ProtocolJson::as_str)
                 .unwrap_or_default()
                 .to_owned(),
             state: string_at(&value, "/state")?,
             draft: value
                 .pointer("/draft")
-                .and_then(Value::as_bool)
+                .and_then(ProtocolJson::as_bool)
                 .unwrap_or(false),
             html_url: string_at(&value, "/html_url")?,
             changed_files: value
                 .pointer("/changed_files")
-                .and_then(Value::as_u64)
+                .and_then(ProtocolJson::as_u64)
                 .context("pull request changed_files is missing")?,
             base_ref: string_at(&value, "/base/ref")?,
             base_sha: validated_sha(&string_at(&value, "/base/sha")?)?,
@@ -122,7 +128,7 @@ impl GitHub {
     pub(crate) async fn checks(&self, head_sha: &str) -> Result<Vec<CheckFact>> {
         let mut checks = Vec::new();
         for page in 1..=MAX_PAGES {
-            let value: Value = self
+            let value: ProtocolJson = self
                 .request_json(
                     Method::GET,
                     &format!(
@@ -134,7 +140,7 @@ impl GitHub {
                 .await?;
             let batch = value
                 .pointer("/check_runs")
-                .and_then(Value::as_array)
+                .and_then(ProtocolJson::as_array)
                 .context("GitHub check-runs response is missing check_runs")?;
             for check in batch {
                 checks.push(CheckFact {
@@ -158,7 +164,7 @@ impl GitHub {
         let mut issues = Vec::new();
         for number in referenced_numbers(body).into_iter().take(10) {
             let path = format!("/repos/{}/{}/issues/{number}", self.owner, self.repo);
-            let value = match self.request_json::<Value>(Method::GET, &path, None).await {
+            let value = match self.request_json::<ProtocolJson>(Method::GET, &path, None).await {
                 Ok(value) => value,
                 Err(error) => {
                     eprintln!("Skipping linked issue #{number}: {error:#}");
@@ -243,7 +249,7 @@ impl GitHub {
         &self,
         method: Method,
         path: &str,
-        body: Option<&Value>,
+        body: Option<&ProtocolJson>,
     ) -> Result<T> {
         let url = format!("https://api.github.com{path}");
         for attempt in 0..3_u64 {
@@ -284,18 +290,18 @@ impl GitHub {
     }
 }
 
-fn string_at(value: &Value, pointer: &str) -> Result<String> {
+fn string_at(value: &ProtocolJson, pointer: &str) -> Result<String> {
     value
         .pointer(pointer)
-        .and_then(Value::as_str)
+        .and_then(ProtocolJson::as_str)
         .map(str::to_owned)
         .with_context(|| format!("GitHub response is missing string field {pointer}"))
 }
 
-fn optional_string_at(value: &Value, pointer: &str) -> Option<String> {
+fn optional_string_at(value: &ProtocolJson, pointer: &str) -> Option<String> {
     value
         .pointer(pointer)
-        .and_then(Value::as_str)
+        .and_then(ProtocolJson::as_str)
         .map(str::to_owned)
 }
 
