@@ -231,7 +231,8 @@ fn fingerprint(facts: &FactBundle) -> Result<String> {
     digest.update(include_bytes!("render.rs"));
     digest.update(include_bytes!("mod.rs"));
     digest.update(encoded);
-    Ok(format!("{:x}", digest.finalize()))
+    let digest = digest.finalize();
+    Ok(format!("{digest:x}"))
 }
 
 fn parse_marker(body: &str) -> Option<MarkerState> {
