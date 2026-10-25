@@ -206,6 +206,8 @@ pub(crate) struct RunState {
     pub(crate) analysis_status: String,
     pub(crate) model_status: String,
     pub(crate) model_name: Option<String>,
+    #[serde(default)]
+    pub(crate) html_status: String,
     pub(crate) comment_id: Option<u64>,
     pub(crate) artifact_name: String,
     pub(crate) generated_at: String,
