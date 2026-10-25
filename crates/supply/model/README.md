@@ -10,8 +10,8 @@ It owns:
 - `model_capabilities` capability persistence defined by #621;
 - Model manifest and variant structures;
 - Model resolver interfaces and current resolver implementations;
-- HuggingFace model catalog discovery helper;
-- model data-directory configuration helper.
+- HuggingFace discovery/file traversal helpers;
+- model download URL/data-directory helpers.
 
 It does not own canonical pricing truth (Commerce), Traffic routing, database
 schema migrations, or runtime process lifecycle.
@@ -23,7 +23,7 @@ compatibility surface used during #778 was removed by #780.
 ## Domain Crate 10 问
 
 1. **Owner** — Supply. Business capability: local model capability truth, model manifest/variant
-   resolution and HuggingFace model catalog discovery. The Cargo package is `burncloud-supply-model` and the Rust
+   resolution and HuggingFace discovery. The Cargo package is `burncloud-supply-model` and the Rust
    import is `burncloud_supply_model`. This crate consolidates the former
    `burncloud-database-model` and `burncloud-service-models` technical layers under one Owner; the
    temporary `burncloud_service_models` alias was removed by #780.
@@ -31,17 +31,15 @@ compatibility surface used during #778 was removed by #780.
 2. **Responsibility** — read/write the `model_capabilities` capability projection
    (`ModelCapabilityModel::{get, upsert}`); define the manifest and variant value types
    (`ModelManifest`, `Variant`) and the resolver contract with its implementations (`ModelResolver`,
-   `RealModelResolver`, `FakeModelResolver`); filter variants by RAM/VRAM, runtime backend, and
-   artifact disk size; and provide the HuggingFace model catalog and data-directory helpers.
-   Resolver 只接收调用方已经准备好的 `ModelManifest`，不扫描模型文件、不筛选 GGUF 文件、
-   不构建 artifact URI。
+   `RealModelResolver`, `FakeModelResolver`); filter variants by RAM/VRAM and runtime backend; and
+   provide HuggingFace discovery plus download/data-directory URL helpers.
    **Not responsible for**: canonical pricing and cost calculation (Commerce — `input_price` /
    `output_price` are only a legacy projection in this mixed historical table, not a second pricing
    truth); the `sys_settings` rows behind the `huggingface` / `dir_data` keys (Platform setting);
    `model_capabilities` DDL and migrations (Platform storage database); HuggingFace repository
    metadata CRUD (the no-op facade was removed by #621); Traffic routing and router logs; artifact
-   download execution and on-disk artifact layout; runtime process lifecycle and hardware probing
-   (Platform node runtime).
+   download execution and on-disk data layout (`burncloud-download` is reachable only from
+   `examples/`); runtime process lifecycle and hardware probing (Platform node runtime).
 
 3. **Data Truth** — one table, `model_capabilities`, created by the Platform versioned migrations:
    `id`, `model` (`NOT NULL UNIQUE`), `context_window`, `max_output_tokens`, `supports_vision`,
@@ -59,18 +57,18 @@ compatibility surface used during #778 was removed by #780.
    - persistence: `ModelCapability` (row), `ModelCapabilityInput` (write projection),
      `ModelCapabilityModel::{get, upsert}`, `current_timestamp`;
    - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest`, `ResolvedModel`,
-     `ModelResolutionOutcome` (`Local` / `Unsupported`), `CandidateResolutionOutcome`
-     (`Candidates` / `Unsupported`), `ResolvedModelCandidate`, `LocalModelUnsupported`,
+     `ModelResolutionOutcome` (`Local` / `Unsupported`), `LocalModelUnsupported`,
      `LocalModelUnsupportedReason`, `ModelResolutionError`, the `ModelResolver` trait,
      `RealModelResolver`, `FakeModelResolver`;
-   - HuggingFace: `ModelService`, `HfApiModel`, `get_huggingface_host`, `get_data_dir`.
+   - HuggingFace: `ModelService`, `HfApiModel`, `HfFileItem`, `get_huggingface_host`,
+     `get_model_files`, `filter_gguf_files`, `get_data_dir`, `build_download_url`.
    `RealModelResolver` is the manifest-backed foundation and its `ModelResolver::resolve` currently
    returns `ModelResolutionError::ResolutionFailed(...)`; `FakeModelResolver` is the deterministic
    placeholder used by the Node skeleton.
 
 5. **Allowed dependencies** — `burncloud-database`, `burncloud-service-setting` (`SettingService`),
    `burncloud-service-ip` (CN HuggingFace mirror selection), `burncloud-node-runtime`
-   (`HardwareProfile`), plus `sqlx`, `tokio`, `serde`,
+   (`HardwareProfile`), `burncloud-download` (only from `examples/`), plus `sqlx`, `tokio`, `serde`,
    `serde_json`, `reqwest`, `async-trait` and `thiserror`. No Commerce, Traffic, Identity or
    Interfaces package appears. `deny.toml` denies routing through `burncloud-common`, so new code
    must depend on the owning crate directly.
@@ -90,14 +88,14 @@ compatibility surface used during #778 was removed by #780.
 
    ```text
    src/
-   ├── lib.rs                 HuggingFace catalog/data-dir helpers and re-exports
+   ├── lib.rs                 HuggingFace discovery, download/data-dir helpers, re-exports
    ├── model_capability.rs    ModelCapability/Input/Model, private row mapping, all SQL
    ├── manifest.rs            ModelManifest, Variant
    ├── resolver.rs            ModelResolver contract, DTOs, FakeModelResolver
-   ├── real_model_resolver.rs RealModelResolver, hardware/runtime/disk filters
+   ├── real_model_resolver.rs RealModelResolver, hardware/runtime filters
    └── common.rs              current_timestamp (re-exported)
-   tests/    model_capability.rs (SQLite), manifest.rs, resolver.rs, real_model_resolver.rs
-   examples/ phase_three.rs and fetch_huggingface.rs
+   tests/    model_capability.rs (SQLite), resolver.rs
+   examples/ ten HuggingFace discovery/download examples
    docs/     json.md, database-design.md, legacy owner READMEs
    ```
 
@@ -109,18 +107,17 @@ compatibility surface used during #778 was removed by #780.
    `Result<_, Box<dyn Error>>`. The crate has no `tracing`/`log` dependency and no log statements —
    consumers log, e.g. `burncloud-router::price_sync` reports an upsert failure with
    `tracing::error!`. SQL values are always `.bind(...)`-ed; `adapt_sql` only rewrites `?`
-   placeholders for PostgreSQL and never interpolates values. No credential, API key or secret
-   is read, stored or formatted here.
+   placeholders for PostgreSQL and never interpolates values (the only `format!` calls build
+   HuggingFace URLs). No credential, API key or secret is read, stored or formatted here.
 
 9. **Proof** — what actually executes:
    - `tests/model_capability.rs::capability_upsert_round_trips_through_real_table` opens a temporary
      `sqlite:///…` database through `create_database_with_url` (which runs the Platform migrations),
      so it round-trips every capability field against the real table, including `synced_at` and the
      legacy price projections. This is the only test touching the real table.
-   - `tests/manifest.rs::manifest_round_trips_through_json` verifies Manifest serialization;
-     `tests/resolver.rs` covers the resolver contract and fake implementation;
-     `tests/real_model_resolver.rs` covers hardware/runtime filtering, candidate order, disk
-     boundaries, and the no-compatible-variant result.
+   - `tests/resolver.rs::fake_resolver_returns_runtime_and_artifact_choice`, plus unit tests in
+     `src/manifest.rs`, `src/resolver.rs` and `src/real_model_resolver.rs` (hardware and runtime
+     filtering).
    - Downstream contract proof: `crates/platform/node/tests/golden_path.rs`,
      `crates/interfaces/server/tests/node_framework_e2e.rs` and
      `node_route_visibility_lifecycle.rs`.
@@ -134,14 +131,10 @@ compatibility surface used during #778 was removed by #780.
 
     ```text
     Correct:   Consumer        -> ModelResolver (ModelResolutionRequest -> ModelResolutionOutcome)
-    Correct:   Phase 3         -> RealModelResolver::resolve_with_capabilities
-                                  (filtered candidates in manifest order -> direct result)
     Correct:   Traffic price sync -> ModelCapabilityModel::upsert(&db, &ModelCapabilityInput { .. })
-    Correct:   Consumer        -> ModelService / get_huggingface_host / get_data_dir
-   Correct:   Caller          -> RealModelResolver::new(preloaded_manifests)?
+    Correct:   Consumer        -> ModelService / get_model_files / build_download_url / get_data_dir
     Incorrect: Any crate       -> raw SELECT/INSERT/UPDATE on model_capabilities
     Incorrect: Any crate       -> treat model_capabilities.input_price/output_price as pricing truth
-    Incorrect: Resolver        -> scan model files or construct artifact URI
     Incorrect: Any crate       -> expect ModelService to persist HuggingFace metadata (removed by #621)
     Incorrect: New domain code -> depend on burncloud-supply-model without architecture review
     ```
