@@ -214,7 +214,6 @@ fn fingerprint(facts: &FactBundle) -> Result<String> {
     let encoded = serde_json::to_vec(facts)?;
     let mut digest = Sha256::new();
     digest.update(b"burncloud-pr-guide-ai-html-v1");
-    digest.update(include_bytes!("effective_html_prompt.md"));
     digest.update(include_bytes!("model.rs"));
     digest.update(include_bytes!("render.rs"));
     digest.update(include_bytes!("mod.rs"));
