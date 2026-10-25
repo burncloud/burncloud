@@ -607,7 +607,10 @@ const detail=document.getElementById('node-detail');document.querySelectorAll('[
     )
 }
 
-#[allow(clippy::too_many_lines, reason = "SVG layout and serialization are kept together for deterministic rendering")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "SVG layout and serialization are kept together for deterministic rendering"
+)]
 fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
     let relations = combined_relations(facts, analysis);
     let mut labels = BTreeSet::new();
