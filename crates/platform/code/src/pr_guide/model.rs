@@ -50,7 +50,6 @@ OUTPUT CONTRACT
 Return only one complete HTML document, beginning with a doctype and containing html, head, and body elements. Do not wrap it in Markdown fences. The document must include an inline SVG with real nodes and either paths or lines. Do not output explanatory prose before or after the HTML.
 "###;
 
-
 #[allow(
     clippy::disallowed_types,
     reason = "the configured model API wire format is an explicit protocol adapter boundary"
@@ -173,8 +172,7 @@ async fn call_html_model(
             anyhow::bail!("HTML model response exceeded {MODEL_OUTPUT_LIMIT} bytes")
         }
         if !status.is_success() {
-            let value: ProtocolJson =
-                serde_json::from_slice(&bytes).unwrap_or(ProtocolJson::Null);
+            let value: ProtocolJson = serde_json::from_slice(&bytes).unwrap_or(ProtocolJson::Null);
             let message = value
                 .pointer("/error/message")
                 .and_then(ProtocolJson::as_str)
@@ -203,8 +201,8 @@ async fn call_html_model(
 }
 
 fn html_max_output_tokens() -> Result<u64> {
-    let value = std::env::var("PR_GUIDE_HTML_MAX_OUTPUT_TOKENS")
-        .unwrap_or_else(|_| "10000".to_owned());
+    let value =
+        std::env::var("PR_GUIDE_HTML_MAX_OUTPUT_TOKENS").unwrap_or_else(|_| "10000".to_owned());
     let parsed = value
         .parse::<u64>()
         .context("PR_GUIDE_HTML_MAX_OUTPUT_TOKENS must be an integer")?;
@@ -669,7 +667,6 @@ fn strip_json_fence(value: &str) -> &str {
 fn truncate(value: &str, limit: usize) -> String {
     value.chars().take(limit).collect()
 }
-
 
 #[cfg(test)]
 mod html_validation_tests {
