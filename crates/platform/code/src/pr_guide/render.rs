@@ -23,8 +23,7 @@ pub(crate) fn write_outputs(
     let report_html = generated_html
         .map(str::to_owned)
         .unwrap_or_else(|| html(facts, analysis, state));
-    fs::write(output.join("report.html"), report_html)
-        .context("failed to write HTML report")?;
+    fs::write(output.join("report.html"), report_html).context("failed to write HTML report")?;
     Ok(())
 }
 
