@@ -29,15 +29,12 @@ fn command() -> Command {
         .about("Generate evidence-bound PR guides without executing PR code")
         .subcommand_required(true)
         .subcommand(
-            Command::new("analyze")
-                .arg(pr_arg())
-                .arg(output_arg())
-                .arg(
-                    Arg::new("force")
-                        .long("force")
-                        .action(ArgAction::SetTrue)
-                        .help("Regenerate even when the input fingerprint is unchanged"),
-                ),
+            Command::new("analyze").arg(pr_arg()).arg(output_arg()).arg(
+                Arg::new("force")
+                    .long("force")
+                    .action(ArgAction::SetTrue)
+                    .help("Regenerate even when the input fingerprint is unchanged"),
+            ),
         )
         .subcommand(Command::new("publish").arg(pr_arg()).arg(output_arg()))
         .subcommand(
@@ -70,8 +67,8 @@ fn output_arg() -> Arg {
 async fn analyze(options: &ArgMatches) -> Result<()> {
     let number = required_number(options)?;
     let output = required_path(options, "output")?;
-    let repository = std::env::var("GITHUB_REPOSITORY")
-        .context("GITHUB_REPOSITORY is required for analyze")?;
+    let repository =
+        std::env::var("GITHUB_REPOSITORY").context("GITHUB_REPOSITORY is required for analyze")?;
     let github = github::GitHub::from_env(&repository)?;
     let pull_request = github.pull_request(number).await?;
     if pull_request.state != "open" {
@@ -83,13 +80,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         github.linked_issues(&pull_request.body),
         github.guide_comment(number),
     )?;
-    let facts = facts::collect(
-        &repository,
-        pull_request,
-        api_files,
-        checks,
-        linked_issues,
-    )?;
+    let facts = facts::collect(&repository, pull_request, api_files, checks, linked_issues)?;
     let fingerprint = fingerprint(&facts)?;
     let existing_marker = existing_comment
         .as_ref()
@@ -158,8 +149,8 @@ async fn publish(options: &ArgMatches) -> Result<()> {
         println!("No publish needed; existing comment has the same input fingerprint.");
         return Ok(());
     }
-    let repository = std::env::var("GITHUB_REPOSITORY")
-        .context("GITHUB_REPOSITORY is required for publish")?;
+    let repository =
+        std::env::var("GITHUB_REPOSITORY").context("GITHUB_REPOSITORY is required for publish")?;
     let github = github::GitHub::from_env(&repository)?;
     let current = github.pull_request(number).await?;
     if current.state != "open" {
@@ -223,7 +214,10 @@ fn parse_marker(body: &str) -> Option<MarkerState> {
 }
 
 fn artifact_name(number: u64, head_sha: &str) -> String {
-    format!("pr-guide-{number}-{}", head_sha.chars().take(12).collect::<String>())
+    format!(
+        "pr-guide-{number}-{}",
+        head_sha.chars().take(12).collect::<String>()
+    )
 }
 
 fn required_number(options: &ArgMatches) -> Result<u64> {

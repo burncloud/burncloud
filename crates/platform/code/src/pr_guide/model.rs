@@ -6,9 +6,7 @@ use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
 use tokio::time::sleep;
 
-use super::types::{
-    Analysis, ApiChange, BeforeAfter, Claim, FactBundle, ImpactGroup, ReadingStep,
-};
+use super::types::{Analysis, ApiChange, BeforeAfter, Claim, FactBundle, ImpactGroup, ReadingStep};
 
 const MODEL_INPUT_LIMIT: usize = 600_000;
 const MODEL_OUTPUT_LIMIT: usize = 512_000;
@@ -135,7 +133,10 @@ async fn call_model(config: &ModelConfig, facts: &FactBundle) -> Result<Analysis
             sleep(Duration::from_secs(2_u64.pow(attempt as u32))).await;
             continue;
         }
-        let bytes = response.bytes().await.context("failed to read model response")?;
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read model response")?;
         if bytes.len() > MODEL_OUTPUT_LIMIT {
             anyhow::bail!("model response exceeded {MODEL_OUTPUT_LIMIT} bytes")
         }
@@ -145,9 +146,13 @@ async fn call_model(config: &ModelConfig, facts: &FactBundle) -> Result<Analysis
                 .pointer("/error/message")
                 .and_then(Value::as_str)
                 .unwrap_or("provider returned an error without a safe message");
-            anyhow::bail!("model provider returned {status}: {}", truncate(message, 500))
+            anyhow::bail!(
+                "model provider returned {status}: {}",
+                truncate(message, 500)
+            )
         }
-        let response: Value = serde_json::from_slice(&bytes).context("model response is not JSON")?;
+        let response: Value =
+            serde_json::from_slice(&bytes).context("model response is not JSON")?;
         let content = response
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
@@ -201,10 +206,15 @@ fn validate_analysis(analysis: &mut Analysis, facts: &FactBundle) {
     for group in &mut analysis.impact_groups {
         retain_evidence(&mut group.evidence_ids, &evidence);
     }
-    let symbols: BTreeSet<&str> = facts.symbols.iter().map(|item| item.name.as_str()).collect();
+    let symbols: BTreeSet<&str> = facts
+        .symbols
+        .iter()
+        .map(|item| item.name.as_str())
+        .collect();
     for item in &mut analysis.api_changes {
         retain_evidence(&mut item.evidence_ids, &evidence);
-        item.certainty = if symbols.contains(item.symbol.as_str()) && !item.evidence_ids.is_empty() {
+        item.certainty = if symbols.contains(item.symbol.as_str()) && !item.evidence_ids.is_empty()
+        {
             "programmatically_matched_symbol".to_owned()
         } else {
             "inference".to_owned()
@@ -326,7 +336,8 @@ fn deterministic_analysis(facts: &FactBundle, reason: &str) -> Analysis {
     Analysis {
         purpose: format!(
             "确定性摘要：此 PR 改动 {} 个文件；{}。",
-            facts.files.len(), reason
+            facts.files.len(),
+            reason
         ),
         before_after,
         impact_groups,

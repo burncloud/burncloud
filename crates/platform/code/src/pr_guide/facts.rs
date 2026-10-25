@@ -41,11 +41,7 @@ pub(crate) fn collect(
         })
         .collect();
     ensure_git_objects(&pull_request)?;
-    let merge_base = git_text(&[
-        "merge-base",
-        &pull_request.base_sha,
-        &pull_request.head_sha,
-    ])?;
+    let merge_base = git_text(&["merge-base", &pull_request.base_sha, &pull_request.head_sha])?;
     validate_sha(&merge_base)?;
 
     let changes = changed_paths(&merge_base, &pull_request.head_sha)?;
@@ -57,13 +53,15 @@ pub(crate) fn collect(
     if changes.len() as u64 != pull_request.changed_files {
         warnings.push(format!(
             "本地 merge-base 差异包含 {} 个文件，GitHub PR 元数据报告 {} 个文件。",
-            changes.len(), pull_request.changed_files
+            changes.len(),
+            pull_request.changed_files
         ));
     }
     if api_files.len() as u64 != pull_request.changed_files {
         warnings.push(format!(
             "GitHub 分页文件接口返回 {} 个文件，PR 元数据报告 {} 个；接口数据可能被截断。",
-            api_files.len(), pull_request.changed_files
+            api_files.len(),
+            pull_request.changed_files
         ));
     }
     for change in &changes {
@@ -96,7 +94,10 @@ pub(crate) fn collect(
         let before_path = change.previous_path.as_deref().unwrap_or(&change.path);
         let before_size = blob_size(&merge_base, before_path)?;
         let after_size = blob_size(&pull_request.head_sha, &change.path)?;
-        let oversized = before_size.into_iter().chain(after_size).any(|size| size > BLOB_LIMIT);
+        let oversized = before_size
+            .into_iter()
+            .chain(after_size)
+            .any(|size| size > BLOB_LIMIT);
         let binary = numstat_is_binary(&merge_base, &pull_request.head_sha, &change.path)?;
         let raw_patch = if binary || oversized {
             String::new()
@@ -214,12 +215,8 @@ pub(crate) fn collect(
         &mut evidence,
         &mut context,
     )?;
-    let relations = collect_import_relations(
-        repository,
-        &pull_request.head_sha,
-        &files,
-        &mut evidence,
-    );
+    let relations =
+        collect_import_relations(repository, &pull_request.head_sha, &files, &mut evidence);
 
     if files.iter().any(|file| {
         file.after_excerpt
@@ -296,10 +293,25 @@ struct PathChange {
 
 fn ensure_git_objects(pr: &PullRequest) -> Result<()> {
     if git_status(&["cat-file", "-e", &format!("{}^{{commit}}", pr.base_sha)])? != 0 {
-        run_git(&["fetch", "--no-tags", "--filter=blob:none", "origin", &pr.base_sha])?;
+        run_git(&[
+            "fetch",
+            "--no-tags",
+            "--filter=blob:none",
+            "origin",
+            &pr.base_sha,
+        ])?;
     }
-    let pull_ref = format!("+refs/pull/{}/head:refs/remotes/pr-guide/{}", pr.number, pr.number);
-    run_git(&["fetch", "--no-tags", "--filter=blob:none", "origin", &pull_ref])?;
+    let pull_ref = format!(
+        "+refs/pull/{}/head:refs/remotes/pr-guide/{}",
+        pr.number, pr.number
+    );
+    run_git(&[
+        "fetch",
+        "--no-tags",
+        "--filter=blob:none",
+        "origin",
+        &pull_ref,
+    ])?;
     let fetched = git_text(&["rev-parse", &format!("refs/remotes/pr-guide/{}", pr.number)])?;
     if fetched != pr.head_sha {
         anyhow::bail!(
@@ -320,7 +332,10 @@ fn changed_paths(base: &str, head: &str) -> Result<Vec<PathChange>> {
         head,
         "--",
     ])?;
-    let fields: Vec<&[u8]> = output.split(|byte| *byte == 0).filter(|v| !v.is_empty()).collect();
+    let fields: Vec<&[u8]> = output
+        .split(|byte| *byte == 0)
+        .filter(|v| !v.is_empty())
+        .collect();
     let mut changes = Vec::new();
     let mut index = 0;
     while index < fields.len() {
@@ -383,11 +398,7 @@ fn numstat_is_binary(base: &str, head: &str, path: &str) -> Result<bool> {
     Ok(value.lines().any(|line| line.starts_with("-\t-\t")))
 }
 
-fn read_blob_excerpt(
-    sha: &str,
-    path: &str,
-    omitted: &mut Vec<String>,
-) -> Result<Option<String>> {
+fn read_blob_excerpt(sha: &str, path: &str, omitted: &mut Vec<String>) -> Result<Option<String>> {
     let spec = format!("{sha}:{path}");
     let size_text = match git_optional_text(&["cat-file", "-s", &spec])? {
         Some(value) => value,
@@ -481,15 +492,12 @@ fn collect_symbols(
             }
             if let Some(new) = new {
                 evidence_ids.push(push_decl_evidence(
-                    evidence,
-                    repository,
-                    "after",
-                    &file.path,
-                    head,
-                    new,
+                    evidence, repository, "after", &file.path, head, new,
                 ));
             }
-            let sample = new.or(old).context("symbol comparison lost both declarations")?;
+            let sample = new
+                .or(old)
+                .context("symbol comparison lost both declarations")?;
             symbols.push(SymbolFact {
                 name: sample.name.clone(),
                 kind: sample.kind.clone(),
@@ -600,10 +608,7 @@ fn declaration_signature(lines: &[&str], start: usize, kind: &str) -> (String, u
         if block && ((saw_brace && braces <= 0) || (!saw_brace && trimmed.ends_with(';'))) {
             break;
         }
-        if callable
-            && parentheses <= 0
-            && (trimmed.contains('{') || trimmed.ends_with(';'))
-        {
+        if callable && parentheses <= 0 && (trimmed.contains('{') || trimmed.ends_with(';')) {
             break;
         }
     }
@@ -730,16 +735,8 @@ fn collect_symbol_references(
         if symbol.name.len() < 3 {
             continue;
         }
-        let output = git_optional_bytes(&[
-            "grep",
-            "-n",
-            "-F",
-            "-e",
-            &symbol.name,
-            head,
-            "--",
-            "*.rs",
-        ])?;
+        let output =
+            git_optional_bytes(&["grep", "-n", "-F", "-e", &symbol.name, head, "--", "*.rs"])?;
         let Some(output) = output else {
             continue;
         };
@@ -779,7 +776,10 @@ fn collect_symbol_references(
                 .to_owned(),
                 path: path.to_owned(),
                 side: "after".to_owned(),
-                reason: format!("{} 的文本引用；trait、宏或同名符号可能使调用关系不确定", symbol.name),
+                reason: format!(
+                    "{} 的文本引用；trait、宏或同名符号可能使调用关系不确定",
+                    symbol.name
+                ),
                 excerpt: redact(snippet.trim()),
                 evidence_id: Some(id),
             });
@@ -902,9 +902,16 @@ pub(crate) fn redact(value: &str) -> String {
         .lines()
         .map(|line| {
             let lower = line.to_ascii_lowercase();
-            if ["api_key", "apikey", "secret", "password", "authorization", "bearer "]
-                .iter()
-                .any(|needle| lower.contains(needle))
+            if [
+                "api_key",
+                "apikey",
+                "secret",
+                "password",
+                "authorization",
+                "bearer ",
+            ]
+            .iter()
+            .any(|needle| lower.contains(needle))
             {
                 let indent: String = line.chars().take_while(|ch| ch.is_whitespace()).collect();
                 format!("{indent}[REDACTED: sensitive-looking line]")

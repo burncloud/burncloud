@@ -293,7 +293,10 @@ fn string_at(value: &Value, pointer: &str) -> Result<String> {
 }
 
 fn optional_string_at(value: &Value, pointer: &str) -> Option<String> {
-    value.pointer(pointer).and_then(Value::as_str).map(str::to_owned)
+    value
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 fn validated_sha(value: &str) -> Result<String> {

@@ -13,8 +13,7 @@ pub(crate) fn write_outputs(
     analysis: &Analysis,
     state: &RunState,
 ) -> Result<()> {
-    fs::create_dir_all(output)
-        .with_context(|| format!("failed to create {}", output.display()))?;
+    fs::create_dir_all(output).with_context(|| format!("failed to create {}", output.display()))?;
     write_json(&output.join("facts.json"), facts)?;
     write_json(&output.join("analysis.json"), analysis)?;
     write_json(&output.join("state.json"), state)?;
@@ -26,8 +25,7 @@ pub(crate) fn write_outputs(
 }
 
 pub(crate) fn write_reuse_state(output: &Path, state: &RunState) -> Result<()> {
-    fs::create_dir_all(output)
-        .with_context(|| format!("failed to create {}", output.display()))?;
+    fs::create_dir_all(output).with_context(|| format!("failed to create {}", output.display()))?;
     write_json(&output.join("state.json"), state)
 }
 
@@ -54,7 +52,11 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
     writeln!(
         output,
         "> {} **PR #{}** · `{}` → `{}` · {} · {}",
-        if facts.pull_request.draft { "草稿" } else { "Ready" },
+        if facts.pull_request.draft {
+            "草稿"
+        } else {
+            "Ready"
+        },
         facts.pull_request.number,
         md(&facts.pull_request.base_ref),
         short_sha(&facts.pull_request.head_sha),
@@ -70,7 +72,11 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
     writeln!(output, "### 2. 修改前后对比").ok();
     writeln!(output).ok();
     if analysis.before_after.is_empty() {
-        writeln!(output, "未发现可程序化确认的行为或签名对比；请查看详细报告中的验证缺口。").ok();
+        writeln!(
+            output,
+            "未发现可程序化确认的行为或签名对比；请查看详细报告中的验证缺口。"
+        )
+        .ok();
     } else {
         writeln!(output, "| 条件/输入 | 修改前 | 修改后 | 证据性质 |").ok();
         writeln!(output, "|---|---|---|---|").ok();
@@ -145,7 +151,11 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
     }
     writeln!(output).ok();
     writeln!(output, "<details>").ok();
-    writeln!(output, "<summary><strong>7. 风险、验证情况与完整范围</strong></summary>").ok();
+    writeln!(
+        output,
+        "<summary><strong>7. 风险、验证情况与完整范围</strong></summary>"
+    )
+    .ok();
     writeln!(output).ok();
     writeln!(output, "#### 风险与待确认事项").ok();
     if analysis.risks.is_empty() {
@@ -180,11 +190,7 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
     for item in facts.coverage.warnings.iter().take(20) {
         writeln!(output, "- 警告：{}", md(item)).ok();
     }
-    let hidden_coverage = facts
-        .coverage
-        .checked
-        .len()
-        .saturating_sub(20)
+    let hidden_coverage = facts.coverage.checked.len().saturating_sub(20)
         + facts.coverage.omitted.len().saturating_sub(20)
         + facts.coverage.warnings.len().saturating_sub(20);
     if hidden_coverage > 0 {
@@ -233,9 +239,18 @@ fn markdown(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String
 
 fn verification_markdown(facts: &FactBundle) -> String {
     let mut output = String::new();
-    writeln!(output, "#### 验证情况（仅限当前 head `{}`）", short_sha(&facts.pull_request.head_sha)).ok();
+    writeln!(
+        output,
+        "#### 验证情况（仅限当前 head `{}`）",
+        short_sha(&facts.pull_request.head_sha)
+    )
+    .ok();
     if facts.checks.is_empty() {
-        writeln!(output, "- 当前无法确认：GitHub 未返回此 head 的 check-run 记录。").ok();
+        writeln!(
+            output,
+            "- 当前无法确认：GitHub 未返回此 head 的 check-run 记录。"
+        )
+        .ok();
     }
     for check in facts.checks.iter().take(30) {
         let category = match (check.status.as_str(), check.conclusion.as_deref()) {
@@ -268,7 +283,10 @@ fn verification_markdown(facts: &FactBundle) -> String {
         )
         .ok();
     }
-    let has_test_reference = facts.context.iter().any(|item| item.kind == "test_reference");
+    let has_test_reference = facts
+        .context
+        .iter()
+        .any(|item| item.kind == "test_reference");
     let has_test_check = facts
         .checks
         .iter()
@@ -306,7 +324,8 @@ fn mermaid(facts: &FactBundle, analysis: &Analysis) -> String {
                 writeln!(output, "  participant N{id} as {}", mermaid_label(label)).ok();
             }
             for relation in relations.iter().take(16) {
-                let (Some(from), Some(to)) = (nodes.get(&relation.from), nodes.get(&relation.to)) else {
+                let (Some(from), Some(to)) = (nodes.get(&relation.from), nodes.get(&relation.to))
+                else {
                     continue;
                 };
                 writeln!(
@@ -323,7 +342,8 @@ fn mermaid(facts: &FactBundle, analysis: &Analysis) -> String {
                 writeln!(output, "  state \"{}\" as N{id}", mermaid_label(label)).ok();
             }
             for relation in relations.iter().take(16) {
-                let (Some(from), Some(to)) = (nodes.get(&relation.from), nodes.get(&relation.to)) else {
+                let (Some(from), Some(to)) = (nodes.get(&relation.from), nodes.get(&relation.to))
+                else {
                     continue;
                 };
                 writeln!(
@@ -340,7 +360,8 @@ fn mermaid(facts: &FactBundle, analysis: &Analysis) -> String {
                 writeln!(output, "  N{id}[\"{}\"]", mermaid_label(label)).ok();
             }
             for relation in relations.iter().take(16) {
-                let (Some(from), Some(to)) = (nodes.get(&relation.from), nodes.get(&relation.to)) else {
+                let (Some(from), Some(to)) = (nodes.get(&relation.from), nodes.get(&relation.to))
+                else {
                     continue;
                 };
                 let label = mermaid_relation_label(relation);
@@ -394,7 +415,8 @@ fn html(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String {
         .ok();
     }
     if comparison_rows.is_empty() {
-        comparison_rows.push_str("<tr><td colspan=\"4\">没有可可靠对照的行为或签名变化。</td></tr>");
+        comparison_rows
+            .push_str("<tr><td colspan=\"4\">没有可可靠对照的行为或签名变化。</td></tr>");
     }
     let mut node_names = BTreeSet::new();
     for relation in &relations {
@@ -454,7 +476,16 @@ fn html(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String {
     }
     let mut api = String::new();
     for item in &analysis.api_changes {
-        write!(api, "<tr><th scope=\"row\"><code>{}</code></th><td>{}</td><td>{}</td><td>{} {}</td></tr>", h(&item.symbol), h(&item.change), h(&item.compatibility), h(certainty_label(&item.certainty)), html_evidence(&item.evidence_ids, &facts.evidence)).ok();
+        write!(
+            api,
+            "<tr><th scope=\"row\"><code>{}</code></th><td>{}</td><td>{}</td><td>{} {}</td></tr>",
+            h(&item.symbol),
+            h(&item.change),
+            h(&item.compatibility),
+            h(certainty_label(&item.certainty)),
+            html_evidence(&item.evidence_ids, &facts.evidence)
+        )
+        .ok();
     }
     if api.is_empty() {
         api.push_str("<tr><td colspan=\"4\">未发现相关变化。</td></tr>");
@@ -467,11 +498,24 @@ fn html(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String {
             .and_then(|id| facts.evidence.iter().find(|item| item.id == id))
             .map(|item| format!("<a href=\"{}\">{}</a>", attr(&item.url), h(&step.path)))
             .unwrap_or_else(|| format!("<code>{}</code>", h(&step.path)));
-        write!(reading, "<li><strong>{link}</strong><span>{}</span></li>", h(&step.reason)).ok();
+        write!(
+            reading,
+            "<li><strong>{link}</strong><span>{}</span></li>",
+            h(&step.reason)
+        )
+        .ok();
     }
     let mut risks = String::new();
     for risk in &analysis.risks {
-        write!(risks, "<li><strong>{}</strong><span>{}</span><small>{} {}</small></li>", h(&risk.topic), h(&risk.detail), h(certainty_label(&risk.certainty)), html_evidence(&risk.evidence_ids, &facts.evidence)).ok();
+        write!(
+            risks,
+            "<li><strong>{}</strong><span>{}</span><small>{} {}</small></li>",
+            h(&risk.topic),
+            h(&risk.detail),
+            h(certainty_label(&risk.certainty)),
+            html_evidence(&risk.evidence_ids, &facts.evidence)
+        )
+        .ok();
     }
     if risks.is_empty() {
         risks.push_str("<li><strong>没有具体风险结论</strong><span>这不表示没有风险。当前事实不足或模型不可用时，需要人工继续确认。</span></li>");
@@ -479,16 +523,31 @@ fn html(facts: &FactBundle, analysis: &Analysis, state: &RunState) -> String {
     let verification = verification_html(facts);
     let mut coverage = String::new();
     for item in &facts.coverage.checked {
-        write!(coverage, "<li data-kind=\"checked\">已检查：{}</li>", h(item)).ok();
+        write!(
+            coverage,
+            "<li data-kind=\"checked\">已检查：{}</li>",
+            h(item)
+        )
+        .ok();
     }
     for item in &facts.coverage.omitted {
-        write!(coverage, "<li data-kind=\"omitted\">未检查：{}</li>", h(item)).ok();
+        write!(
+            coverage,
+            "<li data-kind=\"omitted\">未检查：{}</li>",
+            h(item)
+        )
+        .ok();
     }
     for item in &facts.coverage.warnings {
         write!(coverage, "<li data-kind=\"warning\">警告：{}</li>", h(item)).ok();
     }
     for item in &analysis.unknowns {
-        write!(coverage, "<li data-kind=\"unknown\">未知：{}</li>", h(&item.text)).ok();
+        write!(
+            coverage,
+            "<li data-kind=\"unknown\">未知：{}</li>",
+            h(&item.text)
+        )
+        .ok();
     }
 
     format!(
@@ -532,7 +591,11 @@ document.querySelectorAll('[data-filter]').forEach(input=>input.addEventListener
 </body></html>"#,
         pr = facts.pull_request.number,
         purpose = h(&analysis.purpose),
-        draft = if facts.pull_request.draft { "草稿 PR" } else { "Ready PR" },
+        draft = if facts.pull_request.draft {
+            "草稿 PR"
+        } else {
+            "Ready PR"
+        },
         base = h(&short_sha(&facts.compare.target_branch_sha)),
         merge = h(&short_sha(&facts.compare.merge_base_sha)),
         head = h(&short_sha(&facts.compare.head_sha)),
@@ -551,14 +614,20 @@ document.querySelectorAll('[data-filter]').forEach(input=>input.addEventListener
         coverage = coverage,
         range = h(&facts.compare.notation),
         model_status = h(&state.model_status),
-        model_name = state.model_name.as_ref().map(|name| format!(" / <code>{}</code>", h(name))).unwrap_or_default(),
+        model_name = state
+            .model_name
+            .as_ref()
+            .map(|name| format!(" / <code>{}</code>", h(name)))
+            .unwrap_or_default(),
     )
 }
 
 fn verification_html(facts: &FactBundle) -> String {
     let mut output = String::from("<ul class=\"coverage\">");
     if facts.checks.is_empty() {
-        output.push_str("<li data-kind=\"unknown\">当前无法确认：GitHub 未返回此 head 的 check-run 记录。</li>");
+        output.push_str(
+            "<li data-kind=\"unknown\">当前无法确认：GitHub 未返回此 head 的 check-run 记录。</li>",
+        );
     }
     for check in &facts.checks {
         let category = match (check.status.as_str(), check.conclusion.as_deref()) {
@@ -567,7 +636,11 @@ fn verification_html(facts: &FactBundle) -> String {
             ("completed", _) => "已执行但失败或未通过",
             _ => "当前仍在执行或排队",
         };
-        let name = check.details_url.as_ref().map(|url| format!("<a href=\"{}\">{}</a>", attr(url), h(&check.name))).unwrap_or_else(|| h(&check.name));
+        let name = check
+            .details_url
+            .as_ref()
+            .map(|url| format!("<a href=\"{}\">{}</a>", attr(url), h(&check.name)))
+            .unwrap_or_else(|| h(&check.name));
         write!(output, "<li>{category}：{name}（状态 <code>{}</code>，结论 <code>{}</code>，SHA <code>{}</code>）</li>", h(&check.status), h(check.conclusion.as_deref().unwrap_or("尚无")), h(&short_sha(&check.head_sha))).ok();
     }
     output.push_str("</ul>");
@@ -602,7 +675,13 @@ fn html_evidence(ids: &[String], evidence: &[Evidence]) -> String {
     let links: Vec<String> = ids
         .iter()
         .filter_map(|id| evidence.iter().find(|item| item.id == *id))
-        .map(|item| format!("<a class=\"evidence\" href=\"{}\">{}</a>", attr(&item.url), h(&item.id)))
+        .map(|item| {
+            format!(
+                "<a class=\"evidence\" href=\"{}\">{}</a>",
+                attr(&item.url),
+                h(&item.id)
+            )
+        })
         .collect();
     links.join(" ")
 }
@@ -618,8 +697,10 @@ fn certainty_label(value: &str) -> &'static str {
 }
 
 fn workflow_url() -> String {
-    let server = std::env::var("GITHUB_SERVER_URL").unwrap_or_else(|_| "https://github.com".to_owned());
-    let repository = std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "burncloud/burncloud".to_owned());
+    let server =
+        std::env::var("GITHUB_SERVER_URL").unwrap_or_else(|_| "https://github.com".to_owned());
+    let repository =
+        std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "burncloud/burncloud".to_owned());
     let run = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "unknown".to_owned());
     format!("{server}/{repository}/actions/runs/{run}")
 }
