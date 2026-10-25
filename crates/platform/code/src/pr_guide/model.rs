@@ -231,6 +231,12 @@ fn validate_generated_html(value: &str, pr_number: u64) -> Result<String> {
     {
         anyhow::bail!("generated HTML is missing an SVG relationship/change diagram")
     }
+    let node_count = lower.matches("<rect").count()
+        + lower.matches("<circle").count()
+        + lower.matches("<polygon").count();
+    if node_count < 2 {
+        anyhow::bail!("generated SVG diagram must contain at least two visible node shapes")
+    }
     let pr_marker = format!("#{pr_number}");
     if !lower.contains(pr_marker.as_str()) {
         anyhow::bail!("generated HTML does not identify the expected PR number")
@@ -297,6 +303,15 @@ fn script_contains_disallowed_api(document: &str) -> bool {
             "localstorage",
             "sessionstorage",
             "document.cookie",
+            "window.location",
+            "location.href",
+            "location.assign",
+            "location.replace",
+            "window.open",
+            "document.write",
+            "new function",
+            "eval(",
+            "serviceworker",
         ]
         .iter()
         .any(|pattern| script.contains(pattern))
@@ -677,7 +692,7 @@ mod html_validation_tests {
         let html = r#"<!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><title>PR #7</title></head>
-<body><main><svg viewBox="0 0 100 100"><path d="M 1 1 L 90 90"></path></svg></main></body>
+<body><main><svg viewBox="0 0 100 100"><rect x="1" y="1" width="20" height="10"></rect><rect x="60" y="60" width="20" height="10"></rect><path d="M 1 1 L 90 90"></path></svg></main></body>
 </html>"#;
         let generated = validate_generated_html(html, 7);
         assert!(generated.is_ok());
@@ -698,7 +713,7 @@ mod html_validation_tests {
     fn rejects_external_script_dependency() {
         let html = r#"<!doctype html>
 <html><head><title>PR #7</title><script src="https://example.invalid/app.js"></script></head>
-<body><svg><path d="M 1 1 L 2 2"></path></svg></body></html>"#;
+<body><svg><rect x="1" y="1" width="10" height="10"></rect><rect x="20" y="20" width="10" height="10"></rect><path d="M 1 1 L 2 2"></path></svg></body></html>"#;
         assert!(validate_generated_html(html, 7).is_err());
     }
 
@@ -706,7 +721,7 @@ mod html_validation_tests {
     fn rejects_network_api_inside_inline_script() {
         let html = r#"<!doctype html>
 <html><head><title>PR #7</title></head>
-<body><svg><path d="M 1 1 L 2 2"></path></svg><script>fetch("/api")</script></body></html>"#;
+<body><svg><rect x="1" y="1" width="10" height="10"></rect><rect x="20" y="20" width="10" height="10"></rect><path d="M 1 1 L 2 2"></path></svg><script>fetch("/api")</script></body></html>"#;
         assert!(validate_generated_html(html, 7).is_err());
     }
 }
