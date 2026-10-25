@@ -106,6 +106,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
             analysis_status: "reused_unchanged_result".to_owned(),
             model_status: "not_called".to_owned(),
             model_name: None,
+            html_status: "reused_unchanged_result".to_owned(),
             comment_id: existing_comment.map(|comment| comment.id),
             artifact_name,
             generated_at,
@@ -116,6 +117,10 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
     }
 
     let outcome = model::analyze(&facts).await;
+    let html_outcome =
+        model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
+    let generated_html = html_outcome.html;
+    let html_status = html_outcome.status;
     let analysis_status = if facts.coverage.complete && outcome.status == "model_completed" {
         "complete"
     } else {
@@ -129,11 +134,12 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         analysis_status,
         model_status: outcome.status,
         model_name: outcome.model_name,
+        html_status,
         comment_id: existing_comment.map(|comment| comment.id),
         artifact_name,
         generated_at,
     };
-    render::write_outputs(&output, &facts, &outcome.analysis, &state)?;
+    render::write_outputs(&output, &facts, &outcome.analysis, &state, generated_html.as_deref())?;
     println!("Generated deterministic facts, Markdown guide, and standalone HTML report.");
     Ok(())
 }
@@ -186,6 +192,9 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
     .context("fixture facts JSON is invalid")?;
     let fingerprint = fingerprint(&facts)?;
     let outcome = model::analyze(&facts).await;
+    let html_outcome =
+        model::generate_html(&facts, &outcome.analysis, &outcome.status).await;
+    let generated_html = html_outcome.html;
     let state = RunState {
         reused: false,
         fingerprint,
@@ -193,17 +202,24 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
         analysis_status: "fixture".to_owned(),
         model_status: outcome.status,
         model_name: outcome.model_name,
+        html_status: html_outcome.status,
         comment_id: None,
         artifact_name: artifact_name(facts.pull_request.number, &facts.pull_request.head_sha),
         generated_at: Utc::now().to_rfc3339(),
     };
-    render::write_outputs(&output, &facts, &outcome.analysis, &state)
+    render::write_outputs(&output, &facts, &outcome.analysis, &state, generated_html.as_deref())
 }
 
 fn fingerprint(facts: &FactBundle) -> Result<String> {
     let encoded = serde_json::to_vec(facts)?;
-    let digest = Sha256::digest(encoded);
-    Ok(format!("{digest:x}"))
+    let mut digest = Sha256::new();
+    digest.update(b"burncloud-pr-guide-ai-html-v1");
+    digest.update(include_bytes!("effective_html_prompt.md"));
+    digest.update(include_bytes!("model.rs"));
+    digest.update(include_bytes!("render.rs"));
+    digest.update(include_bytes!("mod.rs"));
+    digest.update(encoded);
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 fn parse_marker(body: &str) -> Option<MarkerState> {
