@@ -164,7 +164,10 @@ impl GitHub {
         let mut issues = Vec::new();
         for number in referenced_numbers(body).into_iter().take(10) {
             let path = format!("/repos/{}/{}/issues/{number}", self.owner, self.repo);
-            let value = match self.request_json::<ProtocolJson>(Method::GET, &path, None).await {
+            let value = match self
+                .request_json::<ProtocolJson>(Method::GET, &path, None)
+                .await
+            {
                 Ok(value) => value,
                 Err(error) => {
                     eprintln!("Skipping linked issue #{number}: {error:#}");

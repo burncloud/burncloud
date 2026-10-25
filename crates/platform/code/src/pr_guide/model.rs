@@ -175,7 +175,10 @@ fn model_input(facts: &FactBundle) -> Result<String> {
     if encoded.len() <= MODEL_INPUT_LIMIT {
         return String::from_utf8(encoded).context("serialized facts are not UTF-8");
     }
-    if let Some(files) = view.pointer_mut("/files").and_then(ProtocolJson::as_array_mut) {
+    if let Some(files) = view
+        .pointer_mut("/files")
+        .and_then(ProtocolJson::as_array_mut)
+    {
         for file in files {
             file["before_excerpt"] = ProtocolJson::Null;
             file["after_excerpt"] = ProtocolJson::Null;
@@ -185,7 +188,10 @@ fn model_input(facts: &FactBundle) -> Result<String> {
             }
         }
     }
-    if let Some(context) = view.pointer_mut("/context").and_then(ProtocolJson::as_array_mut) {
+    if let Some(context) = view
+        .pointer_mut("/context")
+        .and_then(ProtocolJson::as_array_mut)
+    {
         context.truncate(24);
         for item in context {
             if let Some(excerpt) = item.get("excerpt").and_then(ProtocolJson::as_str) {
