@@ -982,9 +982,9 @@ mod svg_diagram_tests {
         let facts = facts(true);
         let svg = svg_diagram(&facts, &Analysis::default());
         assert!(svg.contains("<svg"));
-        assert!(svg.contains("class=\\"graph-edge confirmed\\""));
-        assert!(svg.contains("data-node=\\"crates::a\\""));
-        assert!(svg.contains("marker-end=\\"url(#arrow)\\"") || svg.contains("id=\\"arrow\\""));
+        assert!(svg.contains(r#"class="graph-edge confirmed""#));
+        assert!(svg.contains(r#"data-node="crates::a""#));
+        assert!(svg.contains(r#"id="arrow""#));
     }
 
     #[test]
@@ -994,7 +994,7 @@ mod svg_diagram_tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("crates/a.rs"));
         assert!(svg.contains("不虚构连接"));
-        assert!(!svg.contains("class=\\"graph-edge confirmed\\""));
-        assert!(!svg.contains("class=\\"graph-edge inferred\\""));
+        assert!(!svg.contains(r#"class="graph-edge confirmed""#));
+        assert!(!svg.contains(r#"class="graph-edge inferred""#));
     }
 }
