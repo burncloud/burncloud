@@ -95,7 +95,12 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         && existing_marker
             .as_ref()
             .map(|marker| {
-                marker.fingerprint == fingerprint && marker.head_sha == facts.pull_request.head_sha
+                marker.fingerprint == fingerprint
+                    && marker.head_sha == facts.pull_request.head_sha
+                    && matches!(
+                        marker.html_status.as_str(),
+                        "model_generated" | "configuration_missing" | "configuration_invalid"
+                    )
             })
             .unwrap_or(false)
     {
