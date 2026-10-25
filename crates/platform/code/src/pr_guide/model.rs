@@ -264,7 +264,7 @@ fn validate_generated_html(value: &str, pr_number: u64) -> Result<String> {
     let head_end = lower
         .find("</head>")
         .context("generated HTML has no closing head element")?;
-    let csp = "\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">\n";
+    let csp = r#"<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">"#;
     let mut secured = html.to_owned();
     secured.insert_str(head_end, csp);
     Ok(secured)
