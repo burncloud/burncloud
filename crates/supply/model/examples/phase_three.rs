@@ -137,7 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         None => demo_manifests(),
     };
-    let resolver = RealModelResolver::new(manifests);
+    let resolver = RealModelResolver::new(manifests)?;
     let hardware = HardwareProfile {
         cpu_threads: 0,
         memory_bytes: arguments.ram_bytes,

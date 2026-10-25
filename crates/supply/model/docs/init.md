@@ -1,56 +1,23 @@
-1. 分页显示模型列表
+# Model Resolver 使用说明
 
-  基础分页查询
+Resolver 的输入是调用方已经准备好的 `ModelManifest`。Manifest 应包含模型名称、支持的
+Runtime、Variant 的资源要求、`artifact_uri` 和 `checksum`。
 
-  # 获取前10个模型
-  curl "https://huggingface.co/api/models?limit=10"
+Resolver 的调用流程如下：
 
-  # 获取第2页的10个模型
-  curl "https://huggingface.co/api/models?limit=10&skip=10"
+```text
+上游加载 Manifest
+    -> 采集设备 RAM、VRAM、磁盘和 Runtime 信息
+    -> RealModelResolver::resolve_with_capabilities
+    -> 返回全部兼容 Variant
+```
 
-  # 带过滤条件的分页查询
-  curl "https://huggingface.co/api/models?limit=20&filter=text-class
-  ification&sort=downloads&direction=desc"
+Resolver 不负责：
 
-  高级过滤示例
+- 访问 HuggingFace 文件树；
+- 递归扫描或筛选 GGUF 文件；
+- 构建 artifact 下载地址；
+- 下载、缓存或启动模型。
 
-  # 按任务类型过滤
-  curl "https://huggingface.co/api/models?pipeline_tag=text-generati
-  on&limit=15"
-
-  # 按库类型过滤
-  curl
-  "https://huggingface.co/api/models?library=transformers&limit=10"
-
-  # 按标签过滤
-  curl
-  "https://huggingface.co/api/models?tags=pytorch&tags=en&limit=10"
-
-  # 搜索特定模型名称
-  curl "https://huggingface.co/api/models?search=bert&limit=20"
-
-
-2. 显示模型详情页
-
-  获取基本模型信息
-
-  # 获取GPT-2模型详情
-  curl "https://huggingface.co/api/models/openai-community/gpt2"
-
-
-  # 获取GPT-2模型包含完整文件信息
-  curl "https://huggingface.co/api/models/openai-community/gpt2?expand[]=siblings"
-
-  # 获取模型配置信息
-  curl "https://huggingface.co/api/models/facebook/bart-large?expand[]=config"
-
-3. 显示仓库文件
-
-  https://huggingface.co/api/models/LiquidAI/LFM2-8B-A1B-GGUF/tree/main
-
-4. 特殊例子，GGUF多文件读取
-
-  https://huggingface.co/huihui-ai/Huihui-Qwen3-VL-30B-A3B-Instruct-abliterated/tree/main/GGUF
-
-
-  filename，size
+阶段三示例位于 `examples/phase_three.rs`，对应的 Manifest 示例位于
+`examples/phase_three_manifest.json`。

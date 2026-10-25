@@ -1,18 +1,37 @@
 use async_trait::async_trait;
 
-/// Canonical demand presented to the Supply-owned model resolver.
+/// 供模型编排层使用的解析请求。
+///
+/// 用途：描述调用方请求的模型和已检测到的最大加速器显存。
+///
+/// 注意事项：该请求是现有 Node 编排契约的一部分；阶段三需要完整 RAM、磁盘和 Runtime
+/// 信息时，使用 `RealModelResolver::resolve_with_capabilities`。Resolver 不通过网络扫描
+/// 模型文件，也不负责构建 artifact URI。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelResolutionRequest {
+    /// 请求的模型名称。
     pub model: String,
+    /// 已检测到的最大加速器显存，单位为字节。
     pub accelerator_memory_bytes: Option<u64>,
 }
 
+/// 已完成执行选择的模型结果。
+///
+/// 用途：承载下游启动或编排流程使用的模型工件和 Runtime 信息。
+///
+/// 注意事项：`artifact_source` 和 `artifact_digest` 应来自上游准备好的模型元数据；
+/// 本 crate 不负责扫描文件或拼接下载地址。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedModel {
+    /// 模型名称。
     pub model: String,
+    /// 模型工件来源。
     pub artifact_source: String,
+    /// 模型工件摘要。
     pub artifact_digest: Option<String>,
+    /// 运行模型所需的 Runtime。
     pub runtime: String,
+    /// Runtime 版本。
     pub runtime_version: Option<String>,
 }
 
@@ -60,26 +79,37 @@ pub struct ResolvedModelCandidate {
     pub checksum: String,
 }
 
-/// A normal, expected Supply decision: this machine has no acceptable local
-/// variant for the requested model. This is not a BurnCloud routing failure.
+/// 本地设备不支持请求模型的正常结果。
+///
+/// 这不是 BurnCloud 路由或基础设施故障，而是当前设备没有可用 Variant。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalModelUnsupported {
+    /// 不支持的模型名称。
     pub model: String,
+    /// 不支持的具体原因。
     pub reason: LocalModelUnsupportedReason,
 }
 
+/// 本地模型不支持的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocalModelUnsupportedReason {
+    /// 加速器显存不足。
     InsufficientAcceleratorMemory {
+        /// Variant 要求的显存，单位为字节。
         required_bytes: u64,
+        /// 设备检测到的显存，单位为字节。
         available_bytes: Option<u64>,
     },
+    /// 没有 Variant 同时满足兼容性条件。
     NoCompatibleVariant,
 }
 
+/// 执行编排层使用的模型解析结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelResolutionOutcome {
+    /// 已解析出可供下游使用的本地模型。
     Local(ResolvedModel),
+    /// 当前设备不支持请求的模型。
     Unsupported(LocalModelUnsupported),
 }
 
@@ -106,12 +136,37 @@ pub enum CandidateResolutionOutcome {
     Unsupported(LocalModelUnsupported),
 }
 
+/// 模型解析失败。
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ModelResolutionError {
     #[error("model resolution failed: {0}")]
     ResolutionFailed(String),
 }
 
+/// 模型解析的异步契约。
+///
+/// 用途：为 Node 编排层提供统一的模型解析入口。
+///
+/// 实现必须基于已经加载的模型元数据工作，不得在 `resolve` 内部递归扫描模型文件、
+/// 查询 HuggingFace 文件树或构建下载 URL。阶段三的候选过滤入口是
+/// `RealModelResolver::resolve_with_capabilities`，它直接返回全部兼容 Variant。
+///
+/// # Examples
+///
+/// ```
+/// use burncloud_supply_model::{FakeModelResolver, ModelResolutionRequest, ModelResolver};
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let result = FakeModelResolver
+///     .resolve(ModelResolutionRequest {
+///         model: "demo".into(),
+///         accelerator_memory_bytes: Some(8),
+///     })
+///     .await;
+/// assert!(result.is_ok());
+/// # }
+/// ```
 #[async_trait]
 pub trait ModelResolver: Send + Sync {
     async fn resolve(
@@ -120,8 +175,9 @@ pub trait ModelResolver: Send + Sync {
     ) -> Result<ModelResolutionOutcome, ModelResolutionError>;
 }
 
-/// Deterministic fake used only to complete the Node skeleton before the real
-/// curated catalog / manifest / hardware-driven variant selection exists.
+/// 用于 Node 编排测试的确定性 Resolver。
+///
+/// 注意事项：该类型只生成测试结果，不读取 Manifest，不扫描模型文件，也不执行下载。
 #[derive(Debug, Clone, Default)]
 pub struct FakeModelResolver;
 
@@ -140,22 +196,5 @@ impl ModelResolver for FakeModelResolver {
             runtime_version: Some("fake-v0".into()),
             model: request.model,
         }))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unsupported_is_a_normal_resolution_outcome_not_an_infrastructure_error() {
-        let outcome = ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
-            model: "qwen-4b".into(),
-            reason: LocalModelUnsupportedReason::InsufficientAcceleratorMemory {
-                required_bytes: 12 * 1024 * 1024 * 1024,
-                available_bytes: Some(8 * 1024 * 1024 * 1024),
-            },
-        });
-        assert!(matches!(outcome, ModelResolutionOutcome::Unsupported(_)));
     }
 }

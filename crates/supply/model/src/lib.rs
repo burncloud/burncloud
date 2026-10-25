@@ -1,11 +1,9 @@
 //! # BurnCloud Supply Model
 //!
-//! Supply-owned vertical Model implementation. This crate merges the historical
-//! `database-model` and `service-models` technical split without changing behavior.
+//! Supply-owned model capability persistence and manifest-based resolution.
 //!
-//! Supply-side model resolution, manifest handling, downloads and HuggingFace discovery.
-//! This crate deliberately exposes no database CRUD for HuggingFace metadata; the former CRUD
-//! facade was backed only by no-op methods and was removed by #621.
+//! Resolver 只接收调用方准备好的 Manifest，根据设备能力过滤 Variant 并返回结果。
+//! 本 crate 不负责扫描模型文件、筛选 GGUF 文件或构建 artifact 下载地址。
 
 mod common;
 mod manifest;
@@ -27,6 +25,7 @@ pub use resolver::{
 use burncloud_service_setting::{SettingDatabase, SettingService};
 use serde::Deserialize;
 
+/// HuggingFace 模型列表中的一项。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HfApiModel {
     #[serde(rename = "_id")]
@@ -48,15 +47,6 @@ pub struct HfApiModel {
     pub model_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct HfFileItem {
-    #[serde(rename = "type")]
-    pub file_type: String,
-    pub oid: String,
-    pub size: i64,
-    pub path: String,
-}
-
 /// HuggingFace discovery service.
 ///
 /// The former database-backed CRUD surface was removed by #621 because its persistence adapter
@@ -64,7 +54,9 @@ pub struct HfFileItem {
 pub struct ModelService;
 
 impl ModelService {
-    /// 从 HuggingFace API 获取模型列表
+    /// 从 HuggingFace API 获取模型列表。
+    ///
+    /// 本方法只负责模型目录发现，不参与 Resolver 的 Manifest 解析和 Variant 过滤。
     pub async fn fetch_from_huggingface(
     ) -> std::result::Result<Vec<HfApiModel>, Box<dyn std::error::Error>> {
         let host = get_huggingface_host().await?;
@@ -75,7 +67,7 @@ impl ModelService {
     }
 }
 
-/// 获取 HuggingFace Host（带缓存）
+/// 获取带缓存的 HuggingFace Host。
 pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::error::Error>> {
     let db = SettingDatabase::new().await?;
     if let Some(host) = SettingService::get(&db, "huggingface").await? {
@@ -90,59 +82,7 @@ pub async fn get_huggingface_host() -> std::result::Result<String, Box<dyn std::
     Ok(host.to_string())
 }
 
-/// 获取模型的所有文件列表（递归遍历）
-pub async fn get_model_files(
-    model_id: &str,
-) -> std::result::Result<Vec<Vec<String>>, Box<dyn std::error::Error>> {
-    let host = get_huggingface_host().await?;
-    let mut result = Vec::new();
-    fetch_files_recursive(&host, model_id, "main", &mut result).await?;
-    Ok(result)
-}
-
-#[allow(
-    clippy::type_complexity,
-    reason = "recursive async traversal requires a boxed Future whose borrowed inputs share the same lifetime"
-)]
-fn fetch_files_recursive<'a>(
-    host: &'a str,
-    model_id: &'a str,
-    path: &'a str,
-    result: &'a mut Vec<Vec<String>>,
-) -> std::pin::Pin<
-    Box<dyn std::future::Future<Output = std::result::Result<(), Box<dyn std::error::Error>>> + 'a>,
-> {
-    Box::pin(async move {
-        let url = format!("{}api/models/{}/tree/{}", host, model_id, path);
-        let response = reqwest::get(&url).await?;
-        let items: Vec<HfFileItem> = response.json().await?;
-        for item in items {
-            if item.file_type == "file" {
-                result.push(vec![
-                    item.file_type.clone(),
-                    item.oid.clone(),
-                    item.size.to_string(),
-                    item.path.clone(),
-                ]);
-            } else if item.file_type == "directory" {
-                let sub_path = format!("{}/{}", path, item.path);
-                fetch_files_recursive(host, model_id, &sub_path, result).await?;
-            }
-        }
-        Ok(())
-    })
-}
-
-/// 从文件列表中筛选出所有 GGUF 文件
-pub fn filter_gguf_files(files: &[Vec<String>]) -> Vec<Vec<String>> {
-    files
-        .iter()
-        .filter(|f| f[3].to_lowercase().ends_with(".gguf"))
-        .cloned()
-        .collect()
-}
-
-/// 获取数据存储目录
+/// 获取模型数据存储目录配置。
 pub async fn get_data_dir() -> std::result::Result<String, Box<dyn std::error::Error>> {
     let db = SettingDatabase::new().await?;
     if let Some(dir) = SettingService::get(&db, "dir_data").await? {
@@ -151,16 +91,4 @@ pub async fn get_data_dir() -> std::result::Result<String, Box<dyn std::error::E
     let dir = "./data";
     SettingService::set(&db, "dir_data", dir).await?;
     Ok(dir.to_string())
-}
-
-/// 构建下载 URL
-pub async fn build_download_url(
-    model_id: &str,
-    path: &str,
-) -> std::result::Result<String, Box<dyn std::error::Error>> {
-    let host = get_huggingface_host().await?;
-    Ok(format!(
-        "{}{}/resolve/main/{}?download=true",
-        host, model_id, path
-    ))
 }
