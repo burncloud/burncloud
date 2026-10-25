@@ -667,9 +667,10 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
     };
     let top_height = row_height(0, &groups);
     let bottom_height = row_height(1, &groups);
-    let height = (70 + top_height + if groups.len() > 3 { 40 + bottom_height } else { 0 } + 50).max(240);
+    let height = (70 + top_height + (if groups.len() > 3 { 40 + bottom_height } else { 0 }) + 50).max(240);
     let mut positions: BTreeMap<String, (i32, i32, i32, i32)> = BTreeMap::new();
     let mut group_markup = String::new();
+    let mut node_markup = String::new();
     for (index, (name, nodes)) in groups.iter().enumerate() {
         let col = index % 3;
         let row = index / 3;
@@ -692,7 +693,7 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
             let title = label.chars().take(42).collect::<String>();
             let meta = format!("{} · {}", name, status);
             write!(
-                group_markup,
+                node_markup,
                 "<g class=\"graph-node\" tabindex=\"0\" role=\"button\" data-node=\"{}\" data-details=\"{}\"><title>{}</title><rect x=\"{}\" y=\"{}\" width=\"338\" height=\"56\" rx=\"8\"/><text class=\"node-title\" x=\"{}\" y=\"{}\">{}</text><text class=\"node-meta\" x=\"{}\" y=\"{}\">{}</text></g>",
                 attr(label),
                 attr(&meta),
@@ -774,7 +775,7 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
         ""
     };
     format!(
-        "<svg id=\"change-map\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 {height}\" role=\"img\" aria-label=\"PR 变更关系图\"><defs><marker id=\"arrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"6\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L0,6 L6,3 z\" fill=\"#929292\"/></marker></defs>{legend}{edge_markup}{group_markup}</svg>"
+        "<svg id=\"change-map\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 {height}\" role=\"img\" aria-label=\"PR 变更关系图\"><defs><marker id=\"arrow\" markerWidth=\"8\" markerHeight=\"8\" refX=\"6\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L0,6 L6,3 z\" fill=\"#929292\"/></marker></defs>{legend}{group_markup}{edge_markup}{node_markup}</svg>"
     )
 }
 
