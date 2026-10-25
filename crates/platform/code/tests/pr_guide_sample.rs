@@ -27,3 +27,15 @@ fn ready_pr_with_model_enables_semantic_guidance() {
     assert!(plan.sections.contains(&"风险与待确认事项"));
     assert_eq!(plan.warning, None);
 }
+
+#[test]
+fn empty_change_set_uses_the_minimum_report() {
+    let plan = select_plan(GuideRequest {
+        draft: false,
+        model_available: false,
+        changed_files: 0,
+    });
+
+    assert_eq!(plan.mode, AnalysisMode::Deterministic);
+    assert_eq!(plan.sections, ["一句话目的", "验证情况"]);
+}
