@@ -138,12 +138,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         artifact_name,
         generated_at,
     };
-    render::write_outputs(
-        &output,
-        &facts,
-        &outcome.analysis,
-        &state,
-    )?;
+    render::write_outputs(&output, &facts, &outcome.analysis, &state)?;
     println!("Generated deterministic facts, Markdown guide, and standalone HTML report.");
     Ok(())
 }
