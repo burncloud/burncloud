@@ -238,9 +238,9 @@ fn fingerprint(facts: &FactBundle) -> Result<String> {
         "PR_GUIDE_HTML_MAX_OUTPUT_TOKENS",
     ] {
         digest.update(name.as_bytes());
-        digest.update(b"\\0");
+        digest.update(b"\0");
         digest.update(std::env::var(name).unwrap_or_default().as_bytes());
-        digest.update(b"\\0");
+        digest.update(b"\0");
     }
     if std::env::var("PR_GUIDE_API_KEY")
         .map(|value| !value.is_empty())
