@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      OUTPUT_DIRECTORY: ${{ github.workspace }}/.pr-guide-output
+      OUTPUT_DIRECTORY: ${{ github.workspace }}/pr-guide-output
 
     steps:
       # 仅通过 API 读取 PR 元数据。此步骤不检出或执行 PR head。
