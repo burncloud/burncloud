@@ -904,3 +904,97 @@ fn table(value: &str) -> String {
 fn code(value: &str) -> String {
     value.replace('`', "'").replace('\n', " ")
 }
+
+
+#[cfg(test)]
+mod svg_diagram_tests {
+    use super::svg_diagram;
+    use crate::pr_guide::types::{Analysis, FactBundle};
+
+    fn facts(with_relation: bool) -> FactBundle {
+        let relations = if with_relation {
+            serde_json::json!([{
+                "from": "crates::a",
+                "to": "crates::b",
+                "relation_type": "import",
+                "change": "existing",
+                "certainty": "confirmed_import",
+                "evidence_ids": []
+            }])
+        } else {
+            serde_json::json!([])
+        };
+        serde_json::from_value(serde_json::json!({
+            "schema_version": "burncloud.pr-guide.facts.v1",
+            "repository": "burncloud/burncloud",
+            "pull_request": {
+                "number": 939,
+                "title": "test diagram",
+                "body": "",
+                "state": "open",
+                "draft": false,
+                "html_url": "https://github.com/burncloud/burncloud/pull/939",
+                "changed_files": 1,
+                "base_ref": "main",
+                "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "head_label": "test"
+            },
+            "compare": {
+                "target_branch_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "merge_base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "notation": "base...head"
+            },
+            "files": [{
+                "status": "modified",
+                "path": "crates/a.rs",
+                "previous_path": null,
+                "additions": 1,
+                "deletions": 1,
+                "binary": false,
+                "patch": "@@",
+                "patch_truncated": false,
+                "before_excerpt": null,
+                "after_excerpt": null,
+                "module": "crates::a"
+            }],
+            "symbols": [],
+            "evidence": [],
+            "context": [],
+            "relations": relations,
+            "checks": [],
+            "linked_issues": [],
+            "coverage": {
+                "complete": true,
+                "checked": [],
+                "omitted": [],
+                "warnings": [],
+                "input_bytes": 0,
+                "input_budget_bytes": 100000
+            }
+        }))
+        .expect("test facts must deserialize")
+    }
+
+    #[test]
+    fn renders_relationships_as_svg_edges_and_selectable_nodes() {
+        let facts = facts(true);
+        let svg = svg_diagram(&facts, &Analysis::default());
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("class=\\"graph-edge confirmed\\""));
+        assert!(svg.contains("data-node=\\"crates::a\\""));
+        assert!(svg.contains("marker-end=\\"url(#arrow)\\"") || svg.contains("id=\\"arrow\\""));
+    }
+
+    #[test]
+    fn does_not_invent_edges_when_only_changed_files_are_known() {
+        let facts = facts(false);
+        let svg = svg_diagram(&facts, &Analysis::default());
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("crates/a.rs"));
+        assert!(svg.contains("不虚构连接"));
+        assert!(!svg.contains("class=\\"graph-edge confirmed\\""));
+        assert!(!svg.contains("class=\\"graph-edge inferred\\""));
+    }
+}
