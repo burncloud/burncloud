@@ -966,11 +966,10 @@ fn code(value: &str) -> String {
     value.replace('`', "'").replace('\n', " ")
 }
 
-
 #[cfg(test)]
 mod svg_diagram_tests {
-    use super::svg_diagram;
     use super::super::types::{Analysis, FactBundle};
+    use super::svg_diagram;
 
     fn facts(with_relation: bool) -> FactBundle {
         let relations = if with_relation {
