@@ -617,3 +617,47 @@ fn strip_json_fence(value: &str) -> &str {
 fn truncate(value: &str, limit: usize) -> String {
     value.chars().take(limit).collect()
 }
+
+
+#[cfg(test)]
+mod html_validation_tests {
+    use super::validate_generated_html;
+
+    #[test]
+    fn accepts_self_contained_svg_html_and_injects_csp() {
+        let html = r#"<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>PR #7</title></head>
+<body><main><svg viewBox="0 0 100 100"><path d="M 1 1 L 90 90"></path></svg></main></body>
+</html>"#;
+        let generated = validate_generated_html(html, 7);
+        assert!(generated.is_ok());
+        if let Ok(generated) = generated {
+            assert!(generated.contains("Content-Security-Policy"));
+            assert!(generated.contains("<svg"));
+        }
+    }
+
+    #[test]
+    fn rejects_html_without_relationship_diagram() {
+        let html = r#"<!doctype html>
+<html><head><title>PR #7</title></head><body><p>Report</p></body></html>"#;
+        assert!(validate_generated_html(html, 7).is_err());
+    }
+
+    #[test]
+    fn rejects_external_script_dependency() {
+        let html = r#"<!doctype html>
+<html><head><title>PR #7</title><script src="https://example.invalid/app.js"></script></head>
+<body><svg><path d="M 1 1 L 2 2"></path></svg></body></html>"#;
+        assert!(validate_generated_html(html, 7).is_err());
+    }
+
+    #[test]
+    fn rejects_network_api_inside_inline_script() {
+        let html = r#"<!doctype html>
+<html><head><title>PR #7</title></head>
+<body><svg><path d="M 1 1 L 2 2"></path></svg><script>fetch("/api")</script></body></html>"#;
+        assert!(validate_generated_html(html, 7).is_err());
+    }
+}
