@@ -28,7 +28,11 @@ pub(crate) struct HtmlOutcome {
     pub(crate) status: String,
 }
 
-pub(crate) async fn generate_html(facts: &FactBundle, analysis: &Analysis) -> HtmlOutcome {
+pub(crate) async fn generate_html(
+    facts: &FactBundle,
+    analysis: &Analysis,
+    analysis_status: &str,
+) -> HtmlOutcome {
     let config = match ModelConfig::from_env() {
         Ok(Some(config)) => config,
         Ok(None) => {
@@ -46,7 +50,7 @@ pub(crate) async fn generate_html(facts: &FactBundle, analysis: &Analysis) -> Ht
         }
     };
 
-    match call_html_model(&config, facts, analysis).await {
+    match call_html_model(&config, facts, analysis, analysis_status).await {
         Ok(raw_html) => match validate_generated_html(&raw_html, facts.pull_request.number) {
             Ok(html) => HtmlOutcome {
                 html: Some(html),
@@ -74,6 +78,7 @@ async fn call_html_model(
     config: &ModelConfig,
     facts: &FactBundle,
     analysis: &Analysis,
+    analysis_status: &str,
 ) -> Result<String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(150))
@@ -84,7 +89,7 @@ async fn call_html_model(
     let analysis_json = serde_json::to_string(analysis)?;
     let system = include_str!("effective_html_prompt.md");
     let user = format!(
-        "<FACT_BUNDLE schema=\"burncloud.pr-guide.facts.v1\">\n{fact_json}\n</FACT_BUNDLE>\n<ANALYSIS_JSON>\n{analysis_json}\n</ANALYSIS_JSON>\nGenerate the HTML report for PR #{}.",
+        "<FACT_BUNDLE schema=\"burncloud.pr-guide.facts.v1\">\n{fact_json}\n</FACT_BUNDLE>\n<ANALYSIS_JSON>\n{analysis_json}\n</ANALYSIS_JSON>\n<ANALYSIS_STATUS>{analysis_status}</ANALYSIS_STATUS>\nGenerate the HTML report for PR #{}.",
         facts.pull_request.number
     );
     let payload = json!({
@@ -184,22 +189,24 @@ fn validate_generated_html(value: &str, pr_number: u64) -> Result<String> {
     }
     for forbidden in [
         "<script src",
+        "<link",
         "<iframe",
         "<object",
         "<embed",
         "<form",
         "@import",
-        "fetch(",
-        "xmlhttprequest",
-        "websocket",
-        "sendbeacon",
-        "localstorage",
-        "sessionstorage",
-        "document.cookie",
+        "src=\"http",
+        "src='http",
+        "url(http",
+        "url(\"http",
+        "url('http",
     ] {
         if lower.contains(forbidden) {
-            anyhow::bail!("generated HTML contains disallowed active content: {forbidden}")
+            anyhow::bail!("generated HTML contains a disallowed external dependency or element: {forbidden}")
         }
+    }
+    if script_contains_disallowed_api(&lower) {
+        anyhow::bail!("generated HTML script contains a disallowed network or browser-storage API")
     }
 
     let head_end = lower
@@ -218,6 +225,37 @@ fn strip_html_fence(value: &str) -> &str {
         .or_else(|| trimmed.strip_prefix("```HTML"))
         .unwrap_or(trimmed);
     trimmed.strip_suffix("```").unwrap_or(trimmed).trim()
+}
+
+fn script_contains_disallowed_api(document: &str) -> bool {
+    let mut remaining = document;
+    while let Some(script_start) = remaining.find("<script") {
+        let Some(open_offset) = remaining[script_start..].find('>') else {
+            return true;
+        };
+        let script_body_start = script_start + open_offset + 1;
+        let after_open = &remaining[script_body_start..];
+        let Some(close_offset) = after_open.find("</script>") else {
+            return true;
+        };
+        let script = &after_open[..close_offset];
+        if [
+            "fetch(",
+            "xmlhttprequest",
+            "websocket",
+            "sendbeacon",
+            "localstorage",
+            "sessionstorage",
+            "document.cookie",
+        ]
+        .iter()
+        .any(|pattern| script.contains(pattern))
+        {
+            return true;
+        }
+        remaining = &after_open[close_offset + "</script>".len()..];
+    }
+    false
 }
 
 pub(crate) async fn analyze(facts: &FactBundle) -> ModelOutcome {
