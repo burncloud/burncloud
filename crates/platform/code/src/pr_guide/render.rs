@@ -660,7 +660,7 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
     }
     let row_height = |row: usize, groups: &[(String, Vec<String>)]| -> i32 {
         groups.iter().enumerate()
-            .filter(|(index, _)| index / 3 == row)
+            .filter(|(index, _)| *index / 3 == row)
             .map(|(_, (_, nodes))| 52 + nodes.len() as i32 * 76)
             .max()
             .unwrap_or(0)
@@ -712,7 +712,7 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
 
     let mut edge_markup = String::new();
     for relation in relations.iter().take(40) {
-        let (Some((sx, sy, sw, sh)), Some((tx, ty, tw, th))) =
+        let (Some(&(sx, sy, sw, sh)), Some(&(tx, ty, tw, th))) =
             (positions.get(&relation.from), positions.get(&relation.to))
         else {
             continue;
@@ -720,12 +720,12 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
         let (x1, y1, x2, y2, d) = if tx > sx {
             let x1 = sx + sw;
             let y1 = sy + sh / 2;
-            let x2 = *tx;
+            let x2 = tx;
             let y2 = ty + th / 2;
             let bend = ((x2 - x1).abs() / 2).max(26);
             (x1, y1, x2, y2, format!("M {x1} {y1} C {} {y1}, {} {y2}, {x2} {y2}", x1 + bend, x2 - bend))
         } else if tx < sx {
-            let x1 = *sx;
+            let x1 = sx;
             let y1 = sy + sh / 2;
             let x2 = tx + tw;
             let y2 = ty + th / 2;
@@ -735,11 +735,11 @@ fn svg_diagram(facts: &FactBundle, analysis: &Analysis) -> String {
             let x1 = sx + sw / 2;
             let y1 = sy + sh;
             let x2 = tx + tw / 2;
-            let y2 = *ty;
+            let y2 = ty;
             (x1, y1, x2, y2, format!("M {x1} {y1} C {x1} {}, {x2} {}, {x2} {y2}", y1 + 20, y2 - 20))
         } else {
             let x1 = sx + sw / 2;
-            let y1 = *sy;
+            let y1 = sy;
             let x2 = tx + tw / 2;
             let y2 = ty + th;
             (x1, y1, x2, y2, format!("M {x1} {y1} C {x1} {}, {x2} {}, {x2} {y2}", y1 - 20, y2 + 20))
