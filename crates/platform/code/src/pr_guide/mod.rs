@@ -97,10 +97,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
             .map(|marker| {
                 marker.fingerprint == fingerprint
                     && marker.head_sha == facts.pull_request.head_sha
-                    && matches!(
-                        marker.html_status.as_str(),
-                        "model_generated" | "configuration_missing" | "configuration_invalid"
-                    )
+                    && marker.html_status == "deterministic_svg"
             })
             .unwrap_or(false)
     {
@@ -211,19 +208,13 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
         artifact_name: artifact_name(facts.pull_request.number, &facts.pull_request.head_sha),
         generated_at: Utc::now().to_rfc3339(),
     };
-    render::write_outputs(
-        &output,
-        &facts,
-        &outcome.analysis,
-        &state,
-        generated_html.as_deref(),
-    )
+    render::write_outputs(&output, &facts, &outcome.analysis, &state)
 }
 
 fn fingerprint(facts: &FactBundle) -> Result<String> {
     let encoded = serde_json::to_vec(facts)?;
     let mut digest = Sha256::new();
-    digest.update(b"burncloud-pr-guide-ai-html-v1");
+    digest.update(b"burncloud-pr-guide-svg-html-v2");
     digest.update(include_bytes!("facts.rs"));
     digest.update(include_bytes!("github.rs"));
     digest.update(include_bytes!("types.rs"));
