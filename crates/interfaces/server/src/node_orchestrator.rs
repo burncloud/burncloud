@@ -1,8 +1,8 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, DemandReconciler, Digest, HardwareProbe,
-    HealthProbe, NodeComposition, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle,
-    ProcessManager, ProcessPlan, ReadinessProbe, ReconcileAction, ReconcileEvidence,
-    RuntimeAdapter, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, DemandReconciler, Digest, HardwareProbe, HealthProbe, NodeComposition,
+    NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager, ProcessPlan,
+    ReadinessProbe, ReconcileAction, ReconcileEvidence, RuntimeAdapter, RuntimePreparer,
+    RuntimeRequest,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_supply_model::{
@@ -86,7 +86,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -339,34 +339,36 @@ where
                         .get(&demand.model)
                         .and_then(|workload| workload.resolved.clone())
                         .ok_or_else(|| anyhow::anyhow!("resolved model receipt missing"))?;
+                    let artifact_url = match reqwest::Url::parse(&resolved.artifact_source) {
+                        Ok(url) => url,
+                        Err(error) => {
+                            self.mark_failed(&demand.model)?;
+                            return Err(anyhow::anyhow!(
+                                "invalid artifact source '{}': {error}",
+                                resolved.artifact_source
+                            ));
+                        }
+                    };
+                    let expected_digest = match resolved.artifact_digest {
+                        Some(value) => match Digest::parse(&value) {
+                            Ok(digest) => digest,
+                            Err(error) => {
+                                self.mark_failed(&demand.model)?;
+                                return Err(anyhow::anyhow!(
+                                    "invalid artifact digest '{}': {error}",
+                                    value
+                                ));
+                            }
+                        },
+                        None => {
+                            self.mark_failed(&demand.model)?;
+                            anyhow::bail!("artifact digest is required");
+                        }
+                    };
                     let artifact = match self
                         .machine
                         .artifacts()
-                        .prepare(ArtifactRequest::new(
-                            match ArtifactSource::parse(&resolved.artifact_source) {
-                                Ok(source) => source,
-                                Err(error) => {
-                                    self.mark_failed(&demand.model)?;
-                                    return Err(anyhow::anyhow!(
-                                        "invalid artifact source '{}': {error}",
-                                        resolved.artifact_source
-                                    ));
-                                }
-                            },
-                            match resolved.artifact_digest {
-                                Some(value) => match Digest::parse(&value) {
-                                    Ok(digest) => Some(digest),
-                                    Err(error) => {
-                                        self.mark_failed(&demand.model)?;
-                                        return Err(anyhow::anyhow!(
-                                            "invalid artifact digest '{}': {error}",
-                                            value
-                                        ));
-                                    }
-                                },
-                                None => None,
-                            },
-                        ))
+                        .prepare(artifact_url, expected_digest)
                         .await
                     {
                         Ok(artifact) => artifact,
@@ -795,7 +797,7 @@ mod tests {
             .expect("workload")
             .resolved = Some(ResolvedModel {
             model: model.into(),
-            artifact_source: "qwen/fake.gguf".into(),
+            artifact_source: "https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf".into(),
             artifact_digest: Some(
                 "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
             ),
@@ -833,7 +835,8 @@ mod tests {
             let workload = orchestrator.workloads.get_mut(model).expect("workload");
             workload.resolved = Some(ResolvedModel {
                 model: model.into(),
-                artifact_source: "qwen/fake.gguf".into(),
+                artifact_source: "https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf"
+                    .into(),
                 artifact_digest: Some(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                         .into(),
@@ -852,9 +855,7 @@ mod tests {
             .artifact = Some(
             PreparedArtifact::new(
                 std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
-                // The status replaced a bool that meant "verification succeeded". `Verified` is the
-                // faithful translation; `NotRequired` also maps to `is_verified() == true` but would
-                // describe a different scenario, and `Failed` would reverse the fixture.
+                // 测试回执必须明确表示已完成摘要校验并通过。
                 ArtifactVerificationStatus::Verified,
             )
             .unwrap(),
@@ -892,7 +893,8 @@ mod tests {
             let workload = orchestrator.workloads.get_mut(model).expect("workload");
             workload.resolved = Some(ResolvedModel {
                 model: model.into(),
-                artifact_source: "qwen/fake.gguf".into(),
+                artifact_source: "https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf"
+                    .into(),
                 artifact_digest: Some(
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                         .into(),
@@ -911,9 +913,7 @@ mod tests {
             .artifact = Some(
             PreparedArtifact::new(
                 std::env::temp_dir().join("burncloud/fake/artifacts/qwen_fake.gguf"),
-                // The status replaced a bool that meant "verification succeeded". `Verified` is the
-                // faithful translation; `NotRequired` also maps to `is_verified() == true` but would
-                // describe a different scenario, and `Failed` would reverse the fixture.
+                // 测试回执必须明确表示已完成摘要校验并通过。
                 ArtifactVerificationStatus::Verified,
             )
             .unwrap(),

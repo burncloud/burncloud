@@ -1,0 +1,1 @@
+//! admin/models page boundary.
