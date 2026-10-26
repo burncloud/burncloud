@@ -20,7 +20,7 @@ impl Default for FakeHardwareProbe {
     fn default() -> Self {
         Self {
             profile: HardwareProfile {
-                cpu_threads: 16,
+                cpu: "Fake CPU".to_owned(),
                 memory_bytes: 64 * 1024 * 1024 * 1024,
                 disk_available_bytes: 512 * 1024 * 1024 * 1024,
                 accelerators: vec![AcceleratorProfile {

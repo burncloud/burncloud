@@ -10,7 +10,7 @@ struct FakeHardware;
 impl HardwareProbe for FakeHardware {
     async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError> {
         Ok(HardwareProfile {
-            cpu_threads: 16,
+            cpu: "Example CPU".to_owned(),
             memory_bytes: 64 * 1024 * 1024 * 1024,
             disk_available_bytes: 512 * 1024 * 1024 * 1024,
             accelerators: vec![AcceleratorProfile {
@@ -41,7 +41,7 @@ async fn hardware_contract_can_be_implemented_without_business_types() {
         .inspect()
         .await
         .expect("fake hardware probe must succeed");
-    assert_eq!(profile.cpu_threads, 16);
+    assert_eq!(profile.cpu, "Example CPU");
     assert_eq!(profile.accelerators.len(), 1);
 }
 

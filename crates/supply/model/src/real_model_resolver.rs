@@ -120,7 +120,7 @@ mod tests {
 
     fn hardware(memory_bytes: u64, vram_bytes: Option<u64>) -> HardwareProfile {
         HardwareProfile {
-            cpu_threads: 8,
+            cpu: "Test CPU".to_owned(),
             memory_bytes,
             disk_available_bytes: 100,
             accelerators: vram_bytes
