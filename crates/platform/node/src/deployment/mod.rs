@@ -9,12 +9,14 @@
 //! assert_eq!(event_kind, DeploymentEventKind::Progress(DeploymentStage::Queued));
 //! ```
 
-mod types;
-mod process;
 mod http_probe;
+mod process;
+mod service;
+mod types;
 
-pub use process::LocalProcessManager;
 pub use http_probe::HttpProbe;
+pub use process::LocalProcessManager;
+pub use service::DeploymentService;
 pub use types::{
     DeploymentError, DeploymentErrorKind, DeploymentEvent, DeploymentEventKind,
     DeploymentEventPublishError, DeploymentEventPublisher, DeploymentMonitorError,

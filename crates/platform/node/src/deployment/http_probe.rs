@@ -3,9 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::time::sleep;
 
-use crate::{
-    HealthError, HealthProbe, ReadinessError, ReadinessProbe, ReadinessTarget,
-};
+use crate::{HealthError, HealthProbe, ReadinessError, ReadinessProbe, ReadinessTarget};
 
 /// 提供共享 HTTP client 的 readiness 与 health 探测器。
 ///
