@@ -71,25 +71,32 @@ where
     ///     deployment::{
     ///         DeploymentEventPublisher, DeploymentService, HttpProbe, LocalProcessManager,
     ///     },
-    ///     ArtifactPreparation, FakeArtifactPreparer, FakeHardwareProbe, FakeRuntimePreparer,
-    ///     HardwareProbe, NodeComposition, RuntimePreparer,
+    ///     ArtifactPreparation, HardwareProbe, NodeComposition, RuntimePreparer,
     /// };
     ///
-    /// fn wire_node(
-    ///     hardware: impl HardwareProbe,
-    ///     artifacts: impl ArtifactPreparation,
-    ///     runtimes: impl RuntimePreparer,
+    /// fn wire_node<H, A, R>(
+    ///     hardware: H,
+    ///     artifacts: A,
+    ///     runtimes: R,
     ///     publisher: Arc<dyn DeploymentEventPublisher>,
-    /// ) {
+    /// ) -> (
+    ///     NodeComposition<H, A, R, LocalProcessManager, HttpProbe, HttpProbe>,
+    ///     DeploymentService,
+    /// )
+    /// where
+    ///     H: HardwareProbe,
+    ///     A: ArtifactPreparation,
+    ///     R: RuntimePreparer,
+    /// {
     ///     let processes = Arc::new(LocalProcessManager::default());
     ///     let probe = Arc::new(HttpProbe::default());
-    ///     let (_deployment, monitor_errors) = DeploymentService::new(
+    ///     let (deployment, monitor_errors) = DeploymentService::new(
     ///         processes.clone(),
     ///         probe.clone(),
     ///         probe.clone(),
     ///         publisher,
     ///     );
-    ///     let _node = NodeComposition::start_with_deployment_monitor_errors(
+    ///     let node = NodeComposition::start_with_deployment_monitor_errors(
     ///         hardware,
     ///         artifacts,
     ///         runtimes,
@@ -98,6 +105,7 @@ where
     ///         probe,
     ///         monitor_errors,
     ///     );
+    ///     (node, deployment)
     /// }
     /// ```
     pub fn start_with_deployment_monitor_errors(

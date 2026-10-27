@@ -4,7 +4,7 @@
 
 - 在 `NodeComposition` 持有 `DeploymentMonitorError` receiver，并提供异步读取方法；通道关闭时返回 `None`。
 - 保留原六参数 `start` 以兼容现有调用点，新增 `start_with_deployment_monitor_errors` 接收部署服务创建的 receiver。调用方应在 Node 组合根生命周期内保留同一个 `DeploymentService`。
-- 增加生产接线示例：使用一个 `LocalProcessManager::default()` 和同一个 `HttpProbe::default()` 构造部署服务，并将共享的适配器和错误 receiver 交给 Node 组合根。
+- 增加生产接线示例：使用一个 `LocalProcessManager::default()` 和同一个 `HttpProbe::default()` 构造部署服务，将共享的适配器和错误 receiver 交给 Node 组合根，并返回组合根与服务以共同持有其生命周期。
 - 通过 `lib.rs` 导出 `deployment` 模块；其公开项由模块内既有的接口契约导出限定。
 
 ## 修改的文件与文件内位置
