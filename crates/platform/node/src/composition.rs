@@ -33,33 +33,9 @@ where
     Q: ReadinessProbe,
     E: HealthProbe,
 {
-    /// 启动节点运行时，并保存本机能力接口的实现。
+    /// 启动节点运行时，保存本机能力实现和部署监控错误接收端。
     ///
     /// 调用此方法仅初始化节点上下文和依赖，不会启动网络服务或执行编排动作。
-    /// 此兼容入口不创建部署服务；需要接收部署监控错误时使用
-    /// [`start_with_deployment_monitor_errors`](Self::start_with_deployment_monitor_errors)。
-    pub fn start(
-        hardware: H,
-        artifacts: A,
-        runtimes: R,
-        processes: P,
-        readiness: Q,
-        health: E,
-    ) -> Self {
-        let (_, deployment_monitor_errors) = mpsc::unbounded_channel();
-        Self::start_with_deployment_monitor_errors(
-            hardware,
-            artifacts,
-            runtimes,
-            Arc::new(processes),
-            Arc::new(readiness),
-            Arc::new(health),
-            deployment_monitor_errors,
-        )
-    }
-
-    /// 启动节点运行时，并接收部署服务的后台监控错误通道。
-    ///
     /// 调用方需在组合根的生命周期内保留部署服务，并将相同的进程管理器和探测器 `Arc`
     /// 同时传给部署服务与此方法。
     ///
@@ -96,7 +72,7 @@ where
     ///         probe.clone(),
     ///         publisher,
     ///     );
-    ///     let node = NodeComposition::start_with_deployment_monitor_errors(
+    ///     let node = NodeComposition::start(
     ///         hardware,
     ///         artifacts,
     ///         runtimes,
@@ -108,7 +84,7 @@ where
     ///     (node, deployment)
     /// }
     /// ```
-    pub fn start_with_deployment_monitor_errors(
+    pub fn start(
         hardware: H,
         artifacts: A,
         runtimes: R,

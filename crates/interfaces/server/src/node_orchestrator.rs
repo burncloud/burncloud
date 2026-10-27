@@ -579,6 +579,13 @@ mod tests {
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
     };
 
+    fn closed_monitor_errors() -> tokio::sync::mpsc::UnboundedReceiver<
+        burncloud_node_runtime::deployment::DeploymentMonitorError,
+    > {
+        let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+        receiver
+    }
+
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
@@ -596,9 +603,10 @@ mod tests {
                 FakeHardwareProbe::default(),
                 FakeArtifactPreparer,
                 FakeRuntimePreparer,
-                FakeProcessManager::default(),
-                FakeReadinessProbe,
-                FakeHealthProbe,
+                std::sync::Arc::new(FakeProcessManager::default()),
+                std::sync::Arc::new(FakeReadinessProbe),
+                std::sync::Arc::new(FakeHealthProbe),
+                closed_monitor_errors(),
             ),
         )
     }
@@ -647,9 +655,10 @@ mod tests {
             FakeHardwareProbe::default(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
-            FakeProcessManager::default(),
-            FakeReadinessProbe,
-            FakeHealthProbe,
+            std::sync::Arc::new(FakeProcessManager::default()),
+            std::sync::Arc::new(FakeReadinessProbe),
+            std::sync::Arc::new(FakeHealthProbe),
+            closed_monitor_errors(),
         );
         let mut orchestrator = NodeOrchestrator::new(FailingResolver, FakeRuntimeAdapter, machine)
             .with_request_state(request_state.clone());
@@ -954,9 +963,10 @@ mod tests {
             FakeHardwareProbe::default(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
-            FakeProcessManager::default(),
-            FakeReadinessProbe,
-            FakeHealthProbe,
+            std::sync::Arc::new(FakeProcessManager::default()),
+            std::sync::Arc::new(FakeReadinessProbe),
+            std::sync::Arc::new(FakeHealthProbe),
+            closed_monitor_errors(),
         );
         let mut orchestrator =
             NodeOrchestrator::new(UnsupportedResolver, FakeRuntimeAdapter, machine);
