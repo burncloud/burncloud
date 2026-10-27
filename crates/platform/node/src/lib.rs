@@ -7,6 +7,7 @@
 mod composition;
 mod context;
 mod contracts;
+pub mod deployment;
 mod fake;
 mod lifecycle;
 mod preparation;
