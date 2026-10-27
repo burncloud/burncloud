@@ -181,6 +181,17 @@ impl DeploymentService {
         }
     }
 
+    async fn cleanup_failed_runtime(
+        &self,
+        handle: ProcessHandle,
+        mut error: DeploymentError,
+    ) -> DeploymentError {
+        if let Err(cleanup_error) = self.inner.process_manager.stop(handle).await {
+            error.cleanup_error = Some(cleanup_error.to_string());
+        }
+        error
+    }
+
     async fn enqueue_or_join(
         &self,
         request: QueuedDeployment,
