@@ -1,16 +1,18 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
+    time::Duration,
 };
 
 use tokio::{
     sync::{mpsc, oneshot, watch, Mutex, Notify},
     task::JoinHandle,
+    time::{Instant, MissedTickBehavior},
 };
 
 use crate::{
-    HealthProbe, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager, ProcessPlan,
-    ReadinessProbe, RuntimeAdapter,
+    HealthProbe, NodeState, PreparedArtifact, PreparedRuntime, ProcessHandle, ProcessManager,
+    ProcessPlan, ReadinessProbe, RuntimeAdapter,
 };
 
 use super::{
@@ -77,6 +79,7 @@ struct DeploymentCoordinator {
     queue: VecDeque<QueuedDeployment>,
     in_flight: HashMap<String, InFlightDeployment>,
     monitored: HashMap<String, MonitoredRuntime>,
+    generation: u64,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -151,6 +154,7 @@ impl DeploymentService {
             queue: VecDeque::new(),
             in_flight: HashMap::new(),
             monitored: HashMap::new(),
+            generation: 0,
             worker: None,
         };
 
@@ -172,24 +176,232 @@ impl DeploymentService {
     }
 
     async fn publish_with_retry(
-        &self,
+        event_publisher: &dyn DeploymentEventPublisher,
         event: DeploymentEvent,
     ) -> Result<(), DeploymentEventPublishError> {
-        match self.inner.event_publisher.publish(event.clone()).await {
+        match event_publisher.publish(event.clone()).await {
             Ok(()) => Ok(()),
-            Err(_) => self.inner.event_publisher.publish(event).await,
+            Err(_) => event_publisher.publish(event).await,
         }
     }
 
     async fn cleanup_failed_runtime(
-        &self,
+        process_manager: &dyn ProcessManager,
         handle: ProcessHandle,
         mut error: DeploymentError,
     ) -> DeploymentError {
-        if let Err(cleanup_error) = self.inner.process_manager.stop(handle).await {
+        if let Err(cleanup_error) = process_manager.stop(handle).await {
             error.cleanup_error = Some(cleanup_error.to_string());
         }
         error
+    }
+
+    async fn spawn_monitor(
+        &self,
+        model_id: String,
+        plan: ProcessPlan,
+        handle: ProcessHandle,
+        initial_state: NodeState,
+    ) {
+        assert!(matches!(
+            initial_state,
+            NodeState::Ready | NodeState::Unhealthy
+        ));
+        let (cancel, cancel_rx) = watch::channel(false);
+        let monitor_plan = plan.clone();
+        let mut coordinator = self.inner.coordinator.lock().await;
+        assert!(
+            !coordinator.monitored.contains_key(&model_id),
+            "a runtime must be stopped before its monitor is replaced"
+        );
+        coordinator.generation = coordinator.generation.wrapping_add(1);
+        let generation = coordinator.generation;
+        let task_inner = Arc::clone(&self.inner);
+        let task_model_id = model_id.clone();
+        let mut shutdown = self.inner.shutdown.subscribe();
+        let task = tokio::spawn(async move {
+            let result = Self::monitor_runtime(
+                Arc::clone(&task_inner),
+                task_model_id.clone(),
+                monitor_plan,
+                handle,
+                initial_state,
+                generation,
+                cancel_rx,
+                &mut shutdown,
+            )
+            .await;
+
+            {
+                let mut coordinator = task_inner.coordinator.lock().await;
+                if coordinator
+                    .monitored
+                    .get(&task_model_id)
+                    .is_some_and(|runtime| runtime.generation == generation)
+                {
+                    coordinator.monitored.remove(&task_model_id);
+                }
+            }
+
+            if let Err(error) = result {
+                if let Err(send_error) = task_inner.monitor_error_tx.send(error) {
+                    tracing::error!(
+                        error = %send_error.0,
+                        "deployment monitor error receiver closed"
+                    );
+                }
+            }
+        });
+        coordinator.monitored.insert(
+            model_id,
+            MonitoredRuntime {
+                handle,
+                plan,
+                state: initial_state,
+                generation,
+                cancel,
+                task,
+            },
+        );
+    }
+
+    async fn monitor_runtime(
+        inner: Arc<DeploymentServiceInner>,
+        model_id: String,
+        plan: ProcessPlan,
+        handle: ProcessHandle,
+        mut state: NodeState,
+        generation: u64,
+        mut cancel: watch::Receiver<bool>,
+        shutdown: &mut watch::Receiver<bool>,
+    ) -> Result<(), DeploymentMonitorError> {
+        // 固定周期避免把单次探测耗时叠加到下一次等待间隔中。
+        let mut interval = tokio::time::interval_at(
+            Instant::now() + Duration::from_secs(10),
+            Duration::from_secs(10),
+        );
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        loop {
+            if *cancel.borrow() || *shutdown.borrow() {
+                return Ok(());
+            }
+
+            tokio::select! {
+                _ = interval.tick() => {}
+                _ = cancel.changed() => return Ok(()),
+                _ = shutdown.changed() => return Ok(()),
+            }
+
+            let running = tokio::select! {
+                result = inner.process_manager.is_running(handle) => result,
+                _ = cancel.changed() => return Ok(()),
+                _ = shutdown.changed() => return Ok(()),
+            };
+
+            match running {
+                Ok(false) => {
+                    return report_monitor_failure(
+                        &inner,
+                        &model_id,
+                        &plan,
+                        handle,
+                        DeploymentError {
+                            kind: DeploymentErrorKind::ProcessExited,
+                            message: "runtime process exited".to_string(),
+                            cleanup_error: None,
+                            notification_error: None,
+                            preserved_state: None,
+                        },
+                        false,
+                        true,
+                    )
+                    .await;
+                }
+                Err(error) => {
+                    return report_monitor_failure(
+                        &inner,
+                        &model_id,
+                        &plan,
+                        handle,
+                        DeploymentError {
+                            kind: DeploymentErrorKind::ProcessLivenessFailed,
+                            message: error.to_string(),
+                            cleanup_error: None,
+                            notification_error: None,
+                            preserved_state: None,
+                        },
+                        true,
+                        true,
+                    )
+                    .await;
+                }
+                Ok(true) => {}
+            }
+
+            let health = tokio::select! {
+                result = inner.health_probe.is_healthy(plan.readiness.clone()) => result,
+                _ = cancel.changed() => return Ok(()),
+                _ = shutdown.changed() => return Ok(()),
+            };
+            let next_state = match health {
+                Ok(true) => NodeState::Ready,
+                Ok(false) => NodeState::Unhealthy,
+                Err(error) => {
+                    return report_monitor_failure(
+                        &inner,
+                        &model_id,
+                        &plan,
+                        handle,
+                        DeploymentError {
+                            kind: DeploymentErrorKind::HealthProbeFailed,
+                            message: error.to_string(),
+                            cleanup_error: None,
+                            notification_error: None,
+                            preserved_state: None,
+                        },
+                        true,
+                        true,
+                    )
+                    .await;
+                }
+            };
+
+            if next_state == state {
+                continue;
+            }
+
+            let event = monitor_state_event(&model_id, &plan, handle, next_state, None, None, None);
+            if let Err(error) =
+                Self::publish_with_retry(inner.event_publisher.as_ref(), event).await
+            {
+                return report_monitor_failure(
+                    &inner,
+                    &model_id,
+                    &plan,
+                    handle,
+                    DeploymentError {
+                        kind: DeploymentErrorKind::EventPublishFailed,
+                        message: error.to_string(),
+                        cleanup_error: None,
+                        notification_error: None,
+                        preserved_state: None,
+                    },
+                    true,
+                    false,
+                )
+                .await;
+            }
+
+            let mut coordinator = inner.coordinator.lock().await;
+            match coordinator.monitored.get_mut(&model_id) {
+                Some(runtime) if runtime.generation == generation => {
+                    runtime.state = next_state;
+                    state = next_state;
+                }
+                _ => return Ok(()),
+            }
+        }
     }
 
     async fn enqueue_or_join(
@@ -227,7 +439,9 @@ impl DeploymentService {
             cleanup_error: None,
         };
 
-        if let Err(error) = self.publish_with_retry(queued_event).await {
+        if let Err(error) =
+            Self::publish_with_retry(self.inner.event_publisher.as_ref(), queued_event).await
+        {
             let (waiters, preserved_state) = {
                 let mut coordinator = self.inner.coordinator.lock().await;
                 coordinator
@@ -284,5 +498,78 @@ fn complete_waiters(
         if waiter.send(result.clone()).is_err() {
             tracing::debug!("deployment result waiter closed before completion");
         }
+    }
+}
+
+async fn report_monitor_failure(
+    inner: &DeploymentServiceInner,
+    model_id: &str,
+    plan: &ProcessPlan,
+    handle: ProcessHandle,
+    mut error: DeploymentError,
+    stop_process: bool,
+    publish_failed_state: bool,
+) -> Result<(), DeploymentMonitorError> {
+    let kind = error.kind;
+    if stop_process {
+        error = DeploymentService::cleanup_failed_runtime(
+            inner.process_manager.as_ref(),
+            handle,
+            error,
+        )
+        .await;
+    }
+
+    let mut monitor_error = DeploymentMonitorError {
+        model_id: model_id.to_string(),
+        pid: handle.pid,
+        kind,
+        message: error.message.clone(),
+        cleanup_error: error.cleanup_error.clone(),
+    };
+
+    if publish_failed_state {
+        let event = monitor_state_event(
+            model_id,
+            plan,
+            handle,
+            NodeState::Failed,
+            Some(kind),
+            Some(error.message),
+            error.cleanup_error,
+        );
+        if let Err(publish_error) =
+            DeploymentService::publish_with_retry(inner.event_publisher.as_ref(), event).await
+        {
+            monitor_error.message = format!(
+                "{}; failed to publish Failed state: {}",
+                monitor_error.message, publish_error
+            );
+            return Err(monitor_error);
+        }
+        return Ok(());
+    }
+
+    Err(monitor_error)
+}
+
+fn monitor_state_event(
+    model_id: &str,
+    plan: &ProcessPlan,
+    handle: ProcessHandle,
+    state: NodeState,
+    error_kind: Option<DeploymentErrorKind>,
+    error: Option<String>,
+    cleanup_error: Option<String>,
+) -> DeploymentEvent {
+    DeploymentEvent {
+        model_id: model_id.to_string(),
+        kind: DeploymentEventKind::StateChanged(state),
+        state: Some(state),
+        error_kind,
+        local_endpoint: Some(plan.local_endpoint.clone()),
+        pid: Some(handle.pid),
+        error,
+        cleanup_error,
     }
 }
