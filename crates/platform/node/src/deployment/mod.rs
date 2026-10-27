@@ -10,7 +10,9 @@
 //! ```
 
 mod types;
+mod process;
 
+pub use process::LocalProcessManager;
 pub use types::{
     DeploymentError, DeploymentErrorKind, DeploymentEvent, DeploymentEventKind,
     DeploymentEventPublishError, DeploymentEventPublisher, DeploymentMonitorError,
