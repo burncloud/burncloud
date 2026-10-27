@@ -11,8 +11,10 @@
 
 mod types;
 mod process;
+mod http_probe;
 
 pub use process::LocalProcessManager;
+pub use http_probe::HttpProbe;
 pub use types::{
     DeploymentError, DeploymentErrorKind, DeploymentEvent, DeploymentEventKind,
     DeploymentEventPublishError, DeploymentEventPublisher, DeploymentMonitorError,
