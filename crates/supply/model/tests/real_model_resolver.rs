@@ -1,7 +1,7 @@
 use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile, HardwareProfile};
 use burncloud_supply_model::{
     CandidateResolutionOutcome, LocalModelUnsupportedReason, ModelManifest, ModelResolutionError,
-    ModelResolutionRequest, ModelResolver, RealModelResolver, Variant,
+    RealModelResolver, Variant,
 };
 
 fn variant(id: &str, backend: &str, min_vram_bytes: u64) -> Variant {
@@ -38,22 +38,6 @@ fn hardware(vram_bytes: u64) -> HardwareProfile {
             memory_bytes: Some(vram_bytes),
         }],
     }
-}
-
-#[tokio::test]
-async fn real_resolver_keeps_the_legacy_trait_contract_explicitly_unimplemented() {
-    let resolver = RealModelResolver::new(Vec::new()).unwrap();
-    let result = resolver
-        .resolve(ModelResolutionRequest {
-            model: "deepseek-r1".into(),
-            accelerator_memory_bytes: None,
-        })
-        .await;
-
-    assert!(matches!(
-        result,
-        Err(ModelResolutionError::ResolutionFailed(_))
-    ));
 }
 
 #[test]

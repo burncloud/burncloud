@@ -11,6 +11,15 @@ use crate::{
 ///
 /// 本类型只保存调用方传入的 Manifest，并执行 Variant 兼容性过滤。它不扫描本地或远程
 /// 模型文件，不筛选 GGUF 文件，不构建 artifact URI，不下载工件，也不启动 Runtime。
+///
+/// # Examples
+///
+/// ```
+/// use burncloud_supply_model::RealModelResolver;
+///
+/// let resolver = RealModelResolver::new(Vec::new()).unwrap();
+/// assert!(resolver.manifests().is_empty());
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RealModelResolver {
     manifests: Vec<ModelManifest>,
@@ -80,16 +89,51 @@ impl RealModelResolver {
     }
 
     /// 返回已加载的 Manifest，不执行 I/O。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_supply_model::RealModelResolver;
+    ///
+    /// let resolver = RealModelResolver::new(Vec::new()).unwrap();
+    /// assert!(resolver.manifests().is_empty());
+    /// ```
     pub fn manifests(&self) -> &[ModelManifest] {
         &self.manifests
     }
 
     /// 返回从已加载 Manifest 中提取的全部 Variant。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_supply_model::RealModelResolver;
+    ///
+    /// let resolver = RealModelResolver::new(Vec::new()).unwrap();
+    /// assert!(resolver.variants().is_empty());
+    /// ```
     pub fn variants(&self) -> &[Variant] {
         &self.variants
     }
 
     /// 保留 RAM 和最大可用加速器显存要求满足设备能力的 Variant。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_node_runtime::HardwareProfile;
+    /// use burncloud_supply_model::RealModelResolver;
+    ///
+    /// let hardware = HardwareProfile {
+    ///     cpu_threads: 4,
+    ///     memory_bytes: 8,
+    ///     disk_available_bytes: 8,
+    ///     accelerators: Vec::new(),
+    /// };
+    /// assert!(RealModelResolver::filter_by_hardware(&[], &hardware).is_empty());
+    /// ```
+    ///
+    /// 注意事项：多加速器设备使用单个加速器中的最大显存进行比较。
     pub fn filter_by_hardware(variants: &[Variant], hardware: &HardwareProfile) -> Vec<Variant> {
         let available_vram_bytes = hardware
             .accelerators
@@ -109,6 +153,16 @@ impl RealModelResolver {
     }
 
     /// 保留 Runtime 后端出现在设备支持列表中的 Variant，并保持输入顺序。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_supply_model::RealModelResolver;
+    ///
+    /// assert!(RealModelResolver::filter_by_runtime(&[], &[]).is_empty());
+    /// ```
+    ///
+    /// 注意事项：此方法只比较 Runtime 名称，不进行别名解析或版本协商。
     pub fn filter_by_runtime(variants: &[Variant], supported_runtimes: &[String]) -> Vec<Variant> {
         variants
             .iter()

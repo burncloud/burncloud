@@ -139,6 +139,7 @@ pub enum CandidateResolutionOutcome {
 /// 模型解析失败。
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ModelResolutionError {
+    /// 解析流程失败并附带原因。
     #[error("model resolution failed: {0}")]
     ResolutionFailed(String),
 }
@@ -169,6 +170,7 @@ pub enum ModelResolutionError {
 /// ```
 #[async_trait]
 pub trait ModelResolver: Send + Sync {
+    /// 解析请求并返回最终模型结果或正常的不支持结果。
     async fn resolve(
         &self,
         request: ModelResolutionRequest,
