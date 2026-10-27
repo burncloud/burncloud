@@ -64,6 +64,10 @@ pub enum ProcessError {
 
     #[error("process stop failed: {0}")]
     StopFailed(String),
+
+    /// 操作系统无法判断句柄对应进程是否仍在运行。
+    #[error("process liveness check failed: {0}")]
+    IsRunningFailed(String),
 }
 
 /// Port owned by the Node runtime for local process lifecycle only.
@@ -73,4 +77,32 @@ pub trait ProcessManager: Send + Sync {
     async fn start(&self, spec: ProcessSpec) -> Result<ProcessHandle, ProcessError>;
     /// 停止由本接口持有的本地进程。
     async fn stop(&self, handle: ProcessHandle) -> Result<(), ProcessError>;
+
+    /// 查询句柄对应的进程是否仍在运行。
+    ///
+    /// PID 为零或无法判断进程状态时返回 [`ProcessError::IsRunningFailed`]；查询错误不表示进程已退出。默认实现返回该错误，具体进程管理器应覆写此方法。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_node_runtime::{ProcessError, ProcessHandle, ProcessManager};
+    ///
+    /// async fn check_process(
+    ///     manager: &impl ProcessManager,
+    ///     handle: ProcessHandle,
+    /// ) -> Result<bool, ProcessError> {
+    ///     manager.is_running(handle).await
+    /// }
+    /// ```
+    async fn is_running(&self, handle: ProcessHandle) -> Result<bool, ProcessError> {
+        if handle.pid == 0 {
+            return Err(ProcessError::IsRunningFailed(
+                "process PID must be non-zero".to_string(),
+            ));
+        }
+
+        Err(ProcessError::IsRunningFailed(
+            "process liveness query is not implemented".to_string(),
+        ))
+    }
 }
