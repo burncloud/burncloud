@@ -207,6 +207,13 @@ mod tests {
     };
     use burncloud_supply_model::FakeModelResolver;
 
+    fn closed_monitor_errors() -> tokio::sync::mpsc::UnboundedReceiver<
+        burncloud_node_runtime::deployment::DeploymentMonitorError,
+    > {
+        let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+        receiver
+    }
+
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
@@ -224,9 +231,10 @@ mod tests {
                 FakeHardwareProbe::default(),
                 FakeArtifactPreparer,
                 FakeRuntimePreparer,
-                FakeProcessManager::default(),
-                FakeReadinessProbe,
-                FakeHealthProbe,
+                std::sync::Arc::new(FakeProcessManager::default()),
+                std::sync::Arc::new(FakeReadinessProbe),
+                std::sync::Arc::new(FakeHealthProbe),
+                closed_monitor_errors(),
             ),
         )
     }

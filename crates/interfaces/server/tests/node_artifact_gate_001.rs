@@ -10,6 +10,13 @@ use burncloud_supply_model::{
 };
 use reqwest::Url;
 
+fn closed_monitor_errors(
+) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
+{
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
+}
+
 struct FixedResolver;
 
 #[async_trait]
@@ -51,9 +58,10 @@ async fn unverified_artifact_receipt_fails_closed_before_runtime_start() {
         FakeHardwareProbe::default(),
         UnverifiedArtifactPreparer,
         FakeRuntimePreparer,
-        FakeProcessManager::default(),
-        FakeReadinessProbe,
-        FakeHealthProbe,
+        std::sync::Arc::new(FakeProcessManager::default()),
+        std::sync::Arc::new(FakeReadinessProbe),
+        std::sync::Arc::new(FakeHealthProbe),
+        closed_monitor_errors(),
     );
     let mut orchestrator = NodeOrchestrator::new(FixedResolver, FakeRuntimeAdapter, machine);
 
