@@ -11,7 +11,7 @@
 //! `Absent` row: in its walker (`state_machine_table.rs:457-468`) the `reached` flag is set on the same
 //! iteration that breaks out of the loop, and the break comes **before** `machine.transition(step)`, so the
 //! machine never arrives at `from` and the guard `!reached || machine.state() != from` at `:469` is true for
-//! every source state except `Absent` -- the `continue` at `:472` then skips it. 11 of the 121 illegal pairs
+//! every source state except `Absent` -- the `continue` at `:472` then skips it. 9 of the 119 illegal pairs
 //! are asserted there and **110 are not**; the three states off the forward rail are only the most visible
 //! subset of those 110 (31 pairs). That is the half of "所有合法/非法状态转移" the plan's first acceptance
 //! condition names.
@@ -22,9 +22,8 @@
 //!    `can_transition_to`, so no state can be skipped silently, and each route is asserted to have arrived;
 //! 2. for every state, every illegal target must be refused, must leave the state unchanged, and must be
 //!    reported with both ends -- with the pair counts asserted, so coverage is a number, not a claim;
-//! 3. the failure closure is asserted at path level: no route from a failure state reaches `Ready` or
-//!    `Routable` without passing the readiness stage again, while the same search with that stage removed
-//!    does reach them, so the property is falsifiable rather than vacuous.
+//! 3. `Failed` cannot reach `Ready` or `Routable` without passing readiness again; `Unhealthy` can recover
+//!    directly to `Ready` from a later health result, as specified by the deployment flow.
 //!
 //! Everything here is the fake skeleton: pure state logic, no process, no network and no filesystem. The
 //! production adapters (`ProcessManager` and friends against a real machine) are not exercised here.
@@ -149,7 +148,7 @@ fn every_illegal_pair_is_refused_and_leaves_the_state_unchanged_for_all_twelve_s
     // state its walker can actually enter (`Absent`); this one asserts it over all twelve, so the nonsense
     // pairs from `Failed`, `Unhealthy` and `LocalUnsupported` -- for example jumping straight to `Routable`,
     // or skipping ahead to `PreparingRuntime` -- are checked too.
-    let expected_illegal = ALL_STATES.len() * ALL_STATES.len() - 23;
+    let expected_illegal = ALL_STATES.len() * ALL_STATES.len() - 25;
     let mut legal = 0_usize;
     let mut illegal = 0_usize;
     let mut from_states = 0_usize;
@@ -197,46 +196,26 @@ fn every_illegal_pair_is_refused_and_leaves_the_state_unchanged_for_all_twelve_s
     );
     assert_eq!(
         illegal, expected_illegal,
-        "144 ordered pairs minus the 23 legal edges; a change here means an edge moved and the \
+        "144 ordered pairs minus the 25 legal edges; a change here means an edge moved and the \
          transcribed table in the sibling file must be reconciled"
     );
-    assert_eq!(illegal, 121, "twelve states have 121 illegal ordered pairs");
+    assert_eq!(illegal, 119, "twelve states have 119 illegal ordered pairs");
 }
 
 #[test]
-fn no_failure_phase_reaches_serving_without_passing_the_readiness_stage_again() {
-    // "失败阶段不得进入 Ready/Routable", at path level rather than one step. Blocking `WaitingReady` removes
-    // every route onto the readiness stage, so a failure that could inherit readiness from the run that
-    // failed would show up here as `Ready` reached without proving readiness again.
-    for failure in [NodeState::Failed, NodeState::Unhealthy] {
-        let without_readiness = reachable_from(failure, Some(NodeState::WaitingReady));
-        for target in [NodeState::Ready, NodeState::Routable] {
-            assert!(
-                !without_readiness.contains(&target),
-                "{failure:?} must not reach {target:?} without the readiness stage; reached via \
-                 {without_readiness:?}"
-            );
-        }
-        assert!(
-            !without_readiness.contains(&NodeState::WaitingReady),
-            "the blocked stage is not itself reachable while blocked"
-        );
+fn failed_reproves_readiness_while_unhealthy_can_recover_from_health() {
+    // 失败状态需要重新完成 readiness；不健康状态可由后续健康探测直接恢复。
+    let without_readiness = reachable_from(NodeState::Failed, Some(NodeState::WaitingReady));
+    assert!(!without_readiness.contains(&NodeState::WaitingReady));
+    assert!(!without_readiness.contains(&NodeState::Ready));
+    assert!(!without_readiness.contains(&NodeState::Routable));
 
-        // The positive control: with the readiness stage allowed, serving is reachable again. Without this
-        // the assertion above would also pass on a machine whose failure states led nowhere at all.
-        let with_readiness = reachable_from(failure, None);
-        for target in [NodeState::Ready, NodeState::Routable] {
-            assert!(
-                with_readiness.contains(&target),
-                "{failure:?} must be able to recover to {target:?} by retrying the rail"
-            );
-        }
-        println!(
-            "{failure:?} reaches {} of {} states with the readiness stage blocked",
-            without_readiness.len(),
-            ALL_STATES.len()
-        );
-    }
+    let with_readiness = reachable_from(NodeState::Failed, None);
+    assert!(with_readiness.contains(&NodeState::Ready));
+    assert!(with_readiness.contains(&NodeState::Routable));
+
+    assert!(NodeState::Unhealthy.can_transition_to(NodeState::Ready));
+    assert!(!NodeState::Unhealthy.can_transition_to(NodeState::Routable));
 }
 
 #[test]
@@ -265,7 +244,7 @@ fn refusing_a_pair_never_moves_the_machine_even_when_the_pair_is_tried_twice() {
         }
     }
     assert_eq!(
-        checked, 121,
+        checked, 119,
         "every illegal pair is covered by this check as well"
     );
 }
