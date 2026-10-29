@@ -134,6 +134,7 @@ http-body-util = "0.1"
 # Cryptography
 sha2 = "0.10"
 md5 = "0.7"
+sha1 = "0.10"
 hmac = "0.12"
 jsonwebtoken = "9.3"
 bcrypt = "0.17.1"

@@ -133,17 +133,61 @@ impl MonitorState {
 impl Drop for DownloadManager {
     fn drop(&mut self) {
         self.cancellation.cancel();
-        if let Some(monitor) = self.monitor.take() {
-            match tokio::runtime::Handle::try_current() {
-                Ok(runtime) => {
-                    runtime.spawn(async move {
-                        if let Err(error) = monitor.await {
-                            tracing::error!(error = %error, "等待下载监控任务退出失败");
-                        }
-                    });
-                }
-                Err(_) => monitor.abort(),
+        let aria2 = std::mem::replace(&mut self.aria2, Arc::new(Aria2Manager::new()));
+        let monitor = self.monitor.take();
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(shutdown_aria2(monitor, aria2, false));
             }
+            Err(_) => {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        if let Some(monitor) = monitor {
+                            monitor.abort();
+                        }
+                        tracing::error!(error = %error, "创建 aria2 清理运行时失败");
+                        return;
+                    }
+                };
+                runtime.block_on(shutdown_aria2(monitor, aria2, true));
+            }
+        }
+    }
+}
+
+async fn shutdown_aria2(
+    monitor: Option<JoinHandle<()>>,
+    aria2: Arc<Aria2Manager>,
+    abort_monitor: bool,
+) {
+    wait_for_monitor(monitor, abort_monitor).await;
+    shutdown_aria2_manager(aria2).await;
+}
+
+async fn wait_for_monitor(monitor: Option<JoinHandle<()>>, abort_monitor: bool) {
+    if let Some(monitor) = monitor {
+        if abort_monitor {
+            monitor.abort();
+        }
+        if let Err(error) = monitor.await {
+            tracing::error!(error = %error, "等待下载监控任务退出失败");
+        }
+    }
+}
+
+async fn shutdown_aria2_manager(aria2: Arc<Aria2Manager>) {
+    match Arc::try_unwrap(aria2) {
+        Ok(mut aria2) => {
+            if let Err(error) = aria2.shutdown().await {
+                tracing::error!(error = %error, "关闭 aria2 管理器失败");
+            }
+        }
+        Err(_) => {
+            tracing::error!("关闭 aria2 管理器失败：仍存在其他引用");
         }
     }
 }

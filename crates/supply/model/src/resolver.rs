@@ -190,7 +190,10 @@ impl ModelResolver for FakeModelResolver {
         request: ModelResolutionRequest,
     ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
         Ok(ModelResolutionOutcome::Local(ResolvedModel {
-            artifact_source: format!("{}/fake.gguf", request.model),
+            artifact_source: format!(
+                "https://modelscope.cn/models/{}/resolve/main/fake.gguf",
+                request.model
+            ),
             artifact_digest: Some(
                 "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
             ),
