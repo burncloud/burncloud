@@ -1,6 +1,19 @@
 use burncloud_supply_model::{
-    FakeModelResolver, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
+    FakeModelResolver, LocalModelUnsupported, LocalModelUnsupportedReason, ModelResolutionOutcome,
+    ModelResolutionRequest, ModelResolver,
 };
+
+#[test]
+fn unsupported_is_a_normal_resolution_outcome_not_an_infrastructure_error() {
+    let outcome = ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
+        model: "qwen-4b".into(),
+        reason: LocalModelUnsupportedReason::InsufficientAcceleratorMemory {
+            required_bytes: 12 * 1024 * 1024 * 1024,
+            available_bytes: Some(8 * 1024 * 1024 * 1024),
+        },
+    });
+    assert!(matches!(outcome, ModelResolutionOutcome::Unsupported(_)));
+}
 
 #[tokio::test]
 async fn fake_resolver_returns_runtime_and_artifact_choice() {

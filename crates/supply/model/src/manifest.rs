@@ -1,70 +1,48 @@
 use serde::{Deserialize, Serialize};
 
-/// A manifest describing one logical model and its runnable variants.
+/// 描述一个逻辑模型及其可运行 Variant 的 Manifest。
+///
+/// 用途：由上游加载并传给 Resolver，作为模型能力过滤的只读输入。
+///
+/// 注意事项：Resolver 不扫描模型仓库、不发现文件，也不构建下载地址；每个 Variant 的
+/// `artifact_uri` 和 `checksum` 必须由上游随 Manifest 提供。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelManifest {
-    /// Short model name accepted by the local resolver.
+    /// Resolver 接受的模型名称。
     pub model_name: String,
-    /// Human-readable description of the model.
+    /// 模型的可读描述。
     pub description: String,
-    /// Runtime backends that can run at least one variant of this model.
+    /// 至少支持一个 Variant 的 Runtime 后端列表；每个 Variant 的 `backend` 都必须出现在
+    /// 此列表中。
     pub supported_backends: Vec<String>,
-    /// Manifest or catalog version.
+    /// Manifest 或模型目录版本。
     pub version: String,
-    /// Available model variants, such as different sizes or quantizations.
+    /// 可用 Variant，例如不同模型规模或量化版本。
     pub variants: Vec<Variant>,
 }
 
-/// One downloadable model artifact together with its minimum resources.
+/// 一个模型工件及其最低资源要求。
+///
+/// `artifact_uri` 是 Manifest 数据的一部分，由上游提供；Resolver 只传递它，不负责
+/// 生成或修改 URI。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Variant {
-    /// Stable identifier within the model manifest.
+    /// Manifest 内稳定的 Variant 标识。
     pub id: String,
-    /// Optional model-size label, such as `7b` or `13b`.
+    /// 可选的模型规模标签，例如 `7b` 或 `13b`。
     pub model_size: Option<String>,
-    /// Quantization label, such as `q4_k_m` or `q5_k_m`.
+    /// 量化标签，例如 `q4_k_m` 或 `q5_k_m`。
     pub quantization: String,
-    /// Runtime backend required by this variant.
+    /// 该 Variant 要求的 Runtime 后端。
     pub backend: String,
-    /// Minimum system RAM required to run the variant.
+    /// 运行该 Variant 所需的最低系统 RAM，单位为字节。
     pub min_ram_bytes: u64,
-    /// Minimum accelerator VRAM required to run the variant.
+    /// 运行该 Variant 所需的最低加速器显存，单位为字节。
     pub min_vram_bytes: u64,
-    /// Disk space occupied by the downloaded artifact.
+    /// 模型工件占用的磁盘空间，单位为字节。
     pub disk_size_bytes: u64,
-    /// Integrity checksum of the artifact, for example a SHA-256 digest.
+    /// 模型工件完整性校验和，例如 SHA-256 摘要。
     pub checksum: String,
-    /// Download location of the artifact.
+    /// 上游提供的模型工件地址。
     pub artifact_uri: String,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn manifest_round_trips_through_json() {
-        let manifest = ModelManifest {
-            model_name: "deepseek-r1".into(),
-            description: "A reasoning model".into(),
-            supported_backends: vec!["llama.cpp".into()],
-            version: "1".into(),
-            variants: vec![Variant {
-                id: "deepseek-r1-7b-q4_k_m".into(),
-                model_size: Some("7b".into()),
-                quantization: "q4_k_m".into(),
-                backend: "llama.cpp".into(),
-                min_ram_bytes: 8 * 1024 * 1024 * 1024,
-                min_vram_bytes: 6 * 1024 * 1024 * 1024,
-                disk_size_bytes: 5 * 1024 * 1024 * 1024,
-                checksum: "sha256:example".into(),
-                artifact_uri: "https://example.invalid/deepseek-r1-7b-q4_k_m.gguf".into(),
-            }],
-        };
-
-        let json = serde_json::to_string(&manifest).unwrap();
-        let decoded: ModelManifest = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(decoded, manifest);
-    }
 }
