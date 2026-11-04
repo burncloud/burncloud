@@ -1,10 +1,15 @@
 use async_trait::async_trait;
+use burncloud_node_runtime::HardwareProfile;
 
-/// Canonical demand presented to the Supply-owned model resolver.
+/// 已选模型和本次真实探测结果，供 Supply 执行硬件兼容性判断。
+///
+/// 硬件容量来自 Node 的公开探测接口；未知显存保留为 `None`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelResolutionRequest {
+    /// 已选逻辑模型名。
     pub model: String,
-    pub accelerator_memory_bytes: Option<u64>,
+    /// 本次探测的完整硬件快照，包含 RAM 和各加速器的显存。
+    pub hardware: HardwareProfile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

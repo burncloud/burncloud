@@ -1,26 +1,7 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    AcceleratorKind, AcceleratorProfile, HardwareProbe, HardwareProbeError, HardwareProfile,
-    ProcessError, ProcessHandle, ProcessManager, ProcessSpec,
+    HardwareProbe, ProcessError, ProcessHandle, ProcessManager, ProcessSpec, SystemHardwareProbe,
 };
-
-struct FakeHardware;
-
-#[async_trait]
-impl HardwareProbe for FakeHardware {
-    async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError> {
-        Ok(HardwareProfile {
-            cpu: "Example CPU".to_owned(),
-            memory_bytes: 64 * 1024 * 1024 * 1024,
-            disk_available_bytes: 512 * 1024 * 1024 * 1024,
-            accelerators: vec![AcceleratorProfile {
-                kind: AcceleratorKind::Nvidia,
-                name: "Fake GPU".to_string(),
-                memory_bytes: Some(24 * 1024 * 1024 * 1024),
-            }],
-        })
-    }
-}
 
 struct FakeProcess;
 
@@ -36,13 +17,11 @@ impl ProcessManager for FakeProcess {
 }
 
 #[tokio::test]
-async fn hardware_contract_can_be_implemented_without_business_types() {
-    let profile = FakeHardware
-        .inspect()
-        .await
-        .expect("fake hardware probe must succeed");
-    assert_eq!(profile.cpu, "Example CPU");
-    assert_eq!(profile.accelerators.len(), 1);
+async fn hardware_contract_uses_the_system_probe_without_business_types() {
+    let probe: Box<dyn HardwareProbe> = Box::new(SystemHardwareProbe::new());
+    let profile = probe.inspect().await.expect("真实硬件探测应成功");
+    assert!(!profile.cpu.trim().is_empty());
+    assert!(profile.memory_bytes > 0);
 }
 
 #[tokio::test]

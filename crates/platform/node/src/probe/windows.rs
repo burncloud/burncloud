@@ -16,6 +16,7 @@ use nvml_wrapper::Nvml;
 use super::common::collect_common;
 
 /// 使用 Windows 系统接口读取本机硬件信息。
+#[derive(Debug)]
 pub struct SystemHardwareProbe;
 
 impl SystemHardwareProbe {

@@ -62,9 +62,13 @@ compatibility surface used during #778 was removed by #780.
      `RealModelResolver`, `FakeModelResolver`;
    - HuggingFace: `ModelService`, `HfApiModel`, `HfFileItem`, `get_huggingface_host`,
      `get_model_files`, `filter_gguf_files`, `get_data_dir`, `build_download_url`.
-   `RealModelResolver` is the manifest-backed foundation and its `ModelResolver::resolve` currently
-   returns `ModelResolutionError::ResolutionFailed(...)`; `FakeModelResolver` is the deterministic
-   placeholder used by the Node skeleton.
+   `ModelResolutionRequest` 携带模型名和完整的 `hardware: HardwareProfile`。
+   `RealModelResolver::resolve` 根据模型名定位清单，使用真实 RAM 和最大可报告的
+   单设备显存过滤，再按清单声明的后端过滤，返回清单顺序中的首个兼容变体。
+   不累计多设备显存；没有已知显存时只接受显存需求为零的变体。
+   没有兼容变体返回 `Unsupported(NoCompatibleVariant)`；空模型名或目录中没有该模型
+   返回 `ResolutionFailed`。后端过滤不表示运行时已安装，后续准备阶段仍负责安装检查。
+   `FakeModelResolver` 仅供其他 Node 生命周期测试使用，不承担生产硬件判断。
 
 5. **Allowed dependencies** — `burncloud-database`, `burncloud-service-setting` (`SettingService`),
    `burncloud-service-ip` (CN HuggingFace mirror selection), `burncloud-node-runtime`

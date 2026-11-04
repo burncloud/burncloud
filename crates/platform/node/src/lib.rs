@@ -23,8 +23,8 @@ pub use contracts::{
     ProcessManager, ProcessSpec,
 };
 pub use fake::{
-    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
+    FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
+    FakeRuntimeAdapter, FakeRuntimePreparer,
 };
 pub use lifecycle::NodeRuntime;
 pub use preparation::{

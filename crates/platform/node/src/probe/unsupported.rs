@@ -1,6 +1,7 @@
 use crate::{error::HardwareProbeError, types::HardwareProfile};
 
 /// 为缺少平台实现的编译目标提供后备探测器。
+#[derive(Debug)]
 pub struct SystemHardwareProbe;
 
 impl SystemHardwareProbe {

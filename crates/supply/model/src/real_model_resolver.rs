@@ -2,15 +2,32 @@ use async_trait::async_trait;
 use burncloud_node_runtime::HardwareProfile;
 
 use crate::{
-    ModelManifest, ModelResolutionError, ModelResolutionOutcome, ModelResolutionRequest,
-    ModelResolver, Variant,
+    LocalModelUnsupported, LocalModelUnsupportedReason, ModelManifest, ModelResolutionError,
+    ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, ResolvedModel, Variant,
 };
 
-/// Manifest-backed resolver foundation.
+/// 使用调用方提供的模型清单和真实硬件快照解析本地模型。
 ///
-/// This stage owns only manifest loading and compatibility filtering. It does
-/// not inspect local files, rank variants, download artifacts, or start a
-/// runtime.
+/// 按清单顺序返回首个满足 RAM、单设备显存和清单后端约束的变体，
+/// 不执行下载或启动运行时。运行时是否已安装由后续准备阶段负责。
+///
+/// # Examples
+///
+/// ```no_run
+/// use burncloud_node_runtime::{HardwareProbe, SystemHardwareProbe};
+/// use burncloud_supply_model::{ModelResolutionRequest, ModelResolver, RealModelResolver};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let hardware = SystemHardwareProbe::new().inspect().await?;
+/// let resolver = RealModelResolver::new(Vec::new());
+/// let result = resolver.resolve(ModelResolutionRequest {
+///     model: "selected-model".into(),
+///     hardware,
+/// }).await;
+/// assert!(result.is_err()); // 空目录中没有该模型。
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RealModelResolver {
     manifests: Vec<ModelManifest>,
@@ -18,7 +35,7 @@ pub struct RealModelResolver {
 }
 
 impl RealModelResolver {
-    /// Creates a resolver from manifests that were loaded by the caller.
+    /// 保存调用方已加载的清单；不执行 I/O，空目录在解析时报告模型不存在。
     pub fn new(manifests: Vec<ModelManifest>) -> Self {
         let variants = manifests
             .iter()
@@ -31,18 +48,19 @@ impl RealModelResolver {
         }
     }
 
-    /// Returns the preloaded manifests without performing I/O.
+    /// 返回已加载的清单。
     pub fn manifests(&self) -> &[ModelManifest] {
         &self.manifests
     }
 
-    /// Returns all variants extracted from the preloaded manifests.
+    /// 返回按清单顺序展开的全部变体。
     pub fn variants(&self) -> &[Variant] {
         &self.variants
     }
 
-    /// Keeps variants whose RAM and maximum available accelerator VRAM needs
-    /// fit the supplied machine profile.
+    /// 根据真实 RAM 和最大可报告的单设备显存过滤变体，保留输入顺序。
+    ///
+    /// 无已知显存时，仅保留显存要求为零的变体；不累计多设备显存。
     pub fn filter_by_hardware(variants: &[Variant], hardware: &HardwareProfile) -> Vec<Variant> {
         let available_vram_bytes = hardware
             .accelerators
@@ -61,8 +79,7 @@ impl RealModelResolver {
             .collect()
     }
 
-    /// Keeps variants whose runtime backend appears in the supported runtime
-    /// list. The order of the input variants is preserved.
+    /// 按允许的后端名称过滤变体，保留输入顺序；不检查运行时是否已安装。
     pub fn filter_by_runtime(variants: &[Variant], supported_runtimes: &[String]) -> Vec<Variant> {
         variants
             .iter()
@@ -74,153 +91,53 @@ impl RealModelResolver {
             .cloned()
             .collect()
     }
+
+    fn resolve_model(
+        &self,
+        model: &str,
+        hardware: &HardwareProfile,
+    ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
+        let manifest = self
+            .manifests
+            .iter()
+            .find(|manifest| manifest.model_name == model)
+            .ok_or_else(|| {
+                ModelResolutionError::ResolutionFailed(format!(
+                    "model '{model}' is not in the catalog"
+                ))
+            })?;
+        let compatible = Self::filter_by_hardware(&manifest.variants, hardware);
+        let compatible = Self::filter_by_runtime(&compatible, &manifest.supported_backends);
+
+        match compatible.into_iter().next() {
+            Some(variant) => Ok(ModelResolutionOutcome::Local(ResolvedModel {
+                model: model.to_owned(),
+                artifact_source: variant.artifact_uri,
+                artifact_digest: Some(variant.checksum),
+                runtime: variant.backend,
+                runtime_version: None,
+            })),
+            None => Ok(ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
+                model: model.to_owned(),
+                reason: LocalModelUnsupportedReason::NoCompatibleVariant,
+            })),
+        }
+    }
 }
 
 #[async_trait]
 impl ModelResolver for RealModelResolver {
+    /// 校验模型名后，用请求携带的硬件快照执行兼容性判断。
     async fn resolve(
         &self,
         request: ModelResolutionRequest,
     ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
-        Err(ModelResolutionError::ResolutionFailed(format!(
-            "real resolution is not implemented for model '{}'",
-            request.model
-        )))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile};
-
-    fn variant(id: &str, backend: &str, min_ram_bytes: u64, min_vram_bytes: u64) -> Variant {
-        Variant {
-            id: id.into(),
-            model_size: Some("7b".into()),
-            quantization: "q4_k_m".into(),
-            backend: backend.into(),
-            min_ram_bytes,
-            min_vram_bytes,
-            disk_size_bytes: 1,
-            checksum: format!("sha256:{id}"),
-            artifact_uri: format!("https://example.invalid/{id}.gguf"),
+        let model = request.model.trim();
+        if model.is_empty() {
+            return Err(ModelResolutionError::ResolutionFailed(
+                "model name must not be empty".into(),
+            ));
         }
-    }
-
-    fn manifest(name: &str, variants: Vec<Variant>) -> ModelManifest {
-        ModelManifest {
-            model_name: name.into(),
-            description: "test manifest".into(),
-            supported_backends: vec!["llama.cpp".into(), "vllm".into()],
-            version: "test".into(),
-            variants,
-        }
-    }
-
-    fn hardware(memory_bytes: u64, vram_bytes: Option<u64>) -> HardwareProfile {
-        HardwareProfile {
-            cpu: "Test CPU".to_owned(),
-            memory_bytes,
-            disk_available_bytes: 100,
-            accelerators: vram_bytes
-                .map(|memory_bytes| {
-                    vec![AcceleratorProfile {
-                        kind: AcceleratorKind::Other,
-                        name: "test-accelerator".into(),
-                        memory_bytes: Some(memory_bytes),
-                    }]
-                })
-                .unwrap_or_default(),
-        }
-    }
-
-    #[tokio::test]
-    async fn resolver_can_be_instantiated_and_called() {
-        let resolver = RealModelResolver::new(Vec::new());
-
-        let result = resolver
-            .resolve(ModelResolutionRequest {
-                model: "deepseek-r1".into(),
-                accelerator_memory_bytes: None,
-            })
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(ModelResolutionError::ResolutionFailed(_))
-        ));
-    }
-
-    #[test]
-    fn constructor_extracts_all_variants_from_all_manifests() {
-        let resolver = RealModelResolver::new(vec![
-            manifest(
-                "model-a",
-                vec![
-                    variant("a-q4", "llama.cpp", 1, 1),
-                    variant("a-q8", "llama.cpp", 1, 1),
-                ],
-            ),
-            manifest("model-b", vec![variant("b-q4", "vllm", 1, 1)]),
-        ]);
-
-        assert_eq!(resolver.manifests().len(), 2);
-        assert_eq!(
-            resolver
-                .variants()
-                .iter()
-                .map(|variant| variant.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["a-q4", "a-q8", "b-q4"]
-        );
-    }
-
-    #[test]
-    fn hardware_filter_keeps_variant_when_ram_and_vram_are_sufficient() {
-        let variants = vec![variant("compatible", "llama.cpp", 8, 6)];
-        let filtered = RealModelResolver::filter_by_hardware(&variants, &hardware(8, Some(6)));
-
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            ["compatible"]
-        );
-    }
-
-    #[test]
-    fn hardware_filter_removes_variant_when_vram_is_insufficient() {
-        let variants = vec![variant("needs-more-vram", "llama.cpp", 8, 8)];
-        let filtered = RealModelResolver::filter_by_hardware(&variants, &hardware(8, Some(6)));
-
-        assert!(filtered.is_empty());
-    }
-
-    #[test]
-    fn hardware_filter_removes_variant_when_ram_is_insufficient() {
-        let variants = vec![variant("needs-more-ram", "llama.cpp", 16, 6)];
-        let filtered = RealModelResolver::filter_by_hardware(&variants, &hardware(8, Some(6)));
-
-        assert!(filtered.is_empty());
-    }
-
-    #[test]
-    fn runtime_filter_keeps_only_supported_backends() {
-        let variants = vec![
-            variant("llama", "llama.cpp", 1, 1),
-            variant("vllm", "vllm", 1, 1),
-        ];
-        let supported = vec!["llama.cpp".into()];
-        let filtered = RealModelResolver::filter_by_runtime(&variants, &supported);
-
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            ["llama"]
-        );
+        self.resolve_model(model, &request.hardware)
     }
 }

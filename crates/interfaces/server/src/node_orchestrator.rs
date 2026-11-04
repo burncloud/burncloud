@@ -299,16 +299,11 @@ where
                             return Err(error.into());
                         }
                     };
-                    let accelerator_memory_bytes = hardware
-                        .accelerators
-                        .iter()
-                        .filter_map(|a| a.memory_bytes)
-                        .max();
                     match self
                         .resolver
                         .resolve(ModelResolutionRequest {
                             model: demand.model.clone(),
-                            accelerator_memory_bytes,
+                            hardware,
                         })
                         .await
                     {
@@ -572,8 +567,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use burncloud_node_runtime::{
-        ArtifactVerificationStatus, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
-        FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
+        ArtifactVerificationStatus, FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager,
+        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, SystemHardwareProbe,
     };
     use burncloud_supply_model::{
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
@@ -582,7 +577,7 @@ mod tests {
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
-        FakeHardwareProbe,
+        SystemHardwareProbe,
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager,
@@ -593,7 +588,7 @@ mod tests {
             FakeModelResolver,
             FakeRuntimeAdapter,
             NodeComposition::start(
-                FakeHardwareProbe::default(),
+                SystemHardwareProbe::new(),
                 FakeArtifactPreparer,
                 FakeRuntimePreparer,
                 FakeProcessManager::default(),
@@ -644,7 +639,7 @@ mod tests {
     async fn failed_resolution_converges_to_failed_and_stops_reporting_preparing() {
         let request_state = NodeRequestState::default();
         let machine = NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             FakeProcessManager::default(),
@@ -951,7 +946,7 @@ mod tests {
     #[tokio::test]
     async fn unsupported_local_model_stops_before_any_preparation_or_route_state() {
         let machine = NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             FakeProcessManager::default(),

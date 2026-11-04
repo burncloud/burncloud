@@ -1,53 +1,12 @@
 use async_trait::async_trait;
 
 use crate::{
-    AcceleratorKind, AcceleratorProfile, ArtifactPreparation, ArtifactPrepareError,
-    ArtifactVerificationStatus, Digest, HardwareProbe, HardwareProbeError, HardwareProfile,
-    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
-    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
-    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactVerificationStatus, Digest, HealthError,
+    HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle, ProcessManager,
+    ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
+    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 use url::Url;
-
-/// Deterministic fake used to assemble and test the Node skeleton before real
-/// hardware detection exists.
-#[derive(Debug, Clone)]
-pub struct FakeHardwareProbe {
-    profile: HardwareProfile,
-}
-
-impl Default for FakeHardwareProbe {
-    /// 创建包含固定硬件信息的伪硬件探测器。
-    fn default() -> Self {
-        Self {
-            profile: HardwareProfile {
-                cpu: "Fake CPU".to_owned(),
-                memory_bytes: 64 * 1024 * 1024 * 1024,
-                disk_available_bytes: 512 * 1024 * 1024 * 1024,
-                accelerators: vec![AcceleratorProfile {
-                    kind: AcceleratorKind::Nvidia,
-                    name: "Fake GPU".to_string(),
-                    memory_bytes: Some(24 * 1024 * 1024 * 1024),
-                }],
-            },
-        }
-    }
-}
-
-impl FakeHardwareProbe {
-    /// 使用指定的硬件描述创建伪硬件探测器。
-    pub fn new(profile: HardwareProfile) -> Self {
-        Self { profile }
-    }
-}
-
-#[async_trait]
-impl HardwareProbe for FakeHardwareProbe {
-    /// 返回预先配置的硬件描述，不访问真实系统资源。
-    async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError> {
-        Ok(self.profile.clone())
-    }
-}
 
 /// Deterministic fake artifact preparer. It performs no download or file I/O.
 #[derive(Debug, Clone, Default)]
