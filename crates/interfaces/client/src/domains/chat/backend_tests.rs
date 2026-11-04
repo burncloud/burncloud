@@ -19,41 +19,13 @@ fn backend_error(kind: ErrorKind, operation: Operation) -> ChatError {
 }
 
 #[test]
-fn stale_search_errors_and_results_do_not_replace_the_new_keyword() {
-    let mut state = ChatState::default();
-    state.set_model_query("old".into());
-    let (old, _) = state.begin_search();
-    state.set_model_query("new".into());
-    let (new, _) = state.begin_search();
-    state.finish_search(old, Ok(catalog()));
-    assert!(state.search_loading());
-    state.finish_search(
-        new,
-        Err(backend_error(ErrorKind::Timeout, Operation::Search)),
-    );
-    assert!(!state.search_loading());
-    assert!(state.search_error().is_some());
-    let (retry, _) = state.begin_search();
-    state.finish_search(retry, Ok(Vec::new()));
-    state.finish_search(
-        old,
-        Err(backend_error(ErrorKind::ExecutionFailed, Operation::Search)),
-    );
-    assert!(state.search_error().is_none());
-    assert_eq!(state.model_results().1, 0);
-}
-
-#[test]
 fn owned_model_names_and_unknown_dates_are_not_replaced_with_ids() {
     let mut state = ChatState::default();
     let mut models = catalog();
     models[0].name = "显示名称不同于 ID".into();
     models[0].updated_at = None;
     let id = models[0].id.clone();
-    let (request, _) = state.begin_search();
-    state.finish_search(request, Ok(models));
-    state.show_all_models();
-    assert_eq!(state.model_results().0.last().expect("未知时间末尾").id, id);
+    state.set_test_models(models);
     let selection = state.begin_selection(&id).expect("选择");
     state.finish_selection(selection, Ok(Vec::new()));
     assert_eq!(
@@ -61,6 +33,7 @@ fn owned_model_names_and_unknown_dates_are_not_replaced_with_ids() {
         "显示名称不同于 ID"
     );
     assert_eq!(state.selected_model_id(), Some(id.as_str()));
+    assert_eq!(state.selected_model().expect("已选模型").updated_at, None);
 }
 
 #[test]
@@ -545,16 +518,14 @@ fn changed_artifact_identity_invalidates_only_that_version_and_generation_uses_c
     state.finish_selection(selection, Ok(ready));
     model.variants[0].expected_sha256 =
         "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into();
-    let (search, _) = state.begin_search();
-    state.finish_search(search, Ok(vec![model.clone()]));
+    state.set_test_models(vec![model.clone()]);
     assert!(state.is_model_ready(MODEL));
     state.set_draft("不得使用旧摘要版本".into());
     let plan = state.begin_generation().expect("另一版本仍可用");
     assert_eq!(plan.request.prepared.variant.id, "q8");
     state.interrupt_generation();
     model.variants[1].expected_sha256 = model.variants[0].expected_sha256.clone();
-    let (search, _) = state.begin_search();
-    state.finish_search(search, Ok(vec![model]));
+    state.set_test_models(vec![model]);
     assert!(!state.is_model_ready(MODEL));
 }
 
@@ -589,8 +560,7 @@ fn reselecting_changed_model_snapshot_creates_a_new_preparation_card() {
     let mut model = state.selected_model().expect("模型");
     model.variants[0].expected_sha256 =
         "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into();
-    let (search, _) = state.begin_search();
-    state.finish_search(search, Ok(vec![model.clone()]));
+    state.set_test_models(vec![model.clone()]);
     assert!(!state.is_model_ready(MODEL));
     let selection = state.begin_selection(MODEL).expect("重新选择");
     state.finish_selection(selection, Ok(Vec::new()));

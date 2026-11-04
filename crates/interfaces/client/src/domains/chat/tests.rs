@@ -25,13 +25,8 @@ fn catalog() -> Vec<ChatModel> {
 }
 fn chat() -> ChatState {
     let mut state = ChatState::default();
-    query(&mut state, "");
+    state.set_test_models(catalog());
     state
-}
-fn query(state: &mut ChatState, keyword: &str) {
-    state.set_model_query(keyword.into());
-    let (id, query) = state.begin_search();
-    state.finish_search(id, immediate(LocalBackend.search(query)));
 }
 fn select(state: &mut ChatState, id: &str) -> bool {
     let Some(request) = state.begin_selection(id) else {
@@ -229,24 +224,6 @@ fn message_without_a_model_opens_search_and_preserves_draft() {
 }
 
 #[test]
-fn search_matches_names_ids_descriptions_and_trims_ascii_case() {
-    let mut state = chat();
-    for (query_text, id) in [
-        (" QWEN3:8B ", MODEL),
-        ("代码编写", "qwen2.5-coder:7b"),
-        ("日常问答", READY_MODEL),
-    ] {
-        query(&mut state, query_text);
-        let (models, total) = state.model_results();
-        assert_eq!(total, 1);
-        assert_eq!(models[0].id(), id);
-    }
-    query(&mut state, "不存在的模型");
-    assert_eq!(state.model_results(), (Vec::new(), 0));
-    assert_eq!(state.selected_model_id(), None);
-}
-
-#[test]
 fn model_and_hardware_display_copy_has_no_demo_labels() {
     let models = catalog();
     let mut labels: Vec<_> = models
@@ -272,28 +249,6 @@ fn model_and_hardware_display_copy_has_no_demo_labels() {
 }
 
 #[test]
-fn search_limits_to_ten_and_expands_all_in_sorted_order() {
-    let mut state = chat();
-    query(&mut state, "qwen");
-    let (models, total) = state.model_results();
-    assert_eq!(total, 12);
-    assert_eq!(models.len(), 10);
-    state.show_all_models();
-    assert!(state.showing_all_models());
-    let (models, total) = state.model_results();
-    assert_eq!(models.len(), total);
-    assert!(models
-        .windows(2)
-        .all(|pair| pair[0].updated_at > pair[1].updated_at
-            || (pair[0].updated_at == pair[1].updated_at && pair[0].id() < pair[1].id())));
-    query(&mut state, " QWEN ");
-    assert!(!state.showing_all_models());
-    assert_eq!(state.model_results().0.len(), 10);
-    query(&mut state, "   ");
-    assert_eq!(state.model_results().1, catalog().len());
-}
-
-#[test]
 fn selecting_unready_model_waits_and_repeated_selection_does_not_add_cards() {
     let mut state = selected_chat();
     let before = state.preparation().expect("待启动卡片").clone();
@@ -305,8 +260,6 @@ fn selecting_unready_model_waits_and_repeated_selection_does_not_add_cards() {
     assert_eq!(state.preparation(), Some(&before));
     assert_eq!(state.active_conversation().expect("会话").messages.len(), 1);
     assert!(!select(&mut state, "unknown"));
-    assert_eq!(state.selected_model_id(), Some(MODEL));
-    query(&mut state, "does-not-match");
     assert_eq!(state.selected_model_id(), Some(MODEL));
 }
 

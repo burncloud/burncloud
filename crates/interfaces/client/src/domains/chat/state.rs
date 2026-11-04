@@ -84,16 +84,10 @@ pub(super) struct ChatState {
     is_generating: bool,
     sidebar_collapsed: bool,
     model_menu_open: bool,
-    model_query: String,
-    show_all_models: bool,
     generation_id: u64,
     preparation_id: u64,
     next_conversation_number: u64,
     models: Vec<ChatModel>,
-    search_results: Vec<ChatModel>,
-    search_id: u64,
-    search_loading: bool,
-    search_error: Option<ChatError>,
     selection_id: u64,
     status_loading: bool,
     status_error: Option<ChatError>,
@@ -117,16 +111,10 @@ impl Default for ChatState {
             is_generating: false,
             sidebar_collapsed: false,
             model_menu_open: false,
-            model_query: String::new(),
-            show_all_models: false,
             generation_id: 0,
             preparation_id: 0,
             next_conversation_number: 2,
             models: Vec::new(),
-            search_results: Vec::new(),
-            search_id: 0,
-            search_loading: false,
-            search_error: None,
             selection_id: 0,
             status_loading: false,
             status_error: None,
@@ -176,24 +164,6 @@ impl ChatState {
         self.model_menu_open
     }
 
-    /// 返回搜索框内容，不修改当前选中模型。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn model_query(&self) -> &str {
-        &self.model_query
-    }
-
-    /// 返回是否展开全部匹配结果。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn showing_all_models(&self) -> bool {
-        self.show_all_models
-    }
-
     /// 当前只有一个初始化任务；等待选版本也锁定会话，直到继续或关闭。
     pub(super) fn is_busy(&self) -> bool {
         self.is_generating
@@ -211,84 +181,6 @@ impl ChatState {
                     .iter()
                     .any(|model| model.id == model_id && model.variants.contains(&ready.variant))
         })
-    }
-    /// 只排序和截断接口返回的结果，不生成目录。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn model_results(&self) -> (Vec<ChatModel>, usize) {
-        let mut models = self.search_results.clone();
-        models.sort_by(|a, b| {
-            b.updated_at
-                .cmp(&a.updated_at)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        let total = models.len();
-        if !self.show_all_models {
-            models.truncate(10);
-        }
-        (models, total)
-    }
-    /// 为搜索分配编号，旧关键词的结果不能覆盖当前弹层。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn begin_search(&mut self) -> (u64, String) {
-        self.search_id = self.search_id.wrapping_add(1);
-        self.search_loading = true;
-        self.search_error = None;
-        self.search_results.clear();
-        (self.search_id, self.model_query.clone())
-    }
-    /// 只有最新请求可写入结果；模型缓存用于切换聊天，不是全局注册器。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn finish_search(&mut self, id: u64, result: Result<Vec<ChatModel>, ChatError>) {
-        if id != self.search_id || !self.search_loading {
-            return;
-        }
-        self.search_loading = false;
-        match result {
-            Ok(models) => {
-                if models.iter().any(|model| model.id.trim().is_empty()) {
-                    self.search_error = Some(ChatError {
-                        kind: ErrorKind::InvalidResult,
-                        operation: Operation::Search,
-                        reason: "接口结果包含空模型 ID".into(),
-                    });
-                    return;
-                }
-                for model in &models {
-                    if let Some(existing) =
-                        self.models.iter_mut().find(|entry| entry.id == model.id)
-                    {
-                        *existing = model.clone();
-                    } else {
-                        self.models.push(model.clone());
-                    }
-                }
-                self.search_results = models;
-            }
-            Err(error) => self.search_error = Some(error),
-        }
-    }
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn search_loading(&self) -> bool {
-        self.search_loading
-    }
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn search_error(&self) -> Option<&ChatError> {
-        self.search_error.as_ref()
     }
     pub(super) fn status_loading(&self) -> bool {
         self.status_loading
@@ -349,30 +241,6 @@ impl ChatState {
             }
             Err(error) => self.status_error = Some(error),
         }
-    }
-
-    /// 改关键词时恢复默认十项，不隐式替换选中的模型。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn set_model_query(&mut self, query: String) {
-        if !self.is_busy() {
-            self.model_query = query;
-            self.show_all_models = false;
-            self.search_id = self.search_id.wrapping_add(1);
-            self.search_loading = false;
-            self.search_results.clear();
-        }
-    }
-
-    /// 在同一弹层展开全部结果。
-    #[allow(
-        dead_code,
-        reason = "保留既有工件搜索状态契约与回归测试，目录浏览状态由选择器持有"
-    )]
-    pub(super) fn show_all_models(&mut self) {
-        self.show_all_models = true;
     }
 
     pub(super) fn set_draft(&mut self, draft: String) {
@@ -609,7 +477,6 @@ impl ChatState {
     pub(super) fn toggle_model_menu(&mut self) {
         if !self.is_busy() {
             self.model_menu_open = !self.model_menu_open;
-            self.show_all_models = false;
         }
     }
 
@@ -1177,3 +1044,7 @@ impl ChatState {
             .find(|conversation| conversation.id == id)
     }
 }
+
+#[cfg(test)]
+#[path = "state_test_support.rs"]
+mod test_support;

@@ -552,29 +552,49 @@ async fn catalog_status_failure_keeps_chat_model_and_allows_retry() {
 }
 #[tokio::test]
 async fn catalog_search_failure_retry_and_close_do_not_change_chat_model() {
-    let service = CatalogServer::start("available", true, false).await;
-    let backend = Rc::new(ControlledBackend::default());
-    let mut ui = Ui::catalog(backend.clone(), service.client.clone());
-    ui.click("chat-model-trigger");
-    ui.wait_for(|probe| probe.text.contains("模型服务请求失败"))
-        .await;
-    ui.label("重试模型查询");
-    ui.wait_for(|probe| probe.text.contains("测试型号")).await;
-    ui.click("chat-model-option");
-    // 行内出现操作即表示状态已返回，预览仍不能提交聊天模型。
-    ui.wait_for(|probe| {
-        probe.attributes.values().any(|attrs| {
-            attrs
-                .get("aria-label")
-                .is_some_and(|label| label == "使用此版本")
+    for has_selected_model in [false, true] {
+        let service = CatalogServer::start("available", true, false).await;
+        let backend = Rc::new(ControlledBackend::default());
+        let mut state = if has_selected_model {
+            selected_chat()
+        } else {
+            chat()
+        };
+        state.set_draft("未提交选择".into());
+        let mut ui = Ui::mount(
+            VirtualDom::new(super::super::super::ChatHome)
+                .with_root_context(BackendHandle(backend.clone()))
+                .with_root_context(service.client.clone())
+                .with_root_context(state),
+        );
+        ui.click("chat-model-trigger");
+        ui.wait_for(|probe| probe.text.contains("模型服务请求失败"))
+            .await;
+        ui.label("重试模型查询");
+        ui.wait_for(|probe| probe.text.contains("测试型号")).await;
+        ui.click("chat-model-option");
+        // 行内出现操作即表示状态已返回，预览仍不能提交聊天模型。
+        ui.wait_for(|probe| {
+            probe.attributes.values().any(|attrs| {
+                attrs
+                    .get("aria-label")
+                    .is_some_and(|label| label == "使用此版本")
+            })
         })
-    })
-    .await;
-    ui.label("关闭模型菜单");
-    ui.input("输入消息或指令", "未提交选择");
-    let input = ui.probe.find("aria-label", "输入消息或指令", "input");
-    assert!(!ui.probe.attributes[&input.0]["placeholder"].contains("测试型号"));
-    assert!(backend.calls.borrow().is_empty());
+        .await;
+        ui.label("关闭模型菜单");
+        let input = ui.probe.find("aria-label", "输入消息或指令", "input");
+        let attrs = &ui.probe.attributes[&input.0];
+        let expected = if has_selected_model {
+            MODEL
+        } else {
+            "尚未选择"
+        };
+        assert!(attrs["placeholder"].contains(expected));
+        assert!(!attrs["placeholder"].contains("测试型号"));
+        assert_eq!(attrs["value"], "未提交选择");
+        assert!(backend.calls.borrow().is_empty());
+    }
 }
 #[tokio::test]
 async fn catalog_available_uses_version_but_does_not_fake_ready_credentials() {

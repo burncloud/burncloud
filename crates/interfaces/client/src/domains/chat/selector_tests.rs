@@ -43,18 +43,55 @@ fn stale_search_results_and_errors_are_ignored() {
         ..Default::default()
     };
     let old = state.begin_list();
-    state.query.clear();
+    state.query = "Qwen".into();
     let current = state.begin_list();
     assert!(state.finish_list(old, Err("迟到错误".into())).is_none());
     assert!(state.finish_list(old, Ok(page(&["Llama"], true))).is_none());
-    assert!(state.models.is_empty() && state.feedback.is_none());
-    state.query = "Qwen".into();
+    assert!(state.loading && state.models.is_empty() && state.feedback.is_none());
     assert!(state
-        .finish_list(current, Ok(page(&["Qwen3-8B"], true)))
+        .finish_list(current, Err("当前请求失败".into()))
+        .is_none());
+    assert!(!state.loading);
+    assert_eq!(state.feedback.as_deref(), Some("当前请求失败"));
+
+    let retry = state.begin_list();
+    assert!(state.loading && state.feedback.is_none());
+    assert!(state
+        .finish_list(current, Ok(page(&["Old-Qwen"], true)))
+        .is_none());
+    assert!(state.models.is_empty());
+    assert!(state
+        .finish_list(retry, Ok(page(&["Qwen3-8B"], true)))
+        .is_none());
+    assert!(state
+        .finish_list(current, Err("重试后的迟到错误".into()))
         .is_none());
     assert_eq!(state.models, vec![model("Qwen3-8B")]);
-    assert!(!state.loading);
+    assert!(!state.loading && state.feedback.is_none());
 }
+
+#[test]
+fn catalog_snapshots_keep_all_results_in_server_order() {
+    let names: Vec<_> = (0..18)
+        .rev()
+        .map(|index| format!("Model-{index:02}"))
+        .collect();
+    let labels: Vec<_> = names.iter().map(String::as_str).collect();
+    let mut picker = PickerState::default();
+    let id = picker.begin_list();
+    assert!(picker.finish_list(id, Ok(page(&labels, true))).is_none());
+    assert_eq!(picker.models.len(), 18);
+    assert_eq!(
+        picker
+            .models
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>(),
+        labels
+    );
+    assert!(!picker.loading);
+}
+
 #[test]
 fn snapshots_replace_results_and_truncated_stream_reports_failure() {
     let mut state = PickerState {

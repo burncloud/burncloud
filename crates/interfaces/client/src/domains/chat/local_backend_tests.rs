@@ -44,3 +44,19 @@ fn local_catalog_contract_has_artifact_identity_and_one_resource_failure_sample(
         }
     }
 }
+
+#[tokio::test]
+async fn local_search_matches_names_ids_descriptions_and_trims_ascii_case() {
+    for (query, expected) in [
+        (" QWEN3:8B ", Some("qwen3:8b")),
+        ("代码编写", Some("qwen2.5-coder:7b")),
+        ("日常问答", Some("llama3.2:1b")),
+        ("不存在的模型", None),
+    ] {
+        let models = LocalBackend.search(query.into()).await.expect("本地搜索");
+        assert_eq!(models.len(), usize::from(expected.is_some()));
+        assert_eq!(models.first().map(ChatModel::id), expected);
+    }
+    let models = LocalBackend.search("   ".into()).await.expect("空查询");
+    assert_eq!(models, catalog());
+}
