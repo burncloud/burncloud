@@ -161,3 +161,53 @@ async fn test_unified_gateway_routing() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn model_selection_shares_gateway_port_with_or_without_liveview() -> anyhow::Result<()> {
+    configure_gateway_env();
+    for enable_liveview in [false, true] {
+        let db = test_utils::make_isolated_db().await;
+        let base = spawn_gateway(
+            db,
+            test_utils::test_jwt_secret(),
+            test_utils::test_internal_secret(),
+            enable_liveview,
+        )
+        .await?;
+        let client = Client::new();
+        await_gateway_ready(&client, &base).await?;
+        let response = client
+            .get(format!("{base}/api/models/presets"))
+            .send()
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers()["content-type"]
+            .to_str()?
+            .starts_with("application/json"));
+        let presets: Value = response.json().await?;
+        assert_eq!(presets.as_array().expect("预置列表").len(), 18);
+        assert_eq!(presets[0]["name"], "DeepSeek V4.1 Flash");
+        assert_eq!(
+            client.get(format!("{base}/health")).send().await?.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            client
+                .get(format!("{base}/api/models/search?q=%20"))
+                .send()
+                .await?
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        if enable_liveview {
+            assert!(client
+                .get(format!("{base}/"))
+                .send()
+                .await?
+                .text()
+                .await?
+                .contains("<!doctype html>"));
+        }
+    }
+    Ok(())
+}

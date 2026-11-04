@@ -37,6 +37,40 @@ The process entry is `crates/interfaces/cli/src/main.rs`.
 The router supports both native passthrough and request/response conversion paths. Passthrough is conditional; do not assume every request body is opaque. Provider/adaptor selection can also be dynamic at runtime.
 
 For the progressive user-action → End-to-End Flow → ICFG → Source view, use the [Runtime Atlas](https://burncloud.github.io/).
+### UI technical documentation
+
+- [BurnCloud Chat 首页对齐技术书](docs/burncloud-chat-home-technical-book.md) — 当前 ChatHome 功能、状态契约、测试与真实能力边界。
+- [ChatHome 接口文档](docs/burncloud-chat-home-api.md) — 五个模块内部 Rust 异步操作、输入输出、事件顺序、错误与取消契约。
+
+ChatHome（`/`、`/home`）提供两个紧凑功能区：模型搜索弹层和聊天内初始化卡片。
+
+- 首次为空白会话；原聊天弹层加载 v0.2 的 18 个预置模型及绑定仓库。支持任意关键词搜索、刷新与重试，不再提供系列二级列表或分页。预览、搜索和关闭弹层不会更改当前聊天模型。
+- 模型选择并入 `burncloud-server`，与主服务共用进程、端口和生命周期。客户端优先读取 `BURNCLOUD_SERVER_URL`，未配置时使用主程序的 `HOST`、`PORT`（缺省 `127.0.0.1:3000`；通配监听地址转换为本机回环地址），HTTP 超时 45 秒。无需启动额外模型服务。
+- 主服务提供 `GET /api/models/presets`、`GET /api/models/search?q=...`、`GET /api/models/status`。搜索以 NDJSON 返回累计快照：ModelScope 与 hf-mirror 并发查询，国内来源超时才启动一次 Hugging Face 回退；搜索超时 8 秒，资源页面探测超时 10 秒。相同版本按 ModelScope、hf-mirror、Hugging Face 优先级原位替换。
+- 状态接口一次返回仓库、来源、修订号和 `resource_url`，不再二次查询资源。当前未接入真实本地状态，资源 GET 200 显示“下载”，其他结果显示“正在开发中”；不虚构 `available` 或 `preparing`。请求失败与截断流明确提示，不使用模拟目录兜底。
+- 点击“下载”仅提交选择并进入现有检测卡片，不先查询工件。**硬件检测仍是模拟数据**；缺少真实工件解析与部署能力时明确停止，不填造摘要、路径、进度、部署成功或运行凭据。
+- `ChatBackend` 原五方法契约及已有底层文件下载、校验代码保留。会话、推理强度、复制、流式生成与停止行为不扩展。
+- 新查询、切换选项与关闭弹层会取消已替代的 HTTP 任务；请求编号拒绝迟到结果。流式列表中选中资源来源改变时重新查询状态，不能沿用旧资源凭据。初始化与生成任务仍由 ChatHome 持有，失败保留草稿。
+- 无新增 crate、监听器、数据库或独立页面。只在服务端补用已有 workspace 的 `futures-util` 依赖；默认支持原生桌面和 LiveView，不新增 Web/WASM 跨域适配，不探测浏览器访问者的硬件。
+
+直接启动主服务即可使用模型选择：
+
+```powershell
+cargo run -- server
+# 可选：独立桌面客户端连接远程 BurnCloud 主服务时配置
+# $env:BURNCLOUD_SERVER_URL = 'http://gateway.example:3000'
+```
+
+验证：
+
+```powershell
+cargo fmt -p burncloud-client -p burncloud-server -- --check
+cargo clippy -p burncloud-client --all-targets --no-default-features --features liveview -- -D warnings
+cargo clippy -p burncloud-server --all-targets -- -D warnings
+cargo test -p burncloud-client --no-default-features --features liveview
+cargo test -p burncloud-client
+cargo test -p burncloud-server
+```
 
 ## Getting started
 

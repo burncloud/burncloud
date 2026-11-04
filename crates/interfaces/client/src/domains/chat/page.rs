@@ -1,40 +1,82 @@
 //! Chat 首页页面组合与交互事件。
 
 use super::{
-    model::{catalog, ChatMessage, ChatModel, MessageRole},
-    state::{ChatState, GenerationPlan},
+    backend::{ChatBackend, LocalBackend},
+    catalog,
+    model::{
+        gib, resource_label, ChatMessage, ChatModel, HardwareEvent, MessageRole, Preparation,
+        PreparationStage,
+    },
+    selector::CatalogPicker,
+    state::{ChatAction, ChatState, GenerationPlan, ReasoningEffort},
 };
-use crate::{
-    i18n::Locale,
-    shared::ui::{GlobalStyle, Icon, IconName, Logo},
-};
+use crate::shared::ui::{GlobalStyle, Icon, IconName, Logo};
+use dioxus::core::{Runtime, Task};
 use dioxus::prelude::*;
 use keyboard_types::{Key, Modifiers};
+use std::rc::Rc;
 
-/// 渲染 BurnCloud 根路径下的 Chat 工作台。
+/// 只在当前组件树中注入，不建立全局服务注册器。
+#[derive(Clone)]
+pub(super) struct BackendHandle(pub(super) Rc<dyn ChatBackend>);
+
+#[derive(Clone, Copy)]
+struct GenerationTask(Signal<Option<Task>>);
+
+#[derive(Clone, Copy)]
+struct PreparationTask(Signal<Option<Task>>);
+
+#[derive(Clone, Copy)]
+struct ChatScope(ScopeId);
+
+const LIVEVIEW_ENTER_PREVENT_DEFAULT: &str =
+    "if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); }";
+
+/// 渲染带模型搜索和初始化卡片的 Chat 工作台。
 ///
 /// # Examples
 ///
-/// `ChatHome` 由 `/` 和 `/home` 路由挂载，页面状态只存在于当前客户端会话中。
+/// ```
+/// use burncloud_client::domains::chat::ChatHome;
+/// let _page: fn() -> dioxus::prelude::Element = ChatHome;
+/// ```
 ///
 /// # Notes
 ///
-/// 页面只使用确定性的本地模拟回复，不调用远端推理接口；模型、会话、语言和
-/// 推理参数均只保存在当前浏览器实例的内存状态中。
+/// `/` 和 `/home` 使用同一组件。目录来自主服务的模型选择接口，与网关共用监听端口。
+/// 检测仍为本地模拟；目录版本按工件清单真实下载并校验 SHA-256 后停止，不执行部署或推理。
+/// 状态只存在于当前客户端会话，目录可访问不代表已部署。
 #[component]
 pub fn ChatHome() -> Element {
-    let mut locale = use_context::<Signal<Locale>>();
-    let mut state = use_signal(ChatState::default);
-    state.with_mut(ChatState::ensure_selected_model);
-    let mut language_menu_open = use_signal(|| false);
+    use_context_provider(|| {
+        try_consume_context::<BackendHandle>()
+            .unwrap_or_else(|| BackendHandle(Rc::new(LocalBackend)))
+    });
+    use_context_provider(|| ChatScope(Runtime::current().current_scope_id()));
+    let mut state = use_signal(|| try_consume_context::<ChatState>().unwrap_or_default());
+    let task = use_signal(|| None::<Task>);
+    use_context_provider(|| GenerationTask(task));
+    let mut preparation_task = use_signal(|| None::<Task>);
+    use_context_provider(|| PreparationTask(preparation_task));
+    use_effect(move || {
+        let running = state
+            .read()
+            .preparation()
+            .is_some_and(|p| p.stage.is_running());
+        if !running && preparation_task.peek().is_some() {
+            let handle = preparation_task.take();
+            if let Some(handle) = handle {
+                handle.cancel();
+            }
+        }
+    });
     let snapshot = state.read().clone();
-    let selected_model = snapshot.selected_model();
     let sidebar_class = if snapshot.sidebar_collapsed() {
         "chat-sidebar collapsed"
     } else {
         "chat-sidebar open"
     };
-    let current_locale = locale();
+
     use_effect(move || {
         // 读取信号建立响应式依赖，后续状态变化时重新执行自动滚动。
         let _state_snapshot = state.read();
@@ -56,7 +98,7 @@ pub fn ChatHome() -> Element {
                 match event.key() {
                     Key::Escape => {
                         state.with_mut(ChatState::close_menus);
-                        language_menu_open.set(false);
+                        focus_element(".chat-model-trigger");
                     }
                     Key::Character(character)
                         if character.eq_ignore_ascii_case("n")
@@ -64,7 +106,7 @@ pub fn ChatHome() -> Element {
                                 || modifiers.contains(Modifiers::META)) =>
                     {
                         event.prevent_default();
-                        if !state.read().is_generating() {
+                        if !state.read().is_busy() {
                             new_conversation_from_ui(state);
                         }
                     }
@@ -85,17 +127,27 @@ pub fn ChatHome() -> Element {
                         span { class: "chat-brand-logo", Logo { size: 20 } }
                         strong { "BurnCloud" }
                     }
-                    button {
-                        class: "chat-sidebar-new",
-                        r#type: "button",
-                        aria_label: "新建会话",
-                        disabled: snapshot.is_generating(),
-                        onclick: move |_| new_conversation_from_ui(state),
-                        Icon { name: IconName::Plus, size: 16 }
+                    if !snapshot.sidebar_collapsed() {
+                        button {
+                            class: "chat-icon-button",
+                            r#type: "button",
+                            aria_label: "折叠侧边栏",
+                            aria_pressed: "false",
+                            onclick: move |_| state.with_mut(ChatState::toggle_sidebar),
+                            Icon { name: IconName::PanelLeftClose, size: 16 }
+                        }
                     }
                 }
-                nav { class: "chat-conversation-list", aria_label: "近期对话记录",
-                    div { class: "chat-conversation-heading", "近期对话记录" }
+                nav { class: "chat-conversation-list", aria_label: "会话列表",
+                    button {
+                        class: "chat-conversation-new",
+                        r#type: "button",
+                        aria_label: "新建会话",
+                        disabled: snapshot.is_busy(),
+                        onclick: move |_| new_conversation_from_ui(state),
+                        Icon { name: IconName::Plus, size: 14 }
+                        span { "新会话" }
+                    }
                     for conversation in snapshot.conversations().iter() {
                         {
                             let conversation_id = conversation.id.clone();
@@ -108,7 +160,7 @@ pub fn ChatHome() -> Element {
                                     button {
                                         class: "chat-conversation-select",
                                         r#type: "button",
-                                        disabled: snapshot.is_generating(),
+                                        disabled: snapshot.is_busy(),
                                         aria_current: if active { "page" } else { "false" },
                                         onclick: move |_| {
                                             state.with_mut(|value| value.select_conversation(&conversation_id));
@@ -119,7 +171,7 @@ pub fn ChatHome() -> Element {
                                     button {
                                         class: "chat-conversation-delete",
                                         r#type: "button",
-                                        disabled: snapshot.is_generating(),
+                                        disabled: snapshot.is_busy(),
                                         aria_label: "删除会话",
                                         onclick: move |event| {
                                             event.stop_propagation();
@@ -132,92 +184,15 @@ pub fn ChatHome() -> Element {
                         }
                     }
                 }
-                div { class: "chat-sidebar-bottom",
-                    div { class: "chat-sidebar-footer",
-                        span { class: "chat-version", "BurnCloud v2.4" }
-                        div { class: "chat-language-wrap",
-                            button {
-                                id: "language-switcher-button",
-                                class: "chat-language-button",
-                                r#type: "button",
-                                title: "选择语言",
-                                aria_haspopup: "menu",
-                                aria_expanded: language_menu_open(),
-                                onclick: move |_| language_menu_open.set(!language_menu_open()),
-                                Icon { name: IconName::Globe, size: 14 }
-                                span { class: "chat-language-copy",
-                                    span { class: "chat-language-flag", {current_locale.flag()} }
-                                    span { class: "chat-language-native", {current_locale.native_name()} }
-                                }
-                                Icon { name: IconName::ChevronDown, size: 14 }
-                            }
-                            if language_menu_open() {
-                                div { class: "chat-language-menu", role: "menu", aria_label: "语言选择",
-                                    div { class: "chat-language-menu-title", "选择语言" }
-                                    for language in Locale::ALL {
-                                        button {
-                                            id: match language {
-                                                Locale::Zh => "lang-opt-zh",
-                                                Locale::En => "lang-opt-en",
-                                                Locale::ZhTw => "lang-opt-zh-TW",
-                                                Locale::Ja => "lang-opt-ja",
-                                            },
-                                            class: if language == current_locale { "chat-language-option selected" } else { "chat-language-option" },
-                                            r#type: "button",
-                                            role: "menuitem",
-                                            onclick: move |_| {
-                                                locale.set(language);
-                                                language_menu_open.set(false);
-                                                let script = format!(
-                                                    "localStorage.setItem('burncloud_selected_language', '{}'); document.documentElement.lang = '{}';",
-                                                    language.storage_code(),
-                                                    language.browser_code()
-                                                );
-                                                spawn(async move {
-                                                    if let Err(error) = dioxus::document::eval(&script).await {
-                                                        tracing::warn!(%error, "语言偏好写入浏览器失败");
-                                                    }
-                                                });
-                                            },
-                                            span { class: "chat-language-option-flag", {language.flag()} }
-                                            span { class: "chat-language-option-copy",
-                                                strong { {language.native_name()} }
-                                                small { {language.english_name()} }
-                                            }
-                                            if language == current_locale {
-                                                Icon { name: IconName::Check, size: 14 }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
             main { class: "chat-main",
-                header { class: "chat-toolbar",
-                    div { class: "chat-toolbar-left",
-                        button {
-                            class: "chat-icon-button",
-                            r#type: "button",
-                            aria_label: if snapshot.sidebar_collapsed() { "展开侧边栏" } else { "折叠侧边栏" },
-                            aria_pressed: snapshot.sidebar_collapsed().to_string(),
-                            onclick: move |_| state.with_mut(ChatState::toggle_sidebar),
-                            Icon { name: IconName::PanelLeftClose, size: 16 }
-                        }
-                        ModelSelector { state, selected_model }
-                    }
-                    div { class: "chat-toolbar-actions",
-                        button {
-                            class: "chat-toolbar-new",
-                            r#type: "button",
-                            aria_label: "新建会话",
-                            disabled: snapshot.is_generating(),
-                            onclick: move |_| new_conversation_from_ui(state),
-                            Icon { name: IconName::Plus, size: 16 }
-                        }
-                        a { class: "chat-workbench-link", href: "/buyer", "进入工作台" Icon { name: IconName::ArrowRight, size: 14 } }
+                if snapshot.sidebar_collapsed() {
+                    button {
+                        class: "chat-collapsed-toggle",
+                        r#type: "button",
+                        aria_label: "展开侧边栏",
+                        onclick: move |_| state.with_mut(ChatState::toggle_sidebar),
+                        Icon { name: IconName::PanelLeftClose, size: 16 }
                     }
                 }
                 section { class: "chat-content",
@@ -258,45 +233,53 @@ pub fn ChatHome() -> Element {
 fn ModelSelector(state: Signal<ChatState>, selected_model: Option<ChatModel>) -> Element {
     let snapshot = state.read().clone();
     let model_name = selected_model
-        .map(|model| model.model.name)
-        .unwrap_or("暂无可用模型");
-    let context_window = selected_model
-        .map(|model| model.model.context_window)
-        .unwrap_or("请先配置在线模型");
+        .as_ref()
+        .map(|model| model.name.as_str())
+        .unwrap_or("请输入模型名称");
+    let ready = selected_model
+        .as_ref()
+        .is_some_and(|model| snapshot.is_model_ready(model.id()));
+    let reasoning_effort = snapshot.reasoning_effort();
+    let menu_open = use_memo(move || state.read().model_menu_open());
+    use_effect(move || {
+        if menu_open() {
+            focus_element(".chat-model-search-input");
+        }
+    });
 
     rsx! {
         div { class: "chat-model-selector",
             button {
-                class: "chat-model-trigger",
-                r#type: "button",
-                aria_haspopup: "listbox",
-                aria_expanded: snapshot.model_menu_open(),
-                disabled: snapshot.is_generating(),
+                class: "chat-model-trigger", r#type: "button",
+                aria_haspopup: "dialog", aria_expanded: snapshot.model_menu_open(),
+                disabled: snapshot.is_busy(),
                 onclick: move |_| state.with_mut(ChatState::toggle_model_menu),
-                span { class: "chat-online-dot" }
+                span { class: if ready { "chat-online-dot" } else { "chat-online-dot pending" } }
                 strong { {model_name} }
-                span { class: "chat-model-context", "(" {context_window} ")" }
                 Icon { name: IconName::ChevronDown, size: 13 }
             }
             if snapshot.model_menu_open() {
                 button {
-                    class: "chat-model-backdrop",
-                    r#type: "button",
-                    aria_label: "关闭模型菜单",
-                    onclick: move |_| state.with_mut(ChatState::close_menus),
+                    class: "chat-model-backdrop", r#type: "button", aria_label: "关闭模型菜单",
+                    onclick: move |_| { state.with_mut(ChatState::close_menus); focus_element(".chat-model-trigger"); },
                 }
-                div { class: "chat-model-menu", role: "dialog", aria_label: "模型选择",
-                    div { class: "chat-model-menu-heading",
-                        span { "可用开源与机密模型" }
-                        span { "直接直通底价" }
-                    }
-                    div { class: "chat-model-options", role: "listbox",
-                        for candidate in catalog() {
-                            ModelOption {
-                                key: "{candidate.id()}",
-                                candidate,
-                                selected_id: snapshot.selected_model_id().to_string(),
-                                state,
+                div { class: "chat-model-menu chat-model-search", role: "dialog", aria_label: "模型搜索与推理强度",
+                    CatalogPicker { state, on_confirm: move |run_id| {
+                        if let Some(run_id) = run_id { spawn_preparation(state, run_id); }
+                        focus_element(".chat-composer textarea");
+                    } }
+                    div { class: "chat-reasoning-heading", "推理强度" span { {reasoning_effort.label()} } }
+                    div { class: "chat-reasoning-slider", role: "radiogroup", aria_label: "推理强度",
+                        div { class: "chat-reasoning-track", aria_hidden: "true" }
+                        div { class: "chat-reasoning-fill", style: format!("width: {}%;", reasoning_effort.position_percent()), aria_hidden: "true" }
+                        for effort in ReasoningEffort::ALL {
+                            button {
+                                key: "{effort.label()}",
+                                class: if effort == reasoning_effort { "chat-reasoning-stop selected" } else { "chat-reasoning-stop" },
+                                r#type: "button", role: "radio", aria_checked: effort == reasoning_effort,
+                                aria_label: format!("推理强度：{}", effort.label()), title: effort.label(),
+                                style: format!("left: {}%;", effort.position_percent()),
+                                onclick: move |_| state.with_mut(|value| value.set_reasoning_effort(effort)),
                             }
                         }
                     }
@@ -307,32 +290,174 @@ fn ModelSelector(state: Signal<ChatState>, selected_model: Option<ChatModel>) ->
 }
 
 #[component]
-fn ModelOption(candidate: ChatModel, selected_id: String, state: Signal<ChatState>) -> Element {
-    let selected = selected_id == candidate.id();
-    let model_id = candidate.id().to_string();
-    let price = format_price(candidate.model.input_price_per_million);
+fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Element {
+    let run_id = preparation.run_id;
+    let stage = preparation.stage;
+    let active = state
+        .read()
+        .preparation()
+        .is_some_and(|current| current.run_id == run_id);
+    let ready_elsewhere = state.read().is_model_ready(preparation.model.id())
+        && matches!(
+            stage,
+            PreparationStage::AwaitingStart
+                | PreparationStage::Cancelled
+                | PreparationStage::Failed
+        );
+    let hardware = &preparation.hardware;
+    let checks = [
+        (
+            "CPU",
+            hardware.cpu.clone().unwrap_or_else(|| "未知".into()),
+            preparation
+                .hardware_events
+                .iter()
+                .any(|e| matches!(e, HardwareEvent::Cpu(_))),
+        ),
+        (
+            "GPU",
+            format!(
+                "{} · 单卡最大可用显存 {}",
+                hardware
+                    .gpus
+                    .as_ref()
+                    .map(|gpus| gpus
+                        .iter()
+                        .map(|gpu| gpu.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("、"))
+                    .unwrap_or_else(|| "未知".into()),
+                resource_label(hardware.max_vram())
+            ),
+            preparation
+                .hardware_events
+                .iter()
+                .any(|e| matches!(e, HardwareEvent::Gpus(_))),
+        ),
+        (
+            "内存",
+            format!("可用 {}", resource_label(hardware.ram_bytes)),
+            preparation
+                .hardware_events
+                .iter()
+                .any(|e| matches!(e, HardwareEvent::Memory(_))),
+        ),
+        (
+            "磁盘",
+            format!("可用 {}", resource_label(hardware.disk_bytes)),
+            preparation
+                .hardware_events
+                .iter()
+                .any(|e| matches!(e, HardwareEvent::Disk(_))),
+        ),
+    ];
+    let variant_name = preparation
+        .variant()
+        .map(|variant| variant.quantization.clone());
+    let expected_digest = preparation
+        .variant()
+        .map(|variant| variant.expected_sha256.clone())
+        .unwrap_or_default();
+    let progress = preparation.progress();
+    let variants: Vec<_> = preparation
+        .model
+        .variants
+        .iter()
+        .filter(|variant| variant.fits(hardware))
+        .cloned()
+        .collect();
+    let platform = hardware
+        .platform
+        .map(|platform| platform.label())
+        .unwrap_or("待检测");
 
     rsx! {
-        button {
-            class: if selected { "chat-model-option selected" } else { "chat-model-option" },
-            r#type: "button",
-            role: "option",
-            aria_selected: selected,
-            disabled: state.read().is_generating(),
-            onclick: move |_| {
-                if state.with_mut(|value| value.set_model(&model_id)) {
-                    state.with_mut(ChatState::close_menus);
-                }
-            },
-            div { class: "chat-model-option-head",
-                strong { {candidate.model.name} }
-                span { "${price}/M" }
+        article { class: "chat-preparation", aria_label: "模型初始化流程",
+            header {
+                strong { {preparation.model.name.clone()} }
+                span { class: "chat-platform-badge", {platform} }
             }
-            p { {candidate.model.tagline} }
-            div { class: "chat-model-option-meta",
-                span { {format!("{} tok/s", candidate.model.throughput_tokens_per_sec)} }
-                span { "•" }
-                span { {format!("p95 {}ms", candidate.model.p95_latency_ms)} }
+            p { class: "chat-preparation-status", role: "status", aria_live: "polite",
+                if ready_elsewhere { "模型已在本次客户端会话就绪；以下为先前流程记录。" } else { {stage.label()} }
+            }
+            if let Some(selection) = preparation.model.catalog_selection.as_ref() {
+                p { class: "chat-preparation-note", "{selection.name} · {selection.version.source} · {selection.version.model} · {selection.version.revision}" }
+                p { class: "chat-preparation-note", "当前硬件检测使用模拟数据，不代表本机真实配置；工件下载并校验后停止，尚未接入部署。" }
+            }
+            if !preparation.collapsed {
+                if stage != PreparationStage::AwaitingStart {
+                    dl { class: "chat-hardware",
+                        for (name, detail, checked) in checks.iter() {
+                            div {
+                                dt { {name.to_string()} }
+                                dd { {detail.clone()} }
+                                span { class: if *checked { "chat-check-complete" } else { "chat-check-pending" },
+                                    if *checked { "已完成" } else { "待检测" }
+                                }
+                            }
+                        }
+                    }
+                }
+                if matches!(stage, PreparationStage::Detecting | PreparationStage::Downloading) {
+                    div { class: "chat-preparation-progress",
+                        if let Some(percent) = progress {
+                            progress { max: 100, value: percent, aria_label: format!("进度：{}", stage.label()) }
+                            span { "{percent}%" }
+                        } else { progress { aria_label: "下载进行中" } span { "进行中" } }
+                    }
+                }
+                if stage == PreparationStage::SelectingVariant {
+                    div { class: "chat-variant-list", aria_label: "符合硬件要求的量化版本",
+                        for variant in variants {
+                            button {
+                                class: "chat-variant", r#type: "button", disabled: !active,
+                                onclick: move |_| {
+                                    if state.with_mut(|value| value.choose_variant(run_id, &variant.id)) { spawn_preparation(state, run_id); }
+                                },
+                                span {
+                                    strong { {variant.quantization} }
+                                    small { "最低内存 {gib(variant.ram_bytes)} GiB · 显存 {gib(variant.vram_bytes)} GiB · 磁盘 {gib(variant.disk_bytes)} GiB" }
+                                }
+                                span { "下载此版本" }
+                            }
+                        }
+                    }
+                } else if let Some(variant_name) = variant_name {
+                    p { class: "chat-preparation-note", "量化版本：{variant_name}" }
+                }
+                if stage == PreparationStage::Verifying || preparation.actual_digest.is_some() {
+                    details { class: "chat-digest",
+                        summary { "校验摘要" }
+                        p { "来源预期摘要" code { {expected_digest} } }
+                        p { "本地摘要" code { {preparation.actual_digest.as_deref().unwrap_or("等待校验")} } }
+                    }
+                }
+                if let Some(error) = preparation.error.as_ref() {
+                    p { class: "chat-preparation-error", role: "alert", "{error}" }
+                }
+                if let Some(path) = preparation.local_path.as_deref() {
+                    p { class: "chat-local-path", "校验成功 · 本地路径" code { {path} } }
+                } else if stage == PreparationStage::Failed {
+                    p { class: "chat-preparation-note", "本地路径：空；不会继续后续阶段。" }
+                }
+            }
+            if active {
+                div { class: "chat-preparation-actions",
+                    if matches!(stage, PreparationStage::AwaitingStart | PreparationStage::Failed | PreparationStage::Cancelled) && preparation.model.catalog_selection.is_none() && !state.read().is_model_ready(preparation.model.id()) {
+                        button { class: "chat-flow-button primary", r#type: "button",
+                            onclick: move |_| {
+                                if let Some(id) = state.with_mut(|value| value.start_preparation(run_id)) { spawn_preparation(state, id); }
+                            },
+                            if stage == PreparationStage::AwaitingStart { "下载" } else { "重试" }
+                        }
+                    }
+                    if !stage.is_running() && !preparation.collapsed {
+                        button { class: "chat-flow-button", r#type: "button",
+                            onclick: move |_| { state.with_mut(|value| value.close_preparation(run_id)); },
+                            if stage == PreparationStage::Ready { "完成并关闭" } else { "关闭" }
+                        }
+                    }
+                }
             }
         }
     }
@@ -343,8 +468,8 @@ fn EmptyConversation() -> Element {
     rsx! {
         div { class: "chat-empty-state",
             div { class: "chat-empty-logo", Logo { size: 28 } }
-            h1 { "今天想运行什么模型或任务？" }
-            p { "基于 AMD SEV-SNP 硬件 Enclave 的去中心化高速推理，零加价底价计费，硬件密码学证明直通。" }
+            h1 { "请输入模型名称" }
+            p { "先选择模型，再发送消息。模型准备就绪后即可开始对话。" }
         }
     }
 }
@@ -356,6 +481,9 @@ fn ChatMessageView(
     message_index: usize,
     state: Signal<ChatState>,
 ) -> Element {
+    if let Some(preparation) = message.preparation {
+        return rsx! { PreparationCard { preparation, state } };
+    }
     let is_user = message.role == MessageRole::User;
     let copied = message.copied;
     let content = message.content.clone();
@@ -374,10 +502,11 @@ fn ChatMessageView(
             }
             div { class: "chat-message-body",
                 if !is_user {
+                    if let Some(error) = message.error.as_ref() { p { class: "chat-preparation-error", role: "alert", "{error}" } }
                     if message.streaming && content.is_empty() {
                         div { class: "chat-streaming-bubble",
                             span { class: "chat-streaming-dot" }
-                            span { "正在连接硬件 Enclave 推理流..." }
+                            span { "正在生成回复…" }
                         }
                     } else {
                         if let Some(thinking) = message.thinking.as_deref() {
@@ -393,7 +522,7 @@ fn ChatMessageView(
                                     },
                                     span { class: "chat-thinking-label",
                                         Icon { name: IconName::Zap, size: 12 }
-                                        span { "思考过程 (Chain-of-Thought)" }
+                                        span { "思考过程" }
                                     }
                                     Icon {
                                         name: IconName::ChevronDown,
@@ -410,9 +539,8 @@ fn ChatMessageView(
                         }
                     }
                     if !message.streaming {
-                        if let Some(metrics) = message.metrics {
-                            div { class: "chat-metrics-row",
-                                InferenceMetricsView { metrics }
+                        div { class: "chat-metrics-row",
+                                if let Some(metrics) = message.metrics { InferenceMetricsView { metrics } }
                                 button {
                                     class: "chat-message-copy",
                                     r#type: "button",
@@ -426,7 +554,6 @@ fn ChatMessageView(
                                     ),
                                     Icon { name: if copied { IconName::Check } else { IconName::Copy }, size: 13 }
                                 }
-                            }
                         }
                     }
                 } else {
@@ -465,25 +592,41 @@ fn ChatComposer(
     on_send: EventHandler<()>,
 ) -> Element {
     let selected_model = snapshot.selected_model();
-    let model_id = selected_model
-        .map(|model| model.id())
-        .unwrap_or("无在线模型");
     let model_name = selected_model
-        .map(|model| model.model.name)
-        .unwrap_or("在线模型");
+        .as_ref()
+        .map(|model| model.name.as_str())
+        .unwrap_or("尚未选择");
     let can_send = snapshot.can_send();
+    let composer_key = format!(
+        "{}-{}",
+        snapshot
+            .active_conversation()
+            .map(|conversation| conversation.id.as_str())
+            .unwrap_or("no-conversation"),
+        snapshot.is_busy(),
+    );
 
     rsx! {
         div { class: "chat-composer-area",
             div { class: "chat-composer-inner",
-                div { class: "chat-composer",
+                if snapshot.status_loading() { p { role: "status", "正在查询模型状态…" } }
+                if let Some(error) = snapshot.status_error() {
+                    p { role: "alert", "{error}" }
+                    button { r#type: "button", aria_label: "重试状态查询", onclick: move |_| { let id = state.read().selected_model_id().map(str::to_string); if let Some(id) = id { select_model(state, id); } }, "重试状态查询" }
+                }
+                div {
+                    // 发送状态变化时重建编辑区域，避免浏览器保留已发送的编辑值。
+                    key: "{composer_key}",
+                    class: "chat-composer",
                     textarea {
                         rows: 1,
                         value: snapshot.draft().to_string(),
                         placeholder: format!("输入消息或指令（Shift + Enter 换行）· 当前模型: {model_name}"),
                         aria_label: "输入消息或指令",
-                        disabled: snapshot.is_generating() || selected_model.is_none(),
+                        disabled: snapshot.is_busy(),
                         oninput: move |event| state.with_mut(|value| value.set_draft(event.value())),
+                        // LiveView 的事件经 WebSocket 传递，先在浏览器侧阻止 Enter 的默认换行。
+                        "onkeydown": LIVEVIEW_ENTER_PREVENT_DEFAULT,
                         onkeydown: move |event| {
                             if event.key() == Key::Escape {
                                 state.with_mut(ChatState::close_menus);
@@ -498,27 +641,14 @@ fn ChatComposer(
                         },
                     }
                     div { class: "chat-composer-footer",
-                        div { class: "chat-composer-tools",
-                            span { class: "chat-model-badge", {model_id} }
-                            div { class: "chat-temperature-wrap",
-                                button {
-                                    class: "chat-temperature-trigger",
-                                    r#type: "button",
-                                    title: "推理参数配置",
-                                    aria_expanded: snapshot.temperature_menu_open(),
-                                    onclick: move |_| state.with_mut(ChatState::toggle_temperature_menu),
-                                    Icon { name: IconName::Settings2, size: 14 }
-                                    span { "temp: " {format!("{:.1}", snapshot.temperature())} }
-                                }
-                            }
-                        }
+                        ModelSelector { state, selected_model: selected_model.clone() }
                         if snapshot.is_generating() {
                             button {
                                 class: "chat-send-button chat-stop-button",
                                 r#type: "button",
                                 aria_label: "停止生成",
                                 title: "停止生成",
-                                onclick: move |_| state.with_mut(ChatState::interrupt_generation),
+                                onclick: move |_| stop_generation(state),
                                 Icon { name: IconName::Stop, size: 14 }
                             }
                         } else {
@@ -533,51 +663,7 @@ fn ChatComposer(
                             }
                         }
                     }
-                    if snapshot.temperature_menu_open() {
-                        div { class: "chat-temperature-menu", role: "dialog", aria_label: "推理参数",
-                            div { class: "chat-temperature-menu-header",
-                                strong { "推理参数" }
-                                button {
-                                    r#type: "button",
-                                    aria_label: "关闭推理参数",
-                                    onclick: move |_| state.with_mut(ChatState::close_menus),
-                                    Icon { name: IconName::X, size: 13 }
-                                }
-                            }
-                            label { class: "chat-temperature-control",
-                                span { class: "chat-temperature-label",
-                                    span { "Temperature" }
-                                    span { {format!("{:.1}", snapshot.temperature())} }
-                                }
-                                input {
-                                    r#type: "range",
-                                    min: "0",
-                                    max: "1",
-                                    step: "0.1",
-                                    value: snapshot.temperature().to_string(),
-                                    aria_label: "Temperature",
-                                    oninput: move |event| {
-                                        if let Ok(value) = event.value().parse::<f32>() {
-                                            if let Err(error) = state.with_mut(|current| current.set_temperature(value)) {
-                                                tracing::debug!(?error, "温度滑块值未通过边界校验");
-                                            }
-                                        }
-                                    },
-                                }
-                            }
-                            label { class: "chat-system-prompt",
-                                span { "System Prompt" }
-                                textarea {
-                                    rows: 2,
-                                    value: snapshot.system_prompt().to_string(),
-                                    aria_label: "System Prompt",
-                                    oninput: move |event| state.with_mut(|value| value.set_system_prompt(event.value())),
-                                }
-                            }
-                        }
-                    }
                 }
-                footer { class: "chat-footer", "BurnCloud Gateway v2.4 • Verifiable P2P Decentralized Inference" }
             }
         }
     }
@@ -598,30 +684,110 @@ fn new_conversation_from_ui(mut state: Signal<ChatState>) {
 }
 
 fn start_generation(mut state: Signal<ChatState>) {
-    let plan = state.with_mut(ChatState::begin_generation);
-    if let Some(plan) = plan {
-        spawn_stream(state, plan);
+    match state.with_mut(ChatState::send_message) {
+        Some(ChatAction::Generate(plan)) => spawn_stream(state, plan),
+        Some(ChatAction::Prepare(id)) => spawn_preparation(state, id),
+        None => {}
     }
 }
 
-fn spawn_stream(mut state: Signal<ChatState>, plan: GenerationPlan) {
+fn focus_element(selector: &'static str) {
     spawn(async move {
-        for segment in plan.segments {
-            tokio::time::sleep(tokio::time::Duration::from_millis(120)).await;
-            if !state.read().is_generation_active(&plan) {
-                return;
-            }
-            if !state.with_mut(|value| value.append_stream_chunk(&plan, segment)) {
-                return;
-            }
-        }
-        tokio::time::sleep(tokio::time::Duration::from_millis(160)).await;
-        if state.read().is_generation_active(&plan) {
-            state.with_mut(|value| {
-                value.complete_generation(&plan, 760);
-            });
+        if let Err(error) =
+            dioxus::document::eval(&format!("document.querySelector('{selector}')?.focus();")).await
+        {
+            tracing::debug!(%error, "Chat 焦点切换失败");
         }
     });
+}
+
+fn select_model(mut state: Signal<ChatState>, model_id: String) {
+    let backend = consume_context::<BackendHandle>().0;
+    let owner = consume_context::<ChatScope>().0;
+    let Some(id) = state.with_mut(|value| value.begin_selection(&model_id)) else {
+        return;
+    };
+    Runtime::current().spawn(owner, async move {
+        let result = backend.model_status(model_id).await;
+        state.with_mut(|value| value.finish_selection(id, result));
+    });
+}
+
+fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
+    let backend = consume_context::<BackendHandle>().0;
+    let mut task = consume_context::<PreparationTask>().0;
+    let previous = task.take();
+    if let Some(previous) = previous {
+        previous.cancel();
+    }
+    let owner = consume_context::<ChatScope>().0;
+    let detecting = state
+        .read()
+        .preparation()
+        .is_some_and(|p| p.run_id == run_id && p.stage == PreparationStage::Detecting);
+    let handle = Runtime::current().spawn(owner, async move {
+        if detecting {
+            let result = backend
+                .detect_hardware(Box::new(move |event| {
+                    state.with_mut(|value| value.hardware_event(run_id, event))
+                }))
+                .await;
+            state.with_mut(|value| value.finish_hardware(run_id, result));
+        } else {
+            let request = state.read().initialization_request(run_id);
+            if let Some(request) = request {
+                let callback =
+                    move |event| state.with_mut(|value| value.preparation_event(run_id, event));
+                // 目录模型由客户端直接下载并校验；部署未接入，校验通过后以 NotConnected 停止。
+                let result = if request.model.catalog_selection.is_some() {
+                    match catalog::download_root() {
+                        Ok(root) => catalog::download(&root, &request, callback)
+                            .await
+                            .and_then(|path| Err(catalog::deployment_missing(&path))),
+                        Err(error) => Err(error),
+                    }
+                } else {
+                    backend.initialize(request, Box::new(callback)).await
+                };
+                if let Some(plan) = state.with_mut(|value| value.finish_preparation(run_id, result))
+                {
+                    spawn_stream(state, plan);
+                }
+            }
+        }
+        task.set(None);
+    });
+    task.set(Some(handle));
+}
+
+fn spawn_stream(mut state: Signal<ChatState>, plan: GenerationPlan) {
+    let backend = consume_context::<BackendHandle>().0;
+    let owner = consume_context::<ChatScope>().0;
+    let mut task = consume_context::<GenerationTask>().0;
+    let callback_plan = plan.clone();
+    let handle = Runtime::current().spawn(owner, async move {
+        let result = backend
+            .generate(
+                *plan.request.clone(),
+                Box::new(move |event| {
+                    state.with_mut(|value| value.generation_event(&callback_plan, event));
+                }),
+            )
+            .await;
+        state.with_mut(|value| value.complete_generation(&plan, result));
+        task.set(None);
+    });
+    task.set(Some(handle));
+}
+
+fn stop_generation(mut state: Signal<ChatState>) {
+    // 先使编号失效，再销毁 future，保留已经收到的正文与思考。
+    state.with_mut(ChatState::interrupt_generation);
+    let mut task = consume_context::<GenerationTask>().0;
+    let handle = task.take();
+    if let Some(handle) = handle {
+        handle.cancel();
+    }
 }
 
 fn copy_message(
@@ -651,12 +817,4 @@ fn copy_message(
             Err(error) => tracing::warn!(%error, "回复复制失败"),
         }
     });
-}
-
-fn format_price(price: f64) -> String {
-    let formatted = format!("{price:.2}");
-    formatted
-        .trim_end_matches('0')
-        .trim_end_matches('.')
-        .to_string()
 }

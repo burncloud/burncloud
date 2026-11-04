@@ -5,6 +5,11 @@
 !/.github/
 !/crates/
 !/deploy/
+
+# Commit the generated Chat technical book referenced by README. Other docs remain local by default.
+!/docs/
+/docs/*
+!/docs/burncloud-chat-home-technical-book.md
 !/src/
 
 !/AGENTS.md

@@ -1,5 +1,6 @@
 pub mod api;
 pub mod logging;
+mod model_selection;
 pub mod node_attachment;
 #[expect(
     clippy::expect_used,
@@ -83,6 +84,24 @@ pub struct AppState {
     pub data_plane: Router,
 }
 
+/// 构建统一网关，将模型选择接口、管理 API 和可选 LiveView 挂到同一服务。
+///
+/// # Examples
+/// ```no_run
+/// # use std::sync::Arc;
+/// # use burncloud_database::Database;
+/// # use burncloud_service_user::JwtSecret;
+/// # use burncloud_server::{create_app, InternalSecret};
+/// # async fn example(db: Arc<Database>, jwt: JwtSecret, secret: InternalSecret) -> anyhow::Result<()> {
+/// let app = create_app(db, false, jwt, secret).await?;
+/// // 即使关闭 LiveView，模型选择三个接口仍由该 Router 提供。
+/// # drop(app);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Notes
+/// 本函数不额外绑定模型服务端口；资源页面可访问不表示模型已下载或已部署。
 #[tracing::instrument(skip(db))]
 pub async fn create_app(
     db: Arc<Database>,
@@ -151,6 +170,7 @@ pub async fn create_app_with_node_request_state(
     let mut app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .merge(api_router)
+        .merge(model_selection::routes()?)
         .merge(internal_app);
 
     if enable_liveview {
