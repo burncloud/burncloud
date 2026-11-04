@@ -1566,25 +1566,10 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-model-trigger:disabled { cursor: not-allowed; opacity: .6; }
 .chat-online-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.14); }
 .chat-model-trigger strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 12px/16px var(--mono); }
-.chat-model-context { color: #6b7280; font: 10px/14px var(--mono); white-space: nowrap; }
 .chat-model-trigger > svg { margin-left: auto; color: #9ca3af; transition: transform .15s ease; }
 .chat-model-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .chat-model-backdrop { position: fixed; inset: 0; z-index: 39; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: default; }
 .chat-model-menu { position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 40; display: flex; max-height: min(560px, calc(100vh - 76px)); flex-direction: column; overflow: hidden; padding: 8px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; box-shadow: 0 24px 50px rgba(15,23,42,.16); }
-.chat-model-settings { width: 220px; padding: 10px; }
-.chat-model-picker { width: 260px; }
-.chat-model-settings-model { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; padding: 4px 2px 10px; border: 0; color: #111827; background: transparent; text-align: left; cursor: pointer; }
-.chat-model-settings-model:hover { color: #2563eb; }
-.chat-model-settings-model:disabled { cursor: not-allowed; opacity: .6; }
-.chat-model-settings-model-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 2px; }
-.chat-model-settings-model-copy strong { color: #4b91e8; font: 700 12px/16px var(--mono); }
-.chat-model-settings-model-copy span { min-width: 0; overflow: hidden; color: #6b7280; font: 10px/14px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.chat-model-settings-model > svg { flex: 0 0 auto; color: #9ca3af; transform: rotate(-90deg); }
-.chat-model-picker-heading { display: flex; min-height: 28px; align-items: center; gap: 5px; padding: 2px 4px 7px; border-bottom: 1px solid #f3f4f6; color: #374151; }
-.chat-model-picker-heading > strong { font: 700 11px/16px var(--mono); }
-.chat-model-picker-back { display: inline-grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #6b7280; background: transparent; cursor: pointer; }
-.chat-model-picker-back:hover { color: #111827; background: #f3f4f6; }
-.chat-model-picker-back svg { transform: rotate(90deg); }
 .chat-model-options { display: flex; min-height: 0; max-height: 288px; flex-direction: column; gap: 2px; padding: 6px 0 0; overflow-y: auto; }
 .chat-model-option { display: flex; min-width: 0; min-height: 38px; align-items: center; gap: 8px; padding: 9px 10px; border: 0; border-radius: 10px; color: #374151; background: #fff; text-align: left; cursor: pointer; }
 .chat-model-option:hover { background: #f8fafc; }
@@ -1649,7 +1634,6 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-composer-footer .chat-model-selector { min-width: 0; }
 .chat-composer-footer .chat-model-trigger { min-width: 0; max-width: min(250px, calc(100% - 42px)); padding: 6px 10px; gap: 6px; }
 .chat-composer-footer .chat-model-trigger strong { max-width: 160px; font-size: 11px; }
-.chat-composer-footer .chat-model-context { font-size: 9px; }
 
 .chat-send-button { display: inline-grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: #09090b; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); transition: background .15s ease, opacity .15s ease, transform .1s ease; }
 .chat-send-button:hover { background: #27272a; }
@@ -1671,10 +1655,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
     .chat-mobile-scrim { position: fixed; inset: 0; z-index: 15; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: rgba(15,23,42,.28); cursor: pointer; }
     .chat-model-trigger { min-width: 0; max-width: min(245px, calc(100vw - 92px)); padding-right: 8px; padding-left: 8px; }
     .chat-model-trigger strong { font-size: 11px; }
-    .chat-model-context { font-size: 9px; }
     .chat-composer-footer .chat-model-menu { position: absolute; top: auto; right: auto; bottom: calc(100% + 10px); left: 0; max-height: min(560px, calc(100svh - 100px)); }
-    .chat-composer-footer .chat-model-settings { width: min(220px, calc(100vw - 32px)); }
-    .chat-composer-footer .chat-model-picker { width: min(260px, calc(100vw - 32px)); }
     .chat-thread { width: 100%; }
     .chat-message-scroll { padding: 16px; }
     .chat-composer-area { width: 100%; padding: 16px; }
@@ -1788,7 +1769,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-composer-footer .chat-model-trigger { max-width: min(250px, calc(100vw - 100px)); }
 .chat-online-dot.pending { background: #9ca3af; box-shadow: none; }
 .chat-composer-footer .chat-model-search { right: 0; bottom: calc(100% + 8px); left: auto; width: min(220px, calc(100vw - 84px)); max-height: min(400px, calc(100svh - 200px)); padding: 8px; }
-.chat-search-heading, .chat-reasoning-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #374151; font-size: 12px; }
+.chat-reasoning-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #374151; font-size: 12px; }
 .chat-platform-badge { flex: 0 0 auto; padding: 3px 7px; border-radius: 5px; color: #92400e; background: #fffbeb; font-size: 10px; font-weight: 500; }
 .chat-model-search-input { width: 100%; min-height: 32px; flex: 0 0 auto; margin-top: 6px; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 13px; line-height: 20px; }
 .chat-model-search .chat-model-options { max-height: 220px; flex: 1 1 auto; overscroll-behavior: contain; }
@@ -1803,8 +1784,6 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-catalog-heading .chat-inline-button { margin: 0; }
 .chat-model-search .chat-inline-button { padding: 6px 8px; font-weight: 500; line-height: 18px; }
 .chat-catalog-feedback { flex: 0 0 auto; max-height: 90px; overflow-y: auto; overflow-wrap: anywhere; font-size: 11px; color: #92400e; }
-.chat-catalog-detail { flex: 0 0 auto; max-height: 150px; overflow-y: auto; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 12px; overflow-wrap: anywhere; }
-.chat-catalog-detail > strong { display: block; margin-bottom: 8px; }
 .chat-model-search .chat-model-option { min-height: 32px; padding: 5px 8px; overflow-wrap: anywhere; }
 .chat-model-search .chat-model-options { min-height: 44px; }
 .chat-model-search .chat-model-option-name { white-space: normal; font: 600 13px/18px var(--sans); }
