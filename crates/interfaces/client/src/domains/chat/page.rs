@@ -44,7 +44,8 @@ const LIVEVIEW_ENTER_PREVENT_DEFAULT: &str =
 /// # Notes
 ///
 /// `/` 和 `/home` 使用同一组件。目录来自主服务的模型选择接口，与网关共用监听端口。
-/// 检测仍为本地模拟；目录版本按工件清单真实下载并校验 SHA-256 后停止，不执行部署或推理。
+/// 检测仍为本地模拟；当前目录选择只交接仓库快照，缺少工件清单时明确停止。
+/// 底层文件下载与校验能力保留，但正常目录入口不执行真实下载、部署或推理。
 /// 状态只存在于当前客户端会话，目录可访问不代表已部署。
 #[component]
 pub fn ChatHome() -> Element {
@@ -382,7 +383,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
             }
             if let Some(selection) = preparation.model.catalog_selection.as_ref() {
                 p { class: "chat-preparation-note", "{selection.name} · {selection.version.source} · {selection.version.model} · {selection.version.revision}" }
-                p { class: "chat-preparation-note", "当前硬件检测使用模拟数据，不代表本机真实配置；工件下载并校验后停止，尚未接入部署。" }
+                p { class: "chat-preparation-note", "当前硬件检测使用模拟数据，不代表本机真实配置；当前入口未提供可下载工件，检测后会提示能力未接入，不执行真实下载或部署。" }
             }
             if !preparation.collapsed {
                 if stage != PreparationStage::AwaitingStart {

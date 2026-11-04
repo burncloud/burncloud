@@ -88,8 +88,20 @@ struct Probe {
     attributes: BTreeMap<usize, BTreeMap<String, String>>,
     listeners: BTreeMap<usize, Vec<String>>,
     text: String,
+    static_text: String,
 }
 impl Probe {
+    fn collect_static_text(&mut self, node: TemplateNode) {
+        match node {
+            TemplateNode::Text { text } => self.static_text.push_str(text),
+            TemplateNode::Element { children, .. } => {
+                for child in children {
+                    self.collect_static_text(*child);
+                }
+            }
+            _ => {}
+        }
+    }
     fn register(&mut self, id: ElementId, node: TemplateNode) {
         let values = self.attributes.entry(id.0).or_default();
         values.clear();
@@ -137,6 +149,8 @@ impl WriteMutations for Probe {
         self.text.push_str(value);
     }
     fn load_template(&mut self, template: Template, index: usize, id: ElementId) {
+        // 静态说明不会触发文本变更，单独采集以免干扰流式内容顺序断言。
+        self.collect_static_text(template.roots[index]);
         self.template = Some(template.roots[index]);
         self.register(id, template.roots[index]);
     }
@@ -506,8 +520,10 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     ui.preview_catalog().await;
     assert!(backend.calls.borrow().is_empty());
     ui.label("下载");
-    ui.wait_for(|probe| probe.text.contains("工件解析与部署"))
+    ui.wait_for(|probe| probe.text.contains("尚未接入该仓库版本的工件解析与部署"))
         .await;
+    assert!(ui.probe.static_text.contains("当前入口未提供可下载工件"));
+    assert!(!ui.probe.static_text.contains("工件下载并校验后停止"));
     assert_eq!(*backend.calls.borrow(), vec!["hardware"]);
     let input = ui.probe.find("aria-label", "输入消息或指令", "input");
     assert_eq!(ui.probe.attributes[&input.0]["value"], "目录草稿");
