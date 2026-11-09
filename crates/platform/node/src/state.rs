@@ -27,6 +27,15 @@ pub enum NodeState {
 
 impl NodeState {
     /// 判断从当前状态到 `next` 是否属于已定义的合法迁移。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_node_runtime::NodeState;
+    ///
+    /// assert!(NodeState::WaitingReady.can_transition_to(NodeState::Unhealthy));
+    /// assert!(NodeState::Unhealthy.can_transition_to(NodeState::Ready));
+    /// ```
     pub const fn can_transition_to(self, next: Self) -> bool {
         use NodeState::*;
 
@@ -44,11 +53,13 @@ impl NodeState {
                 | (Starting, WaitingReady)
                 | (Starting, Failed)
                 | (WaitingReady, Ready)
+                | (WaitingReady, Unhealthy)
                 | (WaitingReady, Failed)
                 | (Ready, Routable)
                 | (Ready, Unhealthy)
                 | (Ready, Failed)
                 | (Routable, Unhealthy)
+                | (Unhealthy, Ready)
                 | (Unhealthy, Starting)
                 | (Unhealthy, Failed)
                 | (Failed, Resolving)

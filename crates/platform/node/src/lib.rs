@@ -7,6 +7,7 @@
 mod composition;
 mod context;
 mod contracts;
+pub mod deployment;
 mod fake;
 mod lifecycle;
 mod preparation;
@@ -27,9 +28,9 @@ pub use lifecycle::NodeRuntime;
 pub use preparation::{
     ArtifactPreparation, ArtifactPrepareError, ArtifactPreparer, ArtifactSource,
     ArtifactSourceError, ArtifactVerificationStatus, Digest, DigestAlgorithm, DigestError,
-    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessPlan, ReadinessError,
-    ReadinessProbe, ReadinessTarget, RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError,
-    RuntimePreparer, RuntimeRequest,
+    HealthError, HealthProbe, ModelUrlRuntimeAdapter, PreparedArtifact, PreparedRuntime,
+    ProcessPlan, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
+    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
 pub use state::{InvalidNodeTransition, NodeState, NodeStateMachine};

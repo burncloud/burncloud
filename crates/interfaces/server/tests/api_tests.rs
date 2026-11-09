@@ -7,10 +7,15 @@
     reason = "integration test: assertions are the failure signal, and clippy.toml's allow-panic-in-tests does not recognise #[tokio::test]"
 )]
 
+use axum::{
+    body::{to_bytes, Body},
+    http::Request,
+};
 use burncloud_server::create_app;
 use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
+use tower::ServiceExt;
 
 mod test_utils;
 
@@ -150,6 +155,65 @@ async fn test_monitor_api_requires_auth() -> anyhow::Result<()> {
         401,
         "Monitor API should require authentication"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn node_deployment_route_is_public_and_returns_json_for_missing_local_path(
+) -> anyhow::Result<()> {
+    let db_arc = test_utils::make_isolated_db().await;
+    let app = create_app(
+        db_arc,
+        false,
+        test_utils::test_jwt_secret(),
+        test_utils::test_internal_secret(),
+    )
+    .await?;
+    let model_path = std::env::temp_dir().join(format!(
+        "burncloud-missing-model-{}-{}.gguf",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    ));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/console/api/node/deployments")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "model_path": model_path.to_string_lossy()
+                    })
+                    .to_string(),
+                ))?,
+        )
+        .await?;
+    assert_eq!(response.status(), 400);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("application/json")
+    );
+    let body = to_bytes(response.into_body(), 1024).await?;
+    assert!(
+        String::from_utf8_lossy(&body).contains("model_path must point to an existing model file")
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/console/api/node/deployments/not-found")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), 404);
 
     Ok(())
 }

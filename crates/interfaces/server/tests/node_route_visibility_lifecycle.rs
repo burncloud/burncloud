@@ -30,6 +30,13 @@ use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
 use burncloud_supply_model::FakeModelResolver;
 use std::sync::Arc;
 
+fn closed_monitor_errors(
+) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
+{
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
+}
+
 fn sqlite_url(path: &str) -> String {
     let normalized = path.replace('\\', "/");
     let absolute = normalized.starts_with('/') || {
@@ -60,9 +67,10 @@ fn fake_orchestrator() -> NodeOrchestrator<
             FakeHardwareProbe::default(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
-            FakeProcessManager::default(),
-            FakeReadinessProbe,
-            FakeHealthProbe,
+            Arc::new(FakeProcessManager::default()),
+            Arc::new(FakeReadinessProbe),
+            Arc::new(FakeHealthProbe),
+            closed_monitor_errors(),
         ),
     )
 }
