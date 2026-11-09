@@ -2,7 +2,8 @@ use std::{env, error::Error, fs, path::PathBuf};
 
 use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile, HardwareProfile};
 use burncloud_supply_model::{
-    CandidateResolutionOutcome, ModelManifest, RealModelResolver, Variant,
+    load_default_manifests, parse_manifests, CandidateResolutionOutcome, ModelManifest,
+    RealModelResolver,
 };
 
 struct Arguments {
@@ -95,48 +96,22 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
     })
 }
 
-fn demo_manifests() -> Vec<ModelManifest> {
-    vec![ModelManifest {
-        model_name: "phase-three-model".into(),
-        description: "阶段三内置示例模型".into(),
-        supported_backends: vec!["llama.cpp".into(), "vllm".into()],
-        version: "1".into(),
-        variants: vec![
-            Variant {
-                id: "phase-three-q4".into(),
-                model_size: Some("7b".into()),
-                quantization: "Q4_K_M".into(),
-                backend: "llama.cpp".into(),
-                min_ram_bytes: 8 * 1024 * 1024 * 1024,
-                min_vram_bytes: 4 * 1024 * 1024 * 1024,
-                disk_size_bytes: 5 * 1024 * 1024 * 1024,
-                checksum: "sha256:phase-three-q4".into(),
-                artifact_uri: "https://example.invalid/phase-three-q4.gguf".into(),
-            },
-            Variant {
-                id: "phase-three-q8".into(),
-                model_size: Some("7b".into()),
-                quantization: "Q8_0".into(),
-                backend: "llama.cpp".into(),
-                min_ram_bytes: 16 * 1024 * 1024 * 1024,
-                min_vram_bytes: 8 * 1024 * 1024 * 1024,
-                disk_size_bytes: 10 * 1024 * 1024 * 1024,
-                checksum: "sha256:phase-three-q8".into(),
-                artifact_uri: "https://example.invalid/phase-three-q8.gguf".into(),
-            },
-        ],
-    }]
+fn load_manifests(path: Option<PathBuf>) -> Result<Vec<ModelManifest>, Box<dyn Error>> {
+    match path {
+        Some(path) => {
+            let manifest_json = fs::read_to_string(&path)?;
+            parse_manifests(&manifest_json).map_err(|error| {
+                format!("外部 Manifest '{}' 解析失败: {error}", path.display()).into()
+            })
+        }
+        None => load_default_manifests()
+            .map_err(|error| format!("默认 Manifest 解析失败: {error}").into()),
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments = parse_arguments()?;
-    let manifests = match arguments.manifest {
-        Some(path) => {
-            let manifest_json = fs::read_to_string(path)?;
-            serde_json::from_str(&manifest_json)?
-        }
-        None => demo_manifests(),
-    };
+    let manifests = load_manifests(arguments.manifest)?;
     let resolver = RealModelResolver::new(manifests)?;
     let hardware = HardwareProfile {
         cpu_threads: 0,
@@ -158,9 +133,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("兼容候选: {}", candidates.len());
             for (index, candidate) in candidates.iter().enumerate() {
                 println!(
-                    "{}. model={} quantization={} runtime={} min_ram_bytes={} min_vram_bytes={} disk_size_bytes={} artifact_uri={} checksum={}",
+                    "{}. model_name={} variant_id={} quantization={} runtime={} min_ram_bytes={} min_vram_bytes={} disk_size_bytes={} artifact_uri={} checksum={}",
                     index + 1,
                     candidate.model_name,
+                    candidate.variant_id,
                     candidate.quantization,
                     candidate.runtime,
                     candidate.min_ram_bytes,

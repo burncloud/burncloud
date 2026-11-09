@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+const DEFAULT_MANIFEST_JSON: &str = include_str!("../data/model_manifests.json");
+
 /// 描述一个逻辑模型及其可运行 Variant 的 Manifest。
 ///
 /// 用途：由上游加载并传给 Resolver，作为模型能力过滤的只读输入。
@@ -45,4 +47,60 @@ pub struct Variant {
     pub checksum: String,
     /// 上游提供的模型工件地址。
     pub artifact_uri: String,
+}
+
+/// 从 JSON 文本加载模型 Manifest 清单。
+///
+/// 用途：解析调用方通过 `--manifest` 指定的外部清单，并保持 JSON 中模型和 Variant
+/// 的顺序。
+///
+/// 参数：
+/// - `json`：包含 `Vec<ModelManifest>` 的 JSON 文本。
+///
+/// 返回值：返回按输入顺序解析出的 Manifest；JSON 格式错误时返回
+/// `serde_json::Error`。
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), serde_json::Error> {
+/// use burncloud_supply_model::parse_manifests;
+///
+/// let manifests = parse_manifests(
+///     r#"[{
+///         "model_name": "demo",
+///         "description": "测试模型",
+///         "supported_backends": ["llama.cpp"],
+///         "version": "1",
+///         "variants": []
+///     }]"#,
+/// )?;
+/// assert_eq!(manifests[0].model_name, "demo");
+/// # Ok(())
+/// # }
+/// ```
+pub fn parse_manifests(json: &str) -> Result<Vec<ModelManifest>, serde_json::Error> {
+    serde_json::from_str(json)
+}
+
+/// 加载随 Supply Model 发布的默认 Manifest 清单。
+///
+/// 用途：为阶段三提供静态、版本受控的默认模型来源；清单在编译时随 crate 打包，
+/// 调用时只执行一次 JSON 反序列化。
+///
+/// 返回值：返回默认清单中的全部 Manifest；清单格式错误时返回 `serde_json::Error`。
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), serde_json::Error> {
+/// use burncloud_supply_model::load_default_manifests;
+///
+/// let manifests = load_default_manifests()?;
+/// assert!(!manifests.is_empty());
+/// # Ok(())
+/// # }
+/// ```
+pub fn load_default_manifests() -> Result<Vec<ModelManifest>, serde_json::Error> {
+    parse_manifests(DEFAULT_MANIFEST_JSON)
 }

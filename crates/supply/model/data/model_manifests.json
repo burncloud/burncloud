@@ -1,0 +1,59 @@
+[
+  {
+    "model_name": "qwen2.5:1.5b",
+    "description": "Qwen2.5 1.5B Instruct GGUF；量化版本、文件大小和 SHA-256 来自 Ollama 官方注册表，权重未下载。RAM/VRAM 门槛为匹配测试的演示预算，未实测，不代表官方最低配置。",
+    "supported_backends": ["llama.cpp"],
+    "version": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+    "variants": [
+      {
+        "id": "qwen2.5-1.5b-instruct-q4_k_m",
+        "model_size": "1.5b",
+        "quantization": "Q4_K_M",
+        "backend": "llama.cpp",
+        "min_ram_bytes": 2147483648,
+        "min_vram_bytes": 2147483648,
+        "disk_size_bytes": 986048512,
+        "checksum": "sha256:183715c435899236895da3869489cc30ac241476b4971a20285b1a462818a5b4",
+        "artifact_uri": "https://registry.ollama.ai/v2/library/qwen2.5/blobs/sha256:183715c435899236895da3869489cc30ac241476b4971a20285b1a462818a5b4"
+      }
+    ]
+  },
+  {
+    "model_name": "qwen2.5:3b",
+    "description": "Qwen2.5 3B Instruct GGUF；量化版本、文件大小和 SHA-256 来自 Ollama 官方注册表，权重未下载。RAM/VRAM 门槛为匹配测试的演示预算，未实测，不代表官方最低配置。",
+    "supported_backends": ["llama.cpp"],
+    "version": "357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b",
+    "variants": [
+      {
+        "id": "qwen2.5-3b-instruct-q4_k_m",
+        "model_size": "3b",
+        "quantization": "Q4_K_M",
+        "backend": "llama.cpp",
+        "min_ram_bytes": 4294967296,
+        "min_vram_bytes": 3221225472,
+        "disk_size_bytes": 1929903008,
+        "checksum": "sha256:5ee4f07cdb9beadbbb293e85803c569b01bd37ed059d2715faa7bb405f31caa6",
+        "artifact_uri": "https://registry.ollama.ai/v2/library/qwen2.5/blobs/sha256:5ee4f07cdb9beadbbb293e85803c569b01bd37ed059d2715faa7bb405f31caa6"
+      }
+    ]
+  },
+  {
+    "model_name": "llama3.2:1b",
+    "description": "Llama 3.2 1B Instruct GGUF；量化版本、文件大小和 SHA-256 来自 Ollama 官方注册表，权重未下载。RAM/VRAM 门槛为匹配测试的演示预算，未实测，不代表官方最低配置。",
+    "supported_backends": ["llama.cpp"],
+    "version": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878",
+    "variants": [
+      {
+        "id": "llama3.2-1b-instruct-q8_0",
+        "model_size": "1b",
+        "quantization": "Q8_0",
+        "backend": "llama.cpp",
+        "min_ram_bytes": 2147483648,
+        "min_vram_bytes": 2147483648,
+        "disk_size_bytes": 1321082688,
+        "checksum": "sha256:74701a8c35f6c8d9a4b91f3f3497643001d63e0c7a84e085bed452548fa88d45",
+        "artifact_uri": "https://registry.ollama.ai/v2/library/llama3.2/blobs/sha256:74701a8c35f6c8d9a4b91f3f3497643001d63e0c7a84e085bed452548fa88d45"
+      }
+    ]
+  }
+]

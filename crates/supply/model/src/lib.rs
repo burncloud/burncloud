@@ -13,7 +13,7 @@ mod resolver;
 
 pub use burncloud_database::DatabaseError;
 pub use common::current_timestamp;
-pub use manifest::{ModelManifest, Variant};
+pub use manifest::{load_default_manifests, parse_manifests, ModelManifest, Variant};
 pub use model_capability::{ModelCapability, ModelCapabilityInput, ModelCapabilityModel};
 pub use real_model_resolver::RealModelResolver;
 pub use resolver::{

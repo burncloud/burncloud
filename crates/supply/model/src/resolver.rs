@@ -37,8 +37,8 @@ pub struct ResolvedModel {
 
 /// 通过阶段三兼容性过滤后的模型候选结果。
 ///
-/// 用途：返回模型名称、量化版本和资源要求，供列表展示；同时保留下载与校验所需的
-/// Runtime、工件 URI 和 checksum。
+/// 用途：返回 Manifest 中的模型编号、Variant 编号、量化版本和资源要求，供列表展示；
+/// 同时保留下载与校验所需的 Runtime、工件 URI 和 checksum。
 ///
 /// # Examples
 ///
@@ -47,6 +47,7 @@ pub struct ResolvedModel {
 ///
 /// let candidate = ResolvedModelCandidate {
 ///     model_name: "demo".into(),
+///     variant_id: "demo-q4".into(),
 ///     quantization: "Q4_K_M".into(),
 ///     min_ram_bytes: 8,
 ///     min_vram_bytes: 4,
@@ -61,8 +62,10 @@ pub struct ResolvedModel {
 /// 注意事项：`disk_size_bytes` 只表示模型工件本身大小，不表示整套运行环境的磁盘需求。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedModelCandidate {
-    /// 模型名称。
+    /// Manifest 中的模型编号，来源于 `ModelManifest.model_name`。
     pub model_name: String,
+    /// Manifest 中的 Variant 编号，来源于 `Variant.id`。
+    pub variant_id: String,
     /// 模型量化版本。
     pub quantization: String,
     /// 模型最低 RAM 要求，单位为字节。

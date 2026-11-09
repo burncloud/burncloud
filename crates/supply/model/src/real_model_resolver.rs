@@ -271,6 +271,7 @@ impl RealModelResolver {
                 .into_iter()
                 .map(|variant| ResolvedModelCandidate {
                     model_name: manifest.model_name.clone(),
+                    variant_id: variant.id,
                     quantization: variant.quantization,
                     min_ram_bytes: variant.min_ram_bytes,
                     min_vram_bytes: variant.min_vram_bytes,

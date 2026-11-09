@@ -162,6 +162,7 @@ fn resolve_with_capabilities_returns_all_variants_that_survive_both_filters() {
         CandidateResolutionOutcome::Candidates(candidates) => {
             assert_eq!(candidates.len(), 2);
             assert_eq!(candidates[0].model_name, "deepseek-r1");
+            assert_eq!(candidates[0].variant_id, "compatible-first");
             assert_eq!(candidates[0].quantization, "q4_k_m");
             assert_eq!(candidates[0].min_ram_bytes, 8);
             assert_eq!(candidates[0].min_vram_bytes, 4);
@@ -174,6 +175,7 @@ fn resolve_with_capabilities_returns_all_variants_that_survive_both_filters() {
             assert!(candidates[1]
                 .artifact_uri
                 .ends_with("compatible-second.gguf"));
+            assert_eq!(candidates[1].variant_id, "compatible-second");
         }
         CandidateResolutionOutcome::Unsupported(reason) => {
             panic!("expected a compatible variant, got {reason:?}");
