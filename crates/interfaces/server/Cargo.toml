@@ -12,12 +12,14 @@ keywords = ["burncloud", "server", "api"]
 categories = ["web-programming"]
 
 [dependencies]
+async-trait.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 tracing-log.workspace = true
+tempfile.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 axum = { workspace = true, features = ["macros"] }
@@ -43,7 +45,6 @@ sha2.workspace = true
 [dev-dependencies]
 async-trait.workspace = true
 reqwest = { workspace = true, features = ["json"] }
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

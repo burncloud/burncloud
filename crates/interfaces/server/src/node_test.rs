@@ -29,6 +29,13 @@ use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+fn closed_monitor_errors(
+) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
+{
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
+}
+
 type TestNodeOrchestrator = NodeOrchestrator<
     FakeModelResolver,
     FakeRuntimeAdapter,
@@ -76,9 +83,10 @@ impl TestHarness {
                     FakeHardwareProbe::default(),
                     FakeArtifactPreparer,
                     FakeRuntimePreparer,
-                    FakeProcessManager::default(),
-                    FakeReadinessProbe,
-                    FakeHealthProbe,
+                    Arc::new(FakeProcessManager::default()),
+                    Arc::new(FakeReadinessProbe),
+                    Arc::new(FakeHealthProbe),
+                    closed_monitor_errors(),
                 ),
             ),
             known_models: BTreeSet::new(),

@@ -11,6 +11,13 @@ use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
 use burncloud_server::node_request::NodeRequestState;
 use burncloud_supply_model::FakeModelResolver;
 
+fn closed_monitor_errors(
+) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
+{
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
+}
+
 fn fake_orchestrator() -> NodeOrchestrator<
     FakeModelResolver,
     FakeRuntimeAdapter,
@@ -28,9 +35,10 @@ fn fake_orchestrator() -> NodeOrchestrator<
             FakeHardwareProbe::default(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
-            FakeProcessManager::default(),
-            FakeReadinessProbe,
-            FakeHealthProbe,
+            std::sync::Arc::new(FakeProcessManager::default()),
+            std::sync::Arc::new(FakeReadinessProbe),
+            std::sync::Arc::new(FakeHealthProbe),
+            closed_monitor_errors(),
         ),
     )
 }
