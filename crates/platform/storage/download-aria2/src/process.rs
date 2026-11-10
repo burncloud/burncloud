@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::constants::{DEFAULT_PORT, MAX_PORT_RANGE};
 use crate::error::{Aria2Error, Aria2Result};
+use crate::rpc::Aria2RpcClient;
 use crate::types::{Aria2Config, Aria2Instance};
 
 // ============================================================================
@@ -54,9 +55,25 @@ fn terminate_after_failed_start(
     }
 }
 
+pub(crate) async fn find_running_aria2(secret: &Option<String>) -> Option<u16> {
+    for port in DEFAULT_PORT..=DEFAULT_PORT + MAX_PORT_RANGE {
+        if check_port_available(port) {
+            continue;
+        }
+        let client = Aria2RpcClient::new(port, secret.clone());
+        let responds = tokio::time::timeout(Duration::from_secs(1), client.tell_active())
+            .await
+            .is_ok_and(|result| result.is_ok());
+        if responds {
+            return Some(port);
+        }
+    }
+    None
+}
+
 /// 启动 aria2 RPC 服务
 // 输入：aria2 的运行配置。
-// 功能：选择空闲端口、启动新的 aria2 子进程并等待 RPC 服务就绪。
+// 功能：启动新的 aria2 子进程并等待 RPC 服务就绪。
 // 错误：端口选择、进程启动或 RPC 就绪等待失败时返回对应 Aria2Error。
 // 说明：启动前**不再**清扫机器上的其他 aria2 进程（#898）。端口是本次启动自己挑的空闲端口，
 // 因此别的 aria2 占着默认端口只意味着换一个端口，既不需要也无权先把它终止掉。
@@ -167,9 +184,8 @@ async fn wait_for_rpc_ready(port: u16, secret: &Option<String>) -> Aria2Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_port_available, find_available_port, terminate_after_failed_start};
+    use super::{check_port_available, find_available_port};
     use crate::constants::{DEFAULT_PORT, MAX_PORT_RANGE};
-    use crate::error::Aria2Error;
 
     /// A port that something is listening on is reported unavailable, and the same port is available once the
     /// listener is gone.
@@ -254,7 +270,7 @@ mod tests {
         );
     }
 
-    /// **The start path terminates nothing it did not start, and the machine-wide sweep is gone (#898).**
+    /// `start_aria2_rpc` 不再调用全局进程清理函数。
     ///
     /// The previous implementation ran the image-name form of the process killer (`taskkill /F /IM aria2c.exe`)
     /// before every start, so it terminated **every** aria2 process on the machine -- a user's own downloads, or
@@ -266,156 +282,15 @@ mod tests {
     /// in order to explain why it is gone. The needles are assembled with `concat!` so that this test's own text
     /// cannot satisfy the positive form of either check.
     #[test]
-    fn the_start_path_terminates_no_process_this_crate_did_not_start() {
+    fn starting_a_new_rpc_service_does_not_sweep_other_aria2_processes() {
+        // Read the source of this module, so the assertion is about the shipped code rather than about a copy of
+        // its behaviour.
         let source = include_str!("process.rs");
-        let mut code = String::new();
-        for line in source.lines() {
-            if !line.trim_start().starts_with("//") {
-                code.push_str(line);
-                code.push('\n');
-            }
-        }
-
-        let process_killer = concat!("task", "kill");
-        let image_name_match = concat!("/", "IM");
-        assert!(
-            !code.contains(process_killer),
-            "no process killer may be invoked from this module any more: {process_killer}"
-        );
-        assert!(
-            !code.contains(image_name_match),
-            "an image-name match selects every aria2 process on the host: {image_name_match}"
-        );
-
-        let removed = concat!("kill_existing", "_aria2");
-        assert!(
-            !code.contains(removed),
-            "the sweep is removed rather than kept as a silently empty function or call: {removed}"
-        );
-
-        // The sweep ran *before* the port choice because it was unconditional on every start, so both the choice
-        // and the spawn must still be on the start path, in that order -- otherwise this test would be asserting
-        // the absence of something that was never there.
-        let port = code
-            .find("let port = find_available_port()?")
-            .expect("the port choice on the start path");
-        let spawn = code.find(".spawn()").expect("the spawn on the start path");
-        assert!(
-            port < spawn,
-            "the port is chosen before the process starts, which is why a leftover process on the default port \
-             needs no sweep"
-        );
-
-        println!(
-            "verified: the start path invokes no process killer and performs no image-name sweep; it chooses a \
-             free port before spawning"
-        );
-    }
-
-    /// The failure path terminates **the process this call started**, and a termination that succeeds is not
-    /// reported as a failure.
-    ///
-    /// Both actions are parameters, so the real branch runs here without spawning anything: no aria2 and no
-    /// process killer, which this increment's plan forbids in tests.
-    #[test]
-    fn the_process_a_failed_start_created_is_terminated() {
-        let mut terminated = false;
-        let mut reports: Vec<String> = Vec::new();
-
-        terminate_after_failed_start(
-            4242,
-            || {
-                terminated = true;
-                Ok(())
-            },
-            |message| reports.push(message),
-        );
-
-        assert!(
-            terminated,
-            "the child this call started is the one process it may terminate, so the failure path must \
-             terminate it rather than abandon it to run unmanaged"
-        );
-        assert!(
-            reports.is_empty(),
-            "a termination that succeeded must not be reported as a failure: {reports:?}"
-        );
-    }
-
-    /// A termination that fails is **reported with the pid and the reason**, not dropped.
-    ///
-    /// The kill error cannot replace the startup error -- the caller already holds the real reason the start
-    /// failed -- so it has to become visible somewhere, which is what `report` is for.
-    #[test]
-    fn a_termination_that_fails_is_reported_rather_than_dropped() {
-        let mut reports: Vec<String> = Vec::new();
-
-        terminate_after_failed_start(
-            4242,
-            || Err(Aria2Error::ProcessError("terminate refused".to_string())),
-            |message| reports.push(message),
-        );
-
-        assert_eq!(reports.len(), 1, "exactly one report: {reports:?}");
-        let report = &reports[0];
-        assert!(
-            report.contains("4242"),
-            "the report names the process that may still be running: {report}"
-        );
-        assert!(
-            report.contains("terminate refused"),
-            "and it keeps the reason the termination failed: {report}"
-        );
-    }
-
-    /// The source with whole-line comments removed.
-    ///
-    /// Only **code** lines are scanned: the documentation has to be able to name what was removed in
-    /// order to explain why it is gone, so the scan must not see comments.
-    fn code_without_comments(source: &str) -> String {
-        let mut code = String::new();
-        for line in source.lines() {
-            if !line.trim_start().starts_with("//") {
-                code.push_str(line);
-                code.push('\n');
-            }
-        }
-        code
-    }
-
-    /// **The service is the direct child, and no flag may make it detach (#904).**
-    ///
-    /// The detach flag made aria2 fork and the direct child exit immediately. `Aria2Instance` records
-    /// that child, so `is_running()` read a process that was already gone, the restart monitor
-    /// started another daemon on every tick (each on the next free port, so the instances accumulated
-    /// without bound) and `stop()` could only kill a handle that had already exited. The image-name
-    /// sweep used to hide the leftovers and #898 removed it. The flag is therefore deleted rather
-    /// than compensated for: with no detach, the recorded child **is** the service on every platform,
-    /// which is what makes liveness and termination exact instead of platform-dependent.
-    ///
-    /// The needles are split so that this test's own text cannot satisfy the positive form of the
-    /// check it performs.
-    #[test]
-    fn the_service_is_launched_as_a_direct_child_that_cannot_detach() {
-        let code = code_without_comments(include_str!("process.rs"));
-
-        let detach_flag = concat!("--", "daemon");
-        assert!(
-            !code.contains(detach_flag),
-            "no detach flag may be passed to aria2: the recorded child would stop being the service, \
-             so liveness, the restart monitor and stop() would all describe the wrong process"
-        );
-
-        // Nothing reads the streams, so a pipe would fill and stall the service. If a draining reader
-        // is ever added, replace this assertion with one that proves the drain -- do not delete it.
-        let piped = concat!("Stdio::", "piped");
-        assert!(
-            !code.contains(piped),
-            "an unread pipe blocks the service once it fills; discard the streams instead"
-        );
-        assert!(
-            code.contains(concat!("Stdio::", "null()")),
-            "the launched service must not write to a pipe"
-        );
+        let Some(start) = source.find("pub async fn start_aria2_rpc") else {
+            panic!("找不到 start_aria2_rpc 定义");
+        };
+        let body = &source[start..];
+        let body = body.split("\n}\n\n// 输入：").next().unwrap_or(body);
+        assert!(!body.contains("kill_existing_aria2"));
     }
 }

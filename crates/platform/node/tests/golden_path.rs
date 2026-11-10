@@ -8,17 +8,18 @@
 )]
 
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
-    FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
-    HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
-    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, Digest, FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager,
+    FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe, NodeComposition,
+    NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget, ReconcileAction,
+    ReconcileEvidence, RuntimePreparer, RuntimeRequest, SystemHardwareProbe,
 };
 use burncloud_supply_model::{
     FakeModelResolver, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
 };
+use url::Url;
 
 type FakeNode = NodeComposition<
-    FakeHardwareProbe,
+    SystemHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -27,7 +28,7 @@ type FakeNode = NodeComposition<
 >;
 fn fake_node(pid: u32) -> FakeNode {
     NodeComposition::start(
-        FakeHardwareProbe::default(),
+        SystemHardwareProbe::new(),
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager::new(pid),
@@ -38,15 +39,10 @@ fn fake_node(pid: u32) -> FakeNode {
 
 async fn resolve_local(node: &FakeNode) -> burncloud_supply_model::ResolvedModel {
     let hardware = node.hardware().inspect().await.unwrap();
-    let accelerator_memory_bytes = hardware
-        .accelerators
-        .iter()
-        .filter_map(|a| a.memory_bytes)
-        .max();
     match FakeModelResolver
         .resolve(ModelResolutionRequest {
             model: "qwen-4b".into(),
-            accelerator_memory_bytes,
+            hardware,
         })
         .await
         .unwrap()
@@ -78,15 +74,10 @@ async fn fake_golden_path_converges_from_absent_to_routable() {
     );
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse(resolved.artifact_source).unwrap(),
-            resolved
-                .artifact_digest
-                .as_deref()
-                .map(burncloud_node_runtime::Digest::parse)
-                .transpose()
-                .unwrap(),
-        ))
+        .prepare(
+            Url::parse(&resolved.artifact_source).unwrap(),
+            Digest::parse(resolved.artifact_digest.as_deref().unwrap()).unwrap(),
+        )
         .await
         .unwrap();
     node.reconciler_mut()
@@ -154,15 +145,10 @@ async fn fake_golden_path_cannot_serve_before_router_attachment_evidence() {
         .unwrap();
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse(resolved.artifact_source).unwrap(),
-            resolved
-                .artifact_digest
-                .as_deref()
-                .map(burncloud_node_runtime::Digest::parse)
-                .transpose()
-                .unwrap(),
-        ))
+        .prepare(
+            Url::parse(&resolved.artifact_source).unwrap(),
+            Digest::parse(resolved.artifact_digest.as_deref().unwrap()).unwrap(),
+        )
         .await
         .unwrap();
     node.reconciler_mut()

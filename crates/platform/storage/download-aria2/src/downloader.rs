@@ -114,7 +114,10 @@ fn extract_aria2(zip_path: &Path, target_dir: &Path) -> Aria2Result<()> {
             .by_index(i)
             .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
-        if file.name().ends_with("aria2c.exe") {
+        let name = file
+            .name()
+            .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
+        if name.ends_with("aria2c.exe") {
             let mut out_file = std::fs::File::create(target_dir.join("aria2c.exe"))
                 .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
             std::io::copy(&mut file, &mut out_file)

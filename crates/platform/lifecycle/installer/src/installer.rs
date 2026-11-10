@@ -1237,7 +1237,10 @@ impl Installer {
                 None => continue,
             };
 
-            if file.name().ends_with('/') {
+            let name = file.name().map_err(|e| {
+                InstallerError::InstallationFailed(format!("Failed to read zip entry name: {}", e))
+            })?;
+            if name.ends_with('/') {
                 // Directory
                 std::fs::create_dir_all(&outpath).map_err(|e| {
                     InstallerError::FileSystem(format!("Failed to create directory: {}", e))

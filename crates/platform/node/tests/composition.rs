@@ -1,12 +1,13 @@
 use burncloud_node_runtime::{
-    ArtifactPreparer, ArtifactRequest, ArtifactSource, FakeArtifactPreparer, FakeHardwareProbe,
-    FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe,
-    HealthProbe, NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe,
-    ReadinessTarget, ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, Digest, FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager,
+    FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe, NodeComposition,
+    NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget, ReconcileAction,
+    ReconcileEvidence, RuntimePreparer, RuntimeRequest, SystemHardwareProbe,
 };
+use url::Url;
 
 fn fake_composition() -> NodeComposition<
-    FakeHardwareProbe,
+    SystemHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -14,7 +15,7 @@ fn fake_composition() -> NodeComposition<
     FakeHealthProbe,
 > {
     NodeComposition::start(
-        FakeHardwareProbe::default(),
+        SystemHardwareProbe::new(),
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager::new(4242),
@@ -29,14 +30,18 @@ async fn composition_root_wires_every_machine_socket() {
     assert!(node.context().started());
 
     let profile = node.hardware().inspect().await.unwrap();
-    assert_eq!(profile.accelerators.len(), 1);
+    assert!(!profile.cpu.trim().is_empty());
+    assert!(profile.memory_bytes > 0);
 
     let artifact = node
         .artifacts()
-        .prepare(ArtifactRequest::new(
-            ArtifactSource::parse("qwen/fake.gguf").unwrap(),
-            None,
-        ))
+        .prepare(
+            Url::parse("https://modelscope.cn/models/qwen-4b/resolve/main/fake.gguf").unwrap(),
+            Digest::parse(
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        )
         .await
         .unwrap();
     assert!(artifact.is_verified());

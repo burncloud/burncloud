@@ -121,6 +121,7 @@ async fn a_download_moves_through_its_states_and_the_progress_is_recorded(
         .into_iter()
         .find(|d| d.gid == gid)
         .expect("the task is listed");
+    assert!(added.id > 0, "every task has a stable database identity");
     println!(
         "after add: status={} uris={} dir={:?}",
         added.status, added.uris, added.download_dir
@@ -217,9 +218,7 @@ async fn get_returns_one_download_by_gid_and_none_for_a_missing_gid(
 #[tokio::test]
 async fn different_task_ids_do_not_overwrite_each_other() -> Result<(), Box<dyn std::error::Error>>
 {
-    // "不同任务 ID 不互相覆盖". `gid` is the primary key, so three tasks must be three rows with independent
-    // state -- a store keyed on anything else, or one that used `INSERT OR REPLACE` with a wrong key, would show
-    // up as a lost task.
+    // 三个不同 GID 应保留为三条记录，状态与进度不能互相覆盖。
     let temp = TempDb::new("dl_isolation");
     let downloads = temp.downloads().await?;
 
@@ -314,6 +313,11 @@ async fn a_task_id_can_be_replaced_which_is_how_a_restart_re_attaches(
             None,
         )
         .await?;
+    let stable_id = downloads
+        .get_by_gid("old-gid")
+        .await?
+        .expect("the original task is stored")
+        .id;
     downloads.update_status("old-gid", "active").await?;
     downloads.update_progress("old-gid", 900, 300, 20).await?;
 
@@ -327,6 +331,7 @@ async fn a_task_id_can_be_replaced_which_is_how_a_restart_re_attaches(
 
     assert_eq!(all.len(), 1, "the row was moved, not duplicated");
     let moved = &all[0];
+    assert_eq!(moved.id, stable_id, "the database identity does not change");
     assert_eq!(moved.gid, "new-gid", "under the new id");
     assert_eq!(moved.status, "active", "with its state");
     assert_eq!(
@@ -344,6 +349,52 @@ async fn a_task_id_can_be_replaced_which_is_how_a_restart_re_attaches(
         "and the old id is gone"
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn stable_download_records_support_restore_and_completed_path_lookup(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDb::new("dl_stable_id");
+    let downloads = temp.downloads().await?;
+    let url = "https://example.invalid/model.gguf";
+    let directory = "/tmp/downloads/model";
+    let filename = "model.gguf";
+
+    let id = downloads
+        .insert_task("gid-old", url, directory, filename)
+        .await?;
+    let active = downloads.list_incomplete().await?;
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, id);
+    assert_eq!(active[0].url.as_deref(), Some(url));
+
+    downloads.update_gid_by_id(id, "gid-restored", 1).await?;
+    let restored = downloads
+        .get_by_gid("gid-restored")
+        .await?
+        .expect("the task has its replacement GID");
+    assert_eq!(restored.id, id);
+    assert_eq!(restored.retry_count, 1);
+
+    downloads
+        .mark_completed(
+            id,
+            "gid-restored",
+            "/tmp/downloads/model/model.gguf",
+            100,
+            100,
+        )
+        .await?;
+    let completed = downloads
+        .find_completed(url, directory, filename)
+        .await?
+        .expect("the completed key is found");
+    assert_eq!(
+        completed.final_path.as_deref(),
+        Some("/tmp/downloads/model/model.gguf")
+    );
+    assert!(downloads.list_incomplete().await?.is_empty());
     Ok(())
 }
 

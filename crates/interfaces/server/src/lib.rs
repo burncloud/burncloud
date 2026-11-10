@@ -9,6 +9,7 @@ pub mod node_attachment;
     reason = "node_orchestrator is a legacy state machine whose mutable workload lookups rely on the invariant that each demand is inserted before transition handling; keep the debt explicit until that state machine is decomposed"
 )]
 pub mod node_orchestrator;
+pub mod node_production;
 pub mod node_request;
 pub mod node_test;
 pub use api::auth::{auth_middleware, Claims};
@@ -74,6 +75,8 @@ impl fmt::Debug for InternalSecret {
 pub struct AppState {
     pub db: Arc<Database>,
     pub node_context: NodeContext,
+    /// 模型选择完成后调用的生产硬件探测和解析入口。
+    pub production_node: Arc<node_production::ProductionNode>,
     pub node_request_state: node_request::NodeRequestState,
     pub monitor: Arc<SystemMonitorService>,
     pub user_service: Arc<UserService>,
@@ -151,6 +154,7 @@ pub async fn create_app_with_node_request_state(
     let state = AppState {
         db: db.clone(),
         node_context,
+        production_node: Arc::new(node_production::ProductionNode::new()),
         node_request_state,
         monitor,
         user_service: Arc::new(UserService::new(jwt_secret.clone())),

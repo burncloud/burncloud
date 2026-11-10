@@ -1,4 +1,4 @@
-name: Reusable / GitHub-hosted Rust Check
+name: Reusable / Rust Check
 
 on:
   workflow_call:

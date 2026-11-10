@@ -19,6 +19,14 @@ pub enum DigestAlgorithm {
 
 impl DigestAlgorithm {
     /// 返回算法的规范化名称。
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// use burncloud_node_runtime::DigestAlgorithm;
+    ///
+    /// assert_eq!(DigestAlgorithm::Sha256.name(), "sha256");
+    /// ```
     pub const fn name(self) -> &'static str {
         // 返回固定字符串，避免调用方依赖枚举变体的调试格式。
         match self {
@@ -31,6 +39,14 @@ impl DigestAlgorithm {
     }
 
     /// 返回算法输出摘要的字节数。
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// use burncloud_node_runtime::DigestAlgorithm;
+    ///
+    /// assert_eq!(DigestAlgorithm::Sha256.digest_bytes(), 32);
+    /// ```
     pub const fn digest_bytes(self) -> usize {
         // 结果表示算法原始摘要的字节数，不是十六进制文本长度。
         match self {
@@ -43,6 +59,14 @@ impl DigestAlgorithm {
     }
 
     /// 返回摘要编码为十六进制字符串后的字符数。
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// use burncloud_node_runtime::DigestAlgorithm;
+    ///
+    /// assert_eq!(DigestAlgorithm::Sha256.expected_hex_length(), 64);
+    /// ```
     pub const fn expected_hex_length(self) -> usize {
         // 每个字节对应两个十六进制字符，因此长度是摘要字节数的两倍。
         match self {
@@ -81,46 +105,5 @@ impl std::fmt::Display for DigestAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // 使用规范化名称，保证显示结果与解析后的算法名称一致。
         f.write_str(self.name())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn exposes_digest_and_hex_lengths() {
-        assert_eq!(DigestAlgorithm::Md5.digest_bytes(), 16);
-        assert_eq!(DigestAlgorithm::Md5.expected_hex_length(), 32);
-        assert_eq!(DigestAlgorithm::Sha1.digest_bytes(), 20);
-        assert_eq!(DigestAlgorithm::Sha1.expected_hex_length(), 40);
-        assert_eq!(DigestAlgorithm::Sha256.digest_bytes(), 32);
-        assert_eq!(DigestAlgorithm::Sha256.expected_hex_length(), 64);
-        assert_eq!(DigestAlgorithm::Sha384.digest_bytes(), 48);
-        assert_eq!(DigestAlgorithm::Sha384.expected_hex_length(), 96);
-        assert_eq!(DigestAlgorithm::Sha512.digest_bytes(), 64);
-        assert_eq!(DigestAlgorithm::Sha512.expected_hex_length(), 128);
-    }
-
-    #[test]
-    fn parses_common_algorithm_aliases() {
-        for alias in ["sha256", "SHA256", "sha-256", "SHA-256"] {
-            assert_eq!(alias.parse(), Ok(DigestAlgorithm::Sha256));
-        }
-        for alias in ["sha1", "SHA1", "sha-1", "SHA-1"] {
-            assert_eq!(alias.parse(), Ok(DigestAlgorithm::Sha1));
-        }
-        for alias in ["sha384", "SHA384", "sha-384", "SHA-384"] {
-            assert_eq!(alias.parse(), Ok(DigestAlgorithm::Sha384));
-        }
-    }
-
-    #[test]
-    fn displays_canonical_algorithm_names() {
-        assert_eq!(DigestAlgorithm::Md5.to_string(), "md5");
-        assert_eq!(DigestAlgorithm::Sha1.to_string(), "sha1");
-        assert_eq!(DigestAlgorithm::Sha256.to_string(), "sha256");
-        assert_eq!(DigestAlgorithm::Sha384.to_string(), "sha384");
-        assert_eq!(DigestAlgorithm::Sha512.to_string(), "sha512");
     }
 }

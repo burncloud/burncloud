@@ -1,68 +1,26 @@
 use async_trait::async_trait;
 
 use crate::{
-    AcceleratorKind, AcceleratorProfile, ArtifactPrepareError, ArtifactPreparer, ArtifactRequest,
-    ArtifactSource, ArtifactVerificationStatus, HardwareProbe, HardwareProbeError, HardwareProfile,
-    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
-    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
-    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactVerificationStatus, Digest, HealthError,
+    HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle, ProcessManager,
+    ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
+    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
-
-/// Deterministic fake used to assemble and test the Node skeleton before real
-/// hardware detection exists.
-#[derive(Debug, Clone)]
-pub struct FakeHardwareProbe {
-    profile: HardwareProfile,
-}
-
-impl Default for FakeHardwareProbe {
-    /// 创建包含固定硬件信息的伪硬件探测器。
-    fn default() -> Self {
-        Self {
-            profile: HardwareProfile {
-                cpu_threads: 16,
-                memory_bytes: 64 * 1024 * 1024 * 1024,
-                disk_available_bytes: 512 * 1024 * 1024 * 1024,
-                accelerators: vec![AcceleratorProfile {
-                    kind: AcceleratorKind::Nvidia,
-                    name: "Fake GPU".to_string(),
-                    memory_bytes: Some(24 * 1024 * 1024 * 1024),
-                }],
-            },
-        }
-    }
-}
-
-impl FakeHardwareProbe {
-    /// 使用指定的硬件描述创建伪硬件探测器。
-    pub fn new(profile: HardwareProfile) -> Self {
-        Self { profile }
-    }
-}
-
-#[async_trait]
-impl HardwareProbe for FakeHardwareProbe {
-    /// 返回预先配置的硬件描述，不访问真实系统资源。
-    async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError> {
-        Ok(self.profile.clone())
-    }
-}
+use url::Url;
 
 /// Deterministic fake artifact preparer. It performs no download or file I/O.
 #[derive(Debug, Clone, Default)]
 pub struct FakeArtifactPreparer;
 
 #[async_trait]
-impl ArtifactPreparer for FakeArtifactPreparer {
+impl ArtifactPreparation for FakeArtifactPreparer {
     /// 根据工件来源构造确定性的本地伪工件回执。
     async fn prepare(
         &self,
-        request: ArtifactRequest,
+        url: Url,
+        _expected_digest: Digest,
     ) -> Result<PreparedArtifact, ArtifactPrepareError> {
-        let source = match request.source() {
-            ArtifactSource::File(path) => path.to_string_lossy().into_owned(),
-            ArtifactSource::Http(url) => url.to_string(),
-        };
+        let source = url.to_string();
         // 将来源转换为文件名片段，避免伪回执路径包含平台路径分隔符。
         // Build the fake receipt under the platform temporary directory so the
         // resulting path is absolute on Windows, Linux, and macOS alike.

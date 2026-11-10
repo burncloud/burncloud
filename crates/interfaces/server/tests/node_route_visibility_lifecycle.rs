@@ -16,8 +16,8 @@
 
 use burncloud_database::create_database_with_url;
 use burncloud_node_runtime::{
-    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
+    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState, SystemHardwareProbe,
 };
 use burncloud_router::local_attachment::{
     ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentId,
@@ -46,7 +46,7 @@ fn sqlite_url(path: &str) -> String {
 fn fake_orchestrator() -> NodeOrchestrator<
     FakeModelResolver,
     FakeRuntimeAdapter,
-    FakeHardwareProbe,
+    SystemHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -57,7 +57,7 @@ fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
         NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             FakeProcessManager::default(),
@@ -101,7 +101,7 @@ async fn prepared_route(
     NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
-        FakeHardwareProbe,
+        SystemHardwareProbe,
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager,

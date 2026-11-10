@@ -1,7 +1,7 @@
 use crate::node_orchestrator::{LocalPreparationOutcome, ModelDemand, NodeOrchestrator};
 use burncloud_node_runtime::{
-    ArtifactPreparer, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe, RuntimeAdapter,
-    RuntimePreparer,
+    ArtifactPreparation, HardwareProbe, HealthProbe, ProcessManager, ReadinessProbe,
+    RuntimeAdapter, RuntimePreparer,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_supply_model::{LocalModelUnsupported, ModelResolver};
@@ -46,7 +46,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -82,7 +82,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -128,7 +128,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -179,7 +179,7 @@ where
     M: ModelResolver,
     T: RuntimeAdapter,
     H: HardwareProbe,
-    A: ArtifactPreparer,
+    A: ArtifactPreparation,
     R: RuntimePreparer,
     P: ProcessManager,
     Q: ReadinessProbe,
@@ -202,15 +202,15 @@ mod tests {
     use super::*;
     use crate::node_request::NodeRequestState;
     use burncloud_node_runtime::{
-        FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+        FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
+        FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState, SystemHardwareProbe,
     };
     use burncloud_supply_model::FakeModelResolver;
 
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
-        FakeHardwareProbe,
+        SystemHardwareProbe,
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager,
@@ -221,7 +221,7 @@ mod tests {
             FakeModelResolver,
             FakeRuntimeAdapter,
             NodeComposition::start(
-                FakeHardwareProbe::default(),
+                SystemHardwareProbe::new(),
                 FakeArtifactPreparer,
                 FakeRuntimePreparer,
                 FakeProcessManager::default(),
@@ -235,7 +235,7 @@ mod tests {
         NodeOrchestrator<
             FakeModelResolver,
             FakeRuntimeAdapter,
-            FakeHardwareProbe,
+            SystemHardwareProbe,
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             FakeProcessManager,

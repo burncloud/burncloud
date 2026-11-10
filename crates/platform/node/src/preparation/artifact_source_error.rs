@@ -9,10 +9,8 @@ pub enum ArtifactSourceError {
     InvalidUrl(String),
     /// URL 使用了不支持的协议。
     UnsupportedScheme(String),
-    /// `file://` URL 无法转换为当前操作系统的文件路径。
-    InvalidFileUrl(String),
-    /// 文件路径包含当前平台不允许的内容。
-    InvalidFilePath(String),
+    /// URL 主机名不在受支持的精确列表中。
+    UnsupportedHost(String),
 }
 
 impl fmt::Display for ArtifactSourceError {
@@ -24,13 +22,9 @@ impl fmt::Display for ArtifactSourceError {
             Self::UnsupportedScheme(scheme) => {
                 write!(formatter, "unsupported artifact source scheme: {scheme}")
             }
-            Self::InvalidFileUrl(value) => {
-                write!(
-                    formatter,
-                    "file URL cannot be converted to a local path: {value}"
-                )
+            Self::UnsupportedHost(host) => {
+                write!(formatter, "unsupported artifact source host: {host}")
             }
-            Self::InvalidFilePath(value) => write!(formatter, "invalid file path: {value}"),
         }
     }
 }

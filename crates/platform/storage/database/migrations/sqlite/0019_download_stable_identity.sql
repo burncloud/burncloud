@@ -1,0 +1,1 @@
+-- The SQLite table rebuild is performed transactionally by sqlite_0019.rs.
