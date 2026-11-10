@@ -9,7 +9,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "exchange-api"))]
 use burncloud_commerce_contracts::price_u64::rate_to_scaled;
 use burncloud_commerce_contracts::price_u64::scaled_to_rate;
 use burncloud_commerce_contracts::pricing::Currency;
@@ -41,7 +41,7 @@ impl CachedRate {
     }
 
     /// Create a new CachedRate from f64 rate
-    #[cfg(test)]
+    #[cfg(any(test, feature = "exchange-api"))]
     pub(crate) fn from_rate(rate: f64) -> Self {
         Self {
             rate_nano: rate_to_scaled(rate),
@@ -106,7 +106,7 @@ impl ExchangeRateService {
     }
 
     /// Set an exchange rate in the cache (f64 input)
-    #[cfg(test)]
+    #[cfg(any(test, feature = "exchange-api"))]
     pub(crate) fn set_rate(&self, from: Currency, to: Currency, rate: f64) {
         self.rates.insert((from, to), CachedRate::from_rate(rate));
     }

@@ -56,21 +56,15 @@ compatibility surface used during #778 was removed by #780.
    the boundary types are defined in this crate and exported from `src/lib.rs`:
    - persistence: `ModelCapability` (row), `ModelCapabilityInput` (write projection),
      `ModelCapabilityModel::{get, upsert}`, `current_timestamp`;
-   - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest` (model plus `HardwareProfile`),
-     `ResolvedModel`,
+   - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest`, `ResolvedModel`,
      `ModelResolutionOutcome` (`Local` / `Unsupported`), `LocalModelUnsupported`,
      `LocalModelUnsupportedReason`, `ModelResolutionError`, the `ModelResolver` trait,
      `RealModelResolver`, `FakeModelResolver`;
    - HuggingFace: `ModelService`, `HfApiModel`, `HfFileItem`, `get_huggingface_host`,
      `get_model_files`, `filter_gguf_files`, `get_data_dir`, `build_download_url`.
-   - Manifest loading: `load_default_manifests` loads the static JSON from
-     `crates/supply/model/data/model_manifests.json`; `parse_manifests` parses external JSON
-     supplied through `phase_three --manifest`.
-  `RealModelResolver` validates Manifest backend declarations, resolves the first compatible
-  variant for the Node lifecycle, and exposes the phase-three candidate-list filter; `FakeModelResolver`
-  is the deterministic placeholder used by the Node skeleton. 阶段三候选列表中的 `model_name` 直接来自
-   `ModelManifest.model_name`，`variant_id` 直接来自 `Variant.id`；两者用于区分模型和同一模型
-   的不同量化或 Runtime Variant，不读取前端 marketplace 运营目录的展示名称。
+   `RealModelResolver` is the manifest-backed foundation and its `ModelResolver::resolve` currently
+   returns `ModelResolutionError::ResolutionFailed(...)`; `FakeModelResolver` is the deterministic
+   placeholder used by the Node skeleton.
 
 5. **Allowed dependencies** — `burncloud-database`, `burncloud-service-setting` (`SettingService`),
    `burncloud-service-ip` (CN HuggingFace mirror selection), `burncloud-node-runtime`
@@ -99,7 +93,6 @@ compatibility surface used during #778 was removed by #780.
    ├── manifest.rs            ModelManifest, Variant
    ├── resolver.rs            ModelResolver contract, DTOs, FakeModelResolver
    ├── real_model_resolver.rs RealModelResolver, hardware/runtime filters
-   ├── data/model_manifests.json  阶段三默认 Manifest 清单
    └── common.rs              current_timestamp (re-exported)
    tests/    model_capability.rs (SQLite), resolver.rs
    examples/ ten HuggingFace discovery/download examples
@@ -123,12 +116,8 @@ compatibility surface used during #778 was removed by #780.
      so it round-trips every capability field against the real table, including `synced_at` and the
      legacy price projections. This is the only test touching the real table.
    - `tests/resolver.rs::fake_resolver_returns_runtime_and_artifact_choice`, plus unit tests in
-     `src/manifest.rs`, `src/resolver.rs` and `src/real_model_resolver.rs` (hardware, Runtime and
-     disk filtering, with Manifest model and Variant identifiers preserved in candidates).
-   - The shared default Manifest excludes `qwen2.5:0.5b` because its existing Variant points to a
-     machine-specific absolute `file:///D:/...` URI. That record remains available in the ignored
-     `.vscode/phase_three_real_manifest.json` local override; its checksum and model data are not
-     changed.
+     `src/manifest.rs`, `src/resolver.rs` and `src/real_model_resolver.rs` (hardware and runtime
+     filtering).
    - Downstream contract proof: `crates/platform/node/tests/golden_path.rs`,
      `crates/interfaces/server/tests/node_framework_e2e.rs` and
      `node_route_visibility_lifecycle.rs`.
