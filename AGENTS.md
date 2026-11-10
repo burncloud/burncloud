@@ -67,17 +67,3 @@ This file defines the mandatory constraints for project development, applicable 
 ## 11. Documentation Sync
 
 - MUST synchronously update doc-comments and README when modifying public APIs, keeping the "code as documentation" style.
-
-## Agent skills
-
-### Issue tracker
-
-- MUST 在创建、读取或更新 Issue 前阅读 `docs/agents/issue-tracker.md`；本项目使用 `burncloud/burncloud` 的 GitHub Issues。
-
-### Triage labels
-
-- MUST 在分流 Issue 或变更分流标签前阅读 `docs/agents/triage-labels.md`，按规范角色使用对应标签。
-
-### Domain docs
-
-- MUST 在探索代码或讨论领域概念前阅读 `docs/agents/domain.md`，按 single-context 布局读取相关词汇表与 ADR。
