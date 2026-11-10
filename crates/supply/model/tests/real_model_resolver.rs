@@ -297,3 +297,34 @@ fn resolve_with_capabilities_rejects_empty_public_inputs() {
             if message == "supported runtime names must not be empty"
     ));
 }
+
+#[tokio::test]
+async fn trait_candidate_resolution_uses_caller_runtime_capabilities() {
+    let resolver = RealModelResolver::new(vec![manifest_with_backends(
+        "selected-model",
+        &["vllm", "llama.cpp"],
+        vec![
+            variant("vllm-first", "vllm", 0, 0, 1),
+            variant("llama-second", "llama.cpp", 0, 0, 1),
+        ],
+    )])
+    .unwrap();
+
+    let result = resolver
+        .resolve_candidates(
+            resolution_request("selected-model", hardware(0)),
+            &["llama.cpp".into()],
+        )
+        .await
+        .unwrap();
+
+    match result {
+        CandidateResolutionOutcome::Candidates(candidates) => {
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(candidates[0].variant_id, "llama-second");
+        }
+        CandidateResolutionOutcome::Unsupported(reason) => {
+            panic!("expected a compatible candidate, got {reason:?}");
+        }
+    }
+}

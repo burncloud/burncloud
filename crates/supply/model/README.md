@@ -31,7 +31,8 @@ compatibility surface used during #778 was removed by #780.
 2. **Responsibility** — read/write the `model_capabilities` capability projection
    (`ModelCapabilityModel::{get, upsert}`); define the manifest and variant value types
    (`ModelManifest`, `Variant`) and the resolver contract with its implementations (`ModelResolver`,
-   `RealModelResolver`, `FakeModelResolver`); filter variants by RAM/VRAM and runtime backend; and
+   `RealModelResolver`, `FakeModelResolver`); filter variants by RAM/VRAM, runtime backend, and
+   artifact disk size; return all compatible candidates in manifest order; and
    provide HuggingFace discovery plus download/data-directory URL helpers.
    **Not responsible for**: canonical pricing and cost calculation (Commerce — `input_price` /
    `output_price` are only a legacy projection in this mixed historical table, not a second pricing
@@ -57,14 +58,17 @@ compatibility surface used during #778 was removed by #780.
    - persistence: `ModelCapability` (row), `ModelCapabilityInput` (write projection),
      `ModelCapabilityModel::{get, upsert}`, `current_timestamp`;
    - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest`, `ResolvedModel`,
-     `ModelResolutionOutcome` (`Local` / `Unsupported`), `LocalModelUnsupported`,
+     `ResolvedModelCandidate`, `ModelResolutionOutcome` (`Local` / `Unsupported`),
+     `CandidateResolutionOutcome` (`Candidates` / `Unsupported`), `LocalModelUnsupported`,
      `LocalModelUnsupportedReason`, `ModelResolutionError`, the `ModelResolver` trait,
      `RealModelResolver`, `FakeModelResolver`;
    - HuggingFace: `ModelService`, `HfApiModel`, `HfFileItem`, `get_huggingface_host`,
      `get_model_files`, `filter_gguf_files`, `get_data_dir`, `build_download_url`.
-   `RealModelResolver` is the manifest-backed foundation and its `ModelResolver::resolve` currently
-   returns `ModelResolutionError::ResolutionFailed(...)`; `FakeModelResolver` is the deterministic
-   placeholder used by the Node skeleton.
+   `RealModelResolver` is the manifest-backed foundation. Its
+   `ModelResolver::resolve_candidates` entry point applies the caller's Runtime capability list and
+   returns all compatible candidates; the phase-two `ModelResolver::resolve` entry point remains a
+   single-result adapter for lifecycle consumers. `FakeModelResolver` remains the deterministic
+   placeholder used by Node tests.
 
 5. **Allowed dependencies** — `burncloud-database`, `burncloud-service-setting` (`SettingService`),
    `burncloud-service-ip` (CN HuggingFace mirror selection), `burncloud-node-runtime`
@@ -77,8 +81,9 @@ compatibility surface used during #778 was removed by #780.
    whose wrappers are `burncloud-node-runtime`, `burncloud-router` and `burncloud-server`, with a
    reason stating that new consumers require architecture review. Existing in-repo use:
    `burncloud-router` (`src/price_sync.rs` projects Commerce pricing into `ModelCapabilityInput` and
-   calls `upsert`); `burncloud-server` (`node_orchestrator.rs`, `node_attachment.rs`, `node_test.rs`
-   and their integration tests consume the resolver types); and `burncloud-node-runtime` as a
+   calls `upsert`); `burncloud-server` (`node_orchestrator.rs` resolves Runtime-aware candidates,
+   while `node_attachment.rs`, `node_test.rs` and their integration tests consume the resolver types);
+   and `burncloud-node-runtime` as a
    **dev-dependency** in `tests/golden_path.rs`. `interfaces/service` has the dependency commented
    out, and `trust/inference/README.md` lists this crate although its `Cargo.toml` does not depend on
    it — that README line is stale, not a consumer.
@@ -92,7 +97,7 @@ compatibility surface used during #778 was removed by #780.
    ├── model_capability.rs    ModelCapability/Input/Model, private row mapping, all SQL
    ├── manifest.rs            ModelManifest, Variant
    ├── resolver.rs            ModelResolver contract, DTOs, FakeModelResolver
-   ├── real_model_resolver.rs RealModelResolver, hardware/runtime filters
+    ├── real_model_resolver.rs RealModelResolver, hardware/runtime/disk filters
    └── common.rs              current_timestamp (re-exported)
    tests/    model_capability.rs (SQLite), resolver.rs
    examples/ ten HuggingFace discovery/download examples

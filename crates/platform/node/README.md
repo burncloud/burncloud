@@ -23,3 +23,7 @@ Absent
 The reconciler may request actions, but it does not own the business implementation of model resolution, artifact selection, Provider selection, or routing policy. Those contracts and decisions must remain with their owning BurnCloud domains.
 
 The Node runtime must not create a second HTTP server, listener, or ModelRouter. `Routable` means attachment to the existing BurnCloud routing path.
+
+`RuntimePreparer::supported_runtimes()` exposes the backends that the local runtime preparation
+implementation can handle. Model resolution uses this capability before artifact preparation so a
+Node does not download a model variant that it cannot run.

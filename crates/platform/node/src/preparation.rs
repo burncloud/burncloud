@@ -45,6 +45,27 @@ pub enum RuntimePrepareError {
 
 #[async_trait]
 pub trait RuntimePreparer: Send + Sync {
+    /// 返回该实现可以准备的 Runtime 后端名称。
+    ///
+    /// 解析模型候选时，Node 使用此列表排除无法准备的 Variant，
+    /// 从而避免先下载工件再发现 Runtime 不可用。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use burncloud_node_runtime::RuntimePreparer;
+    /// # fn runtimes<R: RuntimePreparer>(preparer: &R) -> Vec<String> {
+    /// preparer.supported_runtimes()
+    /// # }
+    /// ```
+    ///
+    /// 注意事项：返回值表示“能够准备”的后端，不要求 Runtime 当前已经安装。
+    /// 阶段二实现如果暂未声明能力，默认返回空列表；Node 会因此停止本地准备，
+    /// 避免把未确认可运行的模型交给下载和启动流程。
+    fn supported_runtimes(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// 准备请求指定的运行时，并返回可执行文件描述。
     async fn prepare(
         &self,

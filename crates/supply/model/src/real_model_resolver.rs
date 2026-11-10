@@ -9,8 +9,9 @@ use crate::{
 
 /// 使用调用方提供的模型清单和真实硬件快照解析本地模型。
 ///
-/// 按清单顺序返回首个满足 RAM、单设备显存、磁盘和清单后端约束的变体，
-/// 不执行下载或启动运行时。运行时是否已安装由后续准备阶段负责。
+/// 阶段三候选入口按清单顺序返回满足 RAM、单设备显存、磁盘和调用方 Runtime
+/// 能力约束的变体；生命周期兼容入口 `resolve()` 返回其中一个最终结果。
+/// Resolver 不执行下载或启动运行时，运行时准备由后续 Node 阶段负责。
 ///
 /// # Examples
 ///
@@ -332,6 +333,15 @@ impl RealModelResolver {
 
 #[async_trait]
 impl ModelResolver for RealModelResolver {
+    /// 使用 Node 提供的 Runtime 能力返回完整兼容候选。
+    async fn resolve_candidates(
+        &self,
+        request: ModelResolutionRequest,
+        supported_runtimes: &[String],
+    ) -> Result<CandidateResolutionOutcome, ModelResolutionError> {
+        self.resolve_with_capabilities(&request.model, &request.hardware, supported_runtimes)
+    }
+
     /// 校验模型名后，用请求携带的硬件快照执行兼容性判断。
     async fn resolve(
         &self,

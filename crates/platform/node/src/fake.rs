@@ -41,6 +41,10 @@ pub struct FakeRuntimePreparer;
 
 #[async_trait]
 impl RuntimePreparer for FakeRuntimePreparer {
+    fn supported_runtimes(&self) -> Vec<String> {
+        vec!["llama.cpp".into()]
+    }
+
     /// 返回固定格式的伪运行时可执行文件路径。
     async fn prepare(
         &self,
