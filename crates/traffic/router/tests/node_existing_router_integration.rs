@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, reason = "独立测试固定前提失败应中止")]
+// 本文件验证既有候选及事务回滚，不代替受控 HTTP 派发测试或真实模型推理验收。
 use burncloud_database::create_database_with_url;
 
 /// Build a SQLite connection URL for a filesystem path.
@@ -47,6 +49,7 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     let attacher = ExistingRouterLocalAttacher::new(db.clone());
     let model_router = ModelRouter::new(db);
     let model = "phase0-local-model";
+    let server = ProbeServer::new(model).await;
 
     assert!(model_router
         .get_candidates("default", model)
@@ -57,7 +60,7 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     let attachment_id = attacher
         .attach(LocalRouteAttachment {
             model: model.to_string(),
-            base_url: "http://127.0.0.1:18080".to_string(),
+            base_url: server.url.clone(),
         })
         .await
         .expect("attach ready local endpoint");
@@ -70,7 +73,7 @@ async fn ready_node_endpoint_round_trips_through_existing_model_router() {
     assert_eq!(candidates[0].0.id, attachment_id.0);
     assert_eq!(
         candidates[0].0.base_url.as_deref(),
-        Some("http://127.0.0.1:18080")
+        Some(server.url.as_str())
     );
 
     attacher
@@ -115,11 +118,12 @@ async fn failed_quarantine_rolls_back_routing_ability() {
     let attacher = ExistingRouterLocalAttacher::new(db.clone());
     let model_router = ModelRouter::new(db.clone());
     let model = "phase0-quarantine-rollback-model";
+    let server = ProbeServer::new(model).await;
 
     let attachment_id = attacher
         .attach(LocalRouteAttachment {
             model: model.to_string(),
-            base_url: "http://127.0.0.1:18081".to_string(),
+            base_url: server.url.clone(),
         })
         .await
         .expect("attach ready local endpoint");
@@ -175,4 +179,34 @@ async fn failed_quarantine_rolls_back_routing_ability() {
         .await
         .expect("candidate after successful quarantine")
         .is_empty());
+}
+
+struct ProbeServer {
+    url: String,
+    task: tokio::task::JoinHandle<()>,
+}
+impl Drop for ProbeServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+impl ProbeServer {
+    async fn new(model: &str) -> Self {
+        let model = model.to_owned();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("受控探测服务");
+        let url = format!("http://{}", listener.local_addr().expect("监听地址"));
+        let app = axum::Router::new().route(
+            "/v1/models",
+            axum::routing::get(move || {
+                let model = model.clone();
+                async move { axum::Json(serde_json::json!({"data":[{"id":model}]})) }
+            }),
+        );
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("探测服务运行");
+        });
+        Self { url, task }
+    }
 }

@@ -434,7 +434,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         state_tracker: &state_tracker,
         price_cache: &price_cache,
         exchange_rate: &exchange_rate,
-        scheduler_kind: None,
+        scheduler_kind: Some(&burncloud_router::SchedulerKind::Passthrough),
         request: &sched_req,
         affinity_cache: Some(&affinity_cache),
     };
@@ -456,7 +456,7 @@ async fn t5c_affinity_hit_e2e_observability() -> anyhow::Result<()> {
         state_tracker: &state_tracker,
         price_cache: &price_cache,
         exchange_rate: &exchange_rate,
-        scheduler_kind: None,
+        scheduler_kind: Some(&burncloud_router::SchedulerKind::Passthrough),
         request: &sched_req,
         affinity_cache: Some(&affinity_cache),
     };

@@ -6,13 +6,28 @@
 !/crates/
 !/deploy/
 
-# Commit the generated Chat technical book referenced by README. Other docs remain local by default.
+# 提交 README 引用的 Chat 技术书与工程技能配置，其余文档默认仅保留本地。
 !/docs/
 /docs/*
 !/docs/burncloud-chat-home-technical-book.md
+!/docs/agents/
+/docs/agents/*
+!/docs/agents/issue-tracker.md
+!/docs/agents/triage-labels.md
+!/docs/agents/domain.md
+!/docs/specs/
+/docs/specs/*
+!/docs/specs/local-route-attachment.md
+!/docs/adr/
+/docs/adr/*
+!/docs/specs/
+/docs/specs/*
+!/docs/specs/local-route-attachment.md
+!/docs/adr/0001-local-route-attachment-scope.md
 !/src/
 
 !/AGENTS.md
+!/GLOSSARY.md
 !/.env.example
 !/.gitattributes
 !/.gitignore

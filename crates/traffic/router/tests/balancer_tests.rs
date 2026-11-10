@@ -20,6 +20,11 @@ use std::hash::{Hash, Hasher};
 
 #[tokio::test]
 async fn test_round_robin_balancer() -> anyhow::Result<()> {
+    // 此独立测试进程只验证旧亲和分配；默认均衡不承诺四次请求恰好二比二。
+    std::env::set_var(
+        "SCHEDULER_POLICIES",
+        r#"{"default":{"type":"passthrough"}}"#,
+    );
     let (_db, pool, db_url) = setup_db().await?;
 
     // Start Mock Upstream

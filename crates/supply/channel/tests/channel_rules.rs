@@ -1103,3 +1103,53 @@ async fn a_protocol_config_upserts_and_is_read_back_by_type_and_version(
     temp.cleanup().await;
     Ok(())
 }
+
+#[tokio::test]
+async fn all_enabled_priorities_preserve_ability_weights_and_old_query_boundary() {
+    use burncloud_supply_channel::ChannelService;
+    let db = TempDb::new("all-priorities").await.unwrap();
+    let mut high = channel("high", "exact:模型", "default", 1);
+    high.priority = 100;
+    high.weight = 7;
+    let mut low = channel("low", "exact:模型", "default", 1);
+    low.priority = -3;
+    low.weight = 2;
+    ChannelService::create(&db.db, &mut high).await.unwrap();
+    ChannelService::create(&db.db, &mut low).await.unwrap();
+    let all = ChannelService::list_enabled_for_model(&db.db, "default", "exact:模型")
+        .await
+        .unwrap();
+    assert_eq!(
+        all.iter()
+            .map(|a| (a.channel_id, a.priority, a.weight))
+            .collect::<Vec<_>>(),
+        [(high.id, 100, 7), (low.id, -3, 2)]
+    );
+    assert_eq!(
+        ChannelService::list_enabled_at_highest_priority(&db.db, "default", "exact:模型")
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(ChannelService::list_enabled_for_model(&db.db, "", "test")
+        .await
+        .is_err());
+    assert!(
+        ChannelService::list_enabled_for_model(&db.db, "default", "")
+            .await
+            .is_err()
+    );
+    assert!(
+        ChannelService::list_enabled_for_model(&db.db, "other", "exact:模型")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        ChannelService::list_enabled_for_model(&db.db, "default", "Exact:模型")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
