@@ -4,21 +4,32 @@ use burncloud_node_runtime::HardwareProfile;
 use crate::{
     CandidateResolutionOutcome, LocalModelUnsupported, LocalModelUnsupportedReason, ModelManifest,
     ModelResolutionError, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver,
-    ResolvedModelCandidate, Variant,
+    ResolvedModel, ResolvedModelCandidate, Variant,
 };
 
-/// 基于 Manifest 的模型 Resolver。
+/// 使用调用方提供的模型清单和真实硬件快照解析本地模型。
 ///
-/// 本类型只保存调用方传入的 Manifest，并执行 Variant 兼容性过滤。它不扫描本地或远程
-/// 模型文件，不筛选 GGUF 文件，不构建 artifact URI，不下载工件，也不启动 Runtime。
+/// 按清单顺序返回首个满足 RAM、单设备显存、磁盘和清单后端约束的变体，
+/// 不执行下载或启动运行时。运行时是否已安装由后续准备阶段负责。
 ///
 /// # Examples
 ///
-/// ```
-/// use burncloud_supply_model::RealModelResolver;
+/// ```no_run
+/// use burncloud_node_runtime::{HardwareProbe, SystemHardwareProbe};
+/// use burncloud_supply_model::{ModelResolutionRequest, ModelResolver, RealModelResolver};
 ///
-/// let resolver = RealModelResolver::new(Vec::new()).unwrap();
-/// assert!(resolver.manifests().is_empty());
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let hardware = SystemHardwareProbe::new().inspect().await?;
+/// let resolver = RealModelResolver::new(Vec::new())?;
+/// let result = resolver
+///     .resolve(ModelResolutionRequest {
+///         model: "selected-model".into(),
+///         hardware,
+///     })
+///     .await;
+/// assert!(result.is_err()); // 空目录中没有该模型。
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RealModelResolver {
@@ -125,7 +136,7 @@ impl RealModelResolver {
     /// use burncloud_supply_model::RealModelResolver;
     ///
     /// let hardware = HardwareProfile {
-    ///     cpu_threads: 4,
+    ///     cpu: "example".into(),
     ///     memory_bytes: 8,
     ///     disk_available_bytes: 8,
     ///     accelerators: Vec::new(),
@@ -133,7 +144,7 @@ impl RealModelResolver {
     /// assert!(RealModelResolver::filter_by_hardware(&[], &hardware).is_empty());
     /// ```
     ///
-    /// 注意事项：多加速器设备使用单个加速器中的最大显存进行比较。
+    /// 注意事项：多加速器设备使用单个加速器中的最大显存进行比较；没有已知显存时按零处理。
     pub fn filter_by_hardware(variants: &[Variant], hardware: &HardwareProfile) -> Vec<Variant> {
         let available_vram_bytes = hardware
             .accelerators
@@ -152,7 +163,7 @@ impl RealModelResolver {
             .collect()
     }
 
-    /// 保留 Runtime 后端出现在设备支持列表中的 Variant，并保持输入顺序。
+    /// 保留 Runtime 后端出现在支持列表中的 Variant，并保持输入顺序。
     ///
     /// # Examples
     ///
@@ -175,7 +186,7 @@ impl RealModelResolver {
             .collect()
     }
 
-    // 磁盘条件属于阶段三新增规则，单独过滤可以保持阶段二硬件规则的语义不变。
+    // 磁盘条件属于阶段三规则，单独过滤可以保持硬件过滤函数的语义不变。
     fn filter_by_disk(variants: &[Variant], disk_available_bytes: u64) -> Vec<Variant> {
         variants
             .iter()
@@ -211,7 +222,7 @@ impl RealModelResolver {
     ///     variants: Vec::new(),
     /// }])?;
     /// let hardware = HardwareProfile {
-    ///     cpu_threads: 4,
+    ///     cpu: "example".into(),
     ///     memory_bytes: 8,
     ///     disk_available_bytes: 8,
     ///     accelerators: Vec::new(),
@@ -229,7 +240,8 @@ impl RealModelResolver {
         hardware: &HardwareProfile,
         supported_runtimes: &[String],
     ) -> Result<CandidateResolutionOutcome, ModelResolutionError> {
-        if model.trim().is_empty() {
+        let model = model.trim();
+        if model.is_empty() {
             return Err(ModelResolutionError::ResolutionFailed(
                 "model name must not be empty".into(),
             ));
@@ -283,17 +295,54 @@ impl RealModelResolver {
                 .collect(),
         ))
     }
+
+    fn resolve_model(
+        &self,
+        model: &str,
+        hardware: &HardwareProfile,
+    ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
+        let manifest = self
+            .manifests
+            .iter()
+            .find(|manifest| manifest.model_name == model)
+            .ok_or_else(|| {
+                ModelResolutionError::ResolutionFailed(format!(
+                    "model '{model}' is not in the catalog"
+                ))
+            })?;
+        let compatible = Self::filter_by_hardware(&manifest.variants, hardware);
+        let compatible = Self::filter_by_runtime(&compatible, &manifest.supported_backends);
+        let compatible = Self::filter_by_disk(&compatible, hardware.disk_available_bytes);
+
+        match compatible.into_iter().next() {
+            Some(variant) => Ok(ModelResolutionOutcome::Local(ResolvedModel {
+                model: model.to_owned(),
+                artifact_source: variant.artifact_uri,
+                artifact_digest: Some(variant.checksum),
+                runtime: variant.backend,
+                runtime_version: None,
+            })),
+            None => Ok(ModelResolutionOutcome::Unsupported(LocalModelUnsupported {
+                model: model.to_owned(),
+                reason: LocalModelUnsupportedReason::NoCompatibleVariant,
+            })),
+        }
+    }
 }
 
 #[async_trait]
 impl ModelResolver for RealModelResolver {
+    /// 校验模型名后，用请求携带的硬件快照执行兼容性判断。
     async fn resolve(
         &self,
         request: ModelResolutionRequest,
     ) -> Result<ModelResolutionOutcome, ModelResolutionError> {
-        Err(ModelResolutionError::ResolutionFailed(format!(
-            "real resolution is not implemented for model '{}'",
-            request.model
-        )))
+        let model = request.model.trim();
+        if model.is_empty() {
+            return Err(ModelResolutionError::ResolutionFailed(
+                "model name must not be empty".into(),
+            ));
+        }
+        self.resolve_model(model, &request.hardware)
     }
 }

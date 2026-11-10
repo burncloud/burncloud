@@ -17,8 +17,8 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use burncloud_node_runtime::{
-    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
+    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState, SystemHardwareProbe,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_supply_model::FakeModelResolver;
@@ -32,7 +32,7 @@ use tokio::sync::Mutex;
 type TestNodeOrchestrator = NodeOrchestrator<
     FakeModelResolver,
     FakeRuntimeAdapter,
-    FakeHardwareProbe,
+    SystemHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -73,7 +73,7 @@ impl TestHarness {
                 FakeModelResolver,
                 FakeRuntimeAdapter,
                 NodeComposition::start(
-                    FakeHardwareProbe::default(),
+                    SystemHardwareProbe::new(),
                     FakeArtifactPreparer,
                     FakeRuntimePreparer,
                     FakeProcessManager::default(),

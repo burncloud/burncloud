@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let manifests = load_manifests(arguments.manifest)?;
     let resolver = RealModelResolver::new(manifests)?;
     let hardware = HardwareProfile {
-        cpu_threads: 0,
+        cpu: "phase-three-cli".into(),
         memory_bytes: arguments.ram_bytes,
         disk_available_bytes: arguments.disk_bytes,
         accelerators: arguments

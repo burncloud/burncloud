@@ -95,6 +95,8 @@ dotenvy = "0.15"
 log = "0.4"
 semver = "1.0"
 tokio = { version = "1.0", features = ["full"] }
+nvml-wrapper = "0.13"
+sysinfo = "0.39"
 tokio-util = { version = "0.7", features = ["rt"] }
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

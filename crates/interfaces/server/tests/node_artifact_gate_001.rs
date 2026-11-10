@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use burncloud_node_runtime::{
-    ArtifactPreparation, ArtifactPrepareError, ArtifactVerificationStatus, Digest,
-    FakeHardwareProbe, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter,
-    FakeRuntimePreparer, NodeComposition, PreparedArtifact,
+    ArtifactPreparation, ArtifactPrepareError, ArtifactVerificationStatus, Digest, FakeHealthProbe,
+    FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
+    NodeComposition, PreparedArtifact, SystemHardwareProbe,
 };
 use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
 use burncloud_supply_model::{
@@ -48,7 +48,7 @@ impl ArtifactPreparation for UnverifiedArtifactPreparer {
 #[tokio::test]
 async fn unverified_artifact_receipt_fails_closed_before_runtime_start() {
     let machine = NodeComposition::start(
-        FakeHardwareProbe::default(),
+        SystemHardwareProbe::new(),
         UnverifiedArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager::default(),

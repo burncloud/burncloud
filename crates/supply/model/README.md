@@ -56,7 +56,8 @@ compatibility surface used during #778 was removed by #780.
    the boundary types are defined in this crate and exported from `src/lib.rs`:
    - persistence: `ModelCapability` (row), `ModelCapabilityInput` (write projection),
      `ModelCapabilityModel::{get, upsert}`, `current_timestamp`;
-   - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest`, `ResolvedModel`,
+   - resolution: `ModelManifest`, `Variant`, `ModelResolutionRequest` (model plus `HardwareProfile`),
+     `ResolvedModel`,
      `ModelResolutionOutcome` (`Local` / `Unsupported`), `LocalModelUnsupported`,
      `LocalModelUnsupportedReason`, `ModelResolutionError`, the `ModelResolver` trait,
      `RealModelResolver`, `FakeModelResolver`;
@@ -65,9 +66,9 @@ compatibility surface used during #778 was removed by #780.
    - Manifest loading: `load_default_manifests` loads the static JSON from
      `crates/supply/model/data/model_manifests.json`; `parse_manifests` parses external JSON
      supplied through `phase_three --manifest`.
-   `RealModelResolver` is the manifest-backed foundation and its `ModelResolver::resolve` currently
-   returns `ModelResolutionError::ResolutionFailed(...)`; `FakeModelResolver` is the deterministic
-   placeholder used by the Node skeleton. 阶段三候选列表中的 `model_name` 直接来自
+  `RealModelResolver` validates Manifest backend declarations, resolves the first compatible
+  variant for the Node lifecycle, and exposes the phase-three candidate-list filter; `FakeModelResolver`
+  is the deterministic placeholder used by the Node skeleton. 阶段三候选列表中的 `model_name` 直接来自
    `ModelManifest.model_name`，`variant_id` 直接来自 `Variant.id`；两者用于区分模型和同一模型
    的不同量化或 Runtime Variant，不读取前端 marketplace 运营目录的展示名称。
 

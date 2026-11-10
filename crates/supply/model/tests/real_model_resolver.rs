@@ -1,16 +1,13 @@
 use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile, HardwareProfile};
 use burncloud_supply_model::{
     CandidateResolutionOutcome, LocalModelUnsupportedReason, ModelManifest, ModelResolutionError,
-    RealModelResolver, Variant,
+    ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, RealModelResolver, Variant,
 };
 
-fn variant(id: &str, backend: &str, min_vram_bytes: u64) -> Variant {
-    variant_with_disk(id, backend, min_vram_bytes, 1)
-}
-
-fn variant_with_disk(
+fn variant(
     id: &str,
     backend: &str,
+    min_ram_bytes: u64,
     min_vram_bytes: u64,
     disk_size_bytes: u64,
 ) -> Variant {
@@ -19,7 +16,7 @@ fn variant_with_disk(
         model_size: Some("7b".into()),
         quantization: "q4_k_m".into(),
         backend: backend.into(),
-        min_ram_bytes: 8,
+        min_ram_bytes,
         min_vram_bytes,
         disk_size_bytes,
         checksum: format!("sha256:{id}"),
@@ -27,9 +24,30 @@ fn variant_with_disk(
     }
 }
 
+fn manifest_with_backends(
+    name: &str,
+    supported_backends: &[&str],
+    variants: Vec<Variant>,
+) -> ModelManifest {
+    ModelManifest {
+        model_name: name.into(),
+        description: "test manifest".into(),
+        supported_backends: supported_backends
+            .iter()
+            .map(|backend| (*backend).into())
+            .collect(),
+        version: "test".into(),
+        variants,
+    }
+}
+
+fn manifest(name: &str, variants: Vec<Variant>) -> ModelManifest {
+    manifest_with_backends(name, &["llama.cpp", "vllm"], variants)
+}
+
 fn hardware(vram_bytes: u64) -> HardwareProfile {
     HardwareProfile {
-        cpu_threads: 8,
+        cpu: "test-cpu".into(),
         memory_bytes: 8,
         disk_available_bytes: 100,
         accelerators: vec![AcceleratorProfile {
@@ -40,26 +58,24 @@ fn hardware(vram_bytes: u64) -> HardwareProfile {
     }
 }
 
+fn resolution_request(model: &str, hardware: HardwareProfile) -> ModelResolutionRequest {
+    ModelResolutionRequest {
+        model: model.into(),
+        hardware,
+    }
+}
+
 #[test]
 fn constructor_extracts_all_variants_from_all_manifests() {
     let resolver = RealModelResolver::new(vec![
-        ModelManifest {
-            model_name: "model-a".into(),
-            description: "test manifest".into(),
-            supported_backends: vec!["llama.cpp".into()],
-            version: "test".into(),
-            variants: vec![
-                variant("a-q4", "llama.cpp", 1),
-                variant("a-q8", "llama.cpp", 1),
+        manifest(
+            "model-a",
+            vec![
+                variant("a-q4", "llama.cpp", 8, 1, 1),
+                variant("a-q8", "llama.cpp", 8, 1, 1),
             ],
-        },
-        ModelManifest {
-            model_name: "model-b".into(),
-            description: "test manifest".into(),
-            supported_backends: vec!["vllm".into()],
-            version: "test".into(),
-            variants: vec![variant("b-q4", "vllm", 1)],
-        },
+        ),
+        manifest_with_backends("model-b", &["vllm"], vec![variant("b-q4", "vllm", 8, 1, 1)]),
     ])
     .unwrap();
 
@@ -76,13 +92,11 @@ fn constructor_extracts_all_variants_from_all_manifests() {
 
 #[test]
 fn constructor_rejects_variant_backend_not_declared_in_manifest() {
-    let result = RealModelResolver::new(vec![ModelManifest {
-        model_name: "deepseek-r1".into(),
-        description: "test manifest".into(),
-        supported_backends: vec!["llama.cpp".into()],
-        version: "test".into(),
-        variants: vec![variant("vllm-variant", "vllm", 1)],
-    }]);
+    let result = RealModelResolver::new(vec![manifest_with_backends(
+        "deepseek-r1",
+        &["llama.cpp"],
+        vec![variant("vllm-variant", "vllm", 8, 1, 1)],
+    )]);
 
     assert!(matches!(
         result,
@@ -94,7 +108,7 @@ fn constructor_rejects_variant_backend_not_declared_in_manifest() {
 
 #[test]
 fn hardware_filter_keeps_variant_when_ram_and_vram_are_sufficient() {
-    let variants = vec![variant("compatible", "llama.cpp", 6)];
+    let variants = vec![variant("compatible", "llama.cpp", 8, 6, 1)];
     let filtered = RealModelResolver::filter_by_hardware(&variants, &hardware(8));
 
     assert_eq!(
@@ -108,7 +122,7 @@ fn hardware_filter_keeps_variant_when_ram_and_vram_are_sufficient() {
 
 #[test]
 fn hardware_filter_removes_variant_when_vram_is_insufficient() {
-    let variants = vec![variant("needs-more-vram", "llama.cpp", 8)];
+    let variants = vec![variant("needs-more-vram", "llama.cpp", 8, 8, 1)];
     let filtered = RealModelResolver::filter_by_hardware(&variants, &hardware(6));
 
     assert!(filtered.is_empty());
@@ -116,8 +130,7 @@ fn hardware_filter_removes_variant_when_vram_is_insufficient() {
 
 #[test]
 fn hardware_filter_removes_variant_when_ram_is_insufficient() {
-    let mut variants = vec![variant("needs-more-ram", "llama.cpp", 1)];
-    variants[0].min_ram_bytes = 16;
+    let variants = vec![variant("needs-more-ram", "llama.cpp", 16, 1, 1)];
     let filtered = RealModelResolver::filter_by_hardware(&variants, &hardware(8));
 
     assert!(filtered.is_empty());
@@ -125,7 +138,10 @@ fn hardware_filter_removes_variant_when_ram_is_insufficient() {
 
 #[test]
 fn runtime_filter_keeps_only_supported_backends() {
-    let variants = vec![variant("llama", "llama.cpp", 1), variant("vllm", "vllm", 1)];
+    let variants = vec![
+        variant("llama", "llama.cpp", 8, 1, 1),
+        variant("vllm", "vllm", 8, 1, 1),
+    ];
     let filtered = RealModelResolver::filter_by_runtime(&variants, &["llama.cpp".into()]);
 
     assert_eq!(
@@ -137,25 +153,78 @@ fn runtime_filter_keeps_only_supported_backends() {
     );
 }
 
-#[test]
-fn resolve_with_capabilities_returns_all_variants_that_survive_both_filters() {
-    let resolver = RealModelResolver::new(vec![ModelManifest {
-        model_name: "deepseek-r1".into(),
-        description: "test manifest".into(),
-        supported_backends: vec!["llama.cpp".into(), "vllm".into()],
-        version: "test".into(),
-        variants: vec![
-            variant("high-vram", "llama.cpp", 16),
-            variant("unsupported-runtime", "vllm", 4),
-            variant("compatible-first", "llama.cpp", 4),
-            variant("compatible-second", "llama.cpp", 4),
+#[tokio::test]
+async fn resolve_selects_the_first_variant_that_fits_the_real_request() {
+    let resolver = RealModelResolver::new(vec![manifest_with_backends(
+        "selected-model",
+        &["llama.cpp"],
+        vec![
+            variant("needs-more-ram", "llama.cpp", 9, 0, 1),
+            variant("needs-more-vram", "llama.cpp", 8, 9, 1),
+            variant("compatible", "llama.cpp", 8, 4, 100),
+            variant("later-match", "llama.cpp", 0, 0, 1),
         ],
-    }])
+    )])
     .unwrap();
 
-    let runtimes = vec!["llama.cpp".into()];
+    let outcome = resolver
+        .resolve(resolution_request(" selected-model ", hardware(8)))
+        .await
+        .unwrap();
+
+    match outcome {
+        ModelResolutionOutcome::Local(resolved) => {
+            assert_eq!(resolved.model, "selected-model");
+            assert!(resolved.artifact_source.ends_with("compatible.gguf"));
+            assert_eq!(
+                resolved.artifact_digest.as_deref(),
+                Some("sha256:compatible")
+            );
+            assert_eq!(resolved.runtime, "llama.cpp");
+            assert_eq!(resolved.runtime_version, None);
+        }
+        ModelResolutionOutcome::Unsupported(reason) => {
+            panic!("expected a compatible variant, got {reason:?}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn resolve_reports_unsupported_when_no_variant_fits() {
+    let resolver = RealModelResolver::new(vec![manifest_with_backends(
+        "selected",
+        &["llama.cpp"],
+        vec![variant("needs-disk", "llama.cpp", 8, 4, 101)],
+    )])
+    .unwrap();
+
+    let outcome = resolver
+        .resolve(resolution_request("selected", hardware(4)))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        outcome,
+        ModelResolutionOutcome::Unsupported(model)
+            if matches!(model.reason, LocalModelUnsupportedReason::NoCompatibleVariant)
+    ));
+}
+
+#[test]
+fn resolve_with_capabilities_returns_all_variants_that_survive_filters() {
+    let resolver = RealModelResolver::new(vec![manifest(
+        "deepseek-r1",
+        vec![
+            variant("high-vram", "llama.cpp", 8, 16, 1),
+            variant("unsupported-runtime", "vllm", 8, 4, 1),
+            variant("compatible-first", "llama.cpp", 8, 4, 1),
+            variant("compatible-second", "llama.cpp", 8, 4, 1),
+        ],
+    )])
+    .unwrap();
+
     let result = resolver
-        .resolve_with_capabilities("deepseek-r1", &hardware(8), &runtimes)
+        .resolve_with_capabilities("deepseek-r1", &hardware(8), &["llama.cpp".into()])
         .unwrap();
 
     match result {
@@ -172,77 +241,34 @@ fn resolve_with_capabilities_returns_all_variants_that_survive_both_filters() {
                 .artifact_uri
                 .ends_with("compatible-first.gguf"));
             assert_eq!(candidates[0].checksum, "sha256:compatible-first");
-            assert!(candidates[1]
-                .artifact_uri
-                .ends_with("compatible-second.gguf"));
             assert_eq!(candidates[1].variant_id, "compatible-second");
         }
         CandidateResolutionOutcome::Unsupported(reason) => {
-            panic!("expected a compatible variant, got {reason:?}");
+            panic!("expected compatible candidates, got {reason:?}");
         }
     }
 }
 
 #[test]
-fn resolve_with_capabilities_reports_no_compatible_variant() {
-    let resolver = RealModelResolver::new(vec![ModelManifest {
-        model_name: "deepseek-r1".into(),
-        description: "test manifest".into(),
-        supported_backends: vec!["llama.cpp".into()],
-        version: "test".into(),
-        variants: vec![variant("high-vram", "llama.cpp", 16)],
-    }])
-    .unwrap();
-
-    let runtimes = vec!["llama.cpp".into()];
-    let result = resolver
-        .resolve_with_capabilities("deepseek-r1", &hardware(8), &runtimes)
-        .unwrap();
-
-    assert!(matches!(
-        result,
-        CandidateResolutionOutcome::Unsupported(model) if matches!(
-            model.reason,
-            LocalModelUnsupportedReason::NoCompatibleVariant
-        )
-    ));
-}
-
-#[test]
 fn resolve_with_capabilities_filters_by_disk_space() {
-    let resolver = RealModelResolver::new(vec![ModelManifest {
-        model_name: "deepseek-r1".into(),
-        description: "test manifest".into(),
-        supported_backends: vec!["llama.cpp".into()],
-        version: "test".into(),
-        variants: vec![
-            variant_with_disk("exact-fit", "llama.cpp", 4, 100),
-            variant_with_disk("too-large", "llama.cpp", 4, 101),
+    let resolver = RealModelResolver::new(vec![manifest_with_backends(
+        "deepseek-r1",
+        &["llama.cpp"],
+        vec![
+            variant("exact-fit", "llama.cpp", 8, 4, 100),
+            variant("too-large", "llama.cpp", 8, 4, 101),
         ],
-    }])
+    )])
     .unwrap();
 
     let result = resolver
-        .resolve_with_capabilities(
-            "deepseek-r1",
-            &HardwareProfile {
-                cpu_threads: 8,
-                memory_bytes: 8,
-                disk_available_bytes: 100,
-                accelerators: vec![AcceleratorProfile {
-                    kind: AcceleratorKind::Other,
-                    name: "test-accelerator".into(),
-                    memory_bytes: Some(4),
-                }],
-            },
-            &["llama.cpp".into()],
-        )
+        .resolve_with_capabilities("deepseek-r1", &hardware(4), &["llama.cpp".into()])
         .unwrap();
 
     match result {
         CandidateResolutionOutcome::Candidates(candidates) => {
             assert_eq!(candidates.len(), 1);
-            assert_eq!(candidates[0].model_name, "deepseek-r1");
+            assert_eq!(candidates[0].variant_id, "exact-fit");
             assert_eq!(candidates[0].disk_size_bytes, 100);
         }
         CandidateResolutionOutcome::Unsupported(reason) => {
@@ -252,23 +278,22 @@ fn resolve_with_capabilities_filters_by_disk_space() {
 }
 
 #[test]
-fn resolve_with_capabilities_reports_unsupported_when_disk_is_insufficient() {
-    let resolver = RealModelResolver::new(vec![ModelManifest {
-        model_name: "deepseek-r1".into(),
-        description: "test manifest".into(),
-        supported_backends: vec!["llama.cpp".into()],
-        version: "test".into(),
-        variants: vec![variant_with_disk("needs-disk", "llama.cpp", 4, 101)],
-    }])
-    .unwrap();
+fn resolve_with_capabilities_rejects_empty_public_inputs() {
+    let resolver = RealModelResolver::new(Vec::new()).unwrap();
 
-    let result = resolver
-        .resolve_with_capabilities("deepseek-r1", &hardware(4), &["llama.cpp".into()])
-        .unwrap();
-
+    let model_result =
+        resolver.resolve_with_capabilities("  ", &hardware(8), &["llama.cpp".into()]);
     assert!(matches!(
-        result,
-        CandidateResolutionOutcome::Unsupported(model)
-            if matches!(model.reason, LocalModelUnsupportedReason::NoCompatibleVariant)
+        model_result,
+        Err(ModelResolutionError::ResolutionFailed(message))
+            if message == "model name must not be empty"
+    ));
+
+    let runtime_result =
+        resolver.resolve_with_capabilities("deepseek-r1", &hardware(8), &["  ".into()]);
+    assert!(matches!(
+        runtime_result,
+        Err(ModelResolutionError::ResolutionFailed(message))
+            if message == "supported runtime names must not be empty"
     ));
 }
