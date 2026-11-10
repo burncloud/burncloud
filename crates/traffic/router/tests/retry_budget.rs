@@ -92,23 +92,28 @@ fn the_loop_takes_each_candidate_once_and_never_retries_one() {
     let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
         .expect("lib.rs is part of this crate");
 
-    let loop_line = src
+    let legacy_loop = src
         .lines()
-        .find(|l| l.contains("for (attempt, upstream) in candidates.iter().enumerate()"))
-        .expect("the failover loop header was not found; if it moved, this test needs updating");
+        .find(|l| l.contains("for (attempt, upstream) in candidates.iter().enumerate()"));
+    let strict_loop = src
+        .lines()
+        .find(|l| l.contains("let selected_upstream = candidates.remove(position);"));
 
-    println!("failover loop: {}", loop_line.trim());
-
-    // The loop iterates the candidate vector directly. If it ever becomes a `loop { }` with a manual index, or
-    // wraps the candidates in a retry iterator, the one-attempt-per-candidate property stops being structural.
+    // 旧策略直接遍历候选；新策略从候选 Vec 中 remove 已选项，两个分支都不会把同一项放回待尝试集合。
     assert!(
-        loop_line.contains("candidates.iter()"),
-        "the loop must iterate the candidate vector directly so that each candidate is attempted once"
+        legacy_loop.is_some() || strict_loop.is_some(),
+        "failover loop ownership was not found"
     );
-    assert!(
-        !loop_line.contains("cycle") && !loop_line.contains("repeat"),
-        "an iterator that revisits its items would make the budget unbounded"
-    );
+    if let Some(loop_line) = legacy_loop {
+        println!("legacy failover loop: {}", loop_line.trim());
+        assert!(loop_line.contains("candidates.iter()"));
+        assert!(!loop_line.contains("cycle") && !loop_line.contains("repeat"));
+    } else {
+        let remove_line = strict_loop.expect("strict failover removal");
+        println!("strict failover selection: {}", remove_line.trim());
+        assert!(src.contains("while !candidates.is_empty()"));
+        assert!(src.contains("candidates.remove(position)"));
+    }
 }
 
 /// The budget is `min(candidates, 5)`, written where the reader will look for it.

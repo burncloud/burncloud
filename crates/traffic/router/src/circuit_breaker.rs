@@ -64,6 +64,25 @@ pub struct CircuitBreaker {
     cooldown_duration: Duration,
 }
 
+pub(crate) struct CircuitProbeGuard {
+    breaker: std::sync::Arc<CircuitBreaker>,
+    id: String,
+    stamp: Option<Instant>,
+}
+
+impl Drop for CircuitProbeGuard {
+    fn drop(&mut self) {
+        if let Some(stamp) = self.stamp {
+            if let Some(mut state) = self.breaker.states.get_mut(&self.id) {
+                // 只归还自己租到的半开探针；过期后被别人重新领取的探针不能释放。
+                if state.half_open_probe_started_at == Some(stamp) {
+                    state.half_open_probe_started_at = None;
+                }
+            }
+        }
+    }
+}
+
 impl CircuitBreaker {
     pub fn new(failure_threshold: u32, cooldown_seconds: u64) -> Self {
         Self {
@@ -119,6 +138,39 @@ impl CircuitBreaker {
             }
             Some(_) => false,
         }
+    }
+
+    pub(crate) fn probe_guard(self: &std::sync::Arc<Self>, id: &str) -> CircuitProbeGuard {
+        let stamp = self
+            .states
+            .get(id)
+            .and_then(|entry| entry.half_open_probe_started_at);
+        CircuitProbeGuard {
+            breaker: std::sync::Arc::clone(self),
+            id: id.to_owned(),
+            stamp,
+        }
+    }
+
+    pub(crate) fn is_available(&self, id: &str) -> bool {
+        let Some(entry) = self.states.get(id) else {
+            return true;
+        };
+        if entry
+            .rate_limit_until
+            .is_some_and(|until| until > Instant::now())
+        {
+            return false;
+        }
+        if entry.failure_count.load(Ordering::Relaxed) < self.failure_threshold {
+            return true;
+        }
+        entry
+            .last_failure_time
+            .is_some_and(|at| at.elapsed() >= self.cooldown_duration)
+            && entry
+                .half_open_probe_started_at
+                .is_none_or(|at| at.elapsed() >= Duration::from_secs(HALF_OPEN_PROBE_TIMEOUT_SECS))
     }
 
     /// Records a successful request.

@@ -50,6 +50,7 @@ ignore = [
 
     # paste — unmaintained, pulled in by rav1e via image/arboard (clipboard support)
     { id = "RUSTSEC-2024-0436", reason = "paste via rav1e>image>arboard chain, no safe upgrade available" },
+    { id = "RUSTSEC-2026-0459", reason = "sqlx 0.8.6 pins libsqlite3-sys 0.30.1; the fixed bundled SQLite release is outside the compatible range, so a coordinated sqlx upgrade is required before this can be removed" },
 ]
 
 # ─── Licenses ─────────────────────────────────────────────────────────────────

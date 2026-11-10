@@ -174,6 +174,27 @@ impl ChannelAbilityModel {
         Ok(abilities)
     }
 
+    pub(super) async fn list_enabled_for_model(
+        db: &Database,
+        group: &str,
+        model: &str,
+    ) -> Result<Vec<Ability>> {
+        let conn = db.get_connection()?;
+        let pg = db.kind() == "postgres";
+        let group_col = if pg { "\"group\"" } else { "`group`" };
+        let enabled = if pg { "enabled::INTEGER" } else { "enabled" };
+        let truth = if pg { "TRUE" } else { "1" };
+        let sql = format!("SELECT {group_col}, model, channel_id, {enabled} AS enabled, priority, weight FROM channel_abilities WHERE {group_col} = {} AND model = {} AND enabled = {truth} ORDER BY priority DESC, channel_id", ph(pg, 1), ph(pg, 2));
+        Ok(sqlx::query_as::<_, AbilityRow>(&sql)
+            .bind(group)
+            .bind(model)
+            .fetch_all(conn.pool())
+            .await?
+            .into_iter()
+            .map(Ability::from)
+            .collect())
+    }
+
     /// List all distinct models from channel_abilities
     ///
     /// Returns a list of unique model names that have at least one enabled channel.
