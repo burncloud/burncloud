@@ -14,6 +14,7 @@ mod config;
 pub mod exchange_rate;
 mod limiter;
 pub mod local_attachment;
+mod local_dispatch;
 pub mod log_service;
 pub mod model_router;
 pub mod order_type;
@@ -23,6 +24,7 @@ pub mod rate_budget;
 pub mod response_parser;
 pub mod response_quality;
 mod scheduler;
+pub use scheduler::SchedulerKind;
 mod state;
 pub mod storage;
 pub mod stream_parser;
@@ -454,7 +456,7 @@ fn record_upstream_failure(
             | FailureType::ConnectionError
             | FailureType::EmptyResponse
     );
-    if should_evict {
+    if should_evict && !session_id.is_empty() {
         if let Some(model) = model_name {
             state.affinity_cache.evict(session_id, model);
             tracing::debug!(
@@ -481,7 +483,7 @@ fn record_upstream_success(
 ) {
     state.circuit_breaker.record_success(&upstream.id);
     let channel_id: i32 = upstream.id.parse().unwrap_or(0);
-    if let Some(model) = model_name {
+    if let Some(model) = model_name.filter(|_| !session_id.is_empty()) {
         state.affinity_cache.insert(session_id, model, channel_id);
     }
 }
@@ -912,6 +914,9 @@ pub async fn create_router_app_with_route_miss(
     Router,
     mpsc::Sender<tokio::sync::oneshot::Sender<price_sync::SyncResult>>,
 )> {
+    local_attachment::LocalAttachmentState::for_database(&db)
+        .configure(local_attachment::configured_concurrency()?)?;
+    let configured_policies = scheduler::load_scheduler_config()?;
     let client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
         .timeout(std::time::Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
@@ -953,7 +958,7 @@ pub async fn create_router_app_with_route_miss(
     });
 
     // Scheduler policies for multi-channel routing
-    let scheduler_policies = Arc::new(RwLock::new(scheduler::load_scheduler_config()));
+    let scheduler_policies = Arc::new(RwLock::new(configured_policies));
 
     // L3 Affinity flow cache (HRW + dual TTL: 5min sticky / 30min hard).
     let affinity_cache = Arc::new(affinity::AffinityCache::default());
@@ -1436,6 +1441,9 @@ async fn health_status_handler(State(state): State<AppState>) -> Response {
             map.insert(
                 group.clone(),
                 match kind {
+                    scheduler::SchedulerKind::Balanced => "balanced".to_string(),
+                    scheduler::SchedulerKind::StabilityFirst => "stability_first".to_string(),
+                    scheduler::SchedulerKind::PriceFirst => "price_first".to_string(),
                     scheduler::SchedulerKind::Passthrough => "passthrough".to_string(),
                     scheduler::SchedulerKind::Combined { config } => format!(
                         "combined(h={:.1},c={:.1},r={:.1})",
@@ -1715,13 +1723,8 @@ async fn proxy_handler(
                 .and_then(|m| m.as_str())
                 .map(|s| s.to_string())
         })
-        .or_else(|| crate::passthrough::extract_model_from_gemini_path(&path))
-        // Strip Gemini method suffixes like ":generateContent", ":streamGenerateContent"
-        .map(|s| {
-            s.split_once(':')
-                .map(|(base, _)| base.to_string())
-                .unwrap_or(s)
-        });
+        // 只有 Gemini 路径提取器处理方法后缀；JSON 模型别名中的冒号必须原样保留。
+        .or_else(|| crate::passthrough::extract_model_from_gemini_path(&path));
 
     // Extract Veo-specific fields for request-side billing.
     // Veo's predictLongRunning response has no usageMetadata; duration is in the request body.
@@ -2268,6 +2271,15 @@ async fn proxy_logic(
 
     // Model Routing
     let mut candidates: Vec<Upstream> = Vec::new();
+    let mut strict_plan = None;
+    let mut selection_error = None;
+    let mut sends = 0_u32;
+    // 请求快照保留本机身份，摘除后不能因内存索引缺失而退回普通供给路径。
+    let mut local_candidates = std::collections::HashSet::<i32>::new();
+    let local = state.model_router.local_attachment_state();
+    let mut local_rejected = false;
+    let mut upstream_attempted = false;
+    let mut local_client_failed = false;
     // True only when ModelRouter itself returned zero candidates for the model.
     // Later protocol/path filtering must not be reclassified as a Node route miss.
     let mut model_router_missed = false;
@@ -2293,7 +2305,7 @@ async fn proxy_logic(
 
     // Extract session_id from conversation_id in request body (P0 affinity wiring).
     // Falls back to user_id so affinity still works when no conversation_id is set.
-    let session_id: String = serde_json::from_slice::<serde_json::Value>(&body_bytes)
+    let mut session_id: String = serde_json::from_slice::<serde_json::Value>(&body_bytes)
         .ok()
         .and_then(|v| {
             v.get("conversation_id")
@@ -2319,6 +2331,12 @@ async fn proxy_logic(
                 let policies = state.scheduler_policies.read().await;
                 policies.get(&user_group.to_lowercase()).cloned()
             };
+            if scheduler_kind
+                .as_ref()
+                .is_none_or(scheduler::SchedulerKind::is_strict)
+            {
+                session_id.clear();
+            }
             // Lock released here — before SQL queries in route_with_scheduler
 
             // L1 Classifier: resolve color via service-user (audit decision
@@ -2355,7 +2373,7 @@ async fn proxy_logic(
 
             match state
                 .model_router
-                .route_with_scheduler(model_router::RouteInputs {
+                .route_for_dispatch(model_router::RouteInputs {
                     group: user_group,
                     model,
                     state_tracker: &state.channel_state_tracker,
@@ -2367,7 +2385,8 @@ async fn proxy_logic(
                 })
                 .await
             {
-                Ok((channels, routing_decision)) if !channels.is_empty() => {
+                Ok((channels, routing_decision, plan)) if !channels.is_empty() => {
+                    strict_plan = plan;
                     tracing::debug!(
                         "ModelRouter: Got {} candidates for {}",
                         channels.len(),
@@ -2425,6 +2444,9 @@ async fn proxy_logic(
                             ChannelType::Zai => (AuthType::Bearer, PROTOCOL_ZAI.to_string()),
                             _ => (AuthType::Bearer, PROTOCOL_OPENAI.to_string()),
                         };
+                        if channel.tag.as_deref() == Some("burncloud-node-local") {
+                            local_candidates.insert(channel.id);
+                        }
                         let ch_id = channel.id.to_string();
                         candidates.push(Upstream {
                             id: ch_id,
@@ -2627,7 +2649,34 @@ async fn proxy_logic(
         }
     }
 
-    for (attempt, upstream) in candidates.iter().enumerate() {
+    let mut visited = 0_usize;
+    while !candidates.is_empty() && (strict_plan.is_none() || sends < 5) {
+        let position = if let Some(plan) = &strict_plan {
+            match plan.pick(
+                candidates.iter().filter_map(|u| u.id.parse().ok()),
+                &state.channel_state_tracker,
+                |id| state.circuit_breaker.is_available(&id.to_string()),
+            ) {
+                Ok(id) => candidates
+                    .iter()
+                    .position(|u| u.id == id.to_string())
+                    .unwrap_or_else(|| unreachable!()),
+                Err(error) => {
+                    selection_error = Some(error);
+                    break;
+                }
+            }
+        } else {
+            0
+        };
+        let selected_upstream = candidates.remove(position);
+        let upstream = &selected_upstream;
+        let attempt = if strict_plan.is_some() {
+            sends as usize
+        } else {
+            visited
+        };
+        visited += 1;
         // L5 Failover: override routing decision when attempt > 0.
         if attempt > 0 {
             sched_routing_decision = Some(model_router::RoutingDecision::Failover {
@@ -2647,6 +2696,7 @@ async fn proxy_logic(
         // for the rest of the iteration: success → `commit(est_tpm)`; any
         // continue / panic / cancel → `Drop` refunds full est_tpm (audit FM4).
         let channel_id_i32: i32 = upstream.id.parse().unwrap_or(0);
+        let is_local = local_candidates.contains(&channel_id_i32);
         let mut budget_guard: Option<BudgetGuard<'_>> = None;
         let iter_label: &'static str = if !state.rate_budget.is_configured(channel_id_i32) {
             state
@@ -2713,6 +2763,23 @@ async fn proxy_logic(
             continue;
         }
 
+        let mut local_probe_guard =
+            is_local.then(|| state.circuit_breaker.probe_guard(&upstream.id));
+
+        // 本机客户端只在管理状态中缓存；普通上游仍使用原客户端。
+        let client = if is_local {
+            match local.local_client().await {
+                Ok(client) => client,
+                Err(error) => {
+                    local_client_failed = true;
+                    last_error = format!("Local HTTP client initialization failed: {error}");
+                    continue;
+                }
+            }
+        } else {
+            &state.client
+        };
+
         // 2. Construct Target URL
         // Note: Some adaptors might override URL, but we set base here.
         let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
@@ -2770,24 +2837,29 @@ async fn proxy_logic(
                     .get("stream")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                let req = state
-                    .client
+                let req = client
                     .request(method.clone(), &url)
                     .header("x-api-key", &upstream.api_key)
                     .header("anthropic-version", "2023-06-01");
                 (req, is_stream, false)
             } else if channel_type == ChannelType::OpenAI {
-                // OpenAI passthrough: forward to base_url + /chat/completions
+                // 本机根地址补 /v1；非本机沿用既有 /chat/completions 约定。
                 let base = upstream.base_url.trim_end_matches('/');
-                let url = format!("{base}/chat/completions");
+                let url = if is_local {
+                    format!("{base}/v1/chat/completions")
+                } else {
+                    format!("{base}/chat/completions")
+                };
                 let is_stream = body_json
                     .get("stream")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                let req = state
-                    .client
-                    .request(method.clone(), &url)
-                    .header("Authorization", format!("Bearer {}", upstream.api_key));
+                let req = client.request(method.clone(), &url);
+                let req = if is_local {
+                    req
+                } else {
+                    req.header("Authorization", format!("Bearer {}", upstream.api_key))
+                };
                 (req, is_stream, false)
             } else {
                 // Gemini passthrough
@@ -2808,8 +2880,7 @@ async fn proxy_logic(
                     passthrough_url.clone()
                 };
                 tracing::debug!("Passthrough URL: {}", final_url);
-                let req = state
-                    .client
+                let req = client
                     .request(method.clone(), &final_url)
                     .header("x-goog-api-key", &upstream.api_key);
                 (req, is_stream, true)
@@ -2827,8 +2898,11 @@ async fn proxy_logic(
             }
 
             // Apply header_override
-            let req_builder =
-                apply_header_override(req_builder, upstream.header_override.as_deref());
+            let req_builder = if is_local {
+                req_builder
+            } else {
+                apply_header_override(req_builder, upstream.header_override.as_deref())
+            };
 
             let req_builder = req_builder.json(&passthrough_body);
             // Enforce the remaining total budget through SSE body reads as
@@ -2837,6 +2911,73 @@ async fn proxy_logic(
                 req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
 
             // Execute passthrough request
+            // 本机许可与响应体一起转移，handler 返回不会提前释放并发槽。
+            if is_local {
+                let Some(permit) = local.try_acquire(
+                    channel_id_i32,
+                    model_name.unwrap_or_default(),
+                    &upstream.base_url,
+                ) else {
+                    local_rejected = true;
+                    last_error = format!("Local attachment {} rejected by admission", upstream.id);
+                    continue;
+                };
+                sends += 1;
+                upstream_attempted = true;
+                let exchange = local_dispatch::LocalExchange::new(
+                    state,
+                    upstream,
+                    model_name.unwrap_or_default(),
+                    &session_id,
+                    permit,
+                    Arc::clone(&token_counter),
+                );
+                match exchange
+                    .send(
+                        req_builder,
+                        is_stream,
+                        request_start_time.checked_add(retry_budget),
+                        local_probe_guard.take(),
+                    )
+                    .await
+                {
+                    Ok(response) => {
+                        let status = response.status();
+                        if status.is_success() {
+                            if let Some(guard) = budget_guard.take() {
+                                let actual = token_counter.get_usage().total_tokens() as u64;
+                                guard.commit(if is_stream || actual == 0 {
+                                    shaper_ctx.est_tpm
+                                } else {
+                                    actual
+                                });
+                            }
+                        }
+                        return ProxyResult {
+                            response,
+                            upstream_id: last_upstream_id,
+                            final_status: status,
+                            pricing_region: selected_pricing_region.clone(),
+                            video_task_id: None,
+                            shaper_outcome: Some((
+                                iter_label.to_string(),
+                                shaper_ctx.color.as_char().to_string(),
+                            )),
+                            routing_decision: sched_routing_decision.clone(),
+                            sched_request_color: shaper_color,
+                            error_type: (!status.is_success())
+                                .then(|| "upstream_error".to_string()),
+                            request_log_data: None,
+                        };
+                    }
+                    Err(error) => {
+                        last_error = error;
+                        continue;
+                    }
+                }
+            }
+            sends += 1;
+            upstream_attempted = true;
             match req_builder.send().await {
                 Ok(resp) => {
                     let status = resp.status();
@@ -3079,7 +3220,7 @@ async fn proxy_logic(
                                             );
 
                                             // Evict affinity so next request tries different channel
-                                            if let Some(model) = &model_name_clone {
+                                            if let Some(model) = model_name_clone.as_ref().filter(|_| !session_id_clone.is_empty()) {
                                                 state_clone.affinity_cache.evict(&session_id_clone, model);
                                             }
                                         }
@@ -3088,7 +3229,7 @@ async fn proxy_logic(
                                         state_clone.empty_response_counter.reset(&upstream_id_str);
                                         // Now we can safely record success for the streaming response
                                         state_clone.circuit_breaker.record_success(&upstream_id_str);
-                                        if let Some(model) = &model_name_clone {
+                                        if let Some(model) = model_name_clone.as_ref().filter(|_| !session_id_clone.is_empty()) {
                                             state_clone.affinity_cache.insert(&session_id_clone, model, channel_id);
                                         }
                                     }
@@ -3195,7 +3336,9 @@ async fn proxy_logic(
                                     );
 
                                     // Evict from affinity cache so next request tries a different channel
-                                    if let Some(model) = model_name {
+                                    if let Some(model) =
+                                        model_name.filter(|_| !session_id.is_empty())
+                                    {
                                         state.affinity_cache.evict(&session_id, model);
                                     }
                                     tracing::info!(
@@ -3500,24 +3643,96 @@ async fn proxy_logic(
         }
 
         // 4. Build Request via Adaptor
-        let req_builder = state.client.request(method.clone(), &target_url);
+        let req_builder = client.request(method.clone(), &target_url);
 
         // Apply header_override
-        let req_builder = apply_header_override(req_builder, upstream.header_override.as_deref());
-
-        let req_builder = adaptor
-            .build_request(
-                &state.client,
-                req_builder,
-                &upstream.api_key,
-                &request_body_json,
-            )
-            .await;
+        let req_builder = if is_local {
+            // 本机不转发 BurnCloud 凭证，也不允许参数覆盖改写已声明的模型别名。
+            if let (Some(model), Some(object)) = (model_name, request_body_json.as_object_mut()) {
+                object.insert(
+                    "model".to_string(),
+                    serde_json::Value::String(model.to_string()),
+                );
+            }
+            req_builder.json(&request_body_json)
+        } else {
+            let req_builder =
+                apply_header_override(req_builder, upstream.header_override.as_deref());
+            adaptor
+                .build_request(client, req_builder, &upstream.api_key, &request_body_json)
+                .await
+        };
 
         // 5. Execute: apply both the remaining total budget and legacy 10-hour
         // per-attempt cap, including any streaming response body reads.
         let req_builder =
             req_builder.timeout(retry_attempt_timeout(retry_budget, request_start_time));
+        // 本机许可与响应体一起转移，handler 返回不会提前释放并发槽。
+        if is_local {
+            let Some(permit) = local.try_acquire(
+                channel_id_i32,
+                model_name.unwrap_or_default(),
+                &upstream.base_url,
+            ) else {
+                local_rejected = true;
+                last_error = format!("Local attachment {} rejected by admission", upstream.id);
+                continue;
+            };
+            sends += 1;
+            upstream_attempted = true;
+            let exchange = local_dispatch::LocalExchange::new(
+                state,
+                upstream,
+                model_name.unwrap_or_default(),
+                &session_id,
+                permit,
+                Arc::clone(&token_counter),
+            );
+            match exchange
+                .send(
+                    req_builder,
+                    is_stream,
+                    request_start_time.checked_add(retry_budget),
+                    local_probe_guard.take(),
+                )
+                .await
+            {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.is_success() {
+                        if let Some(guard) = budget_guard.take() {
+                            let actual = token_counter.get_usage().total_tokens() as u64;
+                            guard.commit(if is_stream || actual == 0 {
+                                shaper_ctx.est_tpm
+                            } else {
+                                actual
+                            });
+                        }
+                    }
+                    return ProxyResult {
+                        response,
+                        upstream_id: last_upstream_id,
+                        final_status: status,
+                        pricing_region: selected_pricing_region.clone(),
+                        video_task_id: None,
+                        shaper_outcome: Some((
+                            iter_label.to_string(),
+                            shaper_ctx.color.as_char().to_string(),
+                        )),
+                        routing_decision: sched_routing_decision.clone(),
+                        sched_request_color: shaper_color,
+                        error_type: (!status.is_success()).then(|| "upstream_error".to_string()),
+                        request_log_data: None,
+                    };
+                }
+                Err(error) => {
+                    last_error = error;
+                    continue;
+                }
+            }
+        }
+        sends += 1;
+        upstream_attempted = true;
         match req_builder.send().await {
             Ok(resp) => {
                 let status = resp.status();
@@ -3899,7 +4114,10 @@ async fn proxy_logic(
                                         "Consecutive empty streaming responses exceeded threshold",
                                     );
 
-                                    if let Some(model) = &model_name_clone {
+                                    if let Some(model) = model_name_clone
+                                        .as_ref()
+                                        .filter(|_| !session_id_clone.is_empty())
+                                    {
                                         state_clone.affinity_cache.evict(&session_id_clone, model);
                                         tracing::debug!(
                                             session_id = %session_id_clone,
@@ -3920,7 +4138,10 @@ async fn proxy_logic(
                                 state_clone.empty_response_counter.reset(&upstream_id_str);
                                 // Now we can safely record success for the streaming response
                                 state_clone.circuit_breaker.record_success(&upstream_id_str);
-                                if let Some(model) = &model_name_clone {
+                                if let Some(model) = model_name_clone
+                                    .as_ref()
+                                    .filter(|_| !session_id_clone.is_empty())
+                                {
                                     state_clone.affinity_cache.insert(
                                         &session_id_clone,
                                         model,
@@ -4209,7 +4430,10 @@ async fn proxy_logic(
                                 );
 
                                 // Evict affinity
-                                if let Some(model) = &model_name_clone {
+                                if let Some(model) = model_name_clone
+                                    .as_ref()
+                                    .filter(|_| !session_id_clone.is_empty())
+                                {
                                     state_clone.affinity_cache.evict(&session_id_clone, model);
                                 }
                             }
@@ -4240,7 +4464,10 @@ async fn proxy_logic(
                                     );
 
                                     // Evict affinity so next request tries different channel
-                                    if let Some(model) = &model_name_clone {
+                                    if let Some(model) = model_name_clone
+                                        .as_ref()
+                                        .filter(|_| !session_id_clone.is_empty())
+                                    {
                                         state_clone.affinity_cache.evict(&session_id_clone, model);
                                         tracing::debug!(
                                             session_id = %session_id_clone,
@@ -4261,7 +4488,10 @@ async fn proxy_logic(
                                 state_clone.empty_response_counter.reset(&upstream_id_str);
                                 // Now we can safely record success for the streaming response
                                 state_clone.circuit_breaker.record_success(&upstream_id_str);
-                                if let Some(model) = &model_name_clone {
+                                if let Some(model) = model_name_clone
+                                    .as_ref()
+                                    .filter(|_| !session_id_clone.is_empty())
+                                {
                                     state_clone.affinity_cache.insert(
                                         &session_id_clone,
                                         model,
@@ -4580,11 +4810,76 @@ async fn proxy_logic(
         }
     }
 
+    if let Some(error) = selection_error
+        .filter(|_| !upstream_attempted && !local_client_failed && shaper_ctx.rejected_count == 0)
+    {
+        let body = serde_json::json!({"error": {"message": "No eligible candidate for scheduler policy", "type": "service_unavailable", "code": error.code(), "rejected_by": error.rejected_by()}});
+        let mut response = build_response_with_header(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "content-type",
+            "application/json",
+            Body::from(body.to_string()),
+        );
+        response.headers_mut().insert(
+            "X-Rejected-By",
+            HeaderValue::from_static(error.rejected_by()),
+        );
+        response
+            .headers_mut()
+            .insert("Retry-After", HeaderValue::from_static("60"));
+        return ProxyResult {
+            response,
+            upstream_id: None,
+            final_status: StatusCode::SERVICE_UNAVAILABLE,
+            pricing_region: None,
+            video_task_id: None,
+            shaper_outcome: None,
+            routing_decision: sched_routing_decision,
+            sched_request_color: shaper_color,
+            error_type: Some("router_reject".into()),
+            request_log_data: None,
+        };
+    }
+
+    // 只把尚未发送过的本机准入耗尽归因于 scheduler；纯 shaper 和真实上游失败保持原分支。
+    if local_rejected && !upstream_attempted && !local_client_failed {
+        let mut response = build_response_with_header(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "content-type",
+            "application/json",
+            Body::from(
+                r#"{"error":{"message":"No local attachment passed lifecycle admission","type":"service_unavailable","code":"no_available_channels","rejected_by":"scheduler"}}"#,
+            ),
+        );
+        response
+            .headers_mut()
+            .insert("X-Rejected-By", HeaderValue::from_static("scheduler"));
+        response
+            .headers_mut()
+            .insert("Retry-After", HeaderValue::from_static("60"));
+        return ProxyResult {
+            response,
+            upstream_id: None,
+            final_status: StatusCode::SERVICE_UNAVAILABLE,
+            pricing_region: None,
+            video_task_id: None,
+            shaper_outcome: None,
+            routing_decision: sched_routing_decision,
+            sched_request_color: shaper_color,
+            error_type: Some("router_reject".to_string()),
+            request_log_data,
+        };
+    }
+
     // After-loop branch: every candidate was rejected by the L2 Shaper
     // (no CB skip, no upstream failure). Return 503 + X-Rejected-By: shaper
     // per audit decision D12 — clients can distinguish a local shaper reject
     // from upstream 5xx and back off via Retry-After.
-    if shaper_ctx.rejected_count > 0 && shaper_ctx.rejected_count as usize == total_candidates {
+    if shaper_ctx.rejected_count > 0
+        && !upstream_attempted
+        && (shaper_ctx.rejected_count as usize == total_candidates
+            || (strict_plan.is_some() && !local_rejected && !local_client_failed))
+    {
         let body = Body::from(
             r#"{"error":{"message":"All candidate channels rejected by rate budget shaper","type":"service_unavailable","code":"rate_budget_exhausted","rejected_by":"shaper"}}"#,
         );

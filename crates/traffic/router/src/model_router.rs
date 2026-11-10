@@ -73,11 +73,31 @@ pub struct RouteInputs<'a> {
 
 pub struct ModelRouter {
     db: std::sync::Arc<Database>,
+    local: std::sync::Arc<crate::local_attachment::LocalAttachmentState>,
 }
 
 impl ModelRouter {
+    /// 创建沿用 Supply 候选事实的 Router，并共享同数据库对象的本机准入状态。
+    ///
+    /// # 注意
+    /// 应与本机适配器传入同一 Arc 的克隆；构造不执行连接检查或 I/O。
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn example(db: std::sync::Arc<burncloud_database::Database>) {
+    /// let router = burncloud_router::model_router::ModelRouter::new(db);
+    /// # }
+    /// ```
     pub fn new(db: std::sync::Arc<Database>) -> Self {
-        Self { db }
+        let local = crate::local_attachment::LocalAttachmentState::for_database(&db);
+        Self { db, local }
+    }
+
+    pub(crate) fn local_attachment_state(
+        &self,
+    ) -> &std::sync::Arc<crate::local_attachment::LocalAttachmentState> {
+        &self.local
     }
 
     /// Get all candidate channels for a model in a group.
@@ -109,24 +129,30 @@ impl ModelRouter {
         Ok(result)
     }
 
-    /// Route with the multi-factor scheduler, returning ranked candidates (top-5)
-    /// and the routing-layer decision that determined the first candidate.
+    /// 按用户组策略返回候选快照；新策略不截 top-5，旧策略保持历史排序与亲和。
     ///
-    /// Pipeline (audit decisions D6 / D7 / E-D1):
-    ///
-    /// ```text
-    ///   get_candidates → availability filter → OrderType filter → Affinity (HRW + cache)
-    ///     → Scorer (CombinedScheduler) → top-5 failover list
+    /// # Examples
+    /// ```no_run
+    /// # async fn example(router: &burncloud_router::model_router::ModelRouter, inputs: burncloud_router::model_router::RouteInputs<'_>) {
+    /// let candidates = router.route_with_scheduler(inputs).await;
+    /// # }
     /// ```
     ///
-    /// The OrderType filter runs **before** Affinity so a Budget client never
-    /// gets pinned to an expensive channel by historical affinity.
+    /// # Notes
+    /// 空组或模型返回错误。候选不是派发许可，真实发送必须重新检查并发容量与心跳。
+    /// 新策略不使用会话亲和；最高可用管理员档内，均衡按正权重分摊，稳定优先取最高
+    /// 有限健康分，价格优先取最低可比较报价；同分、同价按权重分摊，缺价不视为免费。
     ///
-    /// Returns:
-    /// - `Ok((vec, Some(decision)))` with ranked channels + which layer picked rank-0
-    /// - `Ok((vec, None))` when channels exist but no model routing occurred (empty vec)
-    /// - `Err(NoAvailableChannelsError)` if channels exist but all are unavailable,
-    ///   **or** if `OrderType::Budget` filtered them all out (caller maps to 503).
+    /// 显式旧策略保留历史流程（审计决定 D6 / D7 / E-D1）：
+    ///
+    /// ```text
+    ///   最高优先级能力 → 可用性 → OrderType → 会话亲和（HRW 与缓存）
+    ///     → 历史评分 → 最多五个故障切换候选
+    /// ```
+    ///
+    /// OrderType 过滤先于会话亲和，避免预算请求被固定到超出价格上限的候选。
+    /// 返回候选快照及首选的决策来源；供给无匹配记录时返回空列表，已有候选但无合格
+    /// 首选时返回 NoAvailableChannelsError。此快照不能替代真实派发时的重新选择。
     #[allow(
         clippy::cognitive_complexity,
         reason = "single routing pipeline applying L0/L1.5/L3 filters in sequence; splitting requires a dedicated behavior-preserving refactor"
@@ -136,6 +162,49 @@ impl ModelRouter {
         inputs: RouteInputs<'_>,
     ) -> std::result::Result<(Vec<Channel>, Option<RoutingDecision>), NoAvailableChannelsError>
     {
+        if inputs.group.is_empty() || inputs.model.is_empty() {
+            return Err(NoAvailableChannelsError {
+                model: inputs.model.into(),
+                reason: "group and model must not be empty".into(),
+            });
+        }
+        if inputs.scheduler_kind.is_none_or(SchedulerKind::is_strict) {
+            let (channels, plan) = self.strict_plan(&inputs).await?;
+            let mut remaining: Vec<_> = channels;
+            let mut ranked = Vec::new();
+            while !remaining.is_empty() {
+                match plan.pick(
+                    remaining.iter().map(|ch| ch.id),
+                    inputs.state_tracker,
+                    |_| true,
+                ) {
+                    Ok(id) => {
+                        let pos = remaining
+                            .iter()
+                            .position(|ch| ch.id == id)
+                            .unwrap_or_else(|| unreachable!());
+                        ranked.push(remaining.remove(pos));
+                    }
+                    Err(error) if ranked.is_empty() => {
+                        return Err(NoAvailableChannelsError {
+                            model: inputs.model.into(),
+                            reason: error.code().into(),
+                        })
+                    }
+                    Err(_) => break,
+                }
+            }
+            return Ok((ranked, Some(RoutingDecision::ScorerPicked)));
+        }
+        self.route_legacy(inputs).await
+    }
+
+    // 保留旧排序和亲和路径，避免新策略的准入重选改变显式旧配置。
+    #[allow(clippy::cognitive_complexity, reason = "保留既有线性旧策略行为")]
+    async fn route_legacy(
+        &self,
+        inputs: RouteInputs<'_>,
+    ) -> Result<(Vec<Channel>, Option<RoutingDecision>), NoAvailableChannelsError> {
         let RouteInputs {
             group,
             model,
@@ -282,5 +351,56 @@ impl ModelRouter {
         };
 
         Ok((channels, decision))
+    }
+    async fn strict_plan(
+        &self,
+        inputs: &RouteInputs<'_>,
+    ) -> Result<(Vec<Channel>, scheduler::StrictPlan), NoAvailableChannelsError> {
+        let fail = |e: burncloud_database::DatabaseError| NoAvailableChannelsError {
+            model: inputs.model.into(),
+            reason: e.to_string(),
+        };
+        let abilities =
+            ChannelService::list_enabled_for_model(&self.db, inputs.group, inputs.model)
+                .await
+                .map_err(fail)?;
+        let ids: Vec<_> = abilities.iter().map(|a| a.channel_id).collect();
+        let channels = ChannelService::list_by_ids(&self.db, &ids)
+            .await
+            .map_err(fail)?;
+        let abilities: std::collections::HashMap<_, _> =
+            abilities.into_iter().map(|a| (a.channel_id, a)).collect();
+        let candidates: Vec<_> = channels
+            .into_iter()
+            .filter_map(|mut ch| {
+                let ability = abilities.get(&ch.id)?;
+                ch.priority = ability.priority;
+                Some((ch, ability.weight))
+            })
+            .collect();
+        let plan =
+            scheduler::StrictPlan::new(inputs, &candidates, std::sync::Arc::clone(&self.local))
+                .await;
+        Ok((candidates.into_iter().map(|(ch, _)| ch).collect(), plan))
+    }
+
+    pub(crate) async fn route_for_dispatch(
+        &self,
+        inputs: RouteInputs<'_>,
+    ) -> Result<
+        (
+            Vec<Channel>,
+            Option<RoutingDecision>,
+            Option<scheduler::StrictPlan>,
+        ),
+        NoAvailableChannelsError,
+    > {
+        if inputs.scheduler_kind.is_none_or(SchedulerKind::is_strict) {
+            let (channels, plan) = self.strict_plan(&inputs).await?;
+            Ok((channels, Some(RoutingDecision::ScorerPicked), Some(plan)))
+        } else {
+            let (channels, decision) = self.route_with_scheduler(inputs).await?;
+            Ok((channels, decision, None))
+        }
     }
 }

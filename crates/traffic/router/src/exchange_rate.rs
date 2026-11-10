@@ -66,6 +66,15 @@ impl ExchangeRateService {
         }
     }
 
+    pub(crate) fn snapshot_nano_rates(
+        &self,
+    ) -> std::collections::HashMap<(Currency, Currency), i64> {
+        self.rates
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().rate_nano))
+            .collect()
+    }
+
     /// Convert an amount from one currency to another
     pub fn convert(&self, amount: f64, from: Currency, to: Currency) -> anyhow::Result<f64> {
         if from == to {

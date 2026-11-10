@@ -50,10 +50,7 @@ ignore = [
 
     # paste — unmaintained, pulled in by rav1e via image/arboard (clipboard support)
     { id = "RUSTSEC-2024-0436", reason = "paste via rav1e>image>arboard chain, no safe upgrade available" },
-
-    # libsqlite3-sys — SQLx 0.8.x 当前要求 0.30.x ABI 范围，单独升级此传递依赖
-    # 会违反 SQLx 声明的兼容范围。
-    { id = "RUSTSEC-2026-0459", reason = "SQLx 当前将 libsqlite3-sys 限制在已修复的 0.39.x ABI 以下，待 SQLx 支持后再升级" },
+    { id = "RUSTSEC-2026-0459", reason = "sqlx 0.8.6 pins libsqlite3-sys 0.30.1; the fixed bundled SQLite release is outside the compatible range, so a coordinated sqlx upgrade is required before this can be removed" },
 ]
 
 # ─── Licenses ─────────────────────────────────────────────────────────────────
