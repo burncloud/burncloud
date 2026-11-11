@@ -1,5 +1,9 @@
 use crate::{error::HardwareProbeError, types::HardwareProfile};
+use std::path::Path;
 use sysinfo::{Disks, System};
+
+#[cfg(test)]
+mod tests;
 
 pub(crate) struct CommonHardware {
     pub cpu: String,
@@ -13,17 +17,13 @@ pub(crate) fn collect_common() -> Result<CommonHardware, HardwareProbeError> {
         HardwareProbeError::DiskError(format!("cannot read current directory: {error}"))
     })?;
     let disks = Disks::new_with_refreshed_list();
-    let disk = disks
-        .list()
-        .iter()
-        .filter(|disk| current_dir.starts_with(disk.mount_point()))
-        .max_by_key(|disk| disk.mount_point().components().count())
-        .ok_or_else(|| {
-            HardwareProbeError::DiskError(format!(
-                "no visible disk contains current directory {}",
-                current_dir.display()
-            ))
-        })?;
+    let disk_available_bytes = disk_available_for_path(
+        &current_dir,
+        disks
+            .list()
+            .iter()
+            .map(|disk| (disk.mount_point(), disk.available_space())),
+    )?;
 
     let cpu = system
         .cpus()
@@ -36,8 +36,24 @@ pub(crate) fn collect_common() -> Result<CommonHardware, HardwareProbeError> {
     Ok(CommonHardware {
         cpu,
         memory_bytes: system.total_memory(),
-        disk_available_bytes: disk.available_space(),
+        disk_available_bytes,
     })
+}
+
+fn disk_available_for_path<'a>(
+    current_dir: &Path,
+    disks: impl Iterator<Item = (&'a Path, u64)>,
+) -> Result<u64, HardwareProbeError> {
+    disks
+        .filter(|(mount_point, _)| current_dir.starts_with(mount_point))
+        .max_by_key(|(mount_point, _)| mount_point.components().count())
+        .map(|(_, available_bytes)| available_bytes)
+        .ok_or_else(|| {
+            HardwareProbeError::DiskError(format!(
+                "no visible disk contains current directory {}",
+                current_dir.display()
+            ))
+        })
 }
 
 impl CommonHardware {

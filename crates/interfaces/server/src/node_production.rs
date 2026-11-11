@@ -1,6 +1,7 @@
 use burncloud_node_runtime::{HardwareProbe, SystemHardwareProbe};
 use burncloud_supply_model::{
-    ModelManifest, ModelResolutionOutcome, ModelResolutionRequest, ModelResolver, RealModelResolver,
+    CandidateResolutionOutcome, ModelManifest, ModelResolutionOutcome, ModelResolutionRequest,
+    ModelResolver, RealModelResolver, ResolvedModel,
 };
 
 use crate::node_orchestrator::ModelDemand;
@@ -22,9 +23,19 @@ use crate::node_orchestrator::ModelDemand;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ProductionNode {
     hardware: SystemHardwareProbe,
+    supported_runtimes: Vec<String>,
+}
+
+impl Default for ProductionNode {
+    fn default() -> Self {
+        Self {
+            hardware: SystemHardwareProbe::new(),
+            supported_runtimes: vec!["llama.cpp".into()],
+        }
+    }
 }
 
 impl ProductionNode {
@@ -40,6 +51,37 @@ impl ProductionNode {
         Self::default()
     }
 
+    /// 使用指定的 Runtime 能力创建生产 Node 入口。
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use burncloud_server::node_production::ProductionNode;
+    ///
+    /// let node = ProductionNode::with_supported_runtimes(vec!["llama.cpp".into()])?;
+    /// # let _ = node;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
+    /// 注意事项：Runtime 名称必须是非空字符串；该列表表示后续 Runtime 准备器能够处理
+    /// 的后端，而不是当前已经安装的 Runtime。
+    pub fn with_supported_runtimes(supported_runtimes: Vec<String>) -> anyhow::Result<Self> {
+        if supported_runtimes
+            .iter()
+            .any(|runtime| runtime.trim().is_empty())
+        {
+            anyhow::bail!("supported runtime names must not be empty");
+        }
+        if supported_runtimes.is_empty() {
+            anyhow::bail!("supported runtime names must not be empty");
+        }
+
+        Ok(Self {
+            hardware: SystemHardwareProbe::new(),
+            supported_runtimes,
+        })
+    }
+
     /// 校验已选模型、探测当前主机，再用真实快照解析模型清单。
     ///
     /// 空模型名、探测失败或目录中不存在模型时返回错误。
@@ -53,12 +95,33 @@ impl ProductionNode {
     ) -> anyhow::Result<ModelResolutionOutcome> {
         let demand = ModelDemand::new(model)?;
         let hardware = self.hardware.inspect().await?;
-        let resolver = RealModelResolver::new(manifests);
-        Ok(resolver
-            .resolve(ModelResolutionRequest {
-                model: demand.model,
-                hardware,
-            })
-            .await?)
+        let resolver = RealModelResolver::new(manifests)?;
+        match resolver
+            .resolve_candidates(
+                ModelResolutionRequest {
+                    model: demand.model.clone(),
+                    hardware,
+                },
+                &self.supported_runtimes,
+            )
+            .await?
+        {
+            CandidateResolutionOutcome::Candidates(candidates) => {
+                let candidate = candidates
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("resolver returned no candidates"))?;
+                Ok(ModelResolutionOutcome::Local(ResolvedModel {
+                    model: candidate.model_name,
+                    artifact_source: candidate.artifact_uri,
+                    artifact_digest: Some(candidate.checksum),
+                    runtime: candidate.runtime,
+                    runtime_version: None,
+                }))
+            }
+            CandidateResolutionOutcome::Unsupported(reason) => {
+                Ok(ModelResolutionOutcome::Unsupported(reason))
+            }
+        }
     }
 }

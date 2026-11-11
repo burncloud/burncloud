@@ -11,10 +11,7 @@ const L1_SHA256: &str = "f47f71177f32bcd101b7573ec9171e6a57f4f4d31148d38e382306f
 const L1_FILE: &str = "Qwen3-0.6B";
 const L1_SIZE: u64 = 1_503_300_328;
 
-#[cfg_attr(
-    not(windows),
-    ignore = "D-006 中断恢复测试需要 Windows aria2 可执行文件"
-)]
+#[ignore = "D-006 中断恢复测试需要显式阶段变量和 Windows aria2 可执行文件"]
 #[tokio::test]
 async fn d006_interrupt_helper() -> Result<(), Box<dyn std::error::Error>> {
     let phase = std::env::var("BURNCLOUD_D006_PHASE")?;
