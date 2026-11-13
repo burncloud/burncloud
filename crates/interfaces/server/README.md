@@ -10,7 +10,7 @@
 
 | 类型 | 说明 |
 |------|------|
-| `AppState` | Server 运行时状态：db、monitor、force_sync_tx 和懒加载的模型下载管理器 |
+| `AppState` | Server 运行时状态:db, monitor, force_sync_tx |
 | `create_app()` | 构建 Axum Router(合并 API + LiveView + Data Plane) |
 | `start_server()` | 启动 HTTP 服务器入口 |
 
@@ -38,9 +38,7 @@ Request → Axum Router
 - `GET /api/node/hardware`：公开读取运行 Node/Server 主机的一次性硬件快照，不要求 JWT；成功响应禁止缓存。
 - 详细请求、响应、错误码和前端接入规则见 [`docs/hardware-api.md`](docs/hardware-api.md)。
 - `POST /api/node/models/resolve`：接收前端当前选中的外部仓库模型、来源和修订号，在服务端发现 GGUF 工件、检测硬件并返回全部兼容 Variant；服务端不再内置默认模型 Manifest。
-- `POST /api/node/models/download`：接收前端选中的 Variant，在 Node 主机下载或复用 GGUF 文件并重新计算 SHA-256；成功只表示文件已就绪，不表示已经部署或可以推理。
 - 硬件检测、模型目录、模型解析和前端调用流程见 [`docs/hardware-model-resolution-api.md`](docs/hardware-model-resolution-api.md)。
-- 模型下载请求、响应、错误码、幂等规则和前端 `ArtifactReady` 状态见 [`docs/model-download-api.md`](docs/model-download-api.md)。
 - OpenAPI 文档由 `/api-docs/openapi.json` 提供，Swagger UI 入口为 `/swagger-ui`。
 
 ## Sources

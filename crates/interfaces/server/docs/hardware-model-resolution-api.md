@@ -488,11 +488,7 @@ POST /api/node/models/resolve
         ↓
 用户选择 variant_id
         ↓
-POST /api/node/models/download
-        ↓
-Node 下载/复用文件并重新计算 SHA-256
-        ↓
-前端进入 ArtifactReady（文件已就绪，尚未部署）
+进入后续下载、校验、部署流程
 ```
 
 当前 Chat 前端已经删除了旧的“服务端 Manifest 模型列表”请求，不再调用：
@@ -503,7 +499,7 @@ GET /api/node/models/manifests
 
 用户确认模型后，`CatalogSelection` 会直接传入 `POST /api/node/models/resolve`。如果仓库没有可用 GGUF 或当前硬件不满足要求，前端展示 `unsupported` 的业务原因。
 
-模型下载和 SHA-256 校验已通过 `POST /api/node/models/download` 接入；Runtime 启动、模型部署、健康检查和真实推理仍未接入。解析接口返回候选不代表模型文件已经下载，下载接口返回 `verified` 也不代表模型已经部署完成。详细下载契约见 [`model-download-api.md`](model-download-api.md)。
+当前下载、SHA-256 校验、Runtime 启动和部署仍未全部接入生产流程；解析接口返回候选并不代表模型已经部署完成。
 
 ## 10. 关键不一致与边界
 
@@ -546,15 +542,13 @@ Qwen/Qwen3-8B + modelscope + master
 |---|---|
 | 硬件 HTTP Handler | `crates/interfaces/server/src/api/hardware.rs` |
 | 模型解析 HTTP Handler | `crates/interfaces/server/src/api/model_resolution.rs` |
-| 模型下载 HTTP Handler | `crates/interfaces/server/src/api/model_download.rs` |
 | 路由注册 | `crates/interfaces/server/src/api/mod.rs` |
 | OpenAPI | `crates/interfaces/server/src/api/openapi.rs` |
 | 生产 Node 解析入口 | `crates/interfaces/server/src/node_production.rs` |
 | Manifest 数据结构和空默认入口 | `crates/supply/model/src/manifest.rs` |
 | Runtime/资源过滤 | `crates/supply/model/src/real_model_resolver.rs` |
-| 前端目录 HTTP 客户端（解析与下载） | `crates/interfaces/client/src/domains/chat/catalog.rs` |
+| 前端目录 HTTP 客户端 | `crates/interfaces/client/src/domains/chat/catalog.rs` |
 | 前端选择器 | `crates/interfaces/client/src/domains/chat/selector.rs` |
-| 前端目录模型初始化分流 | `crates/interfaces/client/src/domains/chat/backend.rs` |
 | 前端准备状态机 | `crates/interfaces/client/src/domains/chat/state.rs` |
 | 前端准备卡片 | `crates/interfaces/client/src/domains/chat/page.rs` |
 
@@ -573,11 +567,11 @@ Qwen/Qwen3-8B + modelscope + master
 - RAM、单卡最大 VRAM、磁盘和 Runtime 过滤；
 - 多个候选保持仓库发现顺序；
 - 前端将当前 `CatalogSelection` 的 `model/source/revision` 发送到解析接口；
-- `min_vram_bytes: 0` 在前端显示为“显存要求未声明”；
-- 下载请求完整提交 `model/source/revision/variant_id/artifact_uri/checksum`；
-- 服务端拒绝非法仓库、非 HTTPS、非 GGUF、路径身份不一致和无效摘要；
-- 服务端下载成功后返回 `verified`，摘要不一致返回 `422 checksum_mismatch`；
-- 重复下载复用文件并重新校验，OpenAPI 包含下载接口和全部错误 Schema；
-- 前端成功下载进入 `ArtifactReady`，不写入可推理模型、不允许发送消息且保留用户草稿。
+- `min_vram_bytes: 0` 在前端显示为“显存要求未声明”。
 
-Runtime 启动、部署、健康检查和真实推理的测试属于后续范围。
+如果后续把下载和部署完整接入，还需要增加：
+
+- 解析 Handler 的真实上游 mock 集成测试；
+- OpenAPI 路由和 schema 校验；
+- 前端选择器到解析请求的端到端测试；
+- 下载、校验、Runtime 启动和部署状态机测试。
