@@ -7,4 +7,4 @@ mod operations;
 mod utils;
 
 pub use error::DownloadError;
-pub use manager::DownloadManager;
+pub use manager::{DownloadManager, DownloadTaskHandle, DownloadTaskSnapshot, DownloadTaskStatus};

@@ -451,6 +451,12 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
             }
             if active {
                 div { class: "chat-preparation-actions",
+                    if matches!(stage, PreparationStage::Downloading | PreparationStage::Verifying) {
+                        button { class: "chat-flow-button", r#type: "button",
+                            onclick: move |_| cancel_preparation(state, run_id),
+                            "取消下载"
+                        }
+                    }
                     if matches!(stage, PreparationStage::AwaitingStart | PreparationStage::Failed | PreparationStage::Cancelled) && preparation.model.catalog_selection.is_none() && !state.read().is_model_ready(preparation.model.id()) {
                         button { class: "chat-flow-button primary", r#type: "button",
                             onclick: move |_| {
@@ -721,6 +727,30 @@ fn select_model(mut state: Signal<ChatState>, model_id: String) {
     });
 }
 
+fn cancel_preparation(mut state: Signal<ChatState>, run_id: u64) {
+    let active = state
+        .read()
+        .preparation()
+        .is_some_and(|preparation| preparation.run_id == run_id && preparation.stage.is_running());
+    if !active {
+        return;
+    }
+    let task_id = state.with_mut(|value| value.request_preparation_cancel(run_id));
+    let mut preparation_task = consume_context::<PreparationTask>().0;
+    let local_task = preparation_task.take();
+    let backend = consume_context::<BackendHandle>().0;
+    let owner = consume_context::<ChatScope>().0;
+    Runtime::current().spawn(owner, async move {
+        if let Some(task_id) = task_id {
+            if let Err(error) = backend.cancel_download_task(task_id).await {
+                state.with_mut(|value| value.finish_preparation_cancellation(run_id, error));
+            }
+        }
+        if let Some(local_task) = local_task {
+            local_task.cancel();
+        }
+    });
+}
 fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
     let backend = consume_context::<BackendHandle>().0;
     let mut task = consume_context::<PreparationTask>().0;

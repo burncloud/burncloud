@@ -123,6 +123,12 @@ impl Default for ChatState {
     }
 }
 
+// Node 任务 ID 使用服务端稳定十进制标识，状态层再次拒绝越界值避免伪造取消目标。
+fn valid_download_task_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && value.parse::<i64>().is_ok()
+}
 impl ChatState {
     pub(super) fn conversations(&self) -> &[ChatConversation] {
         &self.conversations
@@ -290,6 +296,7 @@ impl ChatState {
                 run_id: self.preparation_id,
                 model,
                 stage: PreparationStage::AwaitingStart,
+                download_task_id: None,
                 completed_bytes: 0,
                 total_bytes: None,
                 hardware_events: Vec::new(),
@@ -550,6 +557,7 @@ impl ChatState {
         let preparation = self.preparation_mut()?;
         preparation.run_id = new_id;
         preparation.stage = PreparationStage::Detecting;
+        preparation.download_task_id = None;
         preparation.completed_bytes = 0;
         preparation.total_bytes = None;
         preparation.hardware = Hardware::default();
@@ -582,6 +590,7 @@ impl ChatState {
         };
         preparation.variant_id = Some(variant.id.clone());
         preparation.stage = PreparationStage::Downloading;
+        preparation.download_task_id = None;
         preparation.completed_bytes = 0;
         true
     }
@@ -788,6 +797,19 @@ impl ChatState {
             return;
         }
         let valid = match &event {
+            PreparationEvent::DownloadTaskCreated { task_id }
+                if p.stage == PreparationStage::Downloading =>
+            {
+                if p.model.catalog_selection.is_none()
+                    || p.download_task_id.is_some()
+                    || !valid_download_task_id(task_id)
+                {
+                    false
+                } else {
+                    p.download_task_id = Some(task_id.clone());
+                    true
+                }
+            }
             PreparationEvent::DownloadProgress { completed, total }
                 if p.stage == PreparationStage::Downloading =>
             {
@@ -865,6 +887,58 @@ impl ChatState {
         } else {
             self.invalid_preparation("接口事件跳过必要阶段或下载进度异常");
         }
+    }
+    /// 原子失效当前初始化运行并取出可取消的 Node 下载任务 ID。
+    ///
+    /// # Examples
+    ///
+    /// 当前运行拥有任务 ID 时返回该 ID；本地初始化或硬件检测没有 Node 任务时返回 `None`，
+    /// 但仍会使当前运行进入 `Cancelled`，避免取消后的回调继续写入状态。
+    ///
+    /// # Notes
+    ///
+    /// 此方法只修改客户端状态，不发 HTTP 请求。调用方拿到任务 ID 后必须先完成远端取消，
+    /// 再停止本地初始化 Future；远端取消失败时应调用
+    /// [`Self::finish_preparation_cancellation`] 记录错误。
+    pub(super) fn request_preparation_cancel(&mut self, run_id: u64) -> Option<String> {
+        let task_id = {
+            let preparation = self.preparation_mut()?;
+            if preparation.run_id != run_id || !preparation.stage.is_running() {
+                return None;
+            }
+            preparation.stage = PreparationStage::Cancelled;
+            preparation.download_task_id.take()
+        };
+        self.restore_pending_draft();
+        task_id
+    }
+
+    /// 记录远端取消请求失败，并保持失败状态而不是伪装成已取消。
+    ///
+    /// # Examples
+    ///
+    /// 取消接口超时或返回错误时，将其交给此方法可让初始化卡片展示原始结构化错误。
+    ///
+    /// # Notes
+    ///
+    /// 只有仍属于同一运行且尚未开始新重试的 `Cancelled` 卡片会被改为 `Failed`；
+    /// 新运行不会被旧取消请求的迟到错误覆盖。
+    pub(super) fn finish_preparation_cancellation(
+        &mut self,
+        run_id: u64,
+        error: ChatError,
+    ) -> bool {
+        let Some(preparation) = self.preparation_mut() else {
+            return false;
+        };
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Cancelled {
+            return false;
+        }
+        preparation.stage = PreparationStage::Failed;
+        preparation.local_path = None;
+        preparation.error = Some(error);
+        self.restore_pending_draft();
+        true
     }
     /// 最终返回值与全部阶段凭据一致才能记录就绪；目录模型只停在文件已就绪。
     pub(super) fn finish_preparation(

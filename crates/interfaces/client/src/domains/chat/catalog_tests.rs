@@ -554,7 +554,9 @@ async fn download_server(status: u16, body: serde_json::Value) -> Server {
                             .flatten()
                     });
                 }
-                if content_length.is_some_and(|length| bytes.len() >= header_end + length) {
+                if content_length.is_none()
+                    || content_length.is_some_and(|length| bytes.len() >= header_end + length)
+                {
                     break;
                 }
             }
@@ -576,6 +578,98 @@ async fn download_server(status: u16, body: serde_json::Value) -> Server {
         requests,
         task,
     }
+}
+
+#[expect(
+    clippy::disallowed_types,
+    reason = "下载任务测试需要在 HTTP 边界构造动态 JSON"
+)]
+async fn download_task_server(responses: Vec<(u16, serde_json::Value)>) -> Server {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("任务接口监听");
+    let base = format!("http://{}", listener.local_addr().expect("任务接口地址"));
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let seen = requests.clone();
+    let task = tokio::spawn(async move {
+        for (status, value) in responses {
+            let (mut stream, _) = listener.accept().await.expect("任务接口连接");
+            let mut bytes = Vec::new();
+            let mut content_length = None;
+            loop {
+                let mut buffer = [0_u8; 1024];
+                let count = stream.read(&mut buffer).await.expect("读取任务请求");
+                if count == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&buffer[..count]);
+                if let Some(header_end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let header_end = header_end + 4;
+                    if content_length.is_none() {
+                        let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                        content_length = headers.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        });
+                    }
+                    if content_length.is_none()
+                        || content_length.is_some_and(|length| bytes.len() >= header_end + length)
+                    {
+                        break;
+                    }
+                }
+            }
+            seen.lock()
+                .expect("任务请求锁")
+                .push(String::from_utf8(bytes).expect("任务请求文本"));
+            let body = serde_json::to_string(&value).expect("任务接口响应");
+            let response = format!(
+                "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("写入任务响应");
+        }
+    });
+    Server {
+        client: CatalogClient::new(&base, Duration::from_secs(2)).expect("任务测试客户端"),
+        requests,
+        task,
+    }
+}
+
+#[expect(
+    clippy::disallowed_types,
+    reason = "下载任务测试需要在 HTTP 边界构造动态 JSON"
+)]
+fn task_response(
+    status: &str,
+    completed_bytes: u64,
+    total_bytes: Option<u64>,
+    path: Option<&str>,
+    actual_sha256: Option<&str>,
+) -> serde_json::Value {
+    json!({
+        "success": true,
+        "data": {
+            "task_id": "7",
+            "status": status,
+            "model": "Qwen/Qwen3-8B",
+            "source": "modelscope",
+            "revision": "master",
+            "variant_id": "Q4_K_M.gguf",
+            "completed_bytes": completed_bytes,
+            "total_bytes": total_bytes,
+            "download_speed": 12,
+            "error": null,
+            "local_path": path,
+            "actual_sha256": actual_sha256
+        }
+    })
 }
 
 fn download_request(checksum: &str) -> InitializationRequest {
@@ -616,18 +710,13 @@ const DOWNLOAD_DIGEST: &str =
 async fn download_model_posts_selected_artifact_and_returns_prepared_model() {
     let service = download_server(
         200,
-        json!({
-            "success": true,
-            "data": {
-                "status": "verified",
-                "model": "Qwen/Qwen3-8B",
-                "source": "modelscope",
-                "revision": "master",
-                "variant_id": "Q4_K_M.gguf",
-                "local_path": "/node/models/modelscope/Qwen_Qwen3-8B/master/Q4_K_M.gguf",
-                "actual_sha256": DOWNLOAD_DIGEST
-            }
-        }),
+        task_response(
+            "succeeded",
+            10,
+            Some(10),
+            Some("/node/models/modelscope/Qwen_Qwen3-8B/master/Q4_K_M.gguf"),
+            Some(DOWNLOAD_DIGEST),
+        ),
     )
     .await;
     let request = download_request(DOWNLOAD_DIGEST);
@@ -648,9 +737,8 @@ async fn download_model_posts_selected_artifact_and_returns_prepared_model() {
     assert_eq!(
         events,
         vec![
-            PreparationEvent::DownloadProgress {
-                completed: 0,
-                total: None,
+            PreparationEvent::DownloadTaskCreated {
+                task_id: "7".into(),
             },
             PreparationEvent::Downloaded,
             PreparationEvent::Verified {
@@ -677,6 +765,63 @@ async fn download_model_posts_selected_artifact_and_returns_prepared_model() {
         "https://modelscope.cn/models/Qwen/Qwen3-8B/resolve/master/Q4_K_M.gguf"
     );
     assert_eq!(body["checksum"], DOWNLOAD_DIGEST);
+}
+
+#[tokio::test]
+async fn download_model_polls_progress_and_verification_until_succeeded() {
+    let service = download_task_server(vec![
+        (202, task_response("queued", 0, Some(10), None, None)),
+        (200, task_response("downloading", 5, Some(10), None, None)),
+        (200, task_response("verifying", 10, Some(10), None, None)),
+        (
+            200,
+            task_response(
+                "succeeded",
+                10,
+                Some(10),
+                Some("/node/models/model.gguf"),
+                Some(DOWNLOAD_DIGEST),
+            ),
+        ),
+    ])
+    .await;
+    let request = download_request(DOWNLOAD_DIGEST);
+    let mut events = Vec::new();
+    let prepared = service
+        .client
+        .download_model(&request, |event| events.push(event))
+        .await
+        .expect("轮询下载成功");
+
+    assert_eq!(prepared.actual_sha256, DOWNLOAD_DIGEST);
+    assert_eq!(
+        events,
+        vec![
+            PreparationEvent::DownloadTaskCreated {
+                task_id: "7".into(),
+            },
+            PreparationEvent::DownloadProgress {
+                completed: 0,
+                total: Some(10),
+            },
+            PreparationEvent::DownloadProgress {
+                completed: 5,
+                total: Some(10),
+            },
+            PreparationEvent::Downloaded,
+            PreparationEvent::Verified {
+                expected: DOWNLOAD_DIGEST.into(),
+                actual: DOWNLOAD_DIGEST.into(),
+                path: "/node/models/model.gguf".into(),
+            },
+        ]
+    );
+    let requests = service.requests.lock().expect("轮询请求");
+    assert_eq!(requests.len(), 4);
+    assert!(requests[0].starts_with("POST /api/node/models/download"));
+    assert!(requests[1].starts_with("GET /api/node/models/download/7"));
+    assert!(requests[2].starts_with("GET /api/node/models/download/7"));
+    assert!(requests[3].starts_with("GET /api/node/models/download/7"));
 }
 
 #[tokio::test]
@@ -721,17 +866,57 @@ async fn download_model_maps_server_errors_to_chat_errors() {
 }
 
 #[tokio::test]
+async fn cancel_download_task_requires_matching_cancelled_snapshot() {
+    let service = download_server(200, task_response("cancelled", 10, Some(10), None, None)).await;
+    service
+        .client
+        .cancel_download_task("7")
+        .await
+        .expect("取消快照应被接受");
+
+    let service = download_server(
+        200,
+        task_response(
+            "succeeded",
+            10,
+            Some(10),
+            Some("/node/model.gguf"),
+            Some(DOWNLOAD_DIGEST),
+        ),
+    )
+    .await;
+    let error = service
+        .client
+        .cancel_download_task("7")
+        .await
+        .expect_err("非 cancelled 快照不得伪装为取消成功");
+    assert_eq!(error.kind, ErrorKind::InvalidResult);
+
+    let service = download_server(200, task_response("cancelled", 10, Some(10), None, None)).await;
+    let error = service
+        .client
+        .cancel_download_task("8")
+        .await
+        .expect_err("任务身份不匹配必须拒绝");
+    assert_eq!(error.kind, ErrorKind::InvalidResult);
+}
+#[tokio::test]
 async fn download_model_rejects_identity_mismatch_in_success_response() {
     let service = download_server(
         200,
         json!({
             "success": true,
             "data": {
-                "status": "verified",
+                "task_id": "7",
+                "status": "succeeded",
                 "model": "Other/Model",
                 "source": "modelscope",
                 "revision": "master",
                 "variant_id": "Q4_K_M.gguf",
+                "completed_bytes": 10,
+                "total_bytes": 10,
+                "download_speed": 0,
+                "error": null,
                 "local_path": "/node/models/model.gguf",
                 "actual_sha256": DOWNLOAD_DIGEST
             }
@@ -746,6 +931,64 @@ async fn download_model_rejects_identity_mismatch_in_success_response() {
     assert_eq!(error.kind, ErrorKind::InvalidResult);
     assert_eq!(
         error.operation,
-        Operation::Initialize(PreparationStage::Downloading)
+        Operation::Initialize(PreparationStage::Verifying)
     );
+}
+
+#[test]
+fn download_task_mapping_validates_progress_identity_and_terminal_fields() {
+    let request = download_request(DOWNLOAD_DIGEST);
+    let queued = DownloadTaskData {
+        task_id: "7".into(),
+        status: "queued".into(),
+        model: "Qwen/Qwen3-8B".into(),
+        source: "modelscope".into(),
+        revision: "master".into(),
+        variant_id: "Q4_K_M.gguf".into(),
+        completed_bytes: 0,
+        total_bytes: Some(10),
+        download_speed: 0,
+        error: None,
+        local_path: None,
+        actual_sha256: None,
+    };
+    assert_eq!(
+        map_download_task(queued.clone(), &request),
+        Ok(queued.clone())
+    );
+
+    let mut invalid_progress = queued.clone();
+    invalid_progress.completed_bytes = 11;
+    assert!(map_download_task(invalid_progress, &request).is_err());
+
+    let mut invalid_identity = queued;
+    invalid_identity.model = "Other/Model".into();
+    assert!(map_download_task(invalid_identity, &request).is_err());
+
+    let mut missing_success_fields = DownloadTaskData {
+        task_id: "7".into(),
+        status: "succeeded".into(),
+        model: "Qwen/Qwen3-8B".into(),
+        source: "modelscope".into(),
+        revision: "master".into(),
+        variant_id: "Q4_K_M.gguf".into(),
+        completed_bytes: 10,
+        total_bytes: Some(10),
+        download_speed: 0,
+        error: None,
+        local_path: None,
+        actual_sha256: None,
+    };
+    missing_success_fields.actual_sha256 = Some(DOWNLOAD_DIGEST.into());
+    assert!(map_download_task(missing_success_fields, &request).is_err());
+}
+
+#[test]
+fn task_ids_accept_only_decimal_i64_values() {
+    assert!(valid_task_id("1"));
+    assert!(valid_task_id("9223372036854775807"));
+    assert!(!valid_task_id(""));
+    assert!(!valid_task_id("-1"));
+    assert!(!valid_task_id("1x"));
+    assert!(!valid_task_id("9223372036854775808"));
 }

@@ -12,6 +12,90 @@ use crate::DownloadError;
 pub(super) const MAX_RETRIES: u8 = 1;
 pub(super) type DownloadWaiter = oneshot::Sender<std::result::Result<PathBuf, String>>;
 
+/// 下载任务对外暴露的统一状态。
+///
+/// # 示例
+///
+/// ```
+/// use burncloud_download::DownloadTaskStatus;
+///
+/// assert!(matches!(DownloadTaskStatus::Queued, DownloadTaskStatus::Queued));
+/// ```
+///
+/// # 注意
+///
+/// aria2 的 `pending`、`active`、`waiting` 和 `paused` 会统一映射为
+/// `Queued` 或 `Downloading`，不会泄露底层执行状态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DownloadTaskStatus {
+    /// 任务已登记，等待 aria2 开始。
+    Queued,
+    /// 任务正在下载或重试。
+    Downloading,
+    /// 文件已写入，等待上层摘要校验。
+    Verifying,
+    /// 摘要校验成功，文件可供调用方使用。
+    Succeeded,
+    /// 任务以不可恢复错误结束。
+    Failed,
+    /// 任务已被用户取消。
+    Cancelled,
+}
+
+/// 异步下载任务创建后立即返回的句柄。
+///
+/// # 示例
+///
+/// 句柄中的 `task_id` 在 aria2 重试或恢复后仍保持不变。
+///
+/// # 注意
+///
+/// `gid` 只用于当前 aria2 执行实例，不能作为持久化任务标识。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DownloadTaskHandle {
+    /// 下载数据库分配的稳定任务 ID。
+    pub task_id: i64,
+    /// 当前 aria2 执行句柄。
+    pub gid: String,
+    /// 创建或复用时的初始任务状态。
+    pub status: DownloadTaskStatus,
+}
+
+/// 下载管理器返回的任务快照。
+///
+/// # 示例
+///
+/// 快照只反映下载管理器已知的状态；摘要校验由上层服务完成。
+///
+/// # 注意
+///
+/// `download_dir` 和 `filename` 用于上层恢复任务身份，不应直接作为用户输入重新使用。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DownloadTaskSnapshot {
+    /// 下载数据库分配的稳定任务 ID。
+    pub task_id: i64,
+    /// 当前 aria2 执行句柄。
+    pub gid: String,
+    /// 原始下载地址。
+    pub url: String,
+    /// 下载目录的规范化绝对路径。
+    pub download_dir: PathBuf,
+    /// 下载文件名。
+    pub filename: String,
+    /// 当前统一任务状态。
+    pub status: DownloadTaskStatus,
+    /// 已完成字节数。
+    pub completed_bytes: u64,
+    /// 文件总字节数；aria2 未提供时为空。
+    pub total_bytes: Option<u64>,
+    /// 当前下载速度，单位为字节 / 秒。
+    pub download_speed: u64,
+    /// 下载器记录的错误信息。
+    pub error: Option<String>,
+    /// aria2 完成后记录的最终文件路径。
+    pub final_path: Option<PathBuf>,
+}
+
 /// 创建并管理 aria2 下载任务，持久化任务状态并监控下载进度。
 ///
 /// # 示例
@@ -35,6 +119,7 @@ pub struct DownloadManager {
     pub(super) db: Arc<burncloud_database_sys::DownloadDB>,
     pub(super) monitor_states: Arc<Mutex<HashMap<String, MonitorState>>>,
     pub(super) start_lock: Arc<Mutex<()>>,
+    pub(super) task_lock: Arc<Mutex<()>>,
     pub(super) cancellation: CancellationToken,
     pub(super) monitor: Option<JoinHandle<()>>,
 }

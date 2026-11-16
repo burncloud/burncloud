@@ -202,6 +202,9 @@ impl PreparationStage {
 /// 流程事件必须按现有阶段顺序消费；重复的同值回调不再次产生副作用。
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum PreparationEvent {
+    DownloadTaskCreated {
+        task_id: String,
+    },
     DownloadProgress {
         completed: u64,
         total: Option<u64>,
@@ -222,6 +225,8 @@ pub(super) struct Preparation {
     pub(super) run_id: u64,
     pub(super) model: ChatModel,
     pub(super) stage: PreparationStage,
+    /// 当前 Node 异步下载任务的稳定标识；本地模型初始化保持为空。
+    pub(super) download_task_id: Option<String>,
     pub(super) completed_bytes: u64,
     pub(super) total_bytes: Option<u64>,
     pub(super) hardware_events: Vec<HardwareEvent>,

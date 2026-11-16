@@ -218,15 +218,29 @@ async fn responses_are_json_and_not_cacheable() {
     assert_eq!(value["success"], false);
     assert_eq!(value["error"]["code"], "checksum_mismatch");
 
-    let success = success_response(DownloadModelData {
-        status: "verified",
-        model: "Qwen/Qwen3-8B".into(),
-        source: "modelscope",
-        revision: "master".into(),
-        variant_id: "Q4_K_M.gguf".into(),
-        local_path: "/node/models/Q4_K_M.gguf".into(),
-        actual_sha256: CHECKSUM.into(),
-    });
+    let identity = validate_request(request(
+        DownloadSource::ModelScope,
+        "Qwen/Qwen3-8B",
+        "master",
+        "Q4_K_M.gguf",
+        "https://modelscope.cn/models/Qwen/Qwen3-8B/resolve/master/Q4_K_M.gguf",
+        CHECKSUM,
+    ))
+    .expect("固定任务身份有效");
+    let success = task_response(
+        StatusCode::ACCEPTED,
+        DownloadTaskSnapshot {
+            task_id: 42,
+            identity,
+            status: DownloadTaskState::Succeeded,
+            completed_bytes: 10,
+            total_bytes: Some(10),
+            download_speed: 0,
+            error: None,
+            final_path: Some("/node/models/Q4_K_M.gguf".into()),
+            actual_sha256: Some(CHECKSUM.into()),
+        },
+    );
     assert_eq!(
         success
             .headers()
@@ -238,5 +252,32 @@ async fn responses_are_json_and_not_cacheable() {
         .await
         .expect("成功响应体可读");
     let value: serde_json::Value = serde_json::from_slice(&body).expect("成功响应为 JSON");
-    assert_eq!(value["data"]["status"], "verified");
+    assert_eq!(value["data"]["status"], "succeeded");
+}
+
+#[test]
+fn task_id_parser_accepts_only_decimal_i64_values() {
+    assert_eq!(parse_task_id("42"), Ok(42));
+    assert_eq!(parse_task_id(" 42 "), Ok(42));
+    assert!(parse_task_id("").is_err());
+    assert!(parse_task_id("-1").is_err());
+    assert!(parse_task_id("1x").is_err());
+    assert!(parse_task_id("9223372036854775808").is_err());
+}
+
+#[test]
+fn validated_identity_contains_scoped_storage_and_filename() {
+    let validated = validate_request(request(
+        DownloadSource::HuggingFace,
+        "TheBloke/TinyLlama",
+        "main",
+        "nested/ggml-model-Q4_K_M.gguf",
+        "https://huggingface.co/TheBloke/TinyLlama/resolve/main/nested/ggml-model-Q4_K_M.gguf",
+        CHECKSUM,
+    ))
+    .expect("固定下载请求有效");
+
+    assert_eq!(validated.filename, "ggml-model-Q4_K_M.gguf");
+    assert!(validated.storage_directory.contains("huggingface"));
+    assert!(validated.storage_directory.contains(&CHECKSUM[7..]));
 }

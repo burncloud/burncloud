@@ -63,6 +63,32 @@ pub(super) trait ChatBackend {
         request: InitializationRequest,
         callback: Callback<PreparationEvent>,
     ) -> BackendFuture<PreparedModel>;
+    /// 取消远端模型下载任务；本地替身默认返回连接错误，不伪装取消成功。
+    ///
+    /// # Examples
+    ///
+    /// 页面只在 `Preparation` 已记录 Node 任务 ID 后调用此边界。
+    ///
+    /// # Notes
+    ///
+    /// 调用方必须在此 future 完成后再停止本地初始化 future，以避免远端下载遗留。
+    fn cancel_download_task(&self, task_id: String) -> BackendFuture<()> {
+        Box::pin(async move {
+            if task_id.trim().is_empty() {
+                Err(error(
+                    ErrorKind::InvalidParameter,
+                    Operation::Initialize(PreparationStage::Downloading),
+                    "下载任务 ID 不能为空",
+                ))
+            } else {
+                Err(error(
+                    ErrorKind::NotConnected,
+                    Operation::Initialize(PreparationStage::Downloading),
+                    "当前后端没有可取消的远端下载任务",
+                ))
+            }
+        })
+    }
     /// 传入实际用户/助手历史及推理强度；流式回调正文和思考，指标可缺省。
     fn generate(
         &self,
@@ -254,6 +280,17 @@ impl ChatBackend for HttpBackend {
         }
     }
 
+    fn cancel_download_task(&self, task_id: String) -> BackendFuture<()> {
+        let hardware_client = self.hardware_client.clone();
+        Box::pin(async move {
+            let client = hardware_client.map_err(|error| ChatError {
+                kind: error.kind,
+                operation: Operation::Initialize(PreparationStage::Downloading),
+                reason: error.reason,
+            })?;
+            client.cancel_download_task(&task_id).await
+        })
+    }
     fn generate(
         &self,
         request: GenerationRequest,

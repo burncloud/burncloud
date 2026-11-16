@@ -1,7 +1,8 @@
 //! 可控后端、异步边界与真实组件事件的确定性回归，不访问网络或等待计时。
 use super::super::{
     backend::{BackendFuture, Callback},
-    model::{GenerationRequest, InferenceMetrics, InitializationRequest},
+    catalog::{CatalogSelection, CatalogVersion, VersionStatus},
+    model::{GenerationRequest, InferenceMetrics, InitializationRequest, ModelVariant},
     page::BackendHandle,
 };
 use super::*;
@@ -163,6 +164,92 @@ fn byte_progress_unknown_totals_duplicates_and_invalid_progress_are_explicit() {
             PreparationStage::Failed
         );
     }
+}
+
+#[test]
+fn download_task_id_is_recorded_and_cancel_invalidates_late_events() {
+    let mut state = ChatState::default();
+    let run_id = state
+        .accept_catalog(
+            CatalogSelection {
+                name: "测试目录模型".into(),
+                preset: None,
+                version: CatalogVersion {
+                    name: "测试目录模型".into(),
+                    model: "Qwen/Test".into(),
+                    source: "modelscope".into(),
+                    revision: "master".into(),
+                    resource_url: "https://modelscope.cn/models/Qwen/Test/files?Revision=master"
+                        .into(),
+                },
+            },
+            VersionStatus::Downloadable,
+            vec![ModelVariant {
+                id: "q4".into(),
+                quantization: "Q4_K_M".into(),
+                runtime: "llama.cpp".into(),
+                artifact_source: "modelscope".into(),
+                expected_sha256: DEMO_DIGEST.into(),
+                ram_bytes: GIB,
+                vram_bytes: 0,
+                disk_bytes: GIB,
+            }],
+        )
+        .expect("目录模型");
+    reach(&mut state, run_id, PreparationStage::Downloading);
+    state.preparation_event(
+        run_id,
+        PreparationEvent::DownloadTaskCreated {
+            task_id: "7".into(),
+        },
+    );
+    assert_eq!(
+        state
+            .preparation()
+            .expect("流程")
+            .download_task_id
+            .as_deref(),
+        Some("7")
+    );
+    assert!(state
+        .request_preparation_cancel(run_id)
+        .is_some_and(|id| id == "7"));
+    assert_eq!(
+        state.preparation().expect("取消后的流程").stage,
+        PreparationStage::Cancelled
+    );
+    assert_eq!(
+        state.preparation().expect("取消后的流程").download_task_id,
+        None
+    );
+    state.preparation_event(
+        run_id,
+        PreparationEvent::DownloadProgress {
+            completed: 10,
+            total: Some(10),
+        },
+    );
+    assert_eq!(
+        state.preparation().expect("迟到事件不能改写流程").stage,
+        PreparationStage::Cancelled
+    );
+
+    let error = backend_error(
+        ErrorKind::Timeout,
+        Operation::Initialize(PreparationStage::Downloading),
+    );
+    assert!(state.finish_preparation_cancellation(run_id, error.clone()));
+    let preparation = state.preparation().expect("取消失败后的流程");
+    assert_eq!(preparation.stage, PreparationStage::Failed);
+    assert_eq!(preparation.error, Some(error));
+    assert!(!state.finish_preparation_cancellation(
+        run_id,
+        ChatError {
+            kind: ErrorKind::ExecutionFailed,
+            operation: Operation::Initialize(PreparationStage::Downloading),
+            reason: "迟到错误".into(),
+        },
+    ));
 }
 
 #[test]
