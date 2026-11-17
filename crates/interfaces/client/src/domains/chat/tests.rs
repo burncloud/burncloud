@@ -938,3 +938,95 @@ fn artifact_ready_remains_running_without_changing_other_stages() {
         assert!(!stage.is_running(), "{stage:?} 不应处于运行中");
     }
 }
+
+fn catalog_downloading() -> (ChatState, u64) {
+    let mut state = ChatState::default();
+    let selection = CatalogSelection {
+        name: "测试模型".into(),
+        preset: None,
+        version: CatalogVersion {
+            name: "测试版本".into(),
+            model: "test/model".into(),
+            source: "modelscope".into(),
+            revision: "master".into(),
+            resource_url: "https://modelscope.cn/models/test/model/files?Revision=master".into(),
+        },
+    };
+    let id = state
+        .accept_catalog(selection, VersionStatus::Downloadable, Vec::new())
+        .expect("开始");
+    state.finish_model_resolution(
+        id,
+        Ok(ModelResolution {
+            hardware: hardware(DemoPlatform::Windows),
+            variants: vec![ModelVariant {
+                id: "q4".into(),
+                quantization: "q4".into(),
+                runtime: "llama.cpp".into(),
+                artifact_source: "https://example.invalid/model.gguf".into(),
+                expected_sha256: DEMO_DIGEST.into(),
+                ram_bytes: GIB,
+                vram_bytes: 0,
+                disk_bytes: GIB,
+            }],
+            reason: None,
+        }),
+    );
+    assert!(state.choose_variant(id, "q4"));
+    state.preparation_event(
+        id,
+        PreparationEvent::DownloadTaskCreated {
+            task_id: "42".into(),
+        },
+    );
+    (state, id)
+}
+
+#[test]
+fn verified_catalog_artifact_clears_download_cancel_responsibility() {
+    let (mut state, id) = catalog_downloading();
+    state.preparation_event(id, PreparationEvent::Downloaded);
+    let event = PreparationEvent::Verified {
+        expected: DEMO_DIGEST.into(),
+        actual: DEMO_DIGEST.into(),
+        path: "  模型.gguf ".into(),
+    };
+    state.preparation_event(id + 1, event.clone());
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Verifying
+    );
+    state.preparation_event(id, event);
+    let p = state.preparation().expect("卡片");
+    assert_eq!(p.stage, PreparationStage::ArtifactReady);
+    assert_eq!(p.actual_digest.as_deref(), Some(DEMO_DIGEST));
+    assert_eq!(p.local_path.as_deref(), Some("  模型.gguf "));
+    assert_eq!(p.download_task_id, None);
+    assert!(!state.is_model_ready(p.model.id()));
+    assert_eq!(state.request_preparation_cancel(id), None);
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Cancelled
+    );
+}
+
+#[test]
+fn unfinished_catalog_download_still_returns_cancel_id() {
+    for verifying in [false, true] {
+        let (mut state, id) = catalog_downloading();
+        if verifying {
+            state.preparation_event(id, PreparationEvent::Downloaded);
+        }
+        assert_eq!(state.request_preparation_cancel(id).as_deref(), Some("42"));
+        let error = ChatError {
+            kind: ErrorKind::NotConnected,
+            operation: Operation::Initialize(PreparationStage::Downloading),
+            reason: "取消失败".into(),
+        };
+        assert!(state.finish_preparation_cancellation(id, error));
+        assert_eq!(
+            state.preparation().expect("卡片").stage,
+            PreparationStage::Failed
+        );
+    }
+}

@@ -855,6 +855,8 @@ impl ChatState {
                 }
                 p.actual_digest = Some(actual.clone());
                 p.local_path = Some(path.clone());
+                // 下载已完成，不再对它发出远端取消请求。
+                p.download_task_id = None;
                 p.stage = if p.model.catalog_selection.is_some() {
                     PreparationStage::ArtifactReady
                 } else {
@@ -906,8 +908,17 @@ impl ChatState {
             if preparation.run_id != run_id || !preparation.stage.is_running() {
                 return None;
             }
+            let downloading = matches!(
+                preparation.stage,
+                PreparationStage::Downloading | PreparationStage::Verifying
+            );
             preparation.stage = PreparationStage::Cancelled;
-            preparation.download_task_id.take()
+            let task_id = preparation.download_task_id.take();
+            if downloading {
+                task_id
+            } else {
+                None
+            }
         };
         self.restore_pending_draft();
         task_id
