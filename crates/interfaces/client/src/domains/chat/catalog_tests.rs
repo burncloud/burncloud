@@ -992,3 +992,169 @@ fn task_ids_accept_only_decimal_i64_values() {
     assert!(!valid_task_id("1x"));
     assert!(!valid_task_id("9223372036854775808"));
 }
+
+#[allow(clippy::disallowed_types, reason = "测试必须构造部署响应及其非法变体")]
+fn deploy_snapshot(status: &str) -> serde_json::Value {
+    json!({"model_id":"model", "status":status, "stage":null, "state":null,
+        "endpoint":null, "pid":null, "last_heartbeat_unix_ms":null,
+        "error":null, "events":[]})
+}
+
+#[tokio::test]
+async fn deploy_http_posts_original_path_and_maps_terminal_states() {
+    let path = " C:\\模型\\model.gguf ";
+    let service = json_server(vec![deploy_snapshot("ready")]).await;
+    service.client.deploy_model(path).await.expect("部署就绪");
+    let calls = service.requests.lock().expect("请求记录");
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].starts_with("POST /console/api/node/deployments "));
+    let body = calls[0].split_once("\r\n\r\n").expect("请求体").1;
+    let body: serde_json::Value = serde_json::from_str(body).expect("请求 JSON");
+    assert_eq!(body["model_path"], path);
+    drop(calls);
+
+    for (status, stage) in [
+        ("failed", PreparationStage::Deploying),
+        ("unhealthy", PreparationStage::HealthChecking),
+    ] {
+        let mut snapshot = deploy_snapshot(status);
+        snapshot["error"] = json!("远端故障");
+        let service = json_server(vec![snapshot]).await;
+        let error = service
+            .client
+            .deploy_model(path)
+            .await
+            .expect_err("部署失败");
+        assert_eq!(error.kind, ErrorKind::ExecutionFailed);
+        assert_eq!(error.operation, Operation::Initialize(stage));
+        assert_eq!(error.reason, "远端故障");
+    }
+}
+
+#[tokio::test]
+async fn deploy_http_rejects_invalid_snapshots_and_http_errors() {
+    let mut invalid = vec!["not json".to_string()];
+    for field in [
+        "model_id",
+        "status",
+        "stage",
+        "state",
+        "endpoint",
+        "pid",
+        "last_heartbeat_unix_ms",
+        "error",
+        "events",
+    ] {
+        let mut snapshot = deploy_snapshot("ready");
+        snapshot.as_object_mut().expect("对象").remove(field);
+        invalid.push(snapshot.to_string());
+    }
+    let mut blank = deploy_snapshot("ready");
+    blank["model_id"] = json!("");
+    invalid.push(blank.to_string());
+    let mut bad_events = deploy_snapshot("ready");
+    bad_events["events"] = json!({});
+    invalid.push(bad_events.to_string());
+    for status in ["queued", "deploying", "unknown", ""] {
+        invalid.push(deploy_snapshot(status).to_string());
+    }
+    for body in invalid {
+        let service = server(vec![(200, body)], Duration::ZERO, Duration::from_secs(2)).await;
+        let error = service
+            .client
+            .deploy_model("model")
+            .await
+            .expect_err("非法快照");
+        assert_eq!(error.kind, ErrorKind::InvalidResult);
+        assert_eq!(
+            error.operation,
+            Operation::Initialize(PreparationStage::Deploying)
+        );
+    }
+    for (status, body) in [
+        (400, "{\"error\":\"路径无效\"}"),
+        (503, "bad"),
+        (418, "bad"),
+        (302, "bad"),
+    ] {
+        let service = server(
+            vec![(status, body.into())],
+            Duration::ZERO,
+            Duration::from_secs(2),
+        )
+        .await;
+        let error = service
+            .client
+            .deploy_model("model")
+            .await
+            .expect_err("HTTP 错误");
+        assert_eq!(error.kind, ErrorKind::ExecutionFailed);
+        assert_eq!(
+            error.operation,
+            Operation::Initialize(PreparationStage::Deploying)
+        );
+        assert!(!error.reason.is_empty());
+        if status == 400 {
+            assert_eq!(error.reason, "路径无效");
+        }
+        assert_eq!(service.requests.lock().expect("请求记录").len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn deploy_http_rejects_bad_paths_and_times_out() {
+    let service = server(
+        vec![(200, deploy_snapshot("ready").to_string())],
+        Duration::from_millis(300),
+        Duration::from_millis(30),
+    )
+    .await;
+    for path in ["", "a\0b"] {
+        let error = service
+            .client
+            .deploy_model(path)
+            .await
+            .expect_err("非法路径");
+        assert_eq!(error.kind, ErrorKind::InvalidParameter);
+    }
+    assert!(service.requests.lock().expect("请求记录").is_empty());
+    let error = service
+        .client
+        .deploy_model("model")
+        .await
+        .expect_err("超时");
+    assert_eq!(error.kind, ErrorKind::Timeout);
+    assert_eq!(
+        error.operation,
+        Operation::Initialize(PreparationStage::Deploying)
+    );
+}
+
+#[tokio::test]
+async fn deploy_http_does_not_follow_redirects() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("监听");
+    let base = format!("http://{}", listener.local_addr().expect("地址"));
+    let location = format!("{base}/redirected");
+    let task = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("部署请求");
+        let mut bytes = [0; 2048];
+        let count = stream.read(&mut bytes).await.expect("读取请求");
+        assert!(String::from_utf8_lossy(&bytes[..count])
+            .starts_with("POST /console/api/node/deployments "));
+        let response = format!("HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .expect("返回重定向");
+        tokio::time::timeout(Duration::from_millis(150), listener.accept())
+            .await
+            .is_err()
+    });
+    let client = CatalogClient::new(&base, Duration::from_secs(1)).expect("客户端");
+    let error = client
+        .deploy_model("model")
+        .await
+        .expect_err("不接受重定向");
+    assert_eq!(error.kind, ErrorKind::ExecutionFailed);
+    assert!(task.await.expect("测试任务"));
+}

@@ -139,6 +139,53 @@ struct DownloadTaskData {
     actual_sha256: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct DeployRequest<'a> {
+    model_path: &'a str,
+}
+
+#[allow(
+    clippy::disallowed_types,
+    reason = "部署协议不约束事件内容，需要原样持有"
+)]
+type DeployEvent = serde_json::Value;
+
+#[derive(Debug, Deserialize)]
+struct DeploySnapshot {
+    model_id: String,
+    status: String,
+    #[serde(rename = "stage", deserialize_with = "required_option")]
+    _stage: Option<String>,
+    #[serde(rename = "state", deserialize_with = "required_option")]
+    _state: Option<String>,
+    #[serde(rename = "endpoint", deserialize_with = "required_option")]
+    _endpoint: Option<String>,
+    #[serde(rename = "pid", deserialize_with = "required_option")]
+    _pid: Option<u32>,
+    #[serde(
+        rename = "last_heartbeat_unix_ms",
+        deserialize_with = "required_option"
+    )]
+    _last_heartbeat_unix_ms: Option<u64>,
+    #[serde(deserialize_with = "required_option")]
+    error: Option<String>,
+    #[serde(rename = "events")]
+    _events: Vec<DeployEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeployError {
+    error: String,
+}
+
+fn required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
 const DOWNLOAD_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +311,19 @@ impl CatalogClient {
             .map_err(|error| transport(error, Operation::Search))?;
         let download_client = Client::builder()
             .timeout(download_timeout)
+            // 部署请求可能已产生副作用，不能由传输层重发；下载请求共用该策略。
+            .retry(reqwest::retry::never())
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt
+                    .previous()
+                    .first()
+                    .is_some_and(|url| url.path() == "/console/api/node/deployments")
+                {
+                    attempt.stop()
+                } else {
+                    reqwest::redirect::Policy::limited(10).redirect(attempt)
+                }
+            }))
             .build()
             .map_err(|error| {
                 transport(error, Operation::Initialize(PreparationStage::Downloading))
@@ -563,6 +623,87 @@ impl CatalogClient {
             )
         })?;
         snapshot.into_hardware()
+    }
+
+    /// 使用已校验的原始模型路径请求一次部署。
+    ///
+    /// # Examples
+    /// 已下载的模型路径可直接传入，不会由客户端裁剪或替换。
+    ///
+    /// # Notes
+    /// 仅接受完整的终态快照；部署可能在超时后继续，不自动重试或跟随重定向。
+    #[allow(dead_code, reason = "下一项后端衔接任务将调用部署边界")]
+    pub(super) async fn deploy_model(&self, model_path: &str) -> Result<(), ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Deploying);
+        if model_path.is_empty() || model_path.contains('\0') {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                operation,
+                "模型路径无效".into(),
+            ));
+        }
+        let url = self
+            .base
+            .join("/console/api/node/deployments")
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        let response = self
+            .download_client
+            .post(url)
+            .header("Accept", "application/json")
+            .json(&DeployRequest { model_path })
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let status = response.status();
+        if status != reqwest::StatusCode::OK {
+            let reason = match response.bytes().await {
+                Ok(body) => serde_json::from_slice::<DeployError>(&body)
+                    .ok()
+                    .map(|error| error.error)
+                    .filter(|error| !error.trim().is_empty())
+                    .unwrap_or_else(|| format!("部署接口返回 HTTP {status}")),
+                Err(error) => format!("部署接口返回 HTTP {status}，读取错误信息失败：{error}"),
+            };
+            return Err(failure(ErrorKind::ExecutionFailed, operation, reason));
+        }
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let snapshot: DeploySnapshot = serde_json::from_slice(&body).map_err(|error| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                format!("部署响应格式无效：{error}"),
+            )
+        })?;
+        if snapshot.model_id.trim().is_empty() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署响应模型 ID 为空".into(),
+            ));
+        }
+        match snapshot.status.as_str() {
+            "ready" => Ok(()),
+            "failed" | "unhealthy" => {
+                let operation = if snapshot.status == "unhealthy" {
+                    Operation::Initialize(PreparationStage::HealthChecking)
+                } else {
+                    operation
+                };
+                let reason = snapshot
+                    .error
+                    .filter(|error| !error.trim().is_empty())
+                    .unwrap_or_else(|| format!("模型部署结果为 {}", snapshot.status));
+                Err(failure(ErrorKind::ExecutionFailed, operation, reason))
+            }
+            _ => Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                format!("部署响应状态无效：{}", snapshot.status),
+            )),
+        }
     }
 
     async fn create_download_task(
