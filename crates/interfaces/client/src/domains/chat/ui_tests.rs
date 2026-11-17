@@ -743,3 +743,147 @@ async fn switching_queries_status_and_closing_picker_cancel_http_requests() {
         .await;
     assert!(backend.calls.borrow().is_empty());
 }
+
+#[derive(Default)]
+struct DeploymentBackend {
+    calls: Rc<RefCell<Vec<String>>>,
+    hold: bool,
+    dropped: Rc<Cell<bool>>,
+}
+impl ChatBackend for DeploymentBackend {
+    fn search(&self, _: String) -> BackendFuture<Vec<ChatModel>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    fn model_status(&self, _: String) -> BackendFuture<Vec<PreparedModel>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    fn detect_hardware(&self, _: Callback<HardwareEvent>) -> BackendFuture<DemoHardware> {
+        Box::pin(async { Ok(hardware(DemoPlatform::Windows)) })
+    }
+    fn resolve_catalog_model(
+        &self,
+        _: CatalogSelection,
+        _: Callback<HardwareEvent>,
+    ) -> BackendFuture<ModelResolution> {
+        Box::pin(async {
+            Ok(ModelResolution {
+                hardware: hardware(DemoPlatform::Windows),
+                variants: vec![ModelVariant {
+                    id: "q4".into(),
+                    quantization: "q4".into(),
+                    runtime: "llama.cpp".into(),
+                    artifact_source: "https://example.invalid/model.gguf".into(),
+                    expected_sha256: DEMO_DIGEST.into(),
+                    ram_bytes: GIB,
+                    vram_bytes: 0,
+                    disk_bytes: GIB,
+                }],
+                reason: None,
+            })
+        })
+    }
+    fn initialize(
+        &self,
+        request: InitializationRequest,
+        mut callback: Callback<PreparationEvent>,
+    ) -> BackendFuture<PreparedModel> {
+        self.calls.borrow_mut().push("initialize".into());
+        Box::pin(async move {
+            callback(PreparationEvent::DownloadTaskCreated {
+                task_id: "42".into(),
+            });
+            callback(PreparationEvent::Downloaded);
+            callback(PreparationEvent::Verified {
+                expected: DEMO_DIGEST.into(),
+                actual: DEMO_DIGEST.into(),
+                path: "path.gguf".into(),
+            });
+            Ok(PreparedModel {
+                model: request.model,
+                variant: request.variant,
+                actual_sha256: DEMO_DIGEST.into(),
+                local_path: "path.gguf".into(),
+            })
+        })
+    }
+    fn deploy_model(&self, path: String) -> BackendFuture<()> {
+        self.calls.borrow_mut().push(format!("deploy:{path}"));
+        let hold = self.hold;
+        let notice = DropNotice(self.dropped.clone());
+        Box::pin(async move {
+            let _notice = notice;
+            if hold {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        })
+    }
+    fn cancel_download_task(&self, id: String) -> BackendFuture<()> {
+        self.calls.borrow_mut().push(format!("cancel:{id}"));
+        Box::pin(async { Ok(()) })
+    }
+    fn generate(
+        &self,
+        _: GenerationRequest,
+        _: Callback<GenerationEvent>,
+    ) -> BackendFuture<Option<InferenceMetrics>> {
+        self.calls.borrow_mut().push("generate".into());
+        Box::pin(async { Ok(None) })
+    }
+}
+
+#[tokio::test]
+async fn catalog_ui_deploys_once_and_cancellation_only_drops_local_deployment() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend {
+        hold: true,
+        ..Default::default()
+    });
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|_| {
+        backend
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| call.starts_with("deploy:"))
+    })
+    .await;
+    assert_eq!(
+        *backend.calls.borrow(),
+        vec!["initialize", "deploy:path.gguf"]
+    );
+    ui.click("chat-flow-button");
+    ui.flush();
+    assert!(backend.dropped.get());
+    assert_eq!(
+        *backend.calls.borrow(),
+        vec!["initialize", "deploy:path.gguf"]
+    );
+}
+
+#[tokio::test]
+async fn catalog_ui_deployment_success_marks_ready() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend::default());
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|probe| probe.text.contains("部署成功，模型已就绪"))
+        .await;
+    assert_eq!(
+        *backend.calls.borrow(),
+        vec!["initialize", "deploy:path.gguf"]
+    );
+}

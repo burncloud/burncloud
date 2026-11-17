@@ -23,7 +23,7 @@ pub(super) struct BackendHandle(pub(super) Rc<dyn ChatBackend>);
 struct GenerationTask(Signal<Option<Task>>);
 
 #[derive(Clone, Copy)]
-struct PreparationTask(Signal<Option<Task>>);
+struct PreparationTask(Signal<Option<(u64, Task)>>);
 
 #[derive(Clone, Copy)]
 struct ChatScope(ScopeId);
@@ -56,16 +56,19 @@ pub fn ChatHome() -> Element {
     let mut state = use_signal(|| try_consume_context::<ChatState>().unwrap_or_default());
     let task = use_signal(|| None::<Task>);
     use_context_provider(|| GenerationTask(task));
-    let mut preparation_task = use_signal(|| None::<Task>);
+    let mut preparation_task = use_signal(|| None::<(u64, Task)>);
     use_context_provider(|| PreparationTask(preparation_task));
     use_effect(move || {
-        let running = state
+        let active = state
             .read()
             .preparation()
-            .is_some_and(|p| p.stage.is_running());
-        if !running && preparation_task.peek().is_some() {
-            let handle = preparation_task.take();
-            if let Some(handle) = handle {
+            .and_then(|p| p.stage.is_running().then_some(p.run_id));
+        let stale = preparation_task
+            .peek()
+            .as_ref()
+            .is_some_and(|(id, _)| Some(*id) != active);
+        if stale {
+            if let Some((_, handle)) = preparation_task.take() {
                 handle.cancel();
             }
         }
@@ -451,10 +454,10 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
             }
             if active {
                 div { class: "chat-preparation-actions",
-                    if matches!(stage, PreparationStage::Downloading | PreparationStage::Verifying) {
+                    if matches!(stage, PreparationStage::Downloading | PreparationStage::Verifying | PreparationStage::ArtifactReady | PreparationStage::Deploying | PreparationStage::HealthChecking) {
                         button { class: "chat-flow-button", r#type: "button",
                             onclick: move |_| cancel_preparation(state, run_id),
-                            "取消下载"
+                            if matches!(stage, PreparationStage::Downloading | PreparationStage::Verifying) { "取消下载" } else { "取消部署" }
                         }
                     }
                     if matches!(stage, PreparationStage::AwaitingStart | PreparationStage::Failed | PreparationStage::Cancelled) && preparation.model.catalog_selection.is_none() && !state.read().is_model_ready(preparation.model.id()) {
@@ -737,25 +740,30 @@ fn cancel_preparation(mut state: Signal<ChatState>, run_id: u64) {
     }
     let task_id = state.with_mut(|value| value.request_preparation_cancel(run_id));
     let mut preparation_task = consume_context::<PreparationTask>().0;
-    let local_task = preparation_task.take();
-    let backend = consume_context::<BackendHandle>().0;
-    let owner = consume_context::<ChatScope>().0;
-    Runtime::current().spawn(owner, async move {
-        if let Some(task_id) = task_id {
+    if preparation_task
+        .peek()
+        .as_ref()
+        .is_some_and(|(id, _)| *id == run_id)
+    {
+        if let Some((_, local_task)) = preparation_task.take() {
+            local_task.cancel();
+        }
+    }
+    if let Some(task_id) = task_id {
+        let backend = consume_context::<BackendHandle>().0;
+        let owner = consume_context::<ChatScope>().0;
+        Runtime::current().spawn(owner, async move {
             if let Err(error) = backend.cancel_download_task(task_id).await {
                 state.with_mut(|value| value.finish_preparation_cancellation(run_id, error));
             }
-        }
-        if let Some(local_task) = local_task {
-            local_task.cancel();
-        }
-    });
+        });
+    }
 }
 fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
     let backend = consume_context::<BackendHandle>().0;
     let mut task = consume_context::<PreparationTask>().0;
     let previous = task.take();
-    if let Some(previous) = previous {
+    if let Some((_, previous)) = previous {
         previous.cancel();
     }
     let owner = consume_context::<ChatScope>().0;
@@ -798,16 +806,32 @@ fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
             if let Some(request) = request {
                 let callback =
                     move |event| state.with_mut(|value| value.preparation_event(run_id, event));
+                let is_catalog = request.model.catalog_selection.is_some();
                 let result = backend.initialize(request, Box::new(callback)).await;
-                if let Some(plan) = state.with_mut(|value| value.finish_preparation(run_id, result))
-                {
+                let plan = match result {
+                    Ok(prepared) if is_catalog => {
+                        if state.with_mut(|value| value.begin_catalog_deployment(run_id, &prepared))
+                        {
+                            let result = backend.deploy_model(prepared.local_path.clone()).await;
+                            state.with_mut(|value| {
+                                value.finish_catalog_deployment(run_id, prepared, result)
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    other => state.with_mut(|value| value.finish_preparation(run_id, other)),
+                };
+                if let Some(plan) = plan {
                     spawn_stream(state, plan);
                 }
             }
         }
-        task.set(None);
+        if task.peek().as_ref().is_some_and(|(id, _)| *id == run_id) {
+            task.take();
+        }
     });
-    task.set(Some(handle));
+    task.set(Some((run_id, handle)));
 }
 
 fn spawn_stream(mut state: Signal<ChatState>, plan: GenerationPlan) {
