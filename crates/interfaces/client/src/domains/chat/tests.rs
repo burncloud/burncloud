@@ -913,3 +913,28 @@ fn metrics() -> super::model::InferenceMetrics {
 
 #[path = "backend_tests.rs"]
 mod backend_tests;
+
+#[test]
+fn artifact_ready_remains_running_without_changing_other_stages() {
+    for stage in [
+        PreparationStage::Detecting,
+        PreparationStage::Downloading,
+        PreparationStage::Verifying,
+        PreparationStage::ArtifactReady,
+        PreparationStage::LoadingPackage,
+        PreparationStage::Deploying,
+        PreparationStage::HealthChecking,
+        PreparationStage::Reporting,
+    ] {
+        assert!(stage.is_running(), "{stage:?} 应处于运行中");
+    }
+    for stage in [
+        PreparationStage::AwaitingStart,
+        PreparationStage::SelectingVariant,
+        PreparationStage::Ready,
+        PreparationStage::Failed,
+        PreparationStage::Cancelled,
+    ] {
+        assert!(!stage.is_running(), "{stage:?} 不应处于运行中");
+    }
+}

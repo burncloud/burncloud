@@ -191,6 +191,7 @@ impl PreparationStage {
             Self::Detecting
                 | Self::Downloading
                 | Self::Verifying
+                | Self::ArtifactReady
                 | Self::LoadingPackage
                 | Self::Deploying
                 | Self::HealthChecking
