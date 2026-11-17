@@ -1030,3 +1030,92 @@ fn unfinished_catalog_download_still_returns_cancel_id() {
         );
     }
 }
+
+fn catalog_artifact() -> (ChatState, u64, PreparedModel) {
+    let (mut state, id) = catalog_downloading();
+    state.preparation_event(id, PreparationEvent::Downloaded);
+    state.preparation_event(
+        id,
+        PreparationEvent::Verified {
+            expected: DEMO_DIGEST.into(),
+            actual: DEMO_DIGEST.into(),
+            path: "model.gguf".into(),
+        },
+    );
+    let p = state.preparation().expect("卡片");
+    let ready = PreparedModel {
+        model: p.model.clone(),
+        variant: p.variant().expect("版本").clone(),
+        actual_sha256: DEMO_DIGEST.into(),
+        local_path: "model.gguf".into(),
+    };
+    (state, id, ready)
+}
+
+#[test]
+fn catalog_deployment_claim_is_unique_and_requires_matching_credentials() {
+    for corruption in 0..4 {
+        let (mut state, id, mut ready) = catalog_artifact();
+        match corruption {
+            0 => ready.model.name.push('x'),
+            1 => ready.variant.id.push('x'),
+            2 => ready.actual_sha256 = format!("sha256:{}", "b".repeat(64)),
+            _ => ready.local_path.push('x'),
+        }
+        assert!(!state.begin_catalog_deployment(id, &ready));
+        let p = state.preparation().expect("卡片");
+        assert_eq!(p.stage, PreparationStage::Failed);
+        assert_eq!(
+            p.error.as_ref().expect("错误").kind,
+            ErrorKind::InvalidResult
+        );
+    }
+    let (mut state, id, ready) = catalog_artifact();
+    assert!(!state.begin_catalog_deployment(id + 1, &ready));
+    assert!(state.begin_catalog_deployment(id, &ready));
+    assert!(!state.begin_catalog_deployment(id, &ready));
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Deploying
+    );
+    assert!(state
+        .finish_catalog_deployment(id, ready.clone(), Ok(()))
+        .is_none());
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Ready
+    );
+    assert!(state.is_model_ready(ready.model.id()));
+}
+
+#[test]
+fn catalog_deployment_failures_and_stale_results_preserve_state() {
+    for stage in [
+        PreparationStage::Deploying,
+        PreparationStage::HealthChecking,
+    ] {
+        let (mut state, id, ready) = catalog_artifact();
+        assert!(state.begin_catalog_deployment(id, &ready));
+        let error = ChatError {
+            kind: ErrorKind::ExecutionFailed,
+            operation: Operation::Initialize(stage),
+            reason: "部署错误".into(),
+        };
+        assert!(state
+            .finish_catalog_deployment(id, ready.clone(), Err(error))
+            .is_none());
+        let p = state.preparation().expect("卡片");
+        assert_eq!(p.stage, PreparationStage::Failed);
+        assert_eq!(
+            p.error.as_ref().expect("错误").operation,
+            Operation::Initialize(stage)
+        );
+        assert!(!state.is_model_ready(ready.model.id()));
+    }
+    let (mut state, id, ready) = catalog_artifact();
+    assert!(state.begin_catalog_deployment(id, &ready));
+    assert_eq!(state.request_preparation_cancel(id), None);
+    let cancelled = state.clone();
+    assert!(state.finish_catalog_deployment(id, ready, Ok(())).is_none());
+    assert_eq!(state, cancelled);
+}

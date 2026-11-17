@@ -951,6 +951,102 @@ impl ChatState {
         self.restore_pending_draft();
         true
     }
+    /// 原子认领当前目录工件，防止同一运行重复部署。
+    ///
+    /// # Examples
+    /// 下载成功后使用该运行的原始凭据认领，再发起部署。
+    ///
+    /// # Notes
+    /// 过期或重复结果无副作用，当前凭据不一致则记录失败。
+    #[allow(dead_code, reason = "页面协调任务将调用此状态边界")]
+    pub(super) fn begin_catalog_deployment(
+        &mut self,
+        run_id: u64,
+        prepared: &PreparedModel,
+    ) -> bool {
+        let Some(p) = self.preparation_mut() else {
+            return false;
+        };
+        if p.run_id != run_id
+            || p.stage != PreparationStage::ArtifactReady
+            || p.model.catalog_selection.is_none()
+        {
+            return false;
+        }
+        let valid = prepared.is_valid()
+            && prepared.model == p.model
+            && Some(&prepared.variant) == p.variant()
+            && p.actual_digest
+                .as_ref()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(&prepared.actual_sha256))
+            && p.local_path.as_ref() == Some(&prepared.local_path);
+        if !valid {
+            self.invalid_preparation("部署凭据与下载模型、版本、摘要或路径不一致");
+            return false;
+        }
+        p.stage = PreparationStage::Deploying;
+        true
+    }
+
+    /// 消费当前运行的部署结果并按健康状态登记已就绪模型。
+    ///
+    /// # Examples
+    /// 部署成功时仅当前运行的凭据可登记就绪。
+    ///
+    /// # Notes
+    /// 取消或新运行之后到达的旧结果被忽略，不恢复草稿或更改句柄。
+    #[allow(dead_code, reason = "页面协调任务将调用此状态边界")]
+    pub(super) fn finish_catalog_deployment(
+        &mut self,
+        run_id: u64,
+        prepared: PreparedModel,
+        result: Result<(), ChatError>,
+    ) -> Option<GenerationPlan> {
+        let p = self.preparation_mut()?;
+        if p.run_id != run_id
+            || p.stage != PreparationStage::Deploying
+            || p.model.catalog_selection.is_none()
+        {
+            return None;
+        }
+        let valid = prepared.is_valid()
+            && prepared.model == p.model
+            && Some(&prepared.variant) == p.variant()
+            && p.actual_digest
+                .as_ref()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(&prepared.actual_sha256))
+            && p.local_path.as_ref() == Some(&prepared.local_path);
+        if !valid {
+            self.invalid_preparation("部署结果凭据与当前运行不一致");
+            return None;
+        }
+        if let Err(mut error) = result {
+            if error.operation == Operation::Initialize(PreparationStage::HealthChecking) {
+                p.stage = PreparationStage::HealthChecking;
+            } else {
+                error.operation = Operation::Initialize(PreparationStage::Deploying);
+            }
+            self.fail_preparation(error);
+            return None;
+        }
+        p.stage = PreparationStage::HealthChecking;
+        p.stage = PreparationStage::Ready;
+        // 解析出的版本此前只保存在流程卡片中，就绪查询还依赖模型目录中的同一版本。
+        if let Some(model) = self
+            .models
+            .iter_mut()
+            .find(|model| model.id == prepared.model.id)
+        {
+            *model = prepared.model.clone();
+        }
+        self.record_ready(prepared);
+        if let Some(draft) = self.pending_draft.take() {
+            self.draft = draft;
+            return self.begin_generation();
+        }
+        None
+    }
+
     /// 最终返回值与全部阶段凭据一致才能记录就绪；目录模型只停在文件已就绪。
     pub(super) fn finish_preparation(
         &mut self,
@@ -998,7 +1094,6 @@ impl ChatState {
             return None;
         }
         if is_catalog_model {
-            self.restore_pending_draft();
             return None;
         }
         p.stage = PreparationStage::Ready;
