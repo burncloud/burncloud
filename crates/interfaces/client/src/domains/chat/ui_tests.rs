@@ -747,6 +747,7 @@ async fn switching_queries_status_and_closing_picker_cancel_http_requests() {
 #[derive(Default)]
 struct DeploymentBackend {
     calls: Rc<RefCell<Vec<String>>>,
+    mismatch: bool,
     hold: bool,
     dropped: Rc<Cell<bool>>,
 }
@@ -788,6 +789,7 @@ impl ChatBackend for DeploymentBackend {
         mut callback: Callback<PreparationEvent>,
     ) -> BackendFuture<PreparedModel> {
         self.calls.borrow_mut().push("initialize".into());
+        let mismatch = self.mismatch;
         Box::pin(async move {
             callback(PreparationEvent::DownloadTaskCreated {
                 task_id: "42".into(),
@@ -802,7 +804,7 @@ impl ChatBackend for DeploymentBackend {
                 model: request.model,
                 variant: request.variant,
                 actual_sha256: DEMO_DIGEST.into(),
-                local_path: "path.gguf".into(),
+                local_path: if mismatch { "other.gguf" } else { "path.gguf" }.into(),
             })
         })
     }
@@ -886,4 +888,97 @@ async fn catalog_ui_deployment_success_marks_ready() {
         *backend.calls.borrow(),
         vec!["initialize", "deploy:path.gguf"]
     );
+}
+
+#[tokio::test]
+async fn restarted_catalog_deployment_keeps_new_task_until_its_own_cancel() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend {
+        hold: true,
+        ..Default::default()
+    });
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|_| {
+        backend
+            .calls
+            .borrow()
+            .iter()
+            .filter(|call| call.starts_with("deploy:"))
+            .count()
+            == 1
+    })
+    .await;
+    ui.click("chat-flow-button");
+    assert!(backend.dropped.get());
+    backend.dropped.set(false);
+    ui.click("chat-model-trigger");
+    ui.wait_for(|probe| {
+        probe.attributes.values().any(|attrs| {
+            attrs
+                .get("class")
+                .is_some_and(|class| class == "chat-model-option")
+        })
+    })
+    .await;
+    ui.click("chat-model-option");
+    ui.wait_for(|probe| {
+        probe
+            .attributes
+            .values()
+            .any(|attrs| attrs.get("aria-label").is_some_and(|label| label == "下载"))
+    })
+    .await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|_| {
+        backend
+            .calls
+            .borrow()
+            .iter()
+            .filter(|call| call.starts_with("deploy:"))
+            .count()
+            == 2
+    })
+    .await;
+    ui.flush();
+    assert!(!backend.dropped.get(), "旧任务收尾不得取消新任务");
+    ui.click("chat-flow-button");
+    assert!(backend.dropped.get());
+    assert!(!backend
+        .calls
+        .borrow()
+        .iter()
+        .any(|call| call.starts_with("cancel:")));
+}
+
+#[tokio::test]
+async fn catalog_ui_mismatched_download_credentials_never_deploy() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend {
+        mismatch: true,
+        ..Default::default()
+    });
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|probe| {
+        probe
+            .text
+            .contains("部署凭据与下载模型、版本、摘要或路径不一致")
+    })
+    .await;
+    assert_eq!(*backend.calls.borrow(), vec!["initialize"]);
 }

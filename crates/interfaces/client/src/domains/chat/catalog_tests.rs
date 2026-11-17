@@ -1005,13 +1005,15 @@ async fn deploy_http_posts_original_path_and_maps_terminal_states() {
     let path = " C:\\模型\\model.gguf ";
     let service = json_server(vec![deploy_snapshot("ready")]).await;
     service.client.deploy_model(path).await.expect("部署就绪");
-    let calls = service.requests.lock().expect("请求记录");
-    assert_eq!(calls.len(), 1);
-    assert!(calls[0].starts_with("POST /console/api/node/deployments "));
-    let body = calls[0].split_once("\r\n\r\n").expect("请求体").1;
-    let body: serde_json::Value = serde_json::from_str(body).expect("请求 JSON");
-    assert_eq!(body["model_path"], path);
-    drop(calls);
+    {
+        let calls = service.requests.lock().expect("请求记录");
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].starts_with("POST /console/api/node/deployments "));
+        let body = calls[0].split_once("\r\n\r\n").expect("请求体").1;
+        let body: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(body).expect("请求 JSON");
+        assert_eq!(body["model_path"], path);
+    }
 
     for (status, stage) in [
         ("failed", PreparationStage::Deploying),
@@ -1157,4 +1159,25 @@ async fn deploy_http_does_not_follow_redirects() {
         .expect_err("不接受重定向");
     assert_eq!(error.kind, ErrorKind::ExecutionFailed);
     assert!(task.await.expect("测试任务"));
+}
+
+#[tokio::test]
+async fn deploy_http_connection_failure_is_not_connected() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("监听");
+    let base = format!("http://{}", listener.local_addr().expect("地址"));
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("连接");
+        drop(stream);
+    });
+    let client = CatalogClient::new(&base, Duration::from_secs(2)).expect("客户端");
+    let error = client
+        .deploy_model("model.gguf")
+        .await
+        .expect_err("连接失败");
+    assert_eq!(error.kind, ErrorKind::NotConnected);
+    assert_eq!(
+        error.operation,
+        Operation::Initialize(PreparationStage::Deploying)
+    );
+    server.await.expect("服务端任务");
 }

@@ -1119,3 +1119,64 @@ fn catalog_deployment_failures_and_stale_results_preserve_state() {
     assert!(state.finish_catalog_deployment(id, ready, Ok(())).is_none());
     assert_eq!(state, cancelled);
 }
+
+#[test]
+fn old_deployment_success_and_failure_do_not_change_restarted_run() {
+    for old_result in [
+        Ok(()),
+        Err(ChatError {
+            kind: ErrorKind::Timeout,
+            operation: Operation::Initialize(PreparationStage::Deploying),
+            reason: "旧错误".into(),
+        }),
+    ] {
+        let (mut state, old_id, ready) = catalog_artifact();
+        assert!(state.begin_catalog_deployment(old_id, &ready));
+        assert_eq!(state.request_preparation_cancel(old_id), None);
+        state.set_draft("新运行草稿".into());
+        let selection = ready.model.catalog_selection.clone().expect("目录选择");
+        let new_id = state
+            .accept_catalog(
+                selection,
+                VersionStatus::Downloadable,
+                vec![ready.variant.clone()],
+            )
+            .expect("重启目录运行");
+        assert_ne!(new_id, old_id);
+        state.finish_model_resolution(
+            new_id,
+            Ok(ModelResolution {
+                hardware: hardware(DemoPlatform::Windows),
+                variants: vec![ready.variant.clone()],
+                reason: None,
+            }),
+        );
+        assert!(state.choose_variant(new_id, &ready.variant.id));
+        let before = state.clone();
+        assert!(state
+            .finish_catalog_deployment(old_id, ready.clone(), old_result)
+            .is_none());
+        assert!(!state.begin_catalog_deployment(old_id, &ready));
+        assert_eq!(state, before);
+        assert_eq!(state.draft(), "新运行草稿");
+        assert!(!state.is_model_ready(ready.model.id()));
+    }
+}
+
+#[test]
+fn duplicate_verified_callbacks_cannot_reclaim_deployment() {
+    let (mut state, id, ready) = catalog_artifact();
+    let event = PreparationEvent::Verified {
+        expected: DEMO_DIGEST.into(),
+        actual: DEMO_DIGEST.into(),
+        path: "model.gguf".into(),
+    };
+    state.preparation_event(id, event.clone());
+    assert!(state.begin_catalog_deployment(id, &ready));
+    state.preparation_event(id, event);
+    assert!(!state.begin_catalog_deployment(id, &ready));
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Deploying
+    );
+}

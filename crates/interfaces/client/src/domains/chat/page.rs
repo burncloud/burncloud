@@ -892,3 +892,7 @@ fn copy_message(
         }
     });
 }
+
+#[cfg(test)]
+#[path = "page_task_tests.rs"]
+mod task_tests;
