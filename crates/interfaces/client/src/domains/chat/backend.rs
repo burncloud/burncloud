@@ -89,6 +89,32 @@ pub(super) trait ChatBackend {
             }
         })
     }
+    /// 请求部署已校验的目录模型路径；默认替身不伪装部署成功。
+    ///
+    /// # Examples
+    /// 仅目录模型的已验证下载结果可传入此边界。
+    ///
+    /// # Notes
+    /// 本地替身返回未连接错误，调用者不能将其当作部署成功。
+    #[allow(dead_code, reason = "页面协调任务将调用此部署边界")]
+    fn deploy_model(&self, model_path: String) -> BackendFuture<()> {
+        Box::pin(async move {
+            let operation = Operation::Initialize(PreparationStage::Deploying);
+            if model_path.is_empty() || model_path.contains('\0') {
+                Err(error(
+                    ErrorKind::InvalidParameter,
+                    operation,
+                    "模型路径无效",
+                ))
+            } else {
+                Err(error(
+                    ErrorKind::NotConnected,
+                    operation,
+                    "当前后端未连接部署服务",
+                ))
+            }
+        })
+    }
     /// 传入实际用户/助手历史及推理强度；流式回调正文和思考，指标可缺省。
     fn generate(
         &self,
@@ -289,6 +315,17 @@ impl ChatBackend for HttpBackend {
                 reason: error.reason,
             })?;
             client.cancel_download_task(&task_id).await
+        })
+    }
+    fn deploy_model(&self, model_path: String) -> BackendFuture<()> {
+        let hardware_client = self.hardware_client.clone();
+        Box::pin(async move {
+            let client = hardware_client.map_err(|error| ChatError {
+                kind: error.kind,
+                operation: Operation::Initialize(PreparationStage::Deploying),
+                reason: error.reason,
+            })?;
+            client.deploy_model(&model_path).await
         })
     }
     fn generate(
