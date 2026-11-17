@@ -72,6 +72,7 @@ fn version() -> CatalogVersion {
         source: "modelscope".into(),
         revision: "master".into(),
         resource_url: "https://modelscope.cn/models/Qwen/Qwen3-8B/files?Revision=master".into(),
+        variants: Vec::new(),
     }
 }
 #[allow(
@@ -86,7 +87,11 @@ fn item(preset: bool, source: &str) -> serde_json::Value {
 #[allow(clippy::disallowed_types, reason = "测试需要构造完整状态协议")]
 fn status(source: &str, status: &str) -> serde_json::Value {
     json!({"status":status,"model":"Qwen/Qwen3-8B","source":source,
-        "revision":if source == "modelscope" {"master"} else {"main"}, "resource_url":"https://example.com/models/Qwen/Qwen3-8B"})
+        "revision":if source == "modelscope" {"master"} else {"main"}, "resource_url":"https://example.com/models/Qwen/Qwen3-8B",
+        "variants":[{"id":"qwen3-8b-q4","quantization":"Q4_K_M","runtime":"llama.cpp",
+            "artifact_source":"https://example.com/qwen3-8b-q4.gguf",
+            "expected_sha256":format!("sha256:{}", "a".repeat(64)),
+            "ram_bytes":1,"vram_bytes":1,"disk_bytes":1}]})
 }
 
 async fn collect(
@@ -152,7 +157,9 @@ async fn one_status_request_resolves_each_selection_and_accepts_four_states() {
             let service = json_server(vec![status(source, name)]).await;
             let (resource, state) = service.client.inspect(&model).await.expect("状态");
             assert_eq!(state, expected);
-            assert_eq!(resource.expect("资源").source, source);
+            let resource = resource.expect("资源");
+            assert_eq!(resource.source, source);
+            assert_eq!(resource.variants[0].id, "qwen3-8b-q4");
             let calls = service.requests.lock().expect("请求");
             assert_eq!(calls.len(), 1);
             assert!(calls[0].contains("/api/models/status?"));

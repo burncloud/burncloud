@@ -137,6 +137,36 @@ fn hardware_filter_removes_variant_when_ram_is_insufficient() {
 }
 
 #[test]
+fn hardware_filter_sums_known_accelerator_memory_for_multi_gpu_models() {
+    let variants = vec![variant("multi-gpu", "llama.cpp", 8, 16, 1)];
+    let hardware = HardwareProfile {
+        cpu: "test-cpu".into(),
+        memory_bytes: 8,
+        disk_available_bytes: 100,
+        accelerators: vec![
+            AcceleratorProfile {
+                kind: AcceleratorKind::Other,
+                name: "gpu-a".into(),
+                memory_bytes: Some(8),
+            },
+            AcceleratorProfile {
+                kind: AcceleratorKind::Other,
+                name: "gpu-b".into(),
+                memory_bytes: Some(8),
+            },
+        ],
+    };
+
+    assert_eq!(
+        RealModelResolver::filter_by_hardware(&variants, &hardware)
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>(),
+        ["multi-gpu"]
+    );
+}
+
+#[test]
 fn runtime_filter_keeps_only_supported_backends() {
     let variants = vec![
         variant("llama", "llama.cpp", 8, 1, 1),

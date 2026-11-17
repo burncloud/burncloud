@@ -1,8 +1,8 @@
 //! 主服务模型选择 HTTP 边界；保留独立的工件下载与校验能力。
 
 use super::model::{
-    ChatError, ErrorKind, InitializationRequest, ModelVariant, Operation, PreparationEvent,
-    PreparationStage,
+    valid_digest, ChatError, ErrorKind, InitializationRequest, ModelVariant, Operation,
+    PreparationEvent, PreparationStage,
 };
 use reqwest::{Client, Url};
 use serde::{de::DeserializeOwned, Deserialize};
@@ -51,6 +51,8 @@ pub(super) struct CatalogVersion {
     pub(super) revision: String,
     pub(super) source: String,
     pub(super) resource_url: String,
+    #[serde(default)]
+    pub(super) variants: Vec<ModelVariant>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -252,6 +254,8 @@ impl CatalogClient {
             source: String,
             revision: String,
             resource_url: String,
+            #[serde(default)]
+            variants: Vec<ModelVariant>,
         }
         let params = if model.preset {
             vec![("preset", model.id.clone())]
@@ -271,6 +275,7 @@ impl CatalogClient {
             source: result.source,
             revision: result.revision,
             resource_url: result.resource_url,
+            variants: result.variants,
         };
         version.validate()?;
         if version.model != model.model
@@ -413,9 +418,22 @@ impl CatalogVersion {
                 && url.username().is_empty()
                 && url.password().is_none()
         });
+        let variants_valid = self.variants.iter().all(|variant| {
+            !variant.id.trim().is_empty()
+                && !variant.quantization.trim().is_empty()
+                && !variant.runtime.trim().is_empty()
+                && valid_digest(&variant.expected_sha256)
+                && Url::parse(&variant.artifact_source).is_ok_and(|url| {
+                    matches!(url.scheme(), "http" | "https")
+                        && url.host_str().is_some()
+                        && url.username().is_empty()
+                        && url.password().is_none()
+                })
+        });
         if self.name.trim().is_empty()
             || !valid_resource(&self.model, &self.source, &self.revision)
             || !url_ok
+            || !variants_valid
         {
             return Err(failure(
                 ErrorKind::InvalidResult,

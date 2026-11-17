@@ -128,7 +128,7 @@ impl RealModelResolver {
         &self.variants
     }
 
-    /// 保留 RAM 和最大可用加速器显存要求满足设备能力的 Variant。
+    /// 保留 RAM 和可用加速器总显存要求满足设备能力的 Variant。
     ///
     /// # Examples
     ///
@@ -145,14 +145,13 @@ impl RealModelResolver {
     /// assert!(RealModelResolver::filter_by_hardware(&[], &hardware).is_empty());
     /// ```
     ///
-    /// 注意事项：多加速器设备使用单个加速器中的最大显存进行比较；没有已知显存时按零处理。
+    /// 注意事项：多加速器设备累加已知显存；没有已知显存时按零处理。
     pub fn filter_by_hardware(variants: &[Variant], hardware: &HardwareProfile) -> Vec<Variant> {
         let available_vram_bytes = hardware
             .accelerators
             .iter()
             .filter_map(|accelerator| accelerator.memory_bytes)
-            .max()
-            .unwrap_or(0);
+            .fold(0u64, u64::saturating_add);
 
         variants
             .iter()

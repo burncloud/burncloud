@@ -1,6 +1,7 @@
 //! 聊天模块内部的接口数据契约与纯资源比较；不生成外部能力结果。
 
 use super::state::ReasoningEffort;
+use serde::Deserialize;
 
 /// 字节与 GiB 的展示换算基数。
 pub(super) const GIB: u64 = 1024 * 1024 * 1024;
@@ -24,7 +25,7 @@ impl ChatModel {
 }
 
 /// 版本及不可变工件快照；资源要求统一使用字节。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub(super) struct ModelVariant {
     pub(super) id: String,
     pub(super) quantization: String,

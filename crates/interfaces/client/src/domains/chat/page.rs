@@ -383,7 +383,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
             }
             if let Some(selection) = preparation.model.catalog_selection.as_ref() {
                 p { class: "chat-preparation-note", "{selection.name} · {selection.version.source} · {selection.version.model} · {selection.version.revision}" }
-                p { class: "chat-preparation-note", "当前硬件检测使用模拟数据，不代表本机真实配置；当前入口未提供可下载工件，检测后会提示能力未接入，不执行真实下载或部署。" }
+                p { class: "chat-preparation-note", "当前硬件检测使用模拟数据，不代表本机真实配置；导入配置支持资源解析和硬件匹配，工件文件级地址与摘要仍需后续接入。" }
             }
             if !preparation.collapsed {
                 if stage != PreparationStage::AwaitingStart {
