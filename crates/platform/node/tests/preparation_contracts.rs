@@ -77,5 +77,6 @@ async fn preparation_ports_accept_independent_implementations() {
 
     assert!(artifact.is_verified());
     assert_eq!(runtime.executable, "/tmp/llama-server");
+    assert!(TestRuntime.supported_runtimes().is_empty());
     assert!(TestHealth.is_healthy(target).await.unwrap());
 }

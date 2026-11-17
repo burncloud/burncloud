@@ -1,16 +1,4 @@
-use burncloud_node_runtime::{
-    FakeHardwareProbe, FakeProcessManager, HardwareProbe, ProcessManager, ProcessSpec,
-};
-
-#[tokio::test]
-async fn fake_hardware_is_deterministic() {
-    let probe = FakeHardwareProbe::default();
-    let first = probe.inspect().await.expect("fake probe must succeed");
-    let second = probe.inspect().await.expect("fake probe must succeed");
-
-    assert_eq!(first, second);
-    assert_eq!(first.accelerators.len(), 1);
-}
+use burncloud_node_runtime::{FakeProcessManager, ProcessManager, ProcessSpec};
 
 #[tokio::test]
 async fn fake_process_never_requires_a_real_os_process() {

@@ -71,14 +71,67 @@ pub use channel_provider::{ChannelProviderModel, ChannelRateCap};
 
 type Result<T> = std::result::Result<T, DatabaseError>;
 
-/// Supply-owned facade for upstream Channel use cases.
+/// Supply 拥有的上游供给用例入口。
 ///
-/// These methods intentionally preserve the former `burncloud-service-channel` behavior:
-/// they delegate to the same persistence implementation without changing SQL, error, or
-/// synchronization semantics.
+/// 既有方法保持原行为；带归属条件的隔离／删除通过同一事务核对标签、修改能力和供给，
+/// 其提交与未知错误边界见各方法文档。其他领域不得绕过本入口写入供给表。
 pub struct ChannelService;
 
 impl ChannelService {
+    /// 按精确归属标签原子隔离供给及其能力。
+    ///
+    /// # 注意
+    /// id 必须为正数，expected_tag 不得为空。归属不符返回 InvalidData；
+    /// 仅事务内确认不存在时返回 false。true 表示提交成功；数据库错误（包括
+    /// 提交结果不确定）不会转换为不存在，不会自动重试。
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(db: &burncloud_database::Database) -> Result<(), burncloud_database::DatabaseError> {
+    /// let changed = burncloud_supply_channel::ChannelService::quarantine_if_tag(
+    ///     db, 42, "burncloud-node-local",
+    /// ).await?;
+    /// # let _changed = changed;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn quarantine_if_tag(db: &Database, id: i32, expected_tag: &str) -> Result<bool> {
+        if id <= 0 || expected_tag.is_empty() {
+            return Err(DatabaseError::InvalidData {
+                message: "channel id must be positive and expected tag must not be empty".into(),
+            });
+        }
+        channel_provider::quarantine_if_tag(db, id, expected_tag).await
+    }
+
+    /// 按精确归属标签原子删除供给及其能力。
+    ///
+    /// # 注意
+    /// id 必须为正数，expected_tag 不得为空。归属不符返回 InvalidData；
+    /// 仅事务内确认不存在时返回 false。true 表示提交成功；数据库错误（包括
+    /// 提交结果不确定）不会转换为不存在，不会自动重试。
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(db: &burncloud_database::Database) -> Result<(), burncloud_database::DatabaseError> {
+    /// let changed = burncloud_supply_channel::ChannelService::delete_if_tag(
+    ///     db, 42, "burncloud-node-local",
+    /// ).await?;
+    /// # let _changed = changed;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn delete_if_tag(db: &Database, id: i32, expected_tag: &str) -> Result<bool> {
+        if id <= 0 || expected_tag.is_empty() {
+            return Err(DatabaseError::InvalidData {
+                message: "channel id must be positive and expected tag must not be empty".into(),
+            });
+        }
+        channel_provider::delete_if_tag(db, id, expected_tag).await
+    }
+
     /// List channels with pagination.
     pub async fn list(db: &Database, limit: i32, offset: i32) -> Result<Vec<Channel>> {
         ChannelProviderModel::list(db, limit, offset).await
@@ -139,6 +192,30 @@ impl ChannelService {
     /// Atomically remove a channel's abilities and mark it quarantined (status 3).
     pub async fn quarantine(db: &Database, id: i32) -> Result<bool> {
         ChannelProviderModel::quarantine(db, id).await
+    }
+
+    /// 查询组与模型的全部已启用能力，保留各自的管理员优先级和权重。
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # async fn example(db: &burncloud_database::Database) -> Result<(), burncloud_database::DatabaseError> {
+    /// let abilities = burncloud_supply_channel::ChannelService::list_enabled_for_model(db, "default", "qwen:4b").await?;
+    /// # Ok(()) }
+    /// ```
+    ///
+    /// # Notes
+    /// 组和模型必须非空；不裁剪模型别名，不套用本机模型长度限制。无匹配返回空列表，数据库错误原样传播。
+    pub async fn list_enabled_for_model(
+        db: &Database,
+        group: &str,
+        model: &str,
+    ) -> Result<Vec<Ability>> {
+        if group.is_empty() || model.is_empty() {
+            return Err(burncloud_database::DatabaseError::InvalidData {
+                message: "group and model must not be empty".into(),
+            });
+        }
+        ChannelAbilityModel::list_enabled_for_model(db, group, model).await
     }
 
     /// Return enabled abilities at the highest priority for one group/model pair.

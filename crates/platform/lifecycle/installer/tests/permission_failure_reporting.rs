@@ -30,13 +30,16 @@
 //! only writes go to a uniquely named subdirectory of `std::env::temp_dir()`.
 
 use burncloud_installer::error::InstallerError;
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 
 /// A unique directory under the temporary directory, removed by the owning guard.
+#[cfg(unix)]
 struct Scratch {
     dir: PathBuf,
 }
 
+#[cfg(unix)]
 impl Scratch {
     fn new(tag: &str) -> Self {
         let nanos = std::time::SystemTime::now()
@@ -58,6 +61,7 @@ impl Scratch {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Scratch {
     fn drop(&mut self) {
         // Restore the mode first: a read-only directory cannot have its contents removed.

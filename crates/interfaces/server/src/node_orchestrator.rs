@@ -42,15 +42,15 @@ use burncloud_router::local_attachment::LocalRouteAttachmentId;
 // 引入模型供给解析相关类型
 use burncloud_supply_model::{
     // 本地模型不支持的描述（模型 + 原因）
+    CandidateResolutionOutcome,
     LocalModelUnsupported,
-    // 模型解析结果（Local 或 Unsupported）
-    ModelResolutionOutcome,
     // 模型解析请求（模型名 + 可用加速器内存）
     ModelResolutionRequest,
     // 模型解析器 trait
     ModelResolver,
     // 已解析的模型（含工件地址、摘要、运行时等）
     ResolvedModel,
+    ResolvedModelCandidate,
 };
 // 引入 HashMap（按模型名索引 workload）
 use std::collections::HashMap;
@@ -131,6 +131,9 @@ struct ModelWorkload {
     // 该模型独立的状态机协调器
     reconciler: DemandReconciler,
     // 解析结果回执
+    // 候选列表及当前选择索引，供阶段三筛选和失败重试使用。
+    candidates: Vec<ResolvedModelCandidate>,
+    candidate_index: usize,
     resolved: Option<ResolvedModel>,
     // 工件准备回执
     artifact: Option<PreparedArtifact>,
@@ -158,6 +161,16 @@ struct ModelWorkload {
 //   P: ProcessManager     进程管理
 //   Q: ReadinessProbe     就绪探测
 //   E: HealthProbe        健康探测
+// 将阶段三候选转换为旧部署轨道仍使用的 ResolvedModel 回执。
+fn resolved_model_from_candidate(candidate: &ResolvedModelCandidate) -> ResolvedModel {
+    ResolvedModel {
+        model: candidate.model_name.clone(),
+        artifact_source: candidate.artifact_uri.clone(),
+        artifact_digest: Some(candidate.checksum.clone()),
+        runtime: candidate.runtime.clone(),
+        runtime_version: None,
+    }
+}
 #[derive(Debug)]
 pub struct NodeOrchestrator<M, T, H, A, R, P, Q, E> {
     // 模型解析器
@@ -273,7 +286,111 @@ where
         }
     }
 
-    // 推进状态机：请求下一个动作
+    // 解析候选时同时读取硬件快照和 Runtime 能力，确保后续启动只使用可用组合。
+    async fn resolve_candidates_for(
+        &self,
+        model: &str,
+    ) -> anyhow::Result<CandidateResolutionOutcome> {
+        let hardware = self.machine.hardware().inspect().await?;
+        let supported_runtimes = self.machine.runtimes().supported_runtimes();
+        Ok(self
+            .resolver
+            .resolve_candidates(
+                ModelResolutionRequest {
+                    model: model.to_owned(),
+                    hardware,
+                },
+                &supported_runtimes,
+            )
+            .await?)
+    }
+
+    /// 探测当前 Node，并返回请求模型的全部兼容候选。
+    ///
+    /// 用途：为模型选择界面或自动选择策略提供阶段三的候选结果。
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use burncloud_node_runtime::{
+    /// #     FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager,
+    /// #     FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
+    /// #     NodeComposition, SystemHardwareProbe,
+    /// # };
+    /// # use std::sync::Arc;
+    /// # use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
+    /// # use burncloud_supply_model::FakeModelResolver;
+    /// # fn closed_monitor_errors() -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError> {
+    /// #     let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    /// #     receiver
+    /// # }
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let node = NodeOrchestrator::new(
+    ///     FakeModelResolver,
+    ///     FakeRuntimeAdapter,
+    ///     NodeComposition::start(
+    ///         SystemHardwareProbe::new(),
+    ///         FakeArtifactPreparer,
+    ///         FakeRuntimePreparer,
+    ///         Arc::new(FakeProcessManager::default()),
+    ///         Arc::new(FakeReadinessProbe),
+    ///         Arc::new(FakeHealthProbe),
+    ///         closed_monitor_errors(),
+    ///     ),
+    /// );
+    /// let _ = node.resolve_candidates(ModelDemand::new("demo")?).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// 注意事项：该方法只解析和筛选，不下载模型、不准备 Runtime，也不启动进程。
+    pub async fn resolve_candidates(
+        &self,
+        demand: ModelDemand,
+    ) -> anyhow::Result<CandidateResolutionOutcome> {
+        self.resolve_candidates_for(&demand.model).await
+    }
+
+    fn select_candidate(&mut self, model: &str, index: usize) -> anyhow::Result<()> {
+        let candidate = self
+            .workloads
+            .get(model)
+            .and_then(|workload| workload.candidates.get(index))
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("candidate {index} missing for model '{model}'"))?;
+
+        let workload = self
+            .workloads
+            .get_mut(model)
+            .ok_or_else(|| anyhow::anyhow!("workload missing for model '{model}'"))?;
+        workload.candidate_index = index;
+        workload.resolved = Some(resolved_model_from_candidate(&candidate));
+        workload.artifact = None;
+        workload.runtime = None;
+        workload.plan = None;
+        workload.process = None;
+        Ok(())
+    }
+
+    fn retry_next_candidate(&mut self, model: &str) -> anyhow::Result<bool> {
+        let next_index = self.workloads.get(model).and_then(|workload| {
+            let next = workload.candidate_index + 1;
+            (next < workload.candidates.len()).then_some(next)
+        });
+        let Some(next_index) = next_index else {
+            return Ok(false);
+        };
+
+        self.observe(model, ReconcileEvidence::Failed)?;
+        self.select_candidate(model, next_index)?;
+        self.workloads
+            .get_mut(model)
+            .ok_or_else(|| anyhow::anyhow!("workload missing for model '{model}'"))?
+            .reconciler
+            .retry()?;
+        self.observe(model, ReconcileEvidence::Resolved)?;
+        Ok(true)
+    }
     fn next_action(&mut self, model: &str) -> anyhow::Result<ReconcileAction> {
         // 确保 workload 存在
         self.ensure_workload(model);
@@ -454,40 +571,35 @@ where
             match action {
                 // 动作：解析模型
                 ReconcileAction::Resolve => {
-                    // 探测硬件
-                    let hardware = match self.machine.hardware().inspect().await {
-                        Ok(hardware) => hardware,
+                    // 解析阶段只探测和筛选候选，不下载工件或启动进程。
+                    let resolution = match self.resolve_candidates_for(&demand.model).await {
+                        Ok(resolution) => resolution,
                         Err(error) => {
                             // 失败则标记 Failed 并返回错误
                             self.mark_failed(&demand.model)?;
-                            return Err(error.into());
+                            return Err(error);
                         }
                     };
-                    // 取所有加速器中最大的显存（用于解析时选择变体）
-                    let accelerator_memory_bytes = hardware
-                        .accelerators
-                        .iter()
-                        .filter_map(|a| a.memory_bytes)
-                        .max();
-                    // 调用解析器
-                    match self
-                        .resolver
-                        .resolve(ModelResolutionRequest {
-                            model: demand.model.clone(),
-                            accelerator_memory_bytes,
-                        })
-                        .await
-                    {
-                        // 解析成功：记录 resolved 回执并提交证据
-                        Ok(ModelResolutionOutcome::Local(resolved)) => {
-                            self.workloads
-                                .get_mut(&demand.model)
-                                .expect("workload must exist")
-                                .resolved = Some(resolved);
+                    match resolution {
+                        CandidateResolutionOutcome::Candidates(candidates)
+                            if !candidates.is_empty() =>
+                        {
+                            let workload =
+                                self.workloads.get_mut(&demand.model).ok_or_else(|| {
+                                    anyhow::anyhow!("workload missing for model '{}'", demand.model)
+                                })?;
+                            workload.candidates = candidates;
+                            workload.candidate_index = 0;
+                            self.select_candidate(&demand.model, 0)?;
                             self.observe(&demand.model, ReconcileEvidence::Resolved)?;
                         }
-                        // Supply 判定本机不支持：记录原因，提交证据，直接返回 Unsupported
-                        Ok(ModelResolutionOutcome::Unsupported(reason)) => {
+                        CandidateResolutionOutcome::Candidates(_) => {
+                            let reason = LocalModelUnsupported {
+                                model: demand.model.clone(),
+                                reason:
+                                    burncloud_supply_model::LocalModelUnsupportedReason::
+                                        NoCompatibleVariant,
+                            };
                             self.workloads
                                 .get_mut(&demand.model)
                                 .expect("workload must exist")
@@ -495,10 +607,13 @@ where
                             self.observe(&demand.model, ReconcileEvidence::LocalUnsupported)?;
                             return Ok(LocalPreparationOutcome::Unsupported(reason));
                         }
-                        // 解析出错：标记 Failed 并返回
-                        Err(error) => {
-                            self.mark_failed(&demand.model)?;
-                            return Err(error.into());
+                        CandidateResolutionOutcome::Unsupported(reason) => {
+                            self.workloads
+                                .get_mut(&demand.model)
+                                .expect("workload must exist")
+                                .unsupported = Some(reason.clone());
+                            self.observe(&demand.model, ReconcileEvidence::LocalUnsupported)?;
+                            return Ok(LocalPreparationOutcome::Unsupported(reason));
                         }
                     }
                 }
@@ -514,11 +629,15 @@ where
                     let artifact_url = match reqwest::Url::parse(&resolved.artifact_source) {
                         Ok(url) => url,
                         Err(error) => {
-                            self.mark_failed(&demand.model)?;
-                            return Err(anyhow::anyhow!(
+                            let failure = anyhow::anyhow!(
                                 "invalid artifact source '{}': {error}",
                                 resolved.artifact_source
-                            ));
+                            );
+                            if self.retry_next_candidate(&demand.model)? {
+                                continue;
+                            }
+                            self.mark_failed(&demand.model)?;
+                            return Err(failure);
                         }
                     };
                     // 解析期望摘要（必须存在且合法）
@@ -526,16 +645,22 @@ where
                         Some(value) => match Digest::parse(&value) {
                             Ok(digest) => digest,
                             Err(error) => {
+                                let failure =
+                                    anyhow::anyhow!("invalid artifact digest '{}': {error}", value);
+                                if self.retry_next_candidate(&demand.model)? {
+                                    continue;
+                                }
                                 self.mark_failed(&demand.model)?;
-                                return Err(anyhow::anyhow!(
-                                    "invalid artifact digest '{}': {error}",
-                                    value
-                                ));
+                                return Err(failure);
                             }
                         },
                         None => {
+                            let failure = anyhow::anyhow!("artifact digest is required");
+                            if self.retry_next_candidate(&demand.model)? {
+                                continue;
+                            }
                             self.mark_failed(&demand.model)?;
-                            anyhow::bail!("artifact digest is required");
+                            return Err(failure);
                         }
                     };
                     // 调用工件准备器下载并校验
@@ -547,14 +672,22 @@ where
                     {
                         Ok(artifact) => artifact,
                         Err(error) => {
+                            if self.retry_next_candidate(&demand.model)? {
+                                continue;
+                            }
                             self.mark_failed(&demand.model)?;
                             return Err(error.into());
                         }
                     };
                     // 工件必须已验证
                     if !artifact.is_verified() {
+                        let failure =
+                            anyhow::anyhow!("artifact preparer returned unverified artifact");
+                        if self.retry_next_candidate(&demand.model)? {
+                            continue;
+                        }
                         self.mark_failed(&demand.model)?;
-                        anyhow::bail!("artifact preparer returned unverified artifact");
+                        return Err(failure);
                     }
                     // 记录工件回执
                     self.workloads
@@ -584,6 +717,9 @@ where
                     {
                         Ok(runtime) => runtime,
                         Err(error) => {
+                            if self.retry_next_candidate(&demand.model)? {
+                                continue;
+                            }
                             self.mark_failed(&demand.model)?;
                             return Err(error.into());
                         }
@@ -616,6 +752,9 @@ where
                     let plan = match self.runtime_adapter.plan(&runtime, &artifact).await {
                         Ok(plan) => plan,
                         Err(error) => {
+                            if self.retry_next_candidate(&demand.model)? {
+                                continue;
+                            }
                             self.mark_failed(&demand.model)?;
                             return Err(error.into());
                         }
@@ -635,6 +774,9 @@ where
                     let handle = match self.machine.processes().start(plan.process.clone()).await {
                         Ok(handle) => handle,
                         Err(error) => {
+                            if self.retry_next_candidate(&demand.model)? {
+                                continue;
+                            }
                             self.mark_failed(&demand.model)?;
                             return Err(error.into());
                         }
@@ -784,11 +926,12 @@ mod tests {
     use async_trait::async_trait;
     // 引入各种 Fake 实现（用于测试）
     use burncloud_node_runtime::{
-        ArtifactVerificationStatus, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
-        FakeProcessManager, FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
+        ArtifactVerificationStatus, FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager,
+        FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, SystemHardwareProbe,
     };
     use burncloud_supply_model::{
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
+        ModelResolutionOutcome,
     };
 
     // 构造一个已关闭的监控错误通道（测试用，不需要真正监控）
@@ -804,7 +947,7 @@ mod tests {
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
-        FakeHardwareProbe,
+        SystemHardwareProbe,
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager,
@@ -815,7 +958,7 @@ mod tests {
             FakeModelResolver,
             FakeRuntimeAdapter,
             NodeComposition::start(
-                FakeHardwareProbe::default(),
+                SystemHardwareProbe::new(),
                 FakeArtifactPreparer,
                 FakeRuntimePreparer,
                 std::sync::Arc::new(FakeProcessManager::default()),
@@ -873,7 +1016,7 @@ mod tests {
     async fn failed_resolution_converges_to_failed_and_stops_reporting_preparing() {
         let request_state = NodeRequestState::default();
         let machine = NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             std::sync::Arc::new(FakeProcessManager::default()),
@@ -1222,7 +1365,7 @@ mod tests {
     #[tokio::test]
     async fn unsupported_local_model_stops_before_any_preparation_or_route_state() {
         let machine = NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             std::sync::Arc::new(FakeProcessManager::default()),

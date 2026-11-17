@@ -428,6 +428,14 @@ async fn owner_boundary_capabilities_execute_on_real_postgres() {
             ChannelService::list_enabled_at_highest_priority(&db, "pg-vip", "claude-pg-contract")
                 .await
                 .expect("highest-priority Supply query must execute on PostgreSQL");
+        let all = ChannelService::list_enabled_for_model(&db, "pg-vip", "claude-pg-contract")
+            .await
+            .expect("全档 SQL 必须可在 PostgreSQL 执行");
+        assert!(!all.is_empty());
+        assert!(all
+            .windows(2)
+            .all(|pair| pair[0].priority >= pair[1].priority));
+
         assert_eq!(abilities.len(), 1);
         assert_eq!(abilities[0].channel_id, id);
         assert_eq!(abilities[0].weight, 17);
@@ -626,6 +634,58 @@ async fn protocol_upsert_uses_postgres_conflict_and_default_demote_branches() {
             1,
             "exactly one PostgreSQL row remains default"
         );
+    })
+    .await;
+}
+
+// 仅在显式提供隔离 PostgreSQL 测试服务器时运行，不连接默认业务库。
+#[tokio::test]
+async fn tagged_lifecycle_transaction_contract() {
+    with_postgres("tagged_lifecycle", |db| async move {
+        let mut channel = sample_channel();
+        channel.tag = Some("owned".into());
+        let id = ChannelService::create(&db, &mut channel).await.unwrap();
+        assert!(ChannelService::quarantine_if_tag(&db, id, "other")
+            .await
+            .is_err());
+        assert!(ChannelService::delete_if_tag(&db, id, "other")
+            .await
+            .is_err());
+        assert_eq!(
+            ChannelAbilityModel::list_by_channel(&db, id)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(ChannelService::quarantine_if_tag(&db, id, "owned")
+            .await
+            .unwrap());
+        assert!(ChannelService::quarantine_if_tag(&db, id, "owned")
+            .await
+            .unwrap());
+        assert_eq!(
+            ChannelService::get_by_id(&db, id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            3
+        );
+        assert!(ChannelAbilityModel::list_by_channel(&db, id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(ChannelService::delete_if_tag(&db, id, "owned")
+            .await
+            .unwrap());
+        assert!(!ChannelService::delete_if_tag(&db, id, "owned")
+            .await
+            .unwrap());
+        assert!(!ChannelService::quarantine_if_tag(&db, id, "owned")
+            .await
+            .unwrap());
+        db.close().await.unwrap();
     })
     .await;
 }

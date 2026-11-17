@@ -1,6 +1,6 @@
 use burncloud_node_runtime::{
-    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
+    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState, SystemHardwareProbe,
 };
 use burncloud_router::local_attachment::LocalRouteAttachmentId;
 use burncloud_server::node_attachment::{
@@ -21,7 +21,7 @@ fn closed_monitor_errors(
 fn fake_orchestrator() -> NodeOrchestrator<
     FakeModelResolver,
     FakeRuntimeAdapter,
-    FakeHardwareProbe,
+    SystemHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -32,7 +32,7 @@ fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
         NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             std::sync::Arc::new(FakeProcessManager::default()),

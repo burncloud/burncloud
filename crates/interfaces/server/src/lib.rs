@@ -2,7 +2,9 @@
 pub mod api;
 // 声明 logging 子模块（公开）：日志相关
 pub mod logging;
-// 声明 node_attachment 子模块（公开）：节点附件相关
+// 本地路由配置与启动生命周期管理保持私有，避免绕过服务启动校验。
+mod local_routes;
+mod model_selection;
 pub mod node_attachment;
 // 声明 node_deployment 子模块（私有，仅本模块可见）：节点部署状态管理（前面分析过的 DeploymentEventStore / NodeDeploymentState）
 mod node_deployment;
@@ -20,6 +22,8 @@ mod node_deployment;
 // 声明 node_orchestrator 子模块（公开）：节点编排状态机
 pub mod node_orchestrator;
 // 声明 node_request 子模块（公开）：节点请求相关
+// 生产节点负责把候选模型选择与真实硬件探测连接起来。
+pub mod node_production;
 pub mod node_request;
 // 声明 node_runtime 子模块（私有）：llama.cpp 运行时适配器与准备器
 mod node_runtime;
@@ -54,6 +58,7 @@ use burncloud_node_runtime::{
 };
 // 引入路由应用创建函数（带 route_miss 回调）与 SyncResult
 use burncloud_router::create_router_app_with_route_miss;
+use burncloud_router::local_attachment::LocalRouteManager;
 use burncloud_router::price_sync::SyncResult;
 // 引入路由数据库初始化
 use burncloud_router::RouterDatabase;
@@ -139,6 +144,8 @@ pub struct AppState {
     pub db: Arc<Database>,
     // 节点上下文（运行时句柄）
     pub node_context: NodeContext,
+    /// 模型选择完成后调用的生产硬件探测和解析入口。
+    pub production_node: Arc<node_production::ProductionNode>,
     // 节点请求状态
     pub node_request_state: node_request::NodeRequestState,
     // 系统监控服务
@@ -160,8 +167,24 @@ pub struct AppState {
     pub(crate) node_deployment: Arc<node_deployment::NodeDeploymentState>,
 }
 
-// 创建应用的便捷入口（使用默认的 NodeRequestState）
-// #[tracing::instrument] 自动为函数生成 tracing span；skip(db) 表示不记录 db（不可 Debug/敏感）
+/// 构建统一网关，将模型选择接口、管理 API 和可选 LiveView 挂到同一服务。
+///
+/// # Examples
+/// ```no_run
+/// # use std::sync::Arc;
+/// # use burncloud_database::Database;
+/// # use burncloud_service_user::JwtSecret;
+/// # use burncloud_server::{create_app, InternalSecret};
+/// # async fn example(db: Arc<Database>, jwt: JwtSecret, secret: InternalSecret) -> anyhow::Result<()> {
+/// let app = create_app(db, false, jwt, secret).await?;
+/// // 即使关闭 LiveView，模型选择三个接口仍由该 Router 提供。
+/// # drop(app);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Notes
+/// 本函数不额外绑定模型服务端口；资源页面可访问不表示模型已下载或已部署。
 #[tracing::instrument(skip(db))]
 pub async fn create_app(
     db: Arc<Database>,
@@ -245,6 +268,7 @@ pub async fn create_app_with_node_request_state(
     let state = AppState {
         db: db.clone(),
         node_context,
+        production_node: Arc::new(node_production::ProductionNode::new()),
         node_request_state,
         monitor,
         user_service: Arc::new(UserService::new(jwt_secret.clone())),
@@ -272,6 +296,7 @@ pub async fn create_app_with_node_request_state(
     let mut app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .merge(api_router)
+        .merge(model_selection::routes()?)
         .merge(internal_app);
 
     // 若启用 LiveView，则合并前端路由
@@ -327,11 +352,28 @@ pub async fn create_app_with_node_request_state(
     Ok(app)
 }
 
-// 启动服务器（读取环境变量、初始化数据库、构建应用、监听端口）
-// skip_all：不记录任何参数（含 host/port 之外的敏感信息）
+/// 启动统一网关，并在同一生命周期内管理配置的本机路由挂载。
+///
+/// # Examples
+/// ```no_run
+/// # async fn example() -> anyhow::Result<()> {
+/// // 需预先配置 JWT_SECRET 与 BURNCLOUD_INTERNAL_SECRET。
+/// burncloud_server::start_server("127.0.0.1", 3000, false).await?;
+/// # Ok(()) }
+/// ```
+///
+/// # Notes
+/// `BURNCLOUD_LOCAL_ROUTE_ATTACHMENTS` 为仅含 `model`/`base_url` 的 JSON 数组；
+/// 也可使用 `BURNCLOUD_LOCAL_ROUTE_DEPLOYMENTS` 导入一个部署结果对象或数组，
+/// 必须包含 `model_id`、`endpoint`、`status="ready"` 和 `state="Ready"`，
+/// `error` 只能缺省或为 null。两项配置互斥；均未设置或唯一来源为 `[]` 时不创建挂载。
+/// 全量校验先于探测与挂载。部署 Ready、PID、历史心跳和事件不能代替当前端点的
+/// `/v1/models` 直接探测，也不改变认证、计费或模型报价。
+/// 取消本 future 同步关闭本机挂载准入，不自动删除持久化记录；重启残留须核对后
+/// 显式 detach。低层 `create_app` 不读取这两项配置，也不启动管理器。
 #[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
-    // 读取 node_test 开关
+    let attachments = local_routes::configured_attachments()?;
     let node_test_api_enabled = node_test::enabled_from_env();
     // 校验监听 host 是否安全（例如启用测试 API 时禁止绑定 0.0.0.0 等）
     node_test::validate_bind_host(host, node_test_api_enabled)?;
@@ -365,7 +407,8 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
     // 包成 Arc
     let db = Arc::new(db);
 
-    // 构建应用
+    // 管理器和 HTTP 服务由同一个 select 生命周期持有，确保取消时关闭本地挂载准入。
+    let manager = LocalRouteManager::new(db.clone(), attachments)?;
     let app = create_app(db, enable_liveview, jwt_secret, internal_secret).await?;
 
     // 解析监听地址
@@ -379,8 +422,11 @@ pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyho
 
     // 绑定 TCP 监听器
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    // 启动 axum 服务
-    axum::serve(listener, app).await?;
+    // 两个 future 由启动入口直接持有，退出/取消会回收首检，不遗留脱离的挂载任务。
+    tokio::select! {
+        result = async { axum::serve(listener, app).await } => result?,
+        result = manager.run() => result?,
+    }
 
     Ok(())
 }

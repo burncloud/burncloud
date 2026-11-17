@@ -16,8 +16,8 @@
 
 use burncloud_database::create_database_with_url;
 use burncloud_node_runtime::{
-    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState,
+    FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
+    FakeRuntimeAdapter, FakeRuntimePreparer, NodeComposition, NodeState, SystemHardwareProbe,
 };
 use burncloud_router::local_attachment::{
     ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentId,
@@ -53,7 +53,7 @@ fn sqlite_url(path: &str) -> String {
 fn fake_orchestrator() -> NodeOrchestrator<
     FakeModelResolver,
     FakeRuntimeAdapter,
-    FakeHardwareProbe,
+    SystemHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -64,7 +64,7 @@ fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
         NodeComposition::start(
-            FakeHardwareProbe::default(),
+            SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
             Arc::new(FakeProcessManager::default()),
@@ -109,7 +109,7 @@ async fn prepared_route(
     NodeOrchestrator<
         FakeModelResolver,
         FakeRuntimeAdapter,
-        FakeHardwareProbe,
+        SystemHardwareProbe,
         FakeArtifactPreparer,
         FakeRuntimePreparer,
         FakeProcessManager,
@@ -129,11 +129,24 @@ async fn prepared_route(
     let router = ModelRouter::new(db.clone());
     let mut orchestrator = fake_orchestrator();
 
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let alias = model.to_string();
+    let app = axum::Router::new().route(
+        "/v1/models",
+        axum::routing::get(move || {
+            let alias = alias.clone();
+            async move { axum::Json(serde_json::json!({"data":[{"id":alias}]})) }
+        }),
+    );
+    let probe_task = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
     let attach_side_effect = attacher.clone();
     let outcome = prepare_and_attach_node_route(
         &mut orchestrator,
         ModelDemand::new(model).expect("valid model demand"),
-        move |model, base_url| {
+        move |model, _base_url| {
             let attacher = attach_side_effect.clone();
             async move {
                 attacher
@@ -146,6 +159,8 @@ async fn prepared_route(
     .await
     .expect("fake Node preparation and real route attachment must succeed");
 
+    probe_task.abort();
+    assert!(probe_task.await.unwrap_err().is_cancelled());
     let attachment_id = match outcome {
         LocalRouteOutcome::Routable(id) => id,
         LocalRouteOutcome::Unsupported(reason) => {

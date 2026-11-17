@@ -659,6 +659,12 @@ impl DeploymentService {
     // ------------------------------------------------------------------------
     // 执行单次部署：停旧 -> 规划 -> 启动 -> 等就绪 -> 健康检查 -> 发布结果 -> 开监控
     // ------------------------------------------------------------------------
+    // 部署步骤必须按停止旧实例、规划、启动、就绪、健康、监控的顺序执行；拆散会改变故障清理语义。
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "部署状态机的顺序性和清理路径需要集中保持"
+    )]
     async fn run_deployment(
         // 共享 Inner。
         inner: Arc<DeploymentServiceInner>,
@@ -1125,6 +1131,13 @@ impl DeploymentService {
     // ------------------------------------------------------------------------
     // 运行期监控循环：周期检查进程存活 + 健康，状态变化时发布事件
     // ------------------------------------------------------------------------
+    // 心跳监控同时持有取消、服务关闭、进程和探测状态，集中处理才能保证失败只上报一次。
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_arguments,
+        clippy::too_many_lines,
+        reason = "运行期监控需要共享完整生命周期上下文并保持单一故障出口"
+    )]
     async fn monitor_runtime(
         // 共享 Inner。
         inner: Arc<DeploymentServiceInner>,
@@ -1608,6 +1621,11 @@ async fn publish_deployment_failure(
 }
 
 // 监控任务失败上报：可选 stop 进程、可选发布 Failed 状态。
+// 监控失败上报需要携带清理和事件发布所需的完整上下文，保持此函数的错误顺序不变。
+#[expect(
+    clippy::too_many_arguments,
+    reason = "监控失败处理必须同时完成进程清理、事件发布和错误回填"
+)]
 async fn report_monitor_failure(
     // 共享 Inner。
     inner: &DeploymentServiceInner,
@@ -1675,6 +1693,11 @@ async fn report_monitor_failure(
 }
 
 // 构造 StateChanged 事件。
+// 状态事件字段必须与进程计划和真实 PID 一一对应，使用显式参数避免隐式默认值。
+#[expect(
+    clippy::too_many_arguments,
+    reason = "状态事件需要完整携带运行时、进程和错误字段"
+)]
 fn monitor_state_event(
     // 模型标识。
     model_id: &str,

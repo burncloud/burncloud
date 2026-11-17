@@ -84,6 +84,11 @@ where
     ///     (node, deployment)
     /// }
     /// ```
+    // 该组合根需要同时接收六个机器能力插槽和监控通道；保持显式参数可读，避免引入额外配置对象。
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "组合根的公开构造契约需要逐一注入机器能力与监控通道"
+    )]
     pub fn start(
         hardware: H,
         artifacts: A,

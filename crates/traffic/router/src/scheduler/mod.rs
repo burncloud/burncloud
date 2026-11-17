@@ -1,11 +1,15 @@
-//! Channel Scheduling Strategy Engine
+//! 用户组的多供给路由策略。
 //!
-//! Provides a trait-based scheduling system for multi-channel model routing.
-//! Supports two modes:
-//! - **Passthrough**: Uses admin-configured weights only (default, backward-compatible)
-//! - **Combined**: Multi-factor scoring using health, cost, and RPM rate limits
+//! 未配置策略时默认使用 `balanced`；三种新策略只在最高可用管理员优先级内选择：
+//! - `balanced`：按正管理员权重分摊。
+//! - `stability_first`：优先最高有限健康分，同分按权重分摊。
+//! - `price_first`：优先最低可比较报价，同价按权重分摊。
+//!
+//! 显式 `passthrough` 和 `combined` 保留历史排序、会话亲和与候选截断行为。
 
 mod combined;
+mod strict;
+pub(crate) use strict::StrictPlan;
 #[cfg(test)]
 mod passthrough;
 
@@ -139,10 +143,28 @@ impl SchedulerPolicyConfig {
     }
 }
 
-/// Selects which scheduler to use for a group.
+/// 用户组的路由策略；未配置时默认均衡，显式旧策略保留旧行为。
+///
+/// # Examples
+/// ```
+/// use burncloud_router::SchedulerKind;
+/// let policy = SchedulerKind::Balanced;
+/// ```
+///
+/// # Notes
+/// 三种新策略只在最高可用管理员档内选择，不受会话亲和覆盖。
+/// 新增变体要求外部穷尽 match 同步更新。
 #[derive(Debug, Clone)]
 pub enum SchedulerKind {
+    /// 按正管理员权重分摊。
+    Balanced,
+    /// 最高有限健康分，同分按权重。
+    StabilityFirst,
+    /// 最低可比较 nano-USD 参考价，同价按权重。
+    PriceFirst,
+    /// 显式保留历史评分、亲和与候选截断行为。
     Passthrough,
+    /// 显式保留历史健康/成本/RPM 综合评分行为。
     Combined { config: SchedulerPolicyConfig },
 }
 
@@ -154,87 +176,97 @@ const RPM_FACTOR_LEARNING: f64 = 1.0;
 /// RPM factor for channels in Cooldown state — severely penalized.
 const RPM_FACTOR_COOLDOWN: f64 = 0.1;
 
-/// Load scheduler policies from environment configuration.
-///
-/// Reads `SCHEDULER_POLICIES` env var (JSON) with format:
-/// ```json
-/// {
-///   "vip": { "type": "combined", "health_weight": 0.4, "cost_weight": 0.4, "rpm_weight": 0.2 },
-///   "default": { "type": "passthrough" }
-/// }
-/// ```
-///
-/// Falls back to all-groups-passthrough if env var is missing or invalid.
-pub(crate) fn load_scheduler_config() -> SchedulerPolicyMap {
-    let json_str = match std::env::var("SCHEDULER_POLICIES") {
-        Ok(v) => v,
-        Err(_) => return HashMap::new(),
-    };
-
-    let raw: HashMap<String, serde_json::Value> = match serde_json::from_str(&json_str) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("Failed to parse SCHEDULER_POLICIES: {e}");
-            return HashMap::new();
-        }
-    };
-
-    let mut policies = HashMap::new();
-    for (group, val) in raw {
-        let kind = resolve_scheduler_kind(&group, val);
-        policies.insert(group.to_lowercase(), kind);
+impl SchedulerKind {
+    pub(crate) fn is_strict(&self) -> bool {
+        matches!(
+            self,
+            Self::Balanced | Self::StabilityFirst | Self::PriceFirst
+        )
     }
-
-    tracing::info!("Loaded {} scheduler policies", policies.len());
-    policies
 }
 
-/// Resolve one group's scheduler kind, falling back to passthrough on any
-/// invalid entry or weight configuration.
-fn resolve_scheduler_kind(group: &str, val: serde_json::Value) -> SchedulerKind {
-    let entry = match serde_json::from_value::<SchedulerPolicyEntry>(val) {
-        Ok(entry) => entry,
-        Err(e) => {
-            tracing::warn!("Failed to parse scheduler entry for group '{}': {e}", group);
-            return SchedulerKind::Passthrough;
-        }
-    };
-
-    match entry.scheduler_type.as_str() {
-        "combined" => {
-            let config = SchedulerPolicyConfig {
-                health_weight: entry.health_weight.unwrap_or_else(default_health_weight),
-                cost_weight: entry.cost_weight.unwrap_or_else(default_cost_weight),
-                rpm_weight: entry.rpm_weight.unwrap_or_else(default_rpm_weight),
-            };
-            if config.validate() {
-                SchedulerKind::Combined { config }
-            } else {
-                tracing::warn!(
-                    "Invalid scheduler weights for group '{}', falling back to passthrough",
-                    group
-                );
-                SchedulerKind::Passthrough
-            }
-        }
-        _ => SchedulerKind::Passthrough,
+pub(crate) fn load_scheduler_config() -> anyhow::Result<SchedulerPolicyMap> {
+    match std::env::var("SCHEDULER_POLICIES") {
+        Ok(raw) => parse_scheduler_config(&raw),
+        Err(std::env::VarError::NotPresent) => Ok(HashMap::new()),
+        Err(error) => Err(anyhow::anyhow!("SCHEDULER_POLICIES: {error}")),
     }
+}
+
+fn parse_scheduler_config(raw: &str) -> anyhow::Result<SchedulerPolicyMap> {
+    // 自定义 map visitor 保留并拒绝重复键，不能先收集为 Value 而丢掉重复证据。
+    struct Entries(Vec<(String, SchedulerPolicyEntry)>);
+    impl<'de> Deserialize<'de> for Entries {
+        fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct Visitor;
+            impl<'de> serde::de::Visitor<'de> for Visitor {
+                type Value = Entries;
+                fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str("scheduler group map")
+                }
+                fn visit_map<M: serde::de::MapAccess<'de>>(
+                    self,
+                    mut map: M,
+                ) -> Result<Entries, M::Error> {
+                    let mut entries = Vec::new();
+                    while let Some(entry) = map.next_entry()? {
+                        entries.push(entry);
+                    }
+                    Ok(Entries(entries))
+                }
+            }
+            deserializer.deserialize_map(Visitor)
+        }
+    }
+    let entries: Entries = serde_json::from_str(raw)
+        .map_err(|e| anyhow::anyhow!("invalid SCHEDULER_POLICIES: {e}"))?;
+    let mut result = HashMap::new();
+    for (group, entry) in entries.0 {
+        let name = group.to_lowercase();
+        anyhow::ensure!(
+            !name.trim().is_empty() && !result.contains_key(&name),
+            "invalid or duplicate scheduler group: {group}"
+        );
+        if entry.scheduler_type != "combined" {
+            anyhow::ensure!(
+                entry.health_weight.is_none()
+                    && entry.cost_weight.is_none()
+                    && entry.rpm_weight.is_none(),
+                "unexpected weights for scheduler group: {group}"
+            );
+        }
+        let kind = match entry.scheduler_type.as_str() {
+            "balanced" => SchedulerKind::Balanced,
+            "stability_first" => SchedulerKind::StabilityFirst,
+            "price_first" => SchedulerKind::PriceFirst,
+            "passthrough" => SchedulerKind::Passthrough,
+            "combined" => {
+                let config = SchedulerPolicyConfig {
+                    health_weight: entry.health_weight.unwrap_or_else(default_health_weight),
+                    cost_weight: entry.cost_weight.unwrap_or_else(default_cost_weight),
+                    rpm_weight: entry.rpm_weight.unwrap_or_else(default_rpm_weight),
+                };
+                anyhow::ensure!(
+                    config.validate(),
+                    "invalid scheduler weights for group: {group}"
+                );
+                SchedulerKind::Combined { config }
+            }
+            other => anyhow::bail!("unknown scheduler type: {other}"),
+        };
+        result.insert(name, kind);
+    }
+    Ok(result)
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SchedulerPolicyEntry {
-    #[serde(rename = "type", default = "default_type")]
+    #[serde(rename = "type")]
     scheduler_type: String,
-    #[serde(default)]
     health_weight: Option<f64>,
-    #[serde(default)]
     cost_weight: Option<f64>,
-    #[serde(default)]
     rpm_weight: Option<f64>,
-}
-
-fn default_type() -> String {
-    "passthrough".to_string()
 }
 
 /// Pick the scheduler for a group (case-insensitive, falls back to Passthrough).

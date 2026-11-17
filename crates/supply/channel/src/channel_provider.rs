@@ -559,3 +559,129 @@ impl ChannelProviderModel {
         Ok(())
     }
 }
+
+// 归属查询和能力修改必须共用事务，不能在检查之后换连接写入。
+pub(super) async fn quarantine_if_tag(db: &Database, id: i32, expected_tag: &str) -> Result<bool> {
+    debug_assert!(id > 0 && !expected_tag.is_empty());
+    let conn = db.get_connection()?;
+    let is_postgres = db.kind() == "postgres";
+    let mut tx = conn.pool().begin().await?;
+    let result: Result<bool> = async {
+        if !lock_owned_provider(&mut tx, is_postgres, id, expected_tag).await? {
+            return Ok(false);
+        }
+        let sql = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
+        sqlx::query(&sql).bind(id).execute(&mut *tx).await?;
+        let sql = adapt_sql(
+            is_postgres,
+            "UPDATE channel_providers SET status = 3 WHERE id = ? AND tag = ?",
+        );
+        let changed = sqlx::query(&sql)
+            .bind(id)
+            .bind(expected_tag)
+            .execute(&mut *tx)
+            .await?;
+        if changed.rows_affected() != 1 {
+            return Err(burncloud_database::DatabaseError::InvalidData {
+                message: "owned channel changed during lifecycle transaction".into(),
+            });
+        }
+        Ok(true)
+    }
+    .await;
+    match result {
+        Ok(changed) => {
+            // 提交失败可能是未知结果，不能声称已回滚或返回 false。
+            tx.commit().await?;
+            Ok(changed)
+        }
+        Err(error) => {
+            if let Err(rollback) = tx.rollback().await {
+                return Err(burncloud_database::DatabaseError::Query(format!(
+                    "{error}; rollback failed: {rollback}"
+                )));
+            }
+            Err(error)
+        }
+    }
+}
+
+// 归属查询和能力修改必须共用事务，不能在检查之后换连接写入。
+pub(super) async fn delete_if_tag(db: &Database, id: i32, expected_tag: &str) -> Result<bool> {
+    debug_assert!(id > 0 && !expected_tag.is_empty());
+    let conn = db.get_connection()?;
+    let is_postgres = db.kind() == "postgres";
+    let mut tx = conn.pool().begin().await?;
+    let result: Result<bool> = async {
+        if !lock_owned_provider(&mut tx, is_postgres, id, expected_tag).await? {
+            return Ok(false);
+        }
+        let sql = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_abilities WHERE channel_id = ?",
+        );
+        sqlx::query(&sql).bind(id).execute(&mut *tx).await?;
+        let sql = adapt_sql(
+            is_postgres,
+            "DELETE FROM channel_providers WHERE id = ? AND tag = ?",
+        );
+        let changed = sqlx::query(&sql)
+            .bind(id)
+            .bind(expected_tag)
+            .execute(&mut *tx)
+            .await?;
+        if changed.rows_affected() != 1 {
+            return Err(burncloud_database::DatabaseError::InvalidData {
+                message: "owned channel changed during lifecycle transaction".into(),
+            });
+        }
+        Ok(true)
+    }
+    .await;
+    match result {
+        Ok(changed) => {
+            // 提交失败可能是未知结果，不能声称已回滚或返回 false。
+            tx.commit().await?;
+            Ok(changed)
+        }
+        Err(error) => {
+            if let Err(rollback) = tx.rollback().await {
+                return Err(burncloud_database::DatabaseError::Query(format!(
+                    "{error}; rollback failed: {rollback}"
+                )));
+            }
+            Err(error)
+        }
+    }
+}
+
+async fn lock_owned_provider(
+    tx: &mut sqlx::Transaction<'_, sqlx::Any>,
+    is_postgres: bool,
+    id: i32,
+    expected_tag: &str,
+) -> Result<bool> {
+    // PostgreSQL 的行锁保护归属；SQLite 同事务升级冲突直接传播，不重试写入。
+    let sql = adapt_sql(
+        is_postgres,
+        if is_postgres {
+            "SELECT COALESCE(tag, '') FROM channel_providers WHERE id = ? FOR UPDATE"
+        } else {
+            "SELECT COALESCE(tag, '') FROM channel_providers WHERE id = ?"
+        },
+    );
+    let tag: Option<String> = sqlx::query_scalar(&sql)
+        .bind(id)
+        .fetch_optional(&mut **tx)
+        .await?;
+    match tag {
+        None => Ok(false),
+        Some(tag) if tag == expected_tag => Ok(true),
+        Some(_) => Err(burncloud_database::DatabaseError::InvalidData {
+            message: "channel ownership tag does not match".into(),
+        }),
+    }
+}

@@ -1,54 +1,25 @@
+pub use crate::{error::HardwareProbeError, types::HardwareProfile};
 use async_trait::async_trait;
 
-/// Stable machine-level facts produced by the Node runtime.
+/// Node runtime 用于读取本机硬件信息的公开接口。
+/// GPU 单独不可用时仍返回通用硬件信息，加速器列表可以为空或包含部分结果。
 ///
-/// This type deliberately contains no BurnCloud business concepts such as
-/// Model, Provider, Route, Billing, or Tenant.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HardwareProfile {
-    pub cpu_threads: usize,
-    pub memory_bytes: u64,
-    pub disk_available_bytes: u64,
-    pub accelerators: Vec<AcceleratorProfile>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcceleratorProfile {
-    /// 设备类型，用于调用方按硬件能力选择运行策略。
-    pub kind: AcceleratorKind,
-    /// 操作系统或设备供应商报告的显示名称。
-    pub name: String,
-    /// 设备可用显存；驱动无法提供该值时为 `None`。
-    pub memory_bytes: Option<u64>,
-}
-
-/// Node 可以报告的加速设备类别。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AcceleratorKind {
-    /// NVIDIA 加速设备。
-    Nvidia,
-    /// AMD 加速设备。
-    Amd,
-    /// Apple Silicon 加速设备。
-    Apple,
-    /// 未归类到已知供应商的加速设备。
-    Other,
-}
-
-/// 读取本机硬件信息失败时的错误。
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum HardwareProbeError {
-    #[error("hardware detection failed: {0}")]
-    DetectionFailed(String),
-}
-
-/// Port owned by the Node runtime for inspecting the local machine.
+/// # 示例
 ///
-/// Implementations may use platform APIs or vendor tooling, but callers only
-/// receive the stable machine-level `HardwareProfile` contract.
+/// ```no_run
+/// use burncloud_node_runtime::{HardwareProbe, SystemHardwareProbe};
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let profile = SystemHardwareProbe::new().inspect().await?;
+/// println!("{}", profile.cpu);
+/// # Ok(())
+/// # }
+/// ```
 #[async_trait]
 pub trait HardwareProbe: Send + Sync {
     /// 检测本机硬件并返回稳定的机器级描述。
+    ///
+    /// 当前工作目录不可映射到系统可见磁盘时返回 `DiskError`。
     async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError>;
 }
 

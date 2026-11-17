@@ -63,7 +63,8 @@ async fn composition_root_wires_every_machine_socket() {
     assert!(node.context().started());
 
     let profile = node.hardware().inspect().await.unwrap();
-    assert_eq!(profile.accelerators.len(), 1);
+    assert!(!profile.cpu.trim().is_empty());
+    assert!(profile.memory_bytes > 0);
 
     let artifact = node
         .artifacts()

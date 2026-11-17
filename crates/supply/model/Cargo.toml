@@ -10,7 +10,6 @@ edition = "2021"
 burncloud-database.workspace = true
 burncloud-service-ip.workspace = true
 burncloud-service-setting.workspace = true
-burncloud-download.workspace = true
 burncloud-node-runtime.workspace = true
 tokio.workspace = true
 serde.workspace = true

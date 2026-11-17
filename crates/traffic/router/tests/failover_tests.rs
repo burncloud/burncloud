@@ -15,6 +15,8 @@ use burncloud_database::sqlx;
 use common::{setup_db, start_mock_upstream, start_test_server_on};
 use reqwest::Client;
 use std::{
+    env,
+    ffi::OsString,
     hash::{Hash, Hasher},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -22,8 +24,36 @@ use std::{
     },
 };
 
+struct EnvironmentGuard {
+    key: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvironmentGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = env::var_os(key);
+        env::set_var(key, value);
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvironmentGuard {
+    fn drop(&mut self) {
+        if let Some(value) = &self.previous {
+            env::set_var(self.key, value);
+        } else {
+            env::remove_var(self.key);
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_failover() -> anyhow::Result<()> {
+    // 该回归测试验证显式旧策略的 HRW 首选与故障切换，而不是新策略的加权随机。
+    let _scheduler_policy = EnvironmentGuard::set(
+        "SCHEDULER_POLICIES",
+        r#"{"default":{"type":"passthrough"}}"#,
+    );
     let (_db, pool, db_url) = setup_db().await?;
 
     // A reachable failed upstream proves that the Router actually attempted

@@ -9,6 +9,7 @@ edition = "2021"
 exchange-api = []
 
 [dependencies]
+rand.workspace = true
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
