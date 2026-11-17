@@ -69,7 +69,7 @@ fn parse_displays(value: &Value, total_memory_bytes: u64) -> Vec<AcceleratorProf
 
     displays
         .iter()
-        .filter_map(|display| {
+        .map(|display| {
             let vendor = first_string(
                 display,
                 &["spdisplays_vendor", "sppci_vendor", "spdisplays_gpu_vendor"],
@@ -86,11 +86,11 @@ fn parse_displays(value: &Value, total_memory_bytes: u64) -> Vec<AcceleratorProf
                 display.get("spdisplays_vram").and_then(parse_byte_count)
             };
 
-            Some(AcceleratorProfile {
+            AcceleratorProfile {
                 kind,
                 name,
                 memory_bytes,
-            })
+            }
         })
         .collect()
 }

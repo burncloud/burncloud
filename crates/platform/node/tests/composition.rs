@@ -1,13 +1,19 @@
 use burncloud_node_runtime::{
-    ArtifactPreparation, Digest, FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager,
-    FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe, NodeComposition,
-    NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget, ReconcileAction,
-    ReconcileEvidence, RuntimePreparer, RuntimeRequest, SystemHardwareProbe,
+    deployment::{DeploymentErrorKind, DeploymentMonitorError},
+    ArtifactPreparation, Digest, FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe,
+    FakeProcessManager, FakeReadinessProbe, FakeRuntimePreparer, HardwareProbe, HealthProbe,
+    NodeComposition, NodeState, ProcessManager, ProcessSpec, ReadinessProbe, ReadinessTarget,
+    ReconcileAction, ReconcileEvidence, RuntimePreparer, RuntimeRequest,
 };
 use url::Url;
 
+fn closed_monitor_errors() -> tokio::sync::mpsc::UnboundedReceiver<DeploymentMonitorError> {
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
+}
+
 fn fake_composition() -> NodeComposition<
-    SystemHardwareProbe,
+    FakeHardwareProbe,
     FakeArtifactPreparer,
     FakeRuntimePreparer,
     FakeProcessManager,
@@ -15,13 +21,40 @@ fn fake_composition() -> NodeComposition<
     FakeHealthProbe,
 > {
     NodeComposition::start(
-        SystemHardwareProbe::new(),
+        FakeHardwareProbe::default(),
         FakeArtifactPreparer,
         FakeRuntimePreparer,
-        FakeProcessManager::new(4242),
-        FakeReadinessProbe,
-        FakeHealthProbe,
+        std::sync::Arc::new(FakeProcessManager::new(4242)),
+        std::sync::Arc::new(FakeReadinessProbe),
+        std::sync::Arc::new(FakeHealthProbe),
+        closed_monitor_errors(),
     )
+}
+
+#[tokio::test]
+async fn composition_root_forwards_monitor_errors_and_reports_channel_closure() {
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+    let expected = DeploymentMonitorError {
+        model_id: "model-1".into(),
+        pid: 4242,
+        kind: DeploymentErrorKind::HealthProbeFailed,
+        message: "probe failed".into(),
+        cleanup_error: None,
+    };
+    assert!(sender.send(expected.clone()).is_ok());
+    let mut node = NodeComposition::start(
+        FakeHardwareProbe::default(),
+        FakeArtifactPreparer,
+        FakeRuntimePreparer,
+        std::sync::Arc::new(FakeProcessManager::new(4242)),
+        std::sync::Arc::new(FakeReadinessProbe),
+        std::sync::Arc::new(FakeHealthProbe),
+        receiver,
+    );
+
+    assert_eq!(node.next_deployment_monitor_error().await, Some(expected));
+    drop(sender);
+    assert_eq!(node.next_deployment_monitor_error().await, None);
 }
 
 #[tokio::test]
