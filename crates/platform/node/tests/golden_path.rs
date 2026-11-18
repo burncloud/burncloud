@@ -18,6 +18,13 @@ use burncloud_supply_model::{
 };
 use url::Url;
 
+fn closed_monitor_errors(
+) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
+{
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
+}
+
 type FakeNode = NodeComposition<
     SystemHardwareProbe,
     FakeArtifactPreparer,
@@ -31,9 +38,10 @@ fn fake_node(pid: u32) -> FakeNode {
         SystemHardwareProbe::new(),
         FakeArtifactPreparer,
         FakeRuntimePreparer,
-        FakeProcessManager::new(pid),
-        FakeReadinessProbe,
-        FakeHealthProbe,
+        std::sync::Arc::new(FakeProcessManager::new(pid)),
+        std::sync::Arc::new(FakeReadinessProbe),
+        std::sync::Arc::new(FakeHealthProbe),
+        closed_monitor_errors(),
     )
 }
 

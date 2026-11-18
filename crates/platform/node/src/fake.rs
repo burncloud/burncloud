@@ -1,12 +1,55 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArtifactPreparation, ArtifactPrepareError, ArtifactVerificationStatus, Digest, HealthError,
-    HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle, ProcessManager,
-    ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
-    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
+    AcceleratorKind, AcceleratorProfile, ArtifactPreparation, ArtifactPrepareError,
+    ArtifactVerificationStatus, Digest, HardwareProbe, HardwareProbeError, HardwareProfile,
+    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessError, ProcessHandle,
+    ProcessManager, ProcessPlan, ProcessSpec, ReadinessError, ReadinessProbe, ReadinessTarget,
+    RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 use url::Url;
+
+/// 为组合根和部署流程提供确定性的本机硬件伪实现。
+///
+/// 该类型只用于隔离测试和示例，不读取真实系统资源；真实部署必须使用
+/// [`crate::SystemHardwareProbe`]，以避免把伪硬件能力当成现场验收结果。
+#[derive(Debug, Clone)]
+pub struct FakeHardwareProbe {
+    profile: HardwareProfile,
+}
+
+impl Default for FakeHardwareProbe {
+    /// 创建一份固定的硬件描述，保证旧部署流程的组合测试仍可编译运行。
+    fn default() -> Self {
+        Self {
+            profile: HardwareProfile {
+                cpu: "Fake CPU".to_owned(),
+                memory_bytes: 64 * 1024 * 1024 * 1024,
+                disk_available_bytes: 512 * 1024 * 1024 * 1024,
+                accelerators: vec![AcceleratorProfile {
+                    kind: AcceleratorKind::Other,
+                    name: "Fake Accelerator".to_owned(),
+                    memory_bytes: Some(24 * 1024 * 1024 * 1024),
+                }],
+            },
+        }
+    }
+}
+
+impl FakeHardwareProbe {
+    /// 使用调用方提供的硬件描述创建伪探测器。
+    pub fn new(profile: HardwareProfile) -> Self {
+        Self { profile }
+    }
+}
+
+#[async_trait]
+impl HardwareProbe for FakeHardwareProbe {
+    /// 返回预先配置的快照，不访问本机设备或文件系统。
+    async fn inspect(&self) -> Result<HardwareProfile, HardwareProbeError> {
+        Ok(self.profile.clone())
+    }
+}
 
 /// Deterministic fake artifact preparer. It performs no download or file I/O.
 #[derive(Debug, Clone, Default)]

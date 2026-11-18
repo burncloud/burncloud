@@ -56,7 +56,7 @@ const ALL_STATES: [NodeState; 12] = [
 /// prepare a runtime, start the process, wait for readiness, then attach. Recovery returns a failure to the
 /// matching earlier stage rather than to the beginning, and the two settled outcomes (`LocalUnsupported` and
 /// `Routable`) can only be released back to `Absent`.
-const EXPECTED_EDGES: [(NodeState, NodeState); 23] = [
+const EXPECTED_EDGES: [(NodeState, NodeState); 25] = [
     // Resolving a local variant.
     (NodeState::Absent, NodeState::Resolving),
     (NodeState::Resolving, NodeState::LocalUnsupported),
@@ -73,6 +73,7 @@ const EXPECTED_EDGES: [(NodeState, NodeState); 23] = [
     (NodeState::Starting, NodeState::WaitingReady),
     (NodeState::Starting, NodeState::Failed),
     (NodeState::WaitingReady, NodeState::Ready),
+    (NodeState::WaitingReady, NodeState::Unhealthy),
     (NodeState::WaitingReady, NodeState::Failed),
     // Serving, and the ways out of it.
     (NodeState::Ready, NodeState::Routable),
@@ -81,6 +82,7 @@ const EXPECTED_EDGES: [(NodeState, NodeState); 23] = [
     (NodeState::Routable, NodeState::Unhealthy),
     (NodeState::Routable, NodeState::Absent),
     // Recovery.
+    (NodeState::Unhealthy, NodeState::Ready),
     (NodeState::Unhealthy, NodeState::Starting),
     (NodeState::Unhealthy, NodeState::Failed),
     (NodeState::Failed, NodeState::Resolving),
@@ -99,7 +101,7 @@ fn is_expected(from: NodeState, to: NodeState) -> bool {
 
 #[test]
 fn the_transition_table_has_exactly_the_expected_edges() {
-    // **The exhaustive check.** For every one of the 121 ordered pairs, `can_transition_to` must agree with the
+    // **The exhaustive check.** For every one of the 144 ordered pairs, `can_transition_to` must agree with the
     // transcribed table -- so an edge added, removed or redirected in the `matches!` arms is reported with the
     // pair that changed rather than as a behaviour difference discovered later.
     assert_eq!(
@@ -165,25 +167,14 @@ fn a_state_never_transitions_to_itself() {
 }
 
 #[test]
-fn a_failure_phase_can_never_reach_ready_or_routable() {
-    // **The plan's second item, as a table property rather than as three examples.** "失败阶段不得进入
-    // Ready/Routable": from either failure state, `Ready` and `Routable` must be unreachable **in one step**.
-    //
-    // One step is the property that matters here, because `transition` is the only way the state moves and it
-    // moves by exactly one edge. Reaching `Ready` from `Failed` therefore takes at least the path through
-    // `Resolving` and the whole rail again -- which is the intent, since readiness must be re-proven rather than
-    // inherited from a run that failed.
-    for failure in [NodeState::Failed, NodeState::Unhealthy] {
-        for target in [NodeState::Ready, NodeState::Routable] {
-            assert!(
-                !failure.can_transition_to(target),
-                "a failed phase ({failure:?}) must not reach {target:?} in one step"
-            );
-        }
-    }
+fn unhealthy_can_recover_to_ready_while_failed_must_reprove_readiness() {
+    // 健康监控可让 Unhealthy 直接恢复为 Ready；Failed 则必须重新经过 readiness。
+    assert!(NodeState::Unhealthy.can_transition_to(NodeState::Ready));
+    assert!(!NodeState::Failed.can_transition_to(NodeState::Ready));
+    assert!(!NodeState::Failed.can_transition_to(NodeState::Routable));
+    assert!(!NodeState::Unhealthy.can_transition_to(NodeState::Routable));
 
-    // The same for the earlier failure phases: nothing before readiness may skip to it, which is what stops a
-    // stage from claiming a result its evidence does not support.
+    // readiness 之前的阶段不能直接宣称 Ready 或 Routable。
     for early in [
         NodeState::Absent,
         NodeState::Resolving,
@@ -354,7 +345,7 @@ fn the_failure_states_have_a_forward_path_back_to_the_rail() {
         ),
         (
             NodeState::Unhealthy,
-            vec![NodeState::Starting, NodeState::Failed],
+            vec![NodeState::Starting, NodeState::Ready, NodeState::Failed],
         ),
     ] {
         let mut forward: Vec<NodeState> = ALL_STATES
@@ -470,7 +461,7 @@ fn a_refused_transition_leaves_the_machine_where_it_was() {
                     // The walker above breaks **before** applying the step into `from` (the `reached` flag is
                     // set on the same iteration that breaks), so the machine never arrives at `from` and this
                     // guard holds for every source state except `Absent`. Only the `Absent` row is therefore
-                    // asserted here -- 11 of the 121 illegal pairs. The other 110, including all pairs from
+                    // asserted here -- 9 of the 119 illegal pairs. The other 110, including all pairs from
                     // the two failures and `LocalUnsupported`, are asserted in
                     // `state_machine_table_completeness.rs`. (An earlier revision of this comment claimed
                     // those pairs were covered by a "direct construction below" that did not exist.)

@@ -8,6 +8,8 @@ mod composition;
 mod context;
 mod contracts;
 mod error;
+// 部署模块提供真实进程、就绪探测和心跳事件；其生命周期由服务层持有。
+pub mod deployment;
 mod fake;
 mod lifecycle;
 mod preparation;
@@ -23,16 +25,16 @@ pub use contracts::{
     ProcessManager, ProcessSpec,
 };
 pub use fake::{
-    FakeArtifactPreparer, FakeHealthProbe, FakeProcessManager, FakeReadinessProbe,
-    FakeRuntimeAdapter, FakeRuntimePreparer,
+    FakeArtifactPreparer, FakeHardwareProbe, FakeHealthProbe, FakeProcessManager,
+    FakeReadinessProbe, FakeRuntimeAdapter, FakeRuntimePreparer,
 };
 pub use lifecycle::NodeRuntime;
 pub use preparation::{
     ArtifactPreparation, ArtifactPrepareError, ArtifactPreparer, ArtifactSource,
     ArtifactSourceError, ArtifactVerificationStatus, Digest, DigestAlgorithm, DigestError,
-    HealthError, HealthProbe, PreparedArtifact, PreparedRuntime, ProcessPlan, ReadinessError,
-    ReadinessProbe, ReadinessTarget, RuntimeAdapter, RuntimeAdapterError, RuntimePrepareError,
-    RuntimePreparer, RuntimeRequest,
+    HealthError, HealthProbe, ModelUrlRuntimeAdapter, PreparedArtifact, PreparedRuntime,
+    ProcessPlan, ReadinessError, ReadinessProbe, ReadinessTarget, RuntimeAdapter,
+    RuntimeAdapterError, RuntimePrepareError, RuntimePreparer, RuntimeRequest,
 };
 pub use probe::SystemHardwareProbe;
 pub use reconciler::{DemandReconciler, ReconcileAction, ReconcileEvidence};
