@@ -412,6 +412,15 @@ impl Drop for CatalogServer {
 }
 impl CatalogServer {
     async fn start(status: &'static str, fail_first: bool, fail_status: bool) -> Self {
+        Self::start_with_variants(status, fail_first, fail_status, false).await
+    }
+
+    async fn start_with_variants(
+        status: &'static str,
+        fail_first: bool,
+        fail_status: bool,
+        include_variants: bool,
+    ) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("测试服务");
@@ -450,9 +459,23 @@ impl CatalogServer {
                     if fail_status {
                         (503, json!({"message":"状态失败"}))
                     } else {
+                        let variants = if include_variants {
+                            json!([{
+                                "id":"test-q4",
+                                "quantization":"Q4_K_M",
+                                "runtime":"llama.cpp",
+                                "artifact_source":"https://example.com/test-q4.gguf",
+                                "expected_sha256":format!("sha256:{}", "a".repeat(64)),
+                                "ram_bytes":1,
+                                "vram_bytes":1,
+                                "disk_bytes":1
+                            }])
+                        } else {
+                            json!([])
+                        };
                         (
                             200,
-                            json!({"status":status,"model":"owner/Test-1","revision":"master","source":"modelscope","resource_url":"https://modelscope.cn/models/owner/Test-1/files?Revision=master"}),
+                            json!({"status":status,"model":"owner/Test-1","revision":"master","source":"modelscope","resource_url":"https://modelscope.cn/models/owner/Test-1/files?Revision=master","variants":variants}),
                         )
                     }
                 } else {
@@ -522,7 +545,10 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     ui.label("下载");
     ui.wait_for(|probe| probe.text.contains("尚未接入该仓库版本的工件解析与部署"))
         .await;
-    assert!(ui.probe.static_text.contains("当前入口未提供可下载工件"));
+    assert!(ui
+        .probe
+        .static_text
+        .contains("导入配置支持资源解析和硬件匹配"));
     assert!(!ui.probe.static_text.contains("工件下载并校验后停止"));
     assert_eq!(*backend.calls.borrow(), vec!["hardware"]);
     let input = ui.probe.find("aria-label", "输入消息或指令", "input");
@@ -534,6 +560,22 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     assert!(calls[0].contains("/api/models/presets"));
     assert!(calls[1].contains("/api/models/status?preset=test-1"));
 }
+
+#[tokio::test]
+async fn catalog_handoff_enters_variant_resolution_with_imported_configuration() {
+    let service = CatalogServer::start_with_variants("downloadable", false, false, true).await;
+    let backend = Rc::new(ControlledBackend::default());
+    let mut ui = Ui::catalog(backend.clone(), service.client.clone());
+    ui.input("输入消息或指令", "目录草稿");
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("模型解析完成，请选择量化版本"))
+        .await;
+    assert!(ui.probe.text.contains("Q4_K_M"));
+    assert!(ui.probe.text.contains("最低内存"));
+    assert_eq!(*backend.calls.borrow(), vec!["hardware"]);
+}
+
 #[tokio::test]
 async fn catalog_status_failure_keeps_chat_model_and_allows_retry() {
     let service = CatalogServer::start("downloadable", false, true).await;

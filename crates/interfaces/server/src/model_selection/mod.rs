@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{sync::mpsc, task::JoinSet};
 
+use burncloud_supply_model::{load_default_manifests, ModelManifest, Variant};
+
 use sources::{FetchError, Merged, ModelResource, SearchItem, Source};
 
 struct Config {
@@ -39,9 +41,17 @@ impl Default for Config {
     }
 }
 
+fn default_manifests() -> Vec<ModelManifest> {
+    match load_default_manifests() {
+        Ok(manifests) => manifests,
+        Err(error) => panic!("内嵌默认模型清单格式错误：{error}"),
+    }
+}
+
 struct AppState {
     config: Config,
     client: reqwest::Client,
+    manifests: Vec<ModelManifest>,
 }
 
 /// 构建由主服务统一管理的三个模型选择接口。
@@ -60,7 +70,11 @@ fn app(config: Config, client: reqwest::Client) -> Router {
         .route("/api/models/presets", get(list_presets))
         .route("/api/models/search", get(search))
         .route("/api/models/status", get(status))
-        .with_state(Arc::new(AppState { config, client }))
+        .with_state(Arc::new(AppState {
+            config,
+            client,
+            manifests: default_manifests(),
+        }))
 }
 
 fn bad_request(message: &str) -> Response {
@@ -227,6 +241,58 @@ struct StatusQuery {
     revision: Option<String>,
 }
 
+#[derive(Serialize)]
+struct StatusVariant<'a> {
+    id: &'a str,
+    quantization: &'a str,
+    runtime: &'a str,
+    artifact_source: &'a str,
+    expected_sha256: &'a str,
+    ram_bytes: u64,
+    vram_bytes: u64,
+    disk_bytes: u64,
+}
+
+impl<'a> From<&'a Variant> for StatusVariant<'a> {
+    fn from(variant: &'a Variant) -> Self {
+        Self {
+            id: &variant.id,
+            quantization: &variant.quantization,
+            runtime: &variant.backend,
+            artifact_source: &variant.artifact_uri,
+            expected_sha256: &variant.checksum,
+            ram_bytes: variant.min_ram_bytes,
+            vram_bytes: variant.min_vram_bytes,
+            disk_bytes: variant.disk_size_bytes,
+        }
+    }
+}
+
+fn model_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn variants_for_resource<'a>(
+    manifests: &'a [ModelManifest],
+    resource: &ModelResource,
+) -> Vec<StatusVariant<'a>> {
+    if resource.source != Source::ModelScope {
+        return Vec::new();
+    }
+    let Some(repository_name) = resource.model.rsplit('/').next() else {
+        return Vec::new();
+    };
+    manifests
+        .iter()
+        .find(|manifest| model_key(&manifest.model_name) == model_key(repository_name))
+        .map(|manifest| manifest.variants.iter().map(StatusVariant::from).collect())
+        .unwrap_or_default()
+}
+
 async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQuery>) -> Response {
     let resource = match (query.preset, query.model, query.source) {
         (Some(id), _, _) => match presets::find(&id) {
@@ -257,12 +323,14 @@ async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQu
             "developing"
         }
     };
+    let variants = variants_for_resource(&state.manifests, &resource);
     Json(json!({
         "status": status,
         "model": resource.model,
         "source": resource.source,
         "revision": resource.revision,
         "resource_url": url.as_str(),
+        "variants": variants,
     }))
     .into_response()
 }

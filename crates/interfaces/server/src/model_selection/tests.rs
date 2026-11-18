@@ -96,6 +96,7 @@ impl Harness {
         let state = Arc::new(AppState {
             config: config(),
             client,
+            manifests: load_default_manifests().expect("默认模型清单"),
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, mock).await.expect("测试站点运行");
@@ -213,6 +214,21 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
         .as_str()
         .expect("资源地址")
         .ends_with("/ms/models/Qwen/Qwen3-8B/files?Revision=master"));
+    assert_eq!(value["variants"][0]["id"], "qwen3-8b-q4");
+    assert_eq!(value["variants"][0]["quantization"], "Q4");
+    assert_eq!(value["variants"][0]["runtime"], "llama.cpp");
+    assert_eq!(
+        value["variants"][0]["ram_bytes"],
+        16 * 1024 * 1024 * 1024u64
+    );
+    assert_eq!(
+        value["variants"][0]["vram_bytes"],
+        6 * 1024 * 1024 * 1024u64
+    );
+    assert_eq!(
+        value["variants"][0]["disk_bytes"],
+        6 * 1024 * 1024 * 1024u64
+    );
     for model in ["owner/missing", "owner/denied"] {
         assert_eq!(
             h.json(&format!(
@@ -225,6 +241,22 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
     let calls = h.calls.lock().expect("请求锁");
     assert_eq!(calls.len(), 3);
     assert!(calls.iter().all(|call| !call.contains("search=")));
+}
+
+#[tokio::test]
+async fn status_attaches_imported_variants_to_matching_presets() {
+    let h = Harness::new().await;
+    let presets = h.json("/api/models/presets").await;
+    for preset in presets.as_array().expect("预置列表") {
+        let id = preset["id"].as_str().expect("预置标识");
+        let value = h.json(&format!("/api/models/status?preset={id}")).await;
+        let variants = value["variants"].as_array().expect("Variant 列表");
+        if id == "deepseek-v4-pro" {
+            assert!(variants.is_empty(), "{id} 不在导入的 17 个模型中");
+        } else {
+            assert!(!variants.is_empty(), "{id} 未匹配默认 Manifest");
+        }
+    }
 }
 
 #[tokio::test]
