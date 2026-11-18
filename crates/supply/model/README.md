@@ -13,14 +13,6 @@ It owns:
 - HuggingFace discovery/file traversal helpers;
 - model download URL/data-directory helpers.
 
-The compiled default Manifest keeps the original three lightweight examples and adds the
-17 confirmed preset models from `预设模型配置信息(1).xlsx`. Their descriptions retain the
-recommended GPU, disk and RAM guidance, while each Variant uses the workbook's minimum
-RAM, VRAM and disk values for local compatibility filtering. The workbook does not contain
-file-level GGUF names or SHA-256 values, so these preset entries use repository file-page
-URLs and an explicit unbound checksum placeholder until artifact discovery supplies the
-actual file metadata.
-
 It does not own canonical pricing truth (Commerce), Traffic routing, database
 schema migrations, or runtime process lifecycle.
 
