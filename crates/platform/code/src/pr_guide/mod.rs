@@ -95,7 +95,9 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         && existing_marker
             .as_ref()
             .map(|marker| {
-                marker.fingerprint == fingerprint && marker.head_sha == facts.pull_request.head_sha
+                marker.fingerprint == fingerprint
+                    && marker.head_sha == facts.pull_request.head_sha
+                    && marker.html_status == "deterministic_svg"
             })
             .unwrap_or(false)
     {
@@ -106,6 +108,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
             analysis_status: "reused_unchanged_result".to_owned(),
             model_status: "not_called".to_owned(),
             model_name: None,
+            html_status: "reused_unchanged_result".to_owned(),
             comment_id: existing_comment.map(|comment| comment.id),
             artifact_name,
             generated_at,
@@ -116,6 +119,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
     }
 
     let outcome = model::analyze(&facts).await;
+    let html_status = "deterministic_svg".to_owned();
     let analysis_status = if facts.coverage.complete && outcome.status == "model_completed" {
         "complete"
     } else {
@@ -129,6 +133,7 @@ async fn analyze(options: &ArgMatches) -> Result<()> {
         analysis_status,
         model_status: outcome.status,
         model_name: outcome.model_name,
+        html_status,
         comment_id: existing_comment.map(|comment| comment.id),
         artifact_name,
         generated_at,
@@ -193,6 +198,7 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
         analysis_status: "fixture".to_owned(),
         model_status: outcome.status,
         model_name: outcome.model_name,
+        html_status: "deterministic_svg".to_owned(),
         comment_id: None,
         artifact_name: artifact_name(facts.pull_request.number, &facts.pull_request.head_sha),
         generated_at: Utc::now().to_rfc3339(),
@@ -202,7 +208,35 @@ async fn render_fixture(options: &ArgMatches) -> Result<()> {
 
 fn fingerprint(facts: &FactBundle) -> Result<String> {
     let encoded = serde_json::to_vec(facts)?;
-    let digest = Sha256::digest(encoded);
+    let mut digest = Sha256::new();
+    digest.update(b"burncloud-pr-guide-svg-html-v2");
+    digest.update(include_bytes!("facts.rs"));
+    digest.update(include_bytes!("github.rs"));
+    digest.update(include_bytes!("types.rs"));
+    digest.update(include_bytes!("model.rs"));
+    digest.update(include_bytes!("render.rs"));
+    digest.update(include_bytes!("mod.rs"));
+    for name in [
+        "PR_GUIDE_API_URL",
+        "PR_GUIDE_MODEL",
+        "PR_GUIDE_RESPONSE_FORMAT",
+        "PR_GUIDE_MAX_OUTPUT_TOKENS",
+    ] {
+        digest.update(name.as_bytes());
+        digest.update(b"\0");
+        digest.update(std::env::var(name).unwrap_or_default().as_bytes());
+        digest.update(b"\0");
+    }
+    if std::env::var("PR_GUIDE_API_KEY")
+        .map(|value| !value.is_empty())
+        .unwrap_or(false)
+    {
+        digest.update(b"api-key-present");
+    } else {
+        digest.update(b"api-key-missing");
+    }
+    digest.update(encoded);
+    let digest = digest.finalize();
     Ok(format!("{digest:x}"))
 }
 
