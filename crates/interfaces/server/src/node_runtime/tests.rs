@@ -23,18 +23,10 @@ use super::LlamaCppRuntimeAdapter;
 
 #[tokio::test]
 async fn llama_runtime_adapter_plans_verified_local_artifact() {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .unwrap();
-    let model_path = workspace
-        .join("iso/DeepSeek-R1-Distill-Qwen-1.5B-Q2_K.gguf")
-        .canonicalize()
-        .unwrap();
-    let executable = workspace
-        .join("llama-b12099/llama-server")
-        .canonicalize()
-        .unwrap();
+    let model_file = tempfile::NamedTempFile::new().unwrap();
+    let model_path = model_file.path().canonicalize().unwrap();
+    let executable_file = tempfile::NamedTempFile::new().unwrap();
+    let executable = executable_file.path().canonicalize().unwrap();
     let artifact =
         PreparedArtifact::new(&model_path, ArtifactVerificationStatus::Verified).unwrap();
     let runtime = PreparedRuntime {
