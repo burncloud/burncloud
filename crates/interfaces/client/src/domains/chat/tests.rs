@@ -206,6 +206,7 @@ fn selected_catalog_model_resolution_populates_variants_and_hardware() {
                     revision: "master".into(),
                     resource_url:
                         "https://modelscope.cn/models/Qwen/Qwen3-8B/files?Revision=master".into(),
+                    variants: Vec::new(),
                 },
             },
             VersionStatus::Downloadable,
@@ -950,6 +951,7 @@ fn catalog_downloading() -> (ChatState, u64) {
             source: "modelscope".into(),
             revision: "master".into(),
             resource_url: "https://modelscope.cn/models/test/model/files?Revision=master".into(),
+            variants: Vec::new(),
         },
     };
     let id = state

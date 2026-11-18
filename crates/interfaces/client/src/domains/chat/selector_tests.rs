@@ -13,6 +13,7 @@ fn version(source: &str, revision: &str) -> CatalogVersion {
         revision: revision.into(),
         source: source.into(),
         resource_url: "https://modelscope.cn/models/Qwen/Qwen3-8B/files?Revision=master".into(),
+        variants: Vec::new(),
     }
 }
 fn selection() -> CatalogSelection {

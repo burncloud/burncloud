@@ -181,6 +181,7 @@ fn download_task_id_is_recorded_and_cancel_invalidates_late_events() {
                     revision: "master".into(),
                     resource_url: "https://modelscope.cn/models/Qwen/Test/files?Revision=master"
                         .into(),
+                    variants: Vec::new(),
                 },
             },
             VersionStatus::Downloadable,

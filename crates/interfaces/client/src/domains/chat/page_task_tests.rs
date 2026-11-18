@@ -108,6 +108,7 @@ fn downloading() -> (ChatState, u64, CatalogSelection, ModelVariant, Hardware) {
             source: "modelscope".into(),
             revision: "master".into(),
             resource_url: "https://modelscope.cn/models/test/model/files?Revision=master".into(),
+            variants: Vec::new(),
         },
     };
     let variant = ModelVariant {

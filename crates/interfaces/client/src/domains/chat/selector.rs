@@ -244,11 +244,12 @@ fn confirm_selection(
     let selection = CatalogSelection {
         name: model.name,
         preset: model.preset.then_some(model.id),
-        version,
+        version: version.clone(),
     };
+    let variants = version.variants;
     picker.write().confirmed = true;
-    // 选择模块只交接仓库；缺少真实工件时由既有初始化入口明确停止。
-    let run_id = state.with_mut(|value| value.accept_catalog(selection, status, Vec::new()));
+    // 选择模块将服务端清单快照交给初始化流程，硬件检测后再筛选兼容版本。
+    let run_id = state.with_mut(|value| value.accept_catalog(selection, status, variants));
     on_confirm.call(run_id);
 }
 

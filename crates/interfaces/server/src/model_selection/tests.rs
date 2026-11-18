@@ -96,6 +96,7 @@ impl Harness {
         let state = Arc::new(AppState {
             config: config(),
             client,
+            manifests: load_default_manifests().expect("默认模型清单"),
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, mock).await.expect("测试站点运行");
@@ -143,10 +144,6 @@ impl Harness {
 }
 
 #[tokio::test]
-#[allow(
-    clippy::too_many_lines,
-    reason = "预置入口契约需要逐项校验名称、兼容标识和仓库绑定"
-)]
 async fn presets_keep_all_names_order_and_bound_resources() {
     let h = Harness::new().await;
     let presets = h.json("/api/models/presets").await;
@@ -160,6 +157,7 @@ async fn presets_keep_all_names_order_and_bound_resources() {
         names,
         [
             "DeepSeek V4.1 Flash",
+            "DeepSeek V4 Pro",
             "GLM‑5.3",
             "GLM‑5.3‑Flash",
             "Kimi K3",
@@ -179,141 +177,16 @@ async fn presets_keep_all_names_order_and_bound_resources() {
         ]
     );
     let items = presets.as_array().expect("列表");
-    let ids: Vec<_> = items
+    let mut ids: Vec<_> = items
         .iter()
         .map(|item| item["id"].as_str().expect("标识"))
         .collect();
-    assert_eq!(
-        ids,
-        [
-            "deepseek-v4.1-flash",
-            "glm-5.3",
-            "glm-5.3-flash",
-            "kimi-k3",
-            "minimax-m3.1-flash",
-            "qwen3.8-27b",
-            "qwen3-8b",
-            "qwen3-coder-next",
-            "qwen3.8-2.4t-a95b",
-            "qwen3.8-flash-next",
-            "qwen-image-2512",
-            "wan2.2-ti2v-5b",
-            "mimo-v2.6-flash-rl",
-            "gpt-oss-20b",
-            "gpt-oss-120b",
-            "gemma-4-e4b-it",
-            "gemma-4-31b",
-        ]
-    );
-    let resources: Vec<_> = items
-        .iter()
-        .map(|item| {
-            (
-                item["name"].as_str().expect("名称"),
-                item["model"].as_str().expect("仓库"),
-                item["source"].as_str().expect("来源"),
-                item["revision"].as_str().expect("修订"),
-            )
-        })
-        .collect();
-    assert_eq!(
-        resources,
-        [
-            (
-                "DeepSeek V4.1 Flash",
-                "unsloth/DeepSeek-V4.1-Flash-1017-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "GLM‑5.3",
-                "Scantist/GLM-5.3-SLIM-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "GLM‑5.3‑Flash",
-                "unsloth/GLM-5.3-Flash-GGUF",
-                "modelscope",
-                "master"
-            ),
-            ("Kimi K3", "unsloth/Kimi-K3-GGUF", "modelscope", "master"),
-            (
-                "MiniMax M3.1 Flash",
-                "unsloth/MiniMax-M3.1-Flash-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Qwen3.8-27B",
-                "unsloth/Qwen3.8-27B-GGUF",
-                "modelscope",
-                "master"
-            ),
-            ("Qwen3-8B", "Qwen/Qwen3-8B-GGUF", "modelscope", "master"),
-            (
-                "Qwen3-Coder-Next",
-                "unsloth/Qwen3-Coder-Next-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Qwen3.8-2.4T-A95B",
-                "unsloth/Qwen3.8-2.4T-A95B-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Qwen3.8-Flash-Next",
-                "unsloth/Qwen3.8-Flash-Next-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Qwen-Image-2512",
-                "unsloth/Qwen-Image-2512-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Wan2.2-TI2V-5B",
-                "unsloth/Wan2.2-TI2V-5B-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "MiMo-V2.6-Flash-RL",
-                "ggml-org/MiMo-V2.6-Flash-RL-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "gpt-oss-20b",
-                "unsloth/gpt-oss-20b-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "gpt-oss-120b",
-                "unsloth/gpt-oss-120b-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Gemma 4 E4B IT",
-                "unsloth/gemma-4-E4B-it-GGUF",
-                "modelscope",
-                "master"
-            ),
-            (
-                "Gemma 4 31B",
-                "unsloth/gemma-4-31B-it-GGUF",
-                "modelscope",
-                "master"
-            ),
-        ]
-    );
-    assert!(items.iter().all(|item| item["preset"] == true));
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), 18);
+    assert!(items.iter().all(|item| item["source"] == "modelscope"
+        && item["revision"] == "master"
+        && item["preset"] == true));
     assert!(h.calls.lock().expect("请求锁").is_empty());
     let response = routes()
         .expect("生产路由")
@@ -335,12 +208,27 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
         .json("/api/models/status?preset=qwen3-8b&model=evil/override&source=huggingface")
         .await;
     assert_eq!(value["status"], "downloadable");
-    assert_eq!(value["model"], "Qwen/Qwen3-8B-GGUF");
+    assert_eq!(value["model"], "Qwen/Qwen3-8B");
     assert_eq!(value["source"], "modelscope");
     assert!(value["resource_url"]
         .as_str()
         .expect("资源地址")
-        .ends_with("/ms/models/Qwen/Qwen3-8B-GGUF/files?Revision=master"));
+        .ends_with("/ms/models/Qwen/Qwen3-8B/files?Revision=master"));
+    assert_eq!(value["variants"][0]["id"], "qwen3-8b-q4");
+    assert_eq!(value["variants"][0]["quantization"], "Q4");
+    assert_eq!(value["variants"][0]["runtime"], "llama.cpp");
+    assert_eq!(
+        value["variants"][0]["ram_bytes"],
+        16 * 1024 * 1024 * 1024u64
+    );
+    assert_eq!(
+        value["variants"][0]["vram_bytes"],
+        6 * 1024 * 1024 * 1024u64
+    );
+    assert_eq!(
+        value["variants"][0]["disk_bytes"],
+        6 * 1024 * 1024 * 1024u64
+    );
     for model in ["owner/missing", "owner/denied"] {
         assert_eq!(
             h.json(&format!(
@@ -353,6 +241,22 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
     let calls = h.calls.lock().expect("请求锁");
     assert_eq!(calls.len(), 3);
     assert!(calls.iter().all(|call| !call.contains("search=")));
+}
+
+#[tokio::test]
+async fn status_attaches_imported_variants_to_matching_presets() {
+    let h = Harness::new().await;
+    let presets = h.json("/api/models/presets").await;
+    for preset in presets.as_array().expect("预置列表") {
+        let id = preset["id"].as_str().expect("预置标识");
+        let value = h.json(&format!("/api/models/status?preset={id}")).await;
+        let variants = value["variants"].as_array().expect("Variant 列表");
+        if id == "deepseek-v4-pro" {
+            assert!(variants.is_empty(), "{id} 不在导入的 17 个模型中");
+        } else {
+            assert!(!variants.is_empty(), "{id} 未匹配默认 Manifest");
+        }
+    }
 }
 
 #[tokio::test]

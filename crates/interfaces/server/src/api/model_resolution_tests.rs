@@ -30,9 +30,9 @@ fn candidate_serializes_frontend_contract() {
 }
 
 #[test]
-fn default_manifest_is_empty_after_switching_to_external_discovery() {
+fn default_manifest_contains_shared_models_for_model_selection() {
     let manifests = load_default_manifests().expect("默认 Manifest 应有效");
-    assert!(manifests.is_empty());
+    assert!(!manifests.is_empty());
 }
 
 #[test]

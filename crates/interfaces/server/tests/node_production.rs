@@ -70,8 +70,7 @@ fn maximum_vram(profile: &HardwareProfile) -> u64 {
         .accelerators
         .iter()
         .filter_map(|gpu| gpu.memory_bytes)
-        .max()
-        .unwrap_or(0)
+        .fold(0u64, u64::saturating_add)
 }
 
 #[test]

@@ -547,6 +547,7 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
         .iter()
         .any(|call| call.contains("/api/models/status?preset=test-1")));
 }
+
 #[tokio::test]
 async fn catalog_status_failure_keeps_chat_model_and_allows_retry() {
     let service = CatalogServer::start("downloadable", false, true).await;
