@@ -522,10 +522,7 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     ui.label("下载");
     ui.wait_for(|probe| probe.text.contains("尚未接入该仓库版本的工件解析与部署"))
         .await;
-    assert!(ui
-        .probe
-        .static_text
-        .contains("硬件检测、模型下载和 SHA-256 摘要校验由 Node 服务完成"));
+    assert!(ui.probe.text.contains("模型下载、校验或部署失败。"));
     assert!(!ui
         .probe
         .static_text

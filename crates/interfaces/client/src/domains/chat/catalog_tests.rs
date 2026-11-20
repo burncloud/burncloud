@@ -251,9 +251,9 @@ async fn one_status_request_resolves_each_selection_and_accepts_four_states() {
             ("developing", VersionStatus::Developing),
         ] {
             let service = json_server(vec![status(source, name)]).await;
-            let (resource, state) = service.client.inspect(&model).await.expect("状态");
-            assert_eq!(state, expected);
-            let resource = resource.expect("资源");
+            let inspection = service.client.inspect(&model).await.expect("状态");
+            assert_eq!(inspection.remote_status, expected);
+            let resource = inspection.version;
             assert_eq!(resource.source, source);
             assert_eq!(resource.variants[0].id, "qwen3-8b-q4");
             let calls = service.requests.lock().expect("请求");

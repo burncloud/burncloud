@@ -1182,3 +1182,41 @@ fn duplicate_verified_callbacks_cannot_reclaim_deployment() {
         PreparationStage::Deploying
     );
 }
+
+#[test]
+fn downloaded_event_accepts_a_stale_progress_snapshot() {
+    let mut state = selected_chat();
+    let run_id = start(&mut state);
+    reach(&mut state, run_id, PreparationStage::Downloading);
+    state.preparation_event(
+        run_id,
+        PreparationEvent::DownloadProgress {
+            completed: 3,
+            total: Some(100),
+        },
+    );
+    state.preparation_event(run_id, PreparationEvent::Downloaded);
+    let preparation = state.preparation().expect("下载流程");
+    assert_eq!(preparation.stage, PreparationStage::Verifying);
+    assert!(preparation.error.is_none());
+}
+
+#[test]
+fn progress_ratio_keeps_fractional_progress_visible_for_large_files() {
+    let mut state = selected_chat();
+    let run_id = start(&mut state);
+    reach(&mut state, run_id, PreparationStage::Downloading);
+    state.preparation_event(
+        run_id,
+        PreparationEvent::DownloadProgress {
+            completed: 1,
+            total: Some(10_000),
+        },
+    );
+    let ratio = state
+        .preparation()
+        .expect("下载流程")
+        .progress_ratio()
+        .expect("已知总大小");
+    assert!(ratio > 0.0 && ratio < 1.0);
+}

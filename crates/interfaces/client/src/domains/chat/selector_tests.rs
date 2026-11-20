@@ -16,6 +16,16 @@ fn version(source: &str, revision: &str) -> CatalogVersion {
         variants: Vec::new(),
     }
 }
+fn inspection(version: CatalogVersion, status: VersionStatus) -> CatalogInspection {
+    CatalogInspection {
+        version,
+        remote_status: status,
+        artifact_status: ArtifactStatus::NotDownloaded,
+        downloaded: false,
+        local_path: None,
+        actual_sha256: None,
+    }
+}
 fn selection() -> CatalogSelection {
     CatalogSelection {
         name: "Qwen3-8B".into(),
@@ -122,22 +132,28 @@ fn switching_model_invalidates_late_status_without_committing() {
     let second = picker.begin_status(model("Qwen3-4B"));
     picker.finish_status(
         first,
-        Ok((
-            Some(version("modelscope", "master")),
+        Ok(inspection(
+            version("modelscope", "master"),
             VersionStatus::Available,
         )),
     );
     assert_eq!(picker.status, None);
     picker.finish_status(
         second,
-        Ok((
-            Some(version("hf-mirror", "main")),
+        Ok(inspection(
+            version("hf-mirror", "main"),
             VersionStatus::Downloadable,
         )),
     );
     assert_eq!(picker.status, Some(VersionStatus::Downloadable));
     picker.begin_list();
-    picker.finish_status(second, Ok((None, VersionStatus::Available)));
+    picker.finish_status(
+        second,
+        Ok(inspection(
+            version("modelscope", "master"),
+            VersionStatus::Available,
+        )),
+    );
     assert!(picker.status.is_none() && picker.preview.is_none());
     assert!(ChatState::default().selected_model_id().is_none());
 }
@@ -151,8 +167,8 @@ fn source_replacement_invalidates_old_status_but_keeps_row_identity() {
     let status = picker.begin_status(mirror.clone());
     picker.finish_status(
         status,
-        Ok((
-            Some(version("hf-mirror", "main")),
+        Ok(inspection(
+            version("hf-mirror", "main"),
             VersionStatus::Downloadable,
         )),
     );
@@ -165,13 +181,16 @@ fn source_replacement_invalidates_old_status_but_keeps_row_identity() {
     let new_status = picker.begin_status(replacement);
     picker.finish_status(
         status,
-        Ok((Some(version("hf-mirror", "main")), VersionStatus::Available)),
+        Ok(inspection(
+            version("hf-mirror", "main"),
+            VersionStatus::Available,
+        )),
     );
     assert!(picker.status.is_none());
     picker.finish_status(
         new_status,
-        Ok((
-            Some(version("modelscope", "master")),
+        Ok(inspection(
+            version("modelscope", "master"),
             VersionStatus::Downloadable,
         )),
     );
