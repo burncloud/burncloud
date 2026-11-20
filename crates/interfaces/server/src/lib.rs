@@ -301,7 +301,7 @@ pub async fn create_app_with_node_request_state(
     let mut app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .merge(api_router)
-        .merge(model_selection::routes()?)
+        .merge(model_selection::routes(db.clone())?)
         .merge(internal_app);
 
     // 若启用 LiveView，则合并前端路由

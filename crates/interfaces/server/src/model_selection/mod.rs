@@ -3,7 +3,10 @@
 mod presets;
 mod sources;
 
-use std::{sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
+
+use burncloud_database::Database;
+use burncloud_database_sys::{DownloadDB, SysDownload};
 
 use axum::{
     body::Body,
@@ -52,6 +55,7 @@ struct AppState {
     config: Config,
     client: reqwest::Client,
     manifests: Vec<ModelManifest>,
+    database: Option<Arc<Database>>,
 }
 
 /// 构建由主服务统一管理的三个模型选择接口。
@@ -61,11 +65,15 @@ struct AppState {
 ///
 /// # Notes
 /// HTTP 客户端初始化失败会阻止本次应用构建，不静默降级为模拟目录。
-pub(super) fn routes() -> anyhow::Result<Router> {
-    Ok(app(Config::default(), reqwest::Client::builder().build()?))
+pub(super) fn routes(database: Arc<Database>) -> anyhow::Result<Router> {
+    Ok(app(
+        Config::default(),
+        reqwest::Client::builder().build()?,
+        Some(database),
+    ))
 }
 
-fn app(config: Config, client: reqwest::Client) -> Router {
+fn app(config: Config, client: reqwest::Client, database: Option<Arc<Database>>) -> Router {
     Router::new()
         .route("/api/models/presets", get(list_presets))
         .route("/api/models/search", get(search))
@@ -74,6 +82,7 @@ fn app(config: Config, client: reqwest::Client) -> Router {
             config,
             client,
             manifests: default_manifests(),
+            database,
         }))
 }
 
@@ -241,31 +250,56 @@ struct StatusQuery {
     revision: Option<String>,
 }
 
-#[derive(Serialize)]
-struct StatusVariant<'a> {
-    id: &'a str,
-    quantization: &'a str,
-    runtime: &'a str,
-    artifact_source: &'a str,
-    expected_sha256: &'a str,
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ArtifactStatus {
+    NotDownloaded,
+    Downloading,
+    Verifying,
+    Downloaded,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct StatusVariant {
+    id: String,
+    quantization: String,
+    runtime: String,
+    artifact_source: String,
+    expected_sha256: String,
     ram_bytes: u64,
     vram_bytes: u64,
     disk_bytes: u64,
+    artifact_status: ArtifactStatus,
+    downloaded: bool,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
 }
 
-impl<'a> From<&'a Variant> for StatusVariant<'a> {
-    fn from(variant: &'a Variant) -> Self {
+impl From<&Variant> for StatusVariant {
+    fn from(variant: &Variant) -> Self {
         Self {
-            id: &variant.id,
-            quantization: &variant.quantization,
-            runtime: &variant.backend,
-            artifact_source: &variant.artifact_uri,
-            expected_sha256: &variant.checksum,
+            id: variant.id.clone(),
+            quantization: variant.quantization.clone(),
+            runtime: variant.backend.clone(),
+            artifact_source: variant.artifact_uri.clone(),
+            expected_sha256: variant.checksum.clone(),
             ram_bytes: variant.min_ram_bytes,
             vram_bytes: variant.min_vram_bytes,
             disk_bytes: variant.disk_size_bytes,
+            artifact_status: ArtifactStatus::NotDownloaded,
+            downloaded: false,
+            local_path: None,
+            actual_sha256: None,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+struct ArtifactSnapshot {
+    status: ArtifactStatus,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
 }
 
 fn model_key(value: &str) -> String {
@@ -276,10 +310,10 @@ fn model_key(value: &str) -> String {
         .collect()
 }
 
-fn variants_for_resource<'a>(
-    manifests: &'a [ModelManifest],
+fn variants_for_resource(
+    manifests: &[ModelManifest],
     resource: &ModelResource,
-) -> Vec<StatusVariant<'a>> {
+) -> Vec<StatusVariant> {
     if resource.source != Source::ModelScope {
         return Vec::new();
     }
@@ -293,6 +327,125 @@ fn variants_for_resource<'a>(
         .unwrap_or_default()
 }
 
+async fn artifact_snapshot(
+    database: Option<&Arc<Database>>,
+    model: &str,
+    source: &str,
+    revision: &str,
+    variant: &StatusVariant,
+) -> ArtifactSnapshot {
+    let Some(database) = database else {
+        return ArtifactSnapshot {
+            status: ArtifactStatus::NotDownloaded,
+            local_path: None,
+            actual_sha256: None,
+        };
+    };
+    let db = match DownloadDB::new_shared_db(Arc::clone(database)).await {
+        Ok(db) => db,
+        Err(error) => {
+            tracing::warn!(%error, "初始化模型目录下载数据库失败");
+            return ArtifactSnapshot {
+                status: ArtifactStatus::NotDownloaded,
+                local_path: None,
+                actual_sha256: None,
+            };
+        }
+    };
+    let record = match db
+        .find_model_artifact(
+            model,
+            source,
+            revision,
+            &variant.id,
+            &variant.artifact_source,
+            &variant.expected_sha256,
+        )
+        .await
+    {
+        Ok(Some(record)) => Some(record),
+        Ok(None) if placeholder_checksum(&variant.expected_sha256) => db
+            .find_model_variant(model, source, revision, &variant.id)
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, model, variant = %variant.id, "查询模型变体下载记录失败");
+                error
+            })
+            .ok()
+            .flatten(),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%error, model, variant = %variant.id, "查询模型下载记录失败");
+            return ArtifactSnapshot {
+                status: ArtifactStatus::NotDownloaded,
+                local_path: None,
+                actual_sha256: None,
+            };
+        }
+    };
+    let Some(record) = record else {
+        return ArtifactSnapshot {
+            status: ArtifactStatus::NotDownloaded,
+            local_path: None,
+            actual_sha256: None,
+        };
+    };
+    artifact_from_record(record).await
+}
+
+fn placeholder_checksum(value: &str) -> bool {
+    value
+        .strip_prefix("sha256:")
+        .is_some_and(|digest| digest.len() == 64 && digest.bytes().all(|byte| byte == b'0'))
+}
+
+async fn artifact_from_record(record: SysDownload) -> ArtifactSnapshot {
+    let status = match record.status.as_str() {
+        "pending" | "active" | "waiting" | "paused" => ArtifactStatus::Downloading,
+        "completed" | "complete" | "verifying" => ArtifactStatus::Verifying,
+        "succeeded" => {
+            let valid_path = record
+                .final_path
+                .as_deref()
+                .filter(|path| !path.trim().is_empty())
+                .map(Path::new)
+                .is_some_and(|path| path.is_file());
+            let valid_digest = record
+                .actual_sha256
+                .as_deref()
+                .zip(record.checksum.as_deref())
+                .is_some_and(|(actual, expected)| actual.eq_ignore_ascii_case(expected));
+            if valid_path && valid_digest {
+                ArtifactStatus::Downloaded
+            } else {
+                ArtifactStatus::Failed
+            }
+        }
+        "failed" | "cancelled" => ArtifactStatus::Failed,
+        _ => ArtifactStatus::NotDownloaded,
+    };
+    let downloaded = matches!(status, ArtifactStatus::Downloaded);
+    ArtifactSnapshot {
+        status,
+        local_path: downloaded.then_some(record.final_path).flatten(),
+        actual_sha256: downloaded.then_some(record.actual_sha256).flatten(),
+    }
+}
+
+fn artifact_rank(status: ArtifactStatus) -> u8 {
+    match status {
+        ArtifactStatus::NotDownloaded => 0,
+        ArtifactStatus::Failed => 1,
+        ArtifactStatus::Downloading => 2,
+        ArtifactStatus::Verifying => 3,
+        ArtifactStatus::Downloaded => 4,
+    }
+}
+
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "状态接口需要在一次响应中保留远程探测、变体工件查询和模型级聚合语义"
+)]
 async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQuery>) -> Response {
     let resource = match (query.preset, query.model, query.source) {
         (Some(id), _, _) => match presets::find(&id) {
@@ -311,8 +464,7 @@ async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQu
     let Some(url) = resource.url(&state.config) else {
         return bad_request("模型仓库或修订号无效");
     };
-    // 尚未接入真实本地运行状态，页面可访问只允许交接选择，不代表模型已可用。
-    let status = match sources::probe(&state.client, &state.config, url.clone()).await {
+    let remote_status = match sources::probe(&state.client, &state.config, url.clone()).await {
         Ok(200) => "downloadable",
         Ok(code) => {
             tracing::debug!(code, model = %resource.model, "模型资源页面不可下载");
@@ -323,13 +475,39 @@ async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQu
             "developing"
         }
     };
-    let variants = variants_for_resource(&state.manifests, &resource);
+    let mut variants = variants_for_resource(&state.manifests, &resource);
+    let mut model_artifact_status = ArtifactStatus::NotDownloaded;
+    let mut model_local_path = None;
+    let mut model_actual_sha256 = None;
+    for variant in &mut variants {
+        let snapshot = artifact_snapshot(
+            state.database.as_ref(),
+            &resource.model,
+            resource.source.as_str(),
+            &resource.revision,
+            variant,
+        )
+        .await;
+        if artifact_rank(snapshot.status) > artifact_rank(model_artifact_status) {
+            model_artifact_status = snapshot.status;
+            model_local_path = snapshot.local_path.clone();
+            model_actual_sha256 = snapshot.actual_sha256.clone();
+        }
+        variant.artifact_status = snapshot.status;
+        variant.downloaded = matches!(snapshot.status, ArtifactStatus::Downloaded);
+        variant.local_path = snapshot.local_path;
+        variant.actual_sha256 = snapshot.actual_sha256;
+    }
     Json(json!({
-        "status": status,
+        "status": remote_status,
         "model": resource.model,
         "source": resource.source,
         "revision": resource.revision,
         "resource_url": url.as_str(),
+        "artifact_status": model_artifact_status,
+        "downloaded": matches!(model_artifact_status, ArtifactStatus::Downloaded),
+        "local_path": model_local_path,
+        "actual_sha256": model_actual_sha256,
         "variants": variants,
     }))
     .into_response()

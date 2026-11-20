@@ -26,6 +26,7 @@ axum = { workspace = true, features = ["macros"] }
 tower-http = { workspace = true, features = ["cors", "trace", "request-id"] }
 tower = { version = "0.5", features = ["util"] }
 burncloud-database = { workspace = true }
+burncloud-database-sys = { workspace = true }
 burncloud-download = { workspace = true }
 burncloud-common = { workspace = true }
 burncloud-identity-user = { workspace = true }

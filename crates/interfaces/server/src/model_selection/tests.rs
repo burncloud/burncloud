@@ -92,11 +92,12 @@ impl Harness {
             .no_proxy()
             .build()
             .expect("测试客户端");
-        let router = app(config(), client.clone());
+        let router = app(config(), client.clone(), None);
         let state = Arc::new(AppState {
             config: config(),
             client,
             manifests: load_default_manifests().expect("默认模型清单"),
+            database: None,
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, mock).await.expect("测试站点运行");
@@ -188,16 +189,20 @@ async fn presets_keep_all_names_order_and_bound_resources() {
         && item["revision"] == "master"
         && item["preset"] == true));
     assert!(h.calls.lock().expect("请求锁").is_empty());
-    let response = routes()
-        .expect("生产路由")
-        .oneshot(
-            Request::builder()
-                .uri("/api/models/presets")
-                .body(Body::empty())
-                .expect("请求"),
-        )
-        .await
-        .expect("路由");
+    let response = routes(Arc::new(
+        burncloud_database::Database::new()
+            .await
+            .expect("测试数据库"),
+    ))
+    .expect("生产路由")
+    .oneshot(
+        Request::builder()
+            .uri("/api/models/presets")
+            .body(Body::empty())
+            .expect("请求"),
+    )
+    .await
+    .expect("路由");
     assert_eq!(response.status(), StatusCode::OK);
 }
 
@@ -214,6 +219,14 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
         .as_str()
         .expect("资源地址")
         .ends_with("/ms/models/Qwen/Qwen3-8B/files?Revision=master"));
+    assert_eq!(value["artifact_status"], "not_downloaded");
+    assert_eq!(value["downloaded"], false);
+    assert!(value["local_path"].is_null());
+    assert!(value["actual_sha256"].is_null());
+    assert_eq!(value["variants"][0]["artifact_status"], "not_downloaded");
+    assert_eq!(value["variants"][0]["downloaded"], false);
+    assert!(value["variants"][0]["local_path"].is_null());
+    assert!(value["variants"][0]["actual_sha256"].is_null());
     assert_eq!(value["variants"][0]["id"], "qwen3-8b-q4");
     assert_eq!(value["variants"][0]["quantization"], "Q4");
     assert_eq!(value["variants"][0]["runtime"], "llama.cpp");
@@ -368,7 +381,7 @@ async fn unreachable_resource_is_not_downloadable() {
         probe_timeout: Duration::from_millis(50),
         ..Config::default()
     };
-    let response = app(config, reqwest::Client::new())
+    let response = app(config, reqwest::Client::new(), None)
         .oneshot(
             Request::builder()
                 .uri("/api/models/status?preset=qwen3-8b")
@@ -383,5 +396,58 @@ async fn unreachable_resource_is_not_downloadable() {
     assert_eq!(
         serde_json::from_slice::<Value>(&body).expect("JSON")["status"],
         "developing"
+    );
+}
+
+#[tokio::test]
+async fn artifact_status_requires_existing_file_and_matching_digest() {
+    let file = tempfile::NamedTempFile::new().expect("测试工件");
+    let path = file.path().to_string_lossy().into_owned();
+    let checksum = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let base = SysDownload {
+        id: 1,
+        gid: "gid".into(),
+        url: None,
+        status: "succeeded".into(),
+        uris: "[]".into(),
+        total_length: Some(1),
+        completed_length: Some(1),
+        download_speed: Some(0),
+        download_dir: None,
+        filename: None,
+        connections: None,
+        split: None,
+        retry_count: 0,
+        error: None,
+        final_path: Some(path.clone()),
+        completed_at: None,
+        created_at: None,
+        updated_at: None,
+        model: Some("Qwen/Qwen3-8B".into()),
+        source: Some("modelscope".into()),
+        revision: Some("master".into()),
+        variant_id: Some("q4.gguf".into()),
+        artifact_uri: Some("https://modelscope.cn/q4.gguf".into()),
+        checksum: Some(checksum.into()),
+        actual_sha256: Some(checksum.into()),
+    };
+    let snapshot = artifact_from_record(base.clone()).await;
+    assert_eq!(snapshot.status, ArtifactStatus::Downloaded);
+    assert_eq!(snapshot.local_path.as_deref(), Some(path.as_str()));
+    assert_eq!(snapshot.actual_sha256.as_deref(), Some(checksum));
+
+    let mut wrong_digest = base.clone();
+    wrong_digest.actual_sha256 =
+        Some("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into());
+    assert_eq!(
+        artifact_from_record(wrong_digest).await.status,
+        ArtifactStatus::Failed
+    );
+
+    let mut missing_file = base;
+    missing_file.final_path = Some(format!("{path}.missing"));
+    assert_eq!(
+        artifact_from_record(missing_file).await.status,
+        ArtifactStatus::Failed
     );
 }

@@ -25,6 +25,14 @@ pub(super) enum Source {
 }
 
 impl Source {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelScope => "modelscope",
+            Self::HfMirror => "hf-mirror",
+            Self::HuggingFace => "huggingface",
+        }
+    }
+
     // 同名型号在不同站点出现时，优先选择国内来源，而不改变到达顺序。
     fn priority(self) -> u8 {
         match self {
