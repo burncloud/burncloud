@@ -26,8 +26,11 @@ pub mod auth;
 pub mod billing;
 // 声明 channel 子模块（公开）：渠道管理路由
 pub mod channel;
+mod hardware;
 // 声明 log 子模块（公开）：日志相关路由
 pub mod log;
+mod model_download;
+mod model_resolution;
 // 声明 monitor 子模块（公开）：监控相关路由
 pub mod monitor;
 // 声明 node_deployment 子模块（crate 内可见）：节点部署路由（见之前分析的 use crateAppState 文件）
@@ -67,6 +70,9 @@ pub fn routes(state: AppState) -> Router {
     let public_routes = Router::new()
         // 合并 auth 模块的公开路由（如登录、注册等）
         .merge(auth::public_routes())
+        .merge(hardware::routes())
+        .merge(model_download::routes())
+        .merge(model_resolution::routes())
         // 合并节点部署路由（启动/查询/停止部署）
         .merge(node_deployment::routes())
         // 注入状态（克隆一份，避免后面被移动）

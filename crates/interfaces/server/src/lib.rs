@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 // 声明 api 子模块（公开）：包含各业务 API 路由与认证中间件
 pub mod api;
 // 声明 logging 子模块（公开）：日志相关
@@ -39,6 +40,7 @@ use axum::http::HeaderName;
 use axum::{middleware, routing::get, Router};
 // 引入数据库创建函数与 Database 类型
 use burncloud_database::{create_default_database, Database};
+use burncloud_download::DownloadManager;
 // 引入节点运行时相关类型
 use burncloud_node_runtime::{
     deployment::{
@@ -75,8 +77,8 @@ use std::fmt;
 use std::net::SocketAddr;
 // 引入 Arc（共享所有权）
 use std::sync::Arc;
-// 引入 tokio 的 mpsc 和 oneshot 通道
-use tokio::sync::{mpsc, oneshot};
+// 引入 tokio 的 mpsc、oneshot 通道与 OnceCell
+use tokio::sync::{mpsc, oneshot, OnceCell};
 // 引入 CORS 中间件
 use tower_http::cors::CorsLayer;
 // 引入请求 ID 相关中间件：
@@ -142,6 +144,8 @@ impl fmt::Debug for InternalSecret {
 pub struct AppState {
     // 数据库连接（Arc 共享）
     pub db: Arc<Database>,
+    /// 延迟初始化的模型下载管理器，避免服务启动时无条件启动 aria2。
+    pub(crate) download_manager: Arc<OnceCell<DownloadManager>>,
     // 节点上下文（运行时句柄）
     pub node_context: NodeContext,
     /// 模型选择完成后调用的生产硬件探测和解析入口。
@@ -267,6 +271,7 @@ pub async fn create_app_with_node_request_state(
     // 组装应用全局状态
     let state = AppState {
         db: db.clone(),
+        download_manager: Arc::new(OnceCell::new()),
         node_context,
         production_node: Arc::new(node_production::ProductionNode::new()),
         node_request_state,

@@ -1,4 +1,4 @@
-use burncloud_node_runtime::{HardwareProbe, SystemHardwareProbe};
+use burncloud_node_runtime::{HardwareProbe, HardwareProfile, SystemHardwareProbe};
 use burncloud_supply_model::{
     CandidateResolutionOutcome, ModelManifest, ModelResolutionOutcome, ModelResolutionRequest,
     ModelResolver, RealModelResolver, ResolvedModel,
@@ -82,6 +82,33 @@ impl ProductionNode {
         })
     }
 
+    /// 校验模型、探测当前主机，并返回硬件快照和全部兼容候选。
+    ///
+    /// 用途：为 HTTP 模型解析接口提供一次性硬件快照和 Variant 列表，避免调用方先后
+    /// 探测硬件而产生两份可能不一致的结果。
+    ///
+    /// 注意事项：本方法不下载模型、不启动 Runtime，也不接受调用方提交的硬件数据；
+    /// `manifests` 必须由服务端加载可信清单。
+    pub(crate) async fn resolve_selected_model_candidates(
+        &self,
+        model: &str,
+        manifests: Vec<ModelManifest>,
+    ) -> anyhow::Result<(HardwareProfile, CandidateResolutionOutcome)> {
+        let demand = ModelDemand::new(model)?;
+        let hardware = self.hardware.inspect().await?;
+        let resolver = RealModelResolver::new(manifests)?;
+        let outcome = resolver
+            .resolve_candidates(
+                ModelResolutionRequest {
+                    model: demand.model,
+                    hardware: hardware.clone(),
+                },
+                &self.supported_runtimes,
+            )
+            .await?;
+        Ok((hardware, outcome))
+    }
+
     /// 校验已选模型、探测当前主机，再用真实快照解析模型清单。
     ///
     /// 空模型名、探测失败或目录中不存在模型时返回错误。
@@ -93,19 +120,10 @@ impl ProductionNode {
         model: &str,
         manifests: Vec<ModelManifest>,
     ) -> anyhow::Result<ModelResolutionOutcome> {
-        let demand = ModelDemand::new(model)?;
-        let hardware = self.hardware.inspect().await?;
-        let resolver = RealModelResolver::new(manifests)?;
-        match resolver
-            .resolve_candidates(
-                ModelResolutionRequest {
-                    model: demand.model.clone(),
-                    hardware,
-                },
-                &self.supported_runtimes,
-            )
-            .await?
-        {
+        let (_, outcome) = self
+            .resolve_selected_model_candidates(model, manifests)
+            .await?;
+        match outcome {
             CandidateResolutionOutcome::Candidates(candidates) => {
                 let candidate = candidates
                     .into_iter()

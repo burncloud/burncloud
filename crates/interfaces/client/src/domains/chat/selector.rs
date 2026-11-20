@@ -142,7 +142,9 @@ pub(super) fn CatalogPicker(
             .unwrap_or_else(CatalogClient::from_env)
     });
     let initial_client = client.clone();
-    use_effect(move || load_list(picker, initial_client.clone()));
+    use_effect(move || {
+        load_list(picker, initial_client.clone());
+    });
     let snapshot = picker.read().clone();
     let refresh_client = client.clone();
     let search_client = client.clone();
@@ -160,7 +162,9 @@ pub(super) fn CatalogPicker(
         div { class: "chat-catalog-heading",
             strong { "选择模型" }
             button { r#type: "button", class: "chat-inline-button", aria_label: "刷新模型列表", disabled: snapshot.loading,
-                onclick: move |_| load_list(picker, refresh_client.clone()), "刷新" }
+                onclick: move |_| {
+                    load_list(picker, refresh_client.clone());
+                }, "刷新" }
         }
         input { class: "chat-model-search-input", r#type: "search", placeholder: "请输入模型名称", aria_label: "请输入模型名称",
             role: "combobox", aria_autocomplete: "list", aria_controls: "chat-model-results", aria_expanded: "true", value: snapshot.query,

@@ -60,3 +60,70 @@ async fn local_search_matches_names_ids_descriptions_and_trims_ascii_case() {
     let models = LocalBackend.search("   ".into()).await.expect("空查询");
     assert_eq!(models, catalog());
 }
+
+#[tokio::test]
+async fn backend_deploy_default_and_client_initialization_errors_are_explicit() {
+    for path in ["", "a\0b"] {
+        let error = LocalBackend
+            .deploy_model(path.into())
+            .await
+            .expect_err("非法路径");
+        assert_eq!(error.kind, ErrorKind::InvalidParameter);
+    }
+    let error = LocalBackend
+        .deploy_model("model.gguf".into())
+        .await
+        .expect_err("本地替身不部署");
+    assert_eq!(error.kind, ErrorKind::NotConnected);
+    assert_eq!(
+        error.operation,
+        Operation::Initialize(PreparationStage::Deploying)
+    );
+    let backend = HttpBackend {
+        local: LocalBackend,
+        hardware_client: Err(error.clone()),
+    };
+    let received = backend
+        .deploy_model("model.gguf".into())
+        .await
+        .expect_err("客户端错误");
+    assert_eq!(received, error);
+}
+
+#[tokio::test]
+async fn http_backend_deploy_delegates_and_preserves_health_error() {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("监听");
+    let base = format!("http://{}", listener.local_addr().expect("地址"));
+    let task = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("请求");
+        let mut bytes = [0; 2048];
+        let count = stream.read(&mut bytes).await.expect("读取");
+        assert!(String::from_utf8_lossy(&bytes[..count])
+            .starts_with("POST /console/api/node/deployments "));
+        let body = r#"{"model_id":"m","status":"unhealthy","stage":null,"state":null,"endpoint":null,"pid":null,"last_heartbeat_unix_ms":null,"error":"健康异常","events":[]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await.expect("响应");
+    });
+    let backend = HttpBackend {
+        local: LocalBackend,
+        hardware_client: CatalogClient::new(&base, std::time::Duration::from_secs(2)),
+    };
+    let error = backend
+        .deploy_model("model.gguf".into())
+        .await
+        .expect_err("健康失败");
+    assert_eq!(error.kind, ErrorKind::ExecutionFailed);
+    assert_eq!(
+        error.operation,
+        Operation::Initialize(PreparationStage::HealthChecking)
+    );
+    assert_eq!(error.reason, "健康异常");
+    task.await.expect("测试任务");
+}

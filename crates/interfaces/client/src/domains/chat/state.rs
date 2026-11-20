@@ -4,8 +4,8 @@ use super::catalog::{CatalogSelection, VersionStatus};
 use super::model::{
     valid_digest, ChatConversation, ChatError, ChatMessage, ChatModel, ErrorKind, GenerationEvent,
     GenerationRequest, Hardware, HardwareEvent, HistoryMessage, InferenceMetrics,
-    InitializationRequest, MessageRole, ModelVariant, Operation, Preparation, PreparationEvent,
-    PreparationStage, PreparedModel,
+    InitializationRequest, MessageRole, ModelResolution, ModelVariant, Operation, Preparation,
+    PreparationEvent, PreparationStage, PreparedModel,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,6 +123,12 @@ impl Default for ChatState {
     }
 }
 
+// Node 任务 ID 使用服务端稳定十进制标识，状态层再次拒绝越界值避免伪造取消目标。
+fn valid_download_task_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && value.parse::<i64>().is_ok()
+}
 impl ChatState {
     pub(super) fn conversations(&self) -> &[ChatConversation] {
         &self.conversations
@@ -290,6 +296,7 @@ impl ChatState {
                 run_id: self.preparation_id,
                 model,
                 stage: PreparationStage::AwaitingStart,
+                download_task_id: None,
                 completed_bytes: 0,
                 total_bytes: None,
                 hardware_events: Vec::new(),
@@ -550,6 +557,7 @@ impl ChatState {
         let preparation = self.preparation_mut()?;
         preparation.run_id = new_id;
         preparation.stage = PreparationStage::Detecting;
+        preparation.download_task_id = None;
         preparation.completed_bytes = 0;
         preparation.total_bytes = None;
         preparation.hardware = Hardware::default();
@@ -582,8 +590,34 @@ impl ChatState {
         };
         preparation.variant_id = Some(variant.id.clone());
         preparation.stage = PreparationStage::Downloading;
+        preparation.download_task_id = None;
         preparation.completed_bytes = 0;
         true
+    }
+
+    /// 返回当前任务应提交给 Manifest 解析接口的模型标识。
+    pub(super) fn resolution_model(&self, run_id: u64) -> Option<String> {
+        let preparation = self.preparation()?;
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Detecting {
+            return None;
+        }
+        Some(
+            preparation
+                .model
+                .catalog_selection
+                .as_ref()
+                .map(|selection| selection.version.model.clone())
+                .unwrap_or_else(|| preparation.model.id.clone()),
+        )
+    }
+
+    /// 返回当前任务确认的外部仓库选择；解析接口必须使用完整仓库身份。
+    pub(super) fn resolution_selection(&self, run_id: u64) -> Option<CatalogSelection> {
+        let preparation = self.preparation()?;
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Detecting {
+            return None;
+        }
+        preparation.model.catalog_selection.clone()
     }
 
     /// 接收已完成硬件项；重复项无副作用，矛盾回调结束当前任务。
@@ -667,6 +701,78 @@ impl ChatState {
             });
         }
     }
+    /// 接收服务端一次性硬件检测和模型解析结果。
+    pub(super) fn finish_model_resolution(
+        &mut self,
+        run_id: u64,
+        result: Result<ModelResolution, ChatError>,
+    ) {
+        let resolution = match result {
+            Ok(resolution) => resolution,
+            Err(error) => {
+                self.fail_preparation(error);
+                return;
+            }
+        };
+        let reason = resolution.reason.clone();
+        let hardware = resolution.hardware.clone();
+        let candidates = resolution.variants;
+        let has_candidates = !candidates.is_empty();
+        let Some(preparation) = self.preparation_mut() else {
+            return;
+        };
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Detecting {
+            return;
+        }
+        let consistent = preparation.hardware_events.iter().all(|event| match event {
+            HardwareEvent::Cpu(cpu) => hardware.cpu.as_ref() == Some(cpu),
+            HardwareEvent::Gpus(gpus) => hardware.gpus.as_ref() == Some(gpus),
+            HardwareEvent::Memory(bytes) => hardware.ram_bytes == *bytes,
+            HardwareEvent::Disk(bytes) => hardware.disk_bytes == *bytes,
+        });
+        if !consistent {
+            self.invalid_preparation("硬件返回值与已完成检测项矛盾");
+            return;
+        }
+        preparation.hardware = hardware.clone();
+        if has_candidates {
+            preparation.model.variants = candidates;
+        }
+        if let Some(reason) = reason {
+            self.fail_preparation(ChatError {
+                kind: ErrorKind::InsufficientResources,
+                operation: Operation::Resolve,
+                reason,
+            });
+            return;
+        }
+        let use_local_variants = !has_candidates && preparation.model.catalog_selection.is_none();
+        if use_local_variants {
+            self.finish_hardware(run_id, Ok(hardware));
+            return;
+        }
+        if !has_candidates {
+            let (kind, reason) = if preparation.model.catalog_selection.is_some() {
+                (
+                    ErrorKind::NotConnected,
+                    "尚未接入该仓库版本的工件解析与部署".into(),
+                )
+            } else {
+                (
+                    ErrorKind::InvalidResult,
+                    "模型解析接口没有返回兼容版本".into(),
+                )
+            };
+            self.fail_preparation(ChatError {
+                kind,
+                operation: Operation::Resolve,
+                reason,
+            });
+            return;
+        }
+        preparation.stage = PreparationStage::SelectingVariant;
+    }
+
     /// 用户明确选中版本后才提供初始化输入快照。
     pub(super) fn initialization_request(&self, run_id: u64) -> Option<InitializationRequest> {
         let p = self.preparation()?;
@@ -691,6 +797,19 @@ impl ChatState {
             return;
         }
         let valid = match &event {
+            PreparationEvent::DownloadTaskCreated { task_id }
+                if p.stage == PreparationStage::Downloading =>
+            {
+                if p.model.catalog_selection.is_none()
+                    || p.download_task_id.is_some()
+                    || !valid_download_task_id(task_id)
+                {
+                    false
+                } else {
+                    p.download_task_id = Some(task_id.clone());
+                    true
+                }
+            }
             PreparationEvent::DownloadProgress { completed, total }
                 if p.stage == PreparationStage::Downloading =>
             {
@@ -721,8 +840,9 @@ impl ChatState {
                 path,
             } if p.stage == PreparationStage::Verifying => {
                 if !valid_digest(expected)
-                    || expected != actual
-                    || p.variant().is_none_or(|v| v.expected_sha256 != *expected)
+                    || !expected.eq_ignore_ascii_case(actual)
+                    || p.variant()
+                        .is_none_or(|v| !v.expected_sha256.eq_ignore_ascii_case(expected))
                     || path.trim().is_empty()
                     || path.contains('\0')
                 {
@@ -735,7 +855,13 @@ impl ChatState {
                 }
                 p.actual_digest = Some(actual.clone());
                 p.local_path = Some(path.clone());
-                p.stage = PreparationStage::LoadingPackage;
+                // 下载已完成，不再对它发出远端取消请求。
+                p.download_task_id = None;
+                p.stage = if p.model.catalog_selection.is_some() {
+                    PreparationStage::ArtifactReady
+                } else {
+                    PreparationStage::LoadingPackage
+                };
                 true
             }
             PreparationEvent::PackageLoaded if p.stage == PreparationStage::LoadingPackage => {
@@ -764,14 +890,174 @@ impl ChatState {
             self.invalid_preparation("接口事件跳过必要阶段或下载进度异常");
         }
     }
-    /// 最终返回值与全部阶段凭据一致才能记录就绪并续聊一次。
+    /// 原子失效当前初始化运行并取出可取消的 Node 下载任务 ID。
+    ///
+    /// # Examples
+    ///
+    /// 当前运行拥有任务 ID 时返回该 ID；本地初始化或硬件检测没有 Node 任务时返回 `None`，
+    /// 但仍会使当前运行进入 `Cancelled`，避免取消后的回调继续写入状态。
+    ///
+    /// # Notes
+    ///
+    /// 此方法只修改客户端状态，不发 HTTP 请求。调用方拿到任务 ID 后必须先完成远端取消，
+    /// 再停止本地初始化 Future；远端取消失败时应调用
+    /// [`Self::finish_preparation_cancellation`] 记录错误。
+    pub(super) fn request_preparation_cancel(&mut self, run_id: u64) -> Option<String> {
+        let task_id = {
+            let preparation = self.preparation_mut()?;
+            if preparation.run_id != run_id || !preparation.stage.is_running() {
+                return None;
+            }
+            let downloading = matches!(
+                preparation.stage,
+                PreparationStage::Downloading | PreparationStage::Verifying
+            );
+            preparation.stage = PreparationStage::Cancelled;
+            let task_id = preparation.download_task_id.take();
+            if downloading {
+                task_id
+            } else {
+                None
+            }
+        };
+        self.restore_pending_draft();
+        task_id
+    }
+
+    /// 记录远端取消请求失败，并保持失败状态而不是伪装成已取消。
+    ///
+    /// # Examples
+    ///
+    /// 取消接口超时或返回错误时，将其交给此方法可让初始化卡片展示原始结构化错误。
+    ///
+    /// # Notes
+    ///
+    /// 只有仍属于同一运行且尚未开始新重试的 `Cancelled` 卡片会被改为 `Failed`；
+    /// 新运行不会被旧取消请求的迟到错误覆盖。
+    pub(super) fn finish_preparation_cancellation(
+        &mut self,
+        run_id: u64,
+        error: ChatError,
+    ) -> bool {
+        let Some(preparation) = self.preparation_mut() else {
+            return false;
+        };
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Cancelled {
+            return false;
+        }
+        preparation.stage = PreparationStage::Failed;
+        preparation.local_path = None;
+        preparation.error = Some(error);
+        self.restore_pending_draft();
+        true
+    }
+    /// 原子认领当前目录工件，防止同一运行重复部署。
+    ///
+    /// # Examples
+    /// 下载成功后使用该运行的原始凭据认领，再发起部署。
+    ///
+    /// # Notes
+    /// 过期或重复结果无副作用，当前凭据不一致则记录失败。
+    #[allow(dead_code, reason = "页面协调任务将调用此状态边界")]
+    pub(super) fn begin_catalog_deployment(
+        &mut self,
+        run_id: u64,
+        prepared: &PreparedModel,
+    ) -> bool {
+        let Some(p) = self.preparation_mut() else {
+            return false;
+        };
+        if p.run_id != run_id
+            || p.stage != PreparationStage::ArtifactReady
+            || p.model.catalog_selection.is_none()
+        {
+            return false;
+        }
+        let valid = prepared.is_valid()
+            && prepared.model == p.model
+            && Some(&prepared.variant) == p.variant()
+            && p.actual_digest
+                .as_ref()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(&prepared.actual_sha256))
+            && p.local_path.as_ref() == Some(&prepared.local_path);
+        if !valid {
+            self.invalid_preparation("部署凭据与下载模型、版本、摘要或路径不一致");
+            return false;
+        }
+        p.stage = PreparationStage::Deploying;
+        true
+    }
+
+    /// 消费当前运行的部署结果并按健康状态登记已就绪模型。
+    ///
+    /// # Examples
+    /// 部署成功时仅当前运行的凭据可登记就绪。
+    ///
+    /// # Notes
+    /// 取消或新运行之后到达的旧结果被忽略，不恢复草稿或更改句柄。
+    #[allow(dead_code, reason = "页面协调任务将调用此状态边界")]
+    pub(super) fn finish_catalog_deployment(
+        &mut self,
+        run_id: u64,
+        prepared: PreparedModel,
+        result: Result<(), ChatError>,
+    ) -> Option<GenerationPlan> {
+        let p = self.preparation_mut()?;
+        if p.run_id != run_id
+            || p.stage != PreparationStage::Deploying
+            || p.model.catalog_selection.is_none()
+        {
+            return None;
+        }
+        let valid = prepared.is_valid()
+            && prepared.model == p.model
+            && Some(&prepared.variant) == p.variant()
+            && p.actual_digest
+                .as_ref()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(&prepared.actual_sha256))
+            && p.local_path.as_ref() == Some(&prepared.local_path);
+        if !valid {
+            self.invalid_preparation("部署结果凭据与当前运行不一致");
+            return None;
+        }
+        if let Err(mut error) = result {
+            if error.operation == Operation::Initialize(PreparationStage::HealthChecking) {
+                p.stage = PreparationStage::HealthChecking;
+            } else {
+                error.operation = Operation::Initialize(PreparationStage::Deploying);
+            }
+            self.fail_preparation(error);
+            return None;
+        }
+        p.stage = PreparationStage::HealthChecking;
+        p.stage = PreparationStage::Ready;
+        // 解析出的版本此前只保存在流程卡片中，就绪查询还依赖模型目录中的同一版本。
+        if let Some(model) = self
+            .models
+            .iter_mut()
+            .find(|model| model.id == prepared.model.id)
+        {
+            *model = prepared.model.clone();
+        }
+        self.record_ready(prepared);
+        if let Some(draft) = self.pending_draft.take() {
+            self.draft = draft;
+            return self.begin_generation();
+        }
+        None
+    }
+
+    /// 最终返回值与全部阶段凭据一致才能记录就绪；目录模型只停在文件已就绪。
     pub(super) fn finish_preparation(
         &mut self,
         run_id: u64,
         result: Result<PreparedModel, ChatError>,
     ) -> Option<GenerationPlan> {
+        let stage = self.preparation()?.stage;
         let p = self.preparation_mut()?;
-        if p.run_id != run_id || !p.stage.is_running() {
+        if p.run_id != run_id
+            || (!p.stage.is_running() && p.stage != PreparationStage::ArtifactReady)
+        {
             return None;
         }
         let ready = match result {
@@ -781,15 +1067,33 @@ impl ChatState {
                 return None;
             }
         };
-        if p.stage != PreparationStage::Reporting
-            || !p.events.contains(&PreparationEvent::Reported)
-            || !ready.is_valid()
-            || ready.model != p.model
-            || Some(&ready.variant) != p.variant()
-            || p.actual_digest.as_ref() != Some(&ready.actual_sha256)
-            || p.local_path.as_ref() != Some(&ready.local_path)
-        {
+        let is_catalog_model = p.model.catalog_selection.is_some();
+        let valid = if is_catalog_model {
+            stage == PreparationStage::ArtifactReady
+                && p.stage == PreparationStage::ArtifactReady
+                && ready.is_valid()
+                && ready.model == p.model
+                && Some(&ready.variant) == p.variant()
+                && p.actual_digest
+                    .as_ref()
+                    .is_some_and(|actual| actual.eq_ignore_ascii_case(&ready.actual_sha256))
+                && p.local_path.as_ref() == Some(&ready.local_path)
+        } else {
+            p.stage == PreparationStage::Reporting
+                && p.events.contains(&PreparationEvent::Reported)
+                && ready.is_valid()
+                && ready.model == p.model
+                && Some(&ready.variant) == p.variant()
+                && p.actual_digest
+                    .as_ref()
+                    .is_some_and(|actual| actual.eq_ignore_ascii_case(&ready.actual_sha256))
+                && p.local_path.as_ref() == Some(&ready.local_path)
+        };
+        if !valid {
             self.invalid_preparation("接口提前成功或返回了不匹配的版本、摘要、路径");
+            return None;
+        }
+        if is_catalog_model {
             return None;
         }
         p.stage = PreparationStage::Ready;

@@ -2,8 +2,7 @@ use std::{env, error::Error, fs, path::PathBuf};
 
 use burncloud_node_runtime::{AcceleratorKind, AcceleratorProfile, HardwareProfile};
 use burncloud_supply_model::{
-    load_default_manifests, parse_manifests, CandidateResolutionOutcome, ModelManifest,
-    RealModelResolver,
+    parse_manifests, CandidateResolutionOutcome, ModelManifest, RealModelResolver,
 };
 
 struct Arguments {
@@ -17,7 +16,7 @@ struct Arguments {
 
 fn usage() -> &'static str {
     "用法: cargo run -p burncloud-supply-model --example phase_three -- \
-[--manifest <manifest.json>] --model <model> --ram-bytes <bytes> \
+--manifest <manifest.json> --model <model> --ram-bytes <bytes> \
 --vram-bytes <bytes[,bytes...]> --disk-bytes <bytes> --runtime <backend> [--runtime <backend>]"
 }
 
@@ -97,16 +96,10 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
 }
 
 fn load_manifests(path: Option<PathBuf>) -> Result<Vec<ModelManifest>, Box<dyn Error>> {
-    match path {
-        Some(path) => {
-            let manifest_json = fs::read_to_string(&path)?;
-            parse_manifests(&manifest_json).map_err(|error| {
-                format!("外部 Manifest '{}' 解析失败: {error}", path.display()).into()
-            })
-        }
-        None => load_default_manifests()
-            .map_err(|error| format!("默认 Manifest 解析失败: {error}").into()),
-    }
+    let path = path.ok_or_else(|| "缺少 --manifest；服务端不再内置默认模型清单".to_owned())?;
+    let manifest_json = fs::read_to_string(&path)?;
+    parse_manifests(&manifest_json)
+        .map_err(|error| format!("外部 Manifest '{}' 解析失败: {error}", path.display()).into())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {

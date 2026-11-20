@@ -19,6 +19,10 @@ pub enum DownloadError {
     Failed(String),
     #[error("下载任务通知通道已关闭")]
     NotificationClosed,
+    #[error("下载任务不存在")]
+    TaskNotFound,
+    #[error("下载任务不可取消：{0}")]
+    TaskNotCancellable(String),
     #[error("操作失败：{operation}；清理任务也失败：{cleanup}")]
     Compensation { operation: String, cleanup: String },
     #[error("恢复数据库任务失败：{0}")]

@@ -1,8 +1,7 @@
 //! Chat 首页页面组合与交互事件。
 
 use super::{
-    backend::{ChatBackend, LocalBackend},
-    catalog,
+    backend::{ChatBackend, HttpBackend},
     model::{
         gib, resource_label, ChatMessage, ChatModel, HardwareEvent, MessageRole, Preparation,
         PreparationStage,
@@ -24,7 +23,7 @@ pub(super) struct BackendHandle(pub(super) Rc<dyn ChatBackend>);
 struct GenerationTask(Signal<Option<Task>>);
 
 #[derive(Clone, Copy)]
-struct PreparationTask(Signal<Option<Task>>);
+struct PreparationTask(Signal<Option<(u64, Task)>>);
 
 #[derive(Clone, Copy)]
 struct ChatScope(ScopeId);
@@ -44,29 +43,32 @@ const LIVEVIEW_ENTER_PREVENT_DEFAULT: &str =
 /// # Notes
 ///
 /// `/` 和 `/home` 使用同一组件。目录来自主服务的模型选择接口，与网关共用监听端口。
-/// 检测仍为本地模拟；当前目录选择只交接仓库快照，缺少工件清单时明确停止。
-/// 底层文件下载与校验能力保留，但正常目录入口不执行真实下载、部署或推理。
+/// 硬件检测与目录工件下载通过公开的 Node 接口完成；目录下载成功只表示文件已校验。
+/// `ArtifactReady` 不代表模型已经部署或可以推理。
 /// 状态只存在于当前客户端会话，目录可访问不代表已部署。
 #[component]
 pub fn ChatHome() -> Element {
     use_context_provider(|| {
         try_consume_context::<BackendHandle>()
-            .unwrap_or_else(|| BackendHandle(Rc::new(LocalBackend)))
+            .unwrap_or_else(|| BackendHandle(Rc::new(HttpBackend::default())))
     });
     use_context_provider(|| ChatScope(Runtime::current().current_scope_id()));
     let mut state = use_signal(|| try_consume_context::<ChatState>().unwrap_or_default());
     let task = use_signal(|| None::<Task>);
     use_context_provider(|| GenerationTask(task));
-    let mut preparation_task = use_signal(|| None::<Task>);
+    let mut preparation_task = use_signal(|| None::<(u64, Task)>);
     use_context_provider(|| PreparationTask(preparation_task));
     use_effect(move || {
-        let running = state
+        let active = state
             .read()
             .preparation()
-            .is_some_and(|p| p.stage.is_running());
-        if !running && preparation_task.peek().is_some() {
-            let handle = preparation_task.take();
-            if let Some(handle) = handle {
+            .and_then(|p| p.stage.is_running().then_some(p.run_id));
+        let stale = preparation_task
+            .peek()
+            .as_ref()
+            .is_some_and(|(id, _)| Some(*id) != active);
+        if stale {
+            if let Some((_, handle)) = preparation_task.take() {
                 handle.cancel();
             }
         }
@@ -318,7 +320,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
         (
             "GPU",
             format!(
-                "{} · 单卡最大可用显存 {}",
+                "{} · 单卡最大显存容量 {}",
                 hardware
                     .gpus
                     .as_ref()
@@ -337,7 +339,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
         ),
         (
             "内存",
-            format!("可用 {}", resource_label(hardware.ram_bytes)),
+            format!("总量 {}", resource_label(hardware.ram_bytes)),
             preparation
                 .hardware_events
                 .iter()
@@ -383,7 +385,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
             }
             if let Some(selection) = preparation.model.catalog_selection.as_ref() {
                 p { class: "chat-preparation-note", "{selection.name} · {selection.version.source} · {selection.version.model} · {selection.version.revision}" }
-                p { class: "chat-preparation-note", "当前硬件检测使用模拟数据，不代表本机真实配置；导入配置支持资源解析和硬件匹配，工件文件级地址与摘要仍需后续接入。" }
+                p { class: "chat-preparation-note", "硬件检测、模型下载和 SHA-256 摘要校验由 Node 服务完成；文件尚未部署。" }
             }
             if !preparation.collapsed {
                 if stage != PreparationStage::AwaitingStart {
@@ -417,7 +419,15 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
                                 },
                                 span {
                                     strong { {variant.quantization} }
-                                    small { "最低内存 {gib(variant.ram_bytes)} GiB · 显存 {gib(variant.vram_bytes)} GiB · 磁盘 {gib(variant.disk_bytes)} GiB" }
+                                    small {
+                                        "最低内存 {gib(variant.ram_bytes)} GiB · "
+                                        if variant.vram_bytes == 0 {
+                                            "显存要求未声明"
+                                        } else {
+                                            "显存 {gib(variant.vram_bytes)} GiB"
+                                        }
+                                        " · 磁盘 {gib(variant.disk_bytes)} GiB"
+                                    }
                                 }
                                 span { "下载此版本" }
                             }
@@ -430,20 +440,26 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
                     details { class: "chat-digest",
                         summary { "校验摘要" }
                         p { "来源预期摘要" code { {expected_digest} } }
-                        p { "本地摘要" code { {preparation.actual_digest.as_deref().unwrap_or("等待校验")} } }
+                        p { "Node 实际摘要" code { {preparation.actual_digest.as_deref().unwrap_or("等待校验")} } }
                     }
                 }
                 if let Some(error) = preparation.error.as_ref() {
                     p { class: "chat-preparation-error", role: "alert", "{error}" }
                 }
                 if let Some(path) = preparation.local_path.as_deref() {
-                    p { class: "chat-local-path", "校验成功 · 本地路径" code { {path} } }
+                    p { class: "chat-local-path", "校验成功 · Node 文件路径" code { {path} } }
                 } else if stage == PreparationStage::Failed {
-                    p { class: "chat-preparation-note", "本地路径：空；不会继续后续阶段。" }
+                    p { class: "chat-preparation-note", "Node 文件路径：空；不会继续后续阶段。" }
                 }
             }
             if active {
                 div { class: "chat-preparation-actions",
+                    if matches!(stage, PreparationStage::Downloading | PreparationStage::Verifying | PreparationStage::ArtifactReady | PreparationStage::Deploying | PreparationStage::HealthChecking) {
+                        button { class: "chat-flow-button", r#type: "button",
+                            onclick: move |_| cancel_preparation(state, run_id),
+                            if matches!(stage, PreparationStage::Downloading | PreparationStage::Verifying) { "取消下载" } else { "取消部署" }
+                        }
+                    }
                     if matches!(stage, PreparationStage::AwaitingStart | PreparationStage::Failed | PreparationStage::Cancelled) && preparation.model.catalog_selection.is_none() && !state.read().is_model_ready(preparation.model.id()) {
                         button { class: "chat-flow-button primary", r#type: "button",
                             onclick: move |_| {
@@ -714,11 +730,40 @@ fn select_model(mut state: Signal<ChatState>, model_id: String) {
     });
 }
 
+fn cancel_preparation(mut state: Signal<ChatState>, run_id: u64) {
+    let active = state
+        .read()
+        .preparation()
+        .is_some_and(|preparation| preparation.run_id == run_id && preparation.stage.is_running());
+    if !active {
+        return;
+    }
+    let task_id = state.with_mut(|value| value.request_preparation_cancel(run_id));
+    let mut preparation_task = consume_context::<PreparationTask>().0;
+    if preparation_task
+        .peek()
+        .as_ref()
+        .is_some_and(|(id, _)| *id == run_id)
+    {
+        if let Some((_, local_task)) = preparation_task.take() {
+            local_task.cancel();
+        }
+    }
+    if let Some(task_id) = task_id {
+        let backend = consume_context::<BackendHandle>().0;
+        let owner = consume_context::<ChatScope>().0;
+        Runtime::current().spawn(owner, async move {
+            if let Err(error) = backend.cancel_download_task(task_id).await {
+                state.with_mut(|value| value.finish_preparation_cancellation(run_id, error));
+            }
+        });
+    }
+}
 fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
     let backend = consume_context::<BackendHandle>().0;
     let mut task = consume_context::<PreparationTask>().0;
     let previous = task.take();
-    if let Some(previous) = previous {
+    if let Some((_, previous)) = previous {
         previous.cancel();
     }
     let owner = consume_context::<ChatScope>().0;
@@ -726,39 +771,67 @@ fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
         .read()
         .preparation()
         .is_some_and(|p| p.run_id == run_id && p.stage == PreparationStage::Detecting);
+    let selection_for_resolution = state.read().resolution_selection(run_id);
+    let model_for_resolution = state.read().resolution_model(run_id);
     let handle = Runtime::current().spawn(owner, async move {
         if detecting {
-            let result = backend
-                .detect_hardware(Box::new(move |event| {
-                    state.with_mut(|value| value.hardware_event(run_id, event))
-                }))
-                .await;
-            state.with_mut(|value| value.finish_hardware(run_id, result));
+            let result = if let Some(selection) = selection_for_resolution {
+                backend
+                    .resolve_catalog_model(
+                        selection,
+                        Box::new(move |event| {
+                            state.with_mut(|value| value.hardware_event(run_id, event))
+                        }),
+                    )
+                    .await
+            } else if let Some(model) = model_for_resolution {
+                backend
+                    .resolve_model(
+                        model,
+                        Box::new(move |event| {
+                            state.with_mut(|value| value.hardware_event(run_id, event))
+                        }),
+                    )
+                    .await
+            } else {
+                Err(super::model::ChatError {
+                    kind: super::model::ErrorKind::InvalidResult,
+                    operation: super::model::Operation::Resolve,
+                    reason: "模型解析任务已失效".into(),
+                })
+            };
+            state.with_mut(|value| value.finish_model_resolution(run_id, result));
         } else {
             let request = state.read().initialization_request(run_id);
             if let Some(request) = request {
                 let callback =
                     move |event| state.with_mut(|value| value.preparation_event(run_id, event));
-                // 目录模型由客户端直接下载并校验；部署未接入，校验通过后以 NotConnected 停止。
-                let result = if request.model.catalog_selection.is_some() {
-                    match catalog::download_root() {
-                        Ok(root) => catalog::download(&root, &request, callback)
-                            .await
-                            .and_then(|path| Err(catalog::deployment_missing(&path))),
-                        Err(error) => Err(error),
+                let is_catalog = request.model.catalog_selection.is_some();
+                let result = backend.initialize(request, Box::new(callback)).await;
+                let plan = match result {
+                    Ok(prepared) if is_catalog => {
+                        if state.with_mut(|value| value.begin_catalog_deployment(run_id, &prepared))
+                        {
+                            let result = backend.deploy_model(prepared.local_path.clone()).await;
+                            state.with_mut(|value| {
+                                value.finish_catalog_deployment(run_id, prepared, result)
+                            })
+                        } else {
+                            None
+                        }
                     }
-                } else {
-                    backend.initialize(request, Box::new(callback)).await
+                    other => state.with_mut(|value| value.finish_preparation(run_id, other)),
                 };
-                if let Some(plan) = state.with_mut(|value| value.finish_preparation(run_id, result))
-                {
+                if let Some(plan) = plan {
                     spawn_stream(state, plan);
                 }
             }
         }
-        task.set(None);
+        if task.peek().as_ref().is_some_and(|(id, _)| *id == run_id) {
+            task.take();
+        }
     });
-    task.set(Some(handle));
+    task.set(Some((run_id, handle)));
 }
 
 fn spawn_stream(mut state: Signal<ChatState>, plan: GenerationPlan) {
@@ -819,3 +892,7 @@ fn copy_message(
         }
     });
 }
+
+#[cfg(test)]
+#[path = "page_task_tests.rs"]
+mod task_tests;

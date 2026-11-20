@@ -116,6 +116,55 @@ async fn monitor_task(
     }
 }
 
+async fn resolve_completed_file_path(
+    snapshot: &TaskSnapshot,
+    reported_path: &str,
+) -> std::result::Result<PathBuf, String> {
+    let snapshot_dir = normalize_aria2_path(&snapshot.dir.to_string_lossy());
+    let reported_path = normalize_aria2_path(reported_path);
+    if !reported_path.starts_with(&snapshot_dir) {
+        return Err(format!(
+            "aria2 返回的文件路径超出下载目录：{}",
+            reported_path.display()
+        ));
+    }
+
+    let expected_path = snapshot_dir.join(&snapshot.filename);
+    let reported_filename = reported_path.file_name().and_then(|name| name.to_str());
+    let candidates = if reported_path == expected_path {
+        vec![reported_path]
+    } else if reported_filename == Some(snapshot.filename.as_str()) {
+        // 只有文件名与数据库任务一致时才允许用规范化目录拼接路径兜底，避免误认其他下载文件。
+        vec![reported_path, expected_path]
+    } else {
+        vec![reported_path]
+    };
+    let mut last_not_found = None;
+    for candidate in candidates {
+        for attempt in 0..3 {
+            match tokio::fs::metadata(&candidate).await {
+                Ok(metadata) if metadata.is_file() => return Ok(candidate),
+                Ok(_) => return Err(format!("下载目标不是文件：{}", candidate.display())),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound && attempt < 2 => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    last_not_found = Some(error);
+                    break;
+                }
+                Err(error) => {
+                    return Err(format!("读取下载文件信息失败：{error}"));
+                }
+            }
+        }
+    }
+
+    let error = last_not_found
+        .map(|error| error.to_string())
+        .unwrap_or_else(|| "文件路径不存在".to_string());
+    Err(format!("读取下载文件信息失败：{error}"))
+}
+
 struct TaskSnapshot {
     db_id: i64,
     url: String,
@@ -162,36 +211,13 @@ async fn complete_task(
         finish_failed(db, states, gid, "aria2 完成任务未返回文件信息".to_string()).await;
         return Ok(());
     };
-    let final_path = normalize_aria2_path(&file.path);
-    let snapshot_dir = snapshot.dir.to_string_lossy();
-    let snapshot_dir = normalize_aria2_path(&snapshot_dir);
-    if !final_path.starts_with(&snapshot_dir) {
-        finish_failed(
-            db,
-            states,
-            gid,
-            format!("aria2 返回的文件路径超出下载目录：{}", final_path.display()),
-        )
-        .await;
-        return Ok(());
-    }
-    match tokio::fs::metadata(&final_path).await {
-        Ok(metadata) if metadata.is_file() => {}
-        Ok(_) => {
-            finish_failed(
-                db,
-                states,
-                gid,
-                format!("下载目标不是文件：{}", final_path.display()),
-            )
-            .await;
-            return Ok(());
-        }
+    let final_path = match resolve_completed_file_path(&snapshot, &file.path).await {
+        Ok(path) => path,
         Err(error) => {
-            finish_failed(db, states, gid, format!("读取下载文件信息失败：{error}")).await;
+            finish_failed(db, states, gid, error).await;
             return Ok(());
         }
-    }
+    };
     let final_path_text = final_path.to_string_lossy().into_owned();
     if let Err(error) = db
         .mark_completed(snapshot.db_id, gid, &final_path_text, size.0, size.1)
