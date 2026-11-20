@@ -214,6 +214,26 @@ async fn create_download_task(
         Err(error) => return download_error_response(error),
     };
 
+    if let Err(error) = manager
+        .set_task_identity(
+            handle.task_id,
+            &request.model,
+            request.source.as_str(),
+            &request.revision,
+            &request.variant_id,
+            &request.artifact_uri,
+            &request.checksum,
+        )
+        .await
+    {
+        tracing::error!(%error, task_id = handle.task_id, "持久化模型下载身份失败");
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "download_storage_failed",
+            "模型下载身份持久化失败",
+        );
+    }
+
     let registry = task_registry();
     register_task(registry, handle.task_id, request.clone(), handle.status).await;
     spawn_task_verification(
@@ -393,7 +413,7 @@ async fn task_snapshot(
                 .final_path
                 .map(|path| path.to_string_lossy().into_owned())
         }),
-        actual_sha256: node_state.actual_sha256,
+        actual_sha256: node_state.actual_sha256.or(manager_snapshot.actual_sha256),
     }))
 }
 
@@ -423,6 +443,27 @@ fn manager_error(snapshot: &ManagerTaskSnapshot) -> Option<TaskError> {
 }
 
 fn task_response(status: StatusCode, snapshot: DownloadTaskSnapshot) -> Response {
+    if snapshot.status == DownloadTaskState::Succeeded
+        && (snapshot
+            .final_path
+            .as_deref()
+            .is_none_or(|path| path.trim().is_empty())
+            || snapshot
+                .actual_sha256
+                .as_deref()
+                .and_then(normalize_checksum)
+                .is_none())
+    {
+        tracing::error!(
+            task_id = snapshot.task_id,
+            "拒绝缺少路径或摘要的下载成功状态"
+        );
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "download_storage_failed",
+            "下载成功状态缺少本地路径或校验摘要",
+        );
+    }
     no_store(
         (
             status,
@@ -493,7 +534,18 @@ async fn verify_task(
     let path = match manager.wait_for_task(task_id).await {
         Ok(path) => path,
         Err(error) => {
-            finish_task_error(registry, task_id, task_error_from_download(&error)).await;
+            let task_error = task_error_from_download(&error);
+            if let Err(persist_error) = manager
+                .mark_task_verification_failed(task_id, None, &task_error.message)
+                .await
+            {
+                tracing::warn!(
+                    task_id,
+                    error = %persist_error,
+                    "持久化下载失败状态失败"
+                );
+            }
+            finish_task_error(registry, task_id, task_error).await;
             return;
         }
     };
@@ -505,18 +557,63 @@ async fn verify_task(
         Ok(checksum) => checksum,
         Err(error) => {
             tracing::error!(task_id, path = %path.display(), %error, "读取下载文件并计算摘要失败");
-            finish_task_error(
-                registry,
-                task_id,
-                TaskError {
-                    code: "download_storage_failed".to_string(),
-                    message: "下载文件校验失败".to_string(),
-                },
-            )
-            .await;
+            let task_error = TaskError {
+                code: "download_storage_failed".to_string(),
+                message: "下载文件校验失败".to_string(),
+            };
+            if let Err(persist_error) = manager
+                .mark_task_verification_failed(task_id, None, &task_error.message)
+                .await
+            {
+                tracing::warn!(
+                    task_id,
+                    error = %persist_error,
+                    "持久化摘要校验失败状态失败"
+                );
+            }
+            finish_task_error(registry, task_id, task_error).await;
             return;
         }
     };
+
+    if !actual_sha256.eq_ignore_ascii_case(&identity.checksum) {
+        tracing::warn!(
+            task_id,
+            expected = %identity.checksum,
+            actual = %actual_sha256,
+            "下载文件摘要不匹配"
+        );
+        let task_error = TaskError {
+            code: "checksum_mismatch".to_string(),
+            message: "下载文件摘要与请求摘要不一致".to_string(),
+        };
+        if let Err(persist_error) = manager
+            .mark_task_verification_failed(task_id, Some(&actual_sha256), &task_error.message)
+            .await
+        {
+            tracing::warn!(
+                task_id,
+                error = %persist_error,
+                "持久化摘要不匹配状态失败"
+            );
+        }
+        finish_task_error(registry, task_id, task_error).await;
+        return;
+    }
+
+    if let Err(error) = manager.mark_task_verified(task_id, &actual_sha256).await {
+        tracing::error!(task_id, %error, "持久化摘要校验成功状态失败");
+        finish_task_error(
+            registry,
+            task_id,
+            TaskError {
+                code: "download_storage_failed".to_string(),
+                message: "保存模型校验结果失败".to_string(),
+            },
+        )
+        .await;
+        return;
+    }
 
     let mut tasks = registry.lock().await;
     let Some(task) = tasks.get_mut(&task_id) else {
@@ -526,24 +623,9 @@ async fn verify_task(
         return;
     }
     task.final_path = Some(path.to_string_lossy().into_owned());
-    task.actual_sha256 = Some(actual_sha256.clone());
-    if actual_sha256.eq_ignore_ascii_case(&identity.checksum) {
-        task.status = DownloadTaskState::Succeeded;
-        task.error = None;
-    } else {
-        tracing::warn!(
-            task_id,
-            path = %path.display(),
-            expected = %identity.checksum,
-            actual = %actual_sha256,
-            "下载文件摘要不匹配"
-        );
-        task.status = DownloadTaskState::Failed;
-        task.error = Some(TaskError {
-            code: "checksum_mismatch".to_string(),
-            message: "下载文件摘要与请求摘要不一致".to_string(),
-        });
-    }
+    task.actual_sha256 = Some(actual_sha256);
+    task.status = DownloadTaskState::Succeeded;
+    task.error = None;
 }
 
 async fn begin_verification(registry: &TaskRegistry, task_id: i64) -> bool {

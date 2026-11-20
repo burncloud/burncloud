@@ -253,6 +253,33 @@ async fn responses_are_json_and_not_cacheable() {
         .expect("成功响应体可读");
     let value: serde_json::Value = serde_json::from_slice(&body).expect("成功响应为 JSON");
     assert_eq!(value["data"]["status"], "succeeded");
+
+    for (final_path, actual_sha256) in [(None, Some(CHECKSUM)), (Some("/node/model.gguf"), None)] {
+        let identity = validate_request(request(
+            DownloadSource::ModelScope,
+            "Qwen/Qwen3-8B",
+            "master",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B/resolve/master/Q4_K_M.gguf",
+            CHECKSUM,
+        ))
+        .expect("固定任务身份有效");
+        let response = task_response(
+            StatusCode::OK,
+            DownloadTaskSnapshot {
+                task_id: 43,
+                identity,
+                status: DownloadTaskState::Succeeded,
+                completed_bytes: 10,
+                total_bytes: Some(10),
+                download_speed: 0,
+                error: None,
+                final_path: final_path.map(str::to_string),
+                actual_sha256: actual_sha256.map(str::to_string),
+            },
+        );
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }
 
 #[test]
