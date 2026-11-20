@@ -1,24 +1,18 @@
-//! 主服务模型选择 HTTP 边界；保留独立的工件下载与校验能力。
+//! 主服务模型选择、模型解析和下载 HTTP 边界。
 
 use super::model::{
-    valid_digest, ChatError, ErrorKind, InitializationRequest, ModelVariant, Operation,
-    PreparationEvent, PreparationStage,
+    valid_digest, ChatError, ErrorKind, Gpu, Hardware, InitializationRequest, ModelResolution,
+    ModelVariant, Operation, Platform, PreparationEvent, PreparationStage, PreparedModel,
 };
 use reqwest::{Client, Url};
-use serde::{de::DeserializeOwned, Deserialize};
-use sha2::{Digest, Sha256};
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
-use tokio::io::AsyncWriteExt;
-
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(45);
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::time::Duration;
 
 /// 模块内部 HTTP 客户端；生产请求主服务，测试可注入本地响应。
 #[derive(Clone)]
 pub(super) struct CatalogClient {
     client: Client,
+    download_client: Client,
     base: Url,
 }
 
@@ -53,6 +47,154 @@ pub(super) struct CatalogVersion {
     pub(super) resource_url: String,
     #[serde(default)]
     pub(super) variants: Vec<ModelVariant>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ResolveEnvelope {
+    success: bool,
+    data: Option<ResolveData>,
+    error: Option<RemoteHardwareError>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ResolveData {
+    status: String,
+    model: String,
+    hardware: RemoteHardwareSnapshot,
+    candidates: Vec<RemoteModelCandidate>,
+    reason: Option<RemoteResolveReason>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RemoteModelCandidate {
+    model_name: String,
+    variant_id: String,
+    quantization: String,
+    min_ram_bytes: u64,
+    min_vram_bytes: u64,
+    disk_size_bytes: u64,
+    runtime: String,
+    artifact_uri: String,
+    checksum: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RemoteResolveReason {
+    code: String,
+    message: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct HardwareEnvelope {
+    success: bool,
+    data: Option<RemoteHardwareSnapshot>,
+    error: Option<RemoteHardwareError>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RemoteHardwareSnapshot {
+    platform: String,
+    #[serde(rename = "arch")]
+    _arch: String,
+    cpu: String,
+    memory_bytes: u64,
+    disk_available_bytes: u64,
+    accelerators: Vec<RemoteAccelerator>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RemoteAccelerator {
+    kind: String,
+    name: String,
+    memory_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct RemoteHardwareError {
+    code: String,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DownloadModelRequest {
+    model: String,
+    source: String,
+    revision: String,
+    variant_id: String,
+    artifact_uri: String,
+    checksum: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct DownloadTaskData {
+    task_id: String,
+    status: String,
+    model: String,
+    source: String,
+    revision: String,
+    variant_id: String,
+    completed_bytes: u64,
+    total_bytes: Option<u64>,
+    download_speed: u64,
+    error: Option<RemoteHardwareError>,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DeployRequest<'a> {
+    model_path: &'a str,
+}
+
+#[allow(
+    clippy::disallowed_types,
+    reason = "部署协议不约束事件内容，需要原样持有"
+)]
+type DeployEvent = serde_json::Value;
+
+#[derive(Debug, Deserialize)]
+struct DeploySnapshot {
+    model_id: String,
+    status: String,
+    #[serde(rename = "stage", deserialize_with = "required_option")]
+    _stage: Option<String>,
+    #[serde(rename = "state", deserialize_with = "required_option")]
+    _state: Option<String>,
+    #[serde(rename = "endpoint", deserialize_with = "required_option")]
+    _endpoint: Option<String>,
+    #[serde(rename = "pid", deserialize_with = "required_option")]
+    _pid: Option<u32>,
+    #[serde(
+        rename = "last_heartbeat_unix_ms",
+        deserialize_with = "required_option"
+    )]
+    _last_heartbeat_unix_ms: Option<u64>,
+    #[serde(deserialize_with = "required_option")]
+    error: Option<String>,
+    #[serde(rename = "events")]
+    _events: Vec<DeployEvent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeployError {
+    error: String,
+}
+
+fn required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
+
+const DOWNLOAD_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+#[derive(Debug, Deserialize)]
+struct DownloadTaskEnvelope {
+    success: bool,
+    data: Option<DownloadTaskData>,
+    error: Option<RemoteHardwareError>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -122,7 +264,7 @@ impl CatalogClient {
                 server_base(&host, port)
             }
         };
-        Self::new(&base, Duration::from_secs(45))
+        Self::with_timeouts(&base, Duration::from_secs(45), Duration::from_secs(10 * 60))
     }
 
     /// 构造目录客户端，拒绝非 HTTP 地址、带认证信息的地址和零超时。
@@ -132,7 +274,19 @@ impl CatalogClient {
     ///
     /// # Notes
     /// 错误配置明确返回错误，不退回旧版独立服务。
+    #[allow(
+        dead_code,
+        reason = "测试注入短超时客户端；生产环境从 from_env 使用专用下载超时"
+    )]
     pub(super) fn new(base: &str, timeout: Duration) -> Result<Self, ChatError> {
+        Self::with_timeouts(base, timeout, timeout)
+    }
+
+    fn with_timeouts(
+        base: &str,
+        timeout: Duration,
+        download_timeout: Duration,
+    ) -> Result<Self, ChatError> {
         let base = Url::parse(base).map_err(|error| {
             failure(
                 ErrorKind::InvalidParameter,
@@ -145,6 +299,7 @@ impl CatalogClient {
             || !base.username().is_empty()
             || base.password().is_some()
             || timeout.is_zero()
+            || download_timeout.is_zero()
         {
             return Err(failure(
                 ErrorKind::InvalidParameter,
@@ -156,7 +311,30 @@ impl CatalogClient {
             .timeout(timeout)
             .build()
             .map_err(|error| transport(error, Operation::Search))?;
-        Ok(Self { client, base })
+        let download_client = Client::builder()
+            .timeout(download_timeout)
+            // 部署请求可能已产生副作用，不能由传输层重发；下载请求共用该策略。
+            .retry(reqwest::retry::never())
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt
+                    .previous()
+                    .first()
+                    .is_some_and(|url| url.path() == "/console/api/node/deployments")
+                {
+                    attempt.stop()
+                } else {
+                    reqwest::redirect::Policy::limited(10).redirect(attempt)
+                }
+            }))
+            .build()
+            .map_err(|error| {
+                transport(error, Operation::Initialize(PreparationStage::Downloading))
+            })?;
+        Ok(Self {
+            client,
+            download_client,
+            base: base.clone(),
+        })
     }
 
     /// 空查询加载预置，非空查询逐行发布累计搜索快照。
@@ -291,7 +469,481 @@ impl CatalogClient {
         Ok((Some(version), result.status))
     }
 
+    /// 在一次主服务请求中获取硬件快照和全部兼容 Variant。
+    pub(super) async fn resolve_model(
+        &self,
+        selection: &CatalogSelection,
+    ) -> Result<ModelResolution, ChatError> {
+        selection.version.validate()?;
+        let model = selection.version.model.as_str();
+        let url = self
+            .base
+            .join("/api/node/models/resolve")
+            .map_err(|error| {
+                failure(
+                    ErrorKind::InvalidParameter,
+                    Operation::Resolve,
+                    error.to_string(),
+                )
+            })?;
+        let response = self
+            .client
+            .post(url)
+            .header("Accept", "application/json")
+            .json(&ResolveModelRequest {
+                model: selection.version.model.clone(),
+                source: selection.version.source.clone(),
+                revision: selection.version.revision.clone(),
+            })
+            .send()
+            .await
+            .map_err(|error| transport(error, Operation::Resolve))?;
+        let status = response.status();
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| transport(error, Operation::Resolve))?;
+        let envelope: ResolveEnvelope = serde_json::from_slice(&body).map_err(|error| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                format!("模型解析接口响应格式无效：{error}"),
+            )
+        })?;
+        if !status.is_success() || !envelope.success {
+            let error = envelope.error.ok_or_else(|| {
+                failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Resolve,
+                    "模型解析失败响应缺少错误信息".into(),
+                )
+            })?;
+            return Err(remote_error(error, Operation::Resolve));
+        }
+        let data = envelope.data.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析成功响应缺少数据".into(),
+            )
+        })?;
+        if data.model != model || !matches!(data.status.as_str(), "resolved" | "unsupported") {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析响应与请求不一致".into(),
+            ));
+        }
+        let hardware = data.hardware.into_hardware()?;
+        let model_name = data.model.clone();
+        let variants = data
+            .candidates
+            .into_iter()
+            .map(|candidate| {
+                if candidate.model_name != model_name {
+                    return Err(failure(
+                        ErrorKind::InvalidResult,
+                        Operation::Resolve,
+                        "模型解析候选版本与请求模型不一致".into(),
+                    ));
+                }
+                candidate.into_variant()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let reason = data
+            .reason
+            .map(|reason| format!("{}: {}", reason.code, reason.message));
+        if data.status == "resolved" && variants.is_empty() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析成功响应没有候选版本".into(),
+            ));
+        }
+        if data.status == "resolved" && reason.is_some() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析成功响应包含不支持原因".into(),
+            ));
+        }
+        if data.status == "unsupported" && !variants.is_empty() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析不支持响应包含候选版本".into(),
+            ));
+        }
+        if data.status == "unsupported" && reason.is_none() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析不支持响应缺少原因".into(),
+            ));
+        }
+        Ok(ModelResolution {
+            hardware,
+            variants,
+            reason,
+        })
+    }
+
+    /// 获取主服务 Node 的一次性硬件快照。
+    pub(super) async fn inspect_hardware(&self) -> Result<Hardware, ChatError> {
+        let response = self
+            .request_raw("/api/node/hardware", &[], Operation::Hardware)
+            .await?;
+        let status = response.status();
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| transport(error, Operation::Hardware))?;
+        let response: HardwareEnvelope = serde_json::from_slice(&body).map_err(|error| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Hardware,
+                format!("硬件接口响应格式无效：{error}"),
+            )
+        })?;
+        if !status.is_success() || !response.success {
+            let error = response.error.ok_or_else(|| {
+                failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Hardware,
+                    "硬件接口失败响应缺少错误信息".into(),
+                )
+            })?;
+            return Err(failure(
+                ErrorKind::ExecutionFailed,
+                Operation::Hardware,
+                format!("{}: {}", error.code, error.message),
+            ));
+        }
+
+        let snapshot = response.data.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Hardware,
+                "硬件接口成功响应缺少数据".into(),
+            )
+        })?;
+        snapshot.into_hardware()
+    }
+
+    /// 使用已校验的原始模型路径请求一次部署。
+    ///
+    /// # Examples
+    /// 已下载的模型路径可直接传入，不会由客户端裁剪或替换。
+    ///
+    /// # Notes
+    /// 仅接受完整的终态快照；部署可能在超时后继续，不自动重试或跟随重定向。
+    #[allow(dead_code, reason = "下一项后端衔接任务将调用部署边界")]
+    pub(super) async fn deploy_model(&self, model_path: &str) -> Result<(), ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Deploying);
+        if model_path.is_empty() || model_path.contains('\0') {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                operation,
+                "模型路径无效".into(),
+            ));
+        }
+        let url = self
+            .base
+            .join("/console/api/node/deployments")
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        let response = self
+            .download_client
+            .post(url)
+            .header("Accept", "application/json")
+            .json(&DeployRequest { model_path })
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let status = response.status();
+        if status != reqwest::StatusCode::OK {
+            let reason = match response.bytes().await {
+                Ok(body) => serde_json::from_slice::<DeployError>(&body)
+                    .ok()
+                    .map(|error| error.error)
+                    .filter(|error| !error.trim().is_empty())
+                    .unwrap_or_else(|| format!("部署接口返回 HTTP {status}")),
+                Err(error) => format!("部署接口返回 HTTP {status}，读取错误信息失败：{error}"),
+            };
+            return Err(failure(ErrorKind::ExecutionFailed, operation, reason));
+        }
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let snapshot: DeploySnapshot = serde_json::from_slice(&body).map_err(|error| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                format!("部署响应格式无效：{error}"),
+            )
+        })?;
+        if snapshot.model_id.trim().is_empty() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署响应模型 ID 为空".into(),
+            ));
+        }
+        match snapshot.status.as_str() {
+            "ready" => Ok(()),
+            "failed" | "unhealthy" => {
+                let operation = if snapshot.status == "unhealthy" {
+                    Operation::Initialize(PreparationStage::HealthChecking)
+                } else {
+                    operation
+                };
+                let reason = snapshot
+                    .error
+                    .filter(|error| !error.trim().is_empty())
+                    .unwrap_or_else(|| format!("模型部署结果为 {}", snapshot.status));
+                Err(failure(ErrorKind::ExecutionFailed, operation, reason))
+            }
+            _ => Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                format!("部署响应状态无效：{}", snapshot.status),
+            )),
+        }
+    }
+
+    async fn create_download_task(
+        &self,
+        request: &InitializationRequest,
+    ) -> Result<DownloadTaskData, ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Downloading);
+        let payload = download_request_payload(request, operation)?;
+        let url = self
+            .base
+            .join("/api/node/models/download")
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        let response = self
+            .download_client
+            .post(url)
+            .header("Accept", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        decode_download_task(response, operation).await
+    }
+
+    async fn get_download_task(&self, task_id: &str) -> Result<DownloadTaskData, ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Downloading);
+        if !valid_task_id(task_id) {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                operation,
+                "下载任务 ID 无效".into(),
+            ));
+        }
+        let path = format!("/api/node/models/download/{task_id}");
+        let url = self
+            .base
+            .join(&path)
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        let response = self
+            .download_client
+            .get(url)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        decode_download_task(response, operation).await
+    }
+
+    /// 请求 Node 取消下载任务，并只接受服务端返回的 `cancelled` 快照。
+    ///
+    /// # Examples
+    ///
+    /// 页面取消初始化时传入创建任务接口返回的十进制 `task_id`，成功后再停止本地轮询 Future。
+    ///
+    /// # Notes
+    ///
+    /// 方法不把 HTTP 成功状态伪装成取消成功；任务仍在运行、已完成或响应快照非法都会返回
+    /// `ChatError`。任务 ID 只用于 URL 路径，不接受空值、负数或超出 `i64` 范围的输入。
+    pub(super) async fn cancel_download_task(&self, task_id: &str) -> Result<(), ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Downloading);
+        if !valid_task_id(task_id) {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                operation,
+                "下载任务 ID 无效".into(),
+            ));
+        }
+        let path = format!("/api/node/models/download/{task_id}");
+        let url = self
+            .base
+            .join(&path)
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        let response = self
+            .download_client
+            .delete(url)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let data = decode_download_task(response, operation).await?;
+        validate_download_task_shape(&data)?;
+        if data.task_id != task_id {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "取消接口返回了不匹配的任务快照".into(),
+            ));
+        }
+        if data.status != "cancelled" {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "取消接口没有返回 cancelled 任务快照".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn poll_download_task(
+        &self,
+        task_id: &str,
+        expected: &InitializationRequest,
+        callback: &mut impl FnMut(PreparationEvent),
+        downloaded_emitted: &mut bool,
+    ) -> Result<DownloadTaskData, ChatError> {
+        loop {
+            let data = self.get_download_task(task_id).await?;
+            let data = map_download_task(data, expected)?;
+            match data.status.as_str() {
+                "queued" | "downloading" => {
+                    callback(PreparationEvent::DownloadProgress {
+                        completed: data.completed_bytes,
+                        total: data.total_bytes,
+                    });
+                }
+                "verifying" => {
+                    emit_downloaded(callback, downloaded_emitted);
+                }
+                "succeeded" => {
+                    emit_downloaded(callback, downloaded_emitted);
+                    return Ok(data);
+                }
+                "failed" | "cancelled" => return Ok(data),
+                _ => unreachable!("map_download_task 已校验任务状态"),
+            }
+            tokio::time::sleep(DOWNLOAD_POLL_INTERVAL).await;
+        }
+    }
+
+    /// 在 Node 主服务上创建并轮询已确认的目录工件下载任务。
+    ///
+    /// # Examples
+    ///
+    /// 目录解析成功后，将当前选中的版本快照交给此方法即可复用服务端下载器。
+    ///
+    /// # Notes
+    ///
+    /// 方法只在 Node 任务进入 `succeeded` 后交付成功凭据；过程进度和摘要校验阶段通过
+    /// `PreparationEvent` 回调交给客户端状态机。返回的路径属于 Node 主机，不是客户端本地路径。
+    pub(super) async fn download_model(
+        &self,
+        request: &InitializationRequest,
+        callback: impl FnMut(PreparationEvent),
+    ) -> Result<PreparedModel, ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Downloading);
+        let initial = self.create_download_task(request).await?;
+        let initial = map_download_task(initial, request)?;
+        let mut callback = callback;
+        callback(PreparationEvent::DownloadTaskCreated {
+            task_id: initial.task_id.clone(),
+        });
+        let mut downloaded_emitted = false;
+        let data = match initial.status.as_str() {
+            "queued" | "downloading" => {
+                callback(PreparationEvent::DownloadProgress {
+                    completed: initial.completed_bytes,
+                    total: initial.total_bytes,
+                });
+                self.poll_download_task(
+                    &initial.task_id,
+                    request,
+                    &mut callback,
+                    &mut downloaded_emitted,
+                )
+                .await?
+            }
+            "verifying" => {
+                emit_downloaded(&mut callback, &mut downloaded_emitted);
+                self.poll_download_task(
+                    &initial.task_id,
+                    request,
+                    &mut callback,
+                    &mut downloaded_emitted,
+                )
+                .await?
+            }
+            "succeeded" => {
+                emit_downloaded(&mut callback, &mut downloaded_emitted);
+                initial
+            }
+            "failed" | "cancelled" => {
+                return Err(download_task_terminal_error(&initial, operation))
+            }
+            _ => unreachable!("map_download_task 已校验任务状态"),
+        };
+        if data.status != "succeeded" {
+            return Err(download_task_terminal_error(&data, operation));
+        }
+        let actual_sha256 = data.actual_sha256.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Initialize(PreparationStage::Verifying),
+                "模型下载成功响应缺少实际摘要".into(),
+            )
+        })?;
+        let local_path = data.local_path.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Initialize(PreparationStage::Verifying),
+                "模型下载成功响应缺少 Node 文件路径".into(),
+            )
+        })?;
+        if !actual_sha256.eq_ignore_ascii_case(&request.variant.expected_sha256) {
+            return Err(failure(
+                ErrorKind::VerificationFailed,
+                Operation::Initialize(PreparationStage::Verifying),
+                "服务端返回的模型摘要与预期不一致".into(),
+            ));
+        }
+
+        callback(PreparationEvent::Verified {
+            expected: request.variant.expected_sha256.clone(),
+            actual: actual_sha256.clone(),
+            path: local_path.clone(),
+        });
+        Ok(PreparedModel {
+            model: request.model.clone(),
+            variant: request.variant.clone(),
+            actual_sha256,
+            local_path,
+        })
+    }
+
     async fn request(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        operation: Operation,
+    ) -> Result<reqwest::Response, ChatError> {
+        self.request_raw(path, query, operation)
+            .await?
+            .error_for_status()
+            .map_err(|error| transport(error, operation))
+    }
+
+    async fn request_raw(
         &self,
         path: &str,
         query: &[(&str, String)],
@@ -307,10 +959,8 @@ impl CatalogClient {
             .header("Accept", "application/json, application/x-ndjson")
             .send()
             .await
-            .and_then(reqwest::Response::error_for_status)
             .map_err(|error| transport(error, operation))
     }
-
     async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -325,6 +975,105 @@ impl CatalogClient {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct ResolveModelRequest {
+    model: String,
+    source: String,
+    revision: String,
+}
+
+impl RemoteHardwareSnapshot {
+    fn into_hardware(self) -> Result<Hardware, ChatError> {
+        let platform = match self.platform.as_str() {
+            "linux" => Some(Platform::Linux),
+            "macos" => Some(Platform::MacOs),
+            "windows" => Some(Platform::Windows),
+            "other" => Some(Platform::Other),
+            _ => {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Hardware,
+                    "硬件接口返回了未知平台".into(),
+                ));
+            }
+        };
+        if self.cpu.trim().is_empty() || self._arch.trim().is_empty() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Hardware,
+                "硬件接口返回了空的平台或 CPU 信息".into(),
+            ));
+        }
+
+        let gpus = self
+            .accelerators
+            .into_iter()
+            .map(RemoteAccelerator::into_gpu)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Hardware {
+            platform,
+            cpu: Some(self.cpu),
+            gpus: Some(gpus),
+            ram_bytes: Some(self.memory_bytes),
+            disk_bytes: Some(self.disk_available_bytes),
+        })
+    }
+}
+
+impl RemoteModelCandidate {
+    fn into_variant(self) -> Result<ModelVariant, ChatError> {
+        if self.model_name.trim().is_empty()
+            || self.variant_id.trim().is_empty()
+            || self.quantization.trim().is_empty()
+            || self.runtime.trim().is_empty()
+            || self.artifact_uri.trim().is_empty()
+            || !valid_digest(&self.checksum)
+        {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析返回了无效候选版本".into(),
+            ));
+        }
+        Ok(ModelVariant {
+            id: self.variant_id,
+            quantization: self.quantization,
+            runtime: self.runtime,
+            artifact_source: self.artifact_uri,
+            expected_sha256: self.checksum,
+            ram_bytes: self.min_ram_bytes,
+            vram_bytes: self.min_vram_bytes,
+            disk_bytes: self.disk_size_bytes,
+        })
+    }
+}
+
+impl RemoteAccelerator {
+    fn into_gpu(self) -> Result<Gpu, ChatError> {
+        let kind = match self.kind.as_str() {
+            "nvidia" | "amd" | "intel" | "apple" | "other" => self.kind,
+            _ => {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Hardware,
+                    "硬件接口返回了未知加速器类型".into(),
+                ));
+            }
+        };
+        if self.name.trim().is_empty() {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Hardware,
+                "硬件接口返回了空加速器名称".into(),
+            ));
+        }
+        Ok(Gpu {
+            name: format!("{kind}: {}", self.name),
+            available_bytes: self.memory_bytes,
+        })
+    }
+}
+
 fn server_base(host: &str, port: u16) -> String {
     let host = match host {
         "0.0.0.0" => "127.0.0.1".to_string(),
@@ -333,6 +1082,22 @@ fn server_base(host: &str, port: u16) -> String {
         value => value.to_string(),
     };
     format!("http://{host}:{port}")
+}
+
+fn remote_error(error: RemoteHardwareError, operation: Operation) -> ChatError {
+    let kind = match error.code.as_str() {
+        "invalid_model" => ErrorKind::InvalidParameter,
+        "model_repository_not_found" => ErrorKind::NotFound,
+        "model_repository_unavailable" => ErrorKind::Timeout,
+        "unsupported_platform" | "hardware_probe_failed" => ErrorKind::ExecutionFailed,
+        "manifest_invalid" | "model_resolution_failed" => ErrorKind::InvalidResult,
+        _ => ErrorKind::InvalidResult,
+    };
+    failure(
+        kind,
+        operation,
+        format!("{}: {}", error.code, error.message),
+    )
 }
 
 fn invalid_search(reason: &str) -> ChatError {
@@ -389,13 +1154,14 @@ impl CatalogModel {
     /// # Notes
     /// 不把缺失字段补成虚构仓库。
     pub(super) fn validate(&self) -> Result<(), ChatError> {
+        let id_matches_model = self
+            .model
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.to_ascii_lowercase() == self.id);
         if self.name.trim().is_empty()
             || !valid_resource(&self.model, &self.source, &self.revision)
-            || self
-                .model
-                .rsplit('/')
-                .next()
-                .is_none_or(|name| name.to_ascii_lowercase() != self.id)
+            || (!self.preset && !id_matches_model)
         {
             return Err(invalid_search("模型目录条目无效或资源不完整"));
         }
@@ -465,203 +1231,200 @@ impl<T> CatalogPage<T> {
     }
 }
 
-/// 生产环境的工件保存根目录：`<本地数据目录>/BurnCloud/models`。
-pub(super) fn download_root() -> Result<PathBuf, ChatError> {
-    dirs::data_local_dir()
-        .map(|dir| dir.join("BurnCloud").join("models"))
-        .ok_or_else(|| {
-            failure(
-                ErrorKind::NotConnected,
-                Operation::Initialize(PreparationStage::Downloading),
-                "无法确定本地数据目录".into(),
-            )
-        })
-}
-
-/// 流式下载已确认的目录工件并校验 SHA-256，成功时返回本地路径。
-///
-/// # Notes
-/// 先写入 `.part`，字节数与摘要一致后才重命名；失败时删除临时文件。
-/// 依次回调下载进度（最多每 1% 一次）、`Downloaded` 与 `Verified`，不执行部署。
-pub(super) async fn download(
-    root: &Path,
+fn download_request_payload(
     request: &InitializationRequest,
-    mut callback: impl FnMut(PreparationEvent),
-) -> Result<String, ChatError> {
-    let downloading = Operation::Initialize(PreparationStage::Downloading);
-    let variant = &request.variant;
-    let url = Url::parse(&variant.artifact_source)
-        .ok()
-        .filter(|url| matches!(url.scheme(), "http" | "https") && url.host_str().is_some());
-    let (Some(selection), Some(url)) = (request.model.catalog_selection.as_ref(), url) else {
+    operation: Operation,
+) -> Result<DownloadModelRequest, ChatError> {
+    let selection = request.model.catalog_selection.as_ref().ok_or_else(|| {
+        failure(
+            ErrorKind::InvalidParameter,
+            operation,
+            "目录模型缺少仓库选择快照".into(),
+        )
+    })?;
+    selection.version.validate().map_err(|error| ChatError {
+        kind: error.kind,
+        operation,
+        reason: error.reason,
+    })?;
+    if !valid_digest(&request.variant.expected_sha256)
+        || request.variant.artifact_source.trim().is_empty()
+    {
         return Err(failure(
             ErrorKind::InvalidParameter,
-            downloading,
-            "缺少目录选择快照或工件地址无效".into(),
+            operation,
+            "目录模型工件凭据无效".into(),
         ));
-    };
-    let file_name = url
-        .path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .filter(|name| !name.is_empty())
-        .unwrap_or("model");
-    let v = &selection.version;
-    let dir = root
-        .join(segment(&v.source))
-        .join(segment(&v.model))
-        .join(segment(&v.revision));
-    let target = dir.join(segment(&format!("{}-{file_name}", variant.id)));
-    let mut part = target.clone().into_os_string();
-    part.push(".part");
-    let part = PathBuf::from(part);
-
-    if let Err(error) = fetch(&url, &dir, &part, variant, &mut callback).await {
-        remove_part(&part).await;
-        return Err(error);
     }
-    let io = |error: std::io::Error| {
-        failure(
-            ErrorKind::InvalidResult,
-            downloading,
-            format!("保存模型文件失败：{error}"),
-        )
-    };
-    let replaced = match tokio::fs::remove_file(&target).await {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(io(error)),
-        _ => tokio::fs::rename(&part, &target).await.map_err(io),
-    };
-    if let Err(error) = replaced {
-        remove_part(&part).await;
-        return Err(error);
-    }
-    let path = target.to_string_lossy().into_owned();
-    // 状态机严格比较摘要字符串，因此实际摘要沿用预期摘要的原始写法。
-    callback(PreparationEvent::Verified {
-        expected: variant.expected_sha256.clone(),
-        actual: variant.expected_sha256.clone(),
-        path: path.clone(),
-    });
-    Ok(path)
+    Ok(DownloadModelRequest {
+        model: selection.version.model.clone(),
+        source: selection.version.source.clone(),
+        revision: selection.version.revision.clone(),
+        variant_id: request.variant.id.clone(),
+        artifact_uri: request.variant.artifact_source.clone(),
+        checksum: request.variant.expected_sha256.clone(),
+    })
 }
 
-/// 下载与校验已完成、但部署尚未接入时的终止原因。
-pub(super) fn deployment_missing(path: &str) -> ChatError {
-    failure(
-        ErrorKind::NotConnected,
-        Operation::Initialize(PreparationStage::LoadingPackage),
-        format!("模型已下载并通过摘要校验（{path}），尚未接入部署"),
-    )
-}
-
-async fn fetch(
-    url: &Url,
-    dir: &Path,
-    part: &Path,
-    variant: &ModelVariant,
-    callback: &mut impl FnMut(PreparationEvent),
-) -> Result<(), ChatError> {
-    let downloading = Operation::Initialize(PreparationStage::Downloading);
-    let io = |error: std::io::Error| {
-        failure(
-            ErrorKind::InvalidResult,
-            downloading,
-            format!("写入模型文件失败：{error}"),
-        )
-    };
-    let size_mismatch = || {
-        failure(
-            ErrorKind::VerificationFailed,
-            Operation::Initialize(PreparationStage::Verifying),
-            "校验失败：下载字节数与声明大小不一致".into(),
-        )
-    };
-    tokio::fs::create_dir_all(dir).await.map_err(io)?;
-    let mut file = tokio::fs::File::create(part).await.map_err(io)?;
-    let client = Client::builder()
-        .connect_timeout(DOWNLOAD_TIMEOUT)
-        .read_timeout(DOWNLOAD_TIMEOUT)
-        .build()
-        .map_err(download_failure)?;
-    let mut response = client
-        .get(url.clone())
-        .send()
+async fn decode_download_task(
+    response: reqwest::Response,
+    operation: Operation,
+) -> Result<DownloadTaskData, ChatError> {
+    let status = response.status();
+    let body = response
+        .bytes()
         .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(download_failure)?;
-    let total = variant.disk_bytes;
-    let mut hasher = Sha256::new();
-    let mut received: u64 = 0;
-    let mut last_percent = None;
-    while let Some(chunk) = response.chunk().await.map_err(download_failure)? {
-        received = received.saturating_add(chunk.len() as u64);
-        // 超过声明大小立即中止，防止异常来源写满磁盘。
-        if received > total {
-            return Err(size_mismatch());
-        }
-        hasher.update(&chunk);
-        file.write_all(&chunk).await.map_err(io)?;
-        // 高频回调会反复刷新界面，只在百分比变化时上报。
-        let percent = u128::from(received) * 100 / u128::from(total);
-        if last_percent != Some(percent) {
-            last_percent = Some(percent);
-            callback(PreparationEvent::DownloadProgress {
-                completed: received,
-                total: Some(total),
-            });
-        }
+        .map_err(|error| transport(error, operation))?;
+    let envelope: DownloadTaskEnvelope = serde_json::from_slice(&body).map_err(|error| {
+        failure(
+            ErrorKind::InvalidResult,
+            operation,
+            format!("模型下载任务响应格式无效：{error}"),
+        )
+    })?;
+    if !status.is_success() || !envelope.success {
+        let error = envelope.error.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "模型下载失败响应缺少错误信息".into(),
+            )
+        })?;
+        return Err(download_error(error));
     }
-    file.flush().await.map_err(io)?;
-    drop(file);
-    if received != total {
-        return Err(size_mismatch());
-    }
-    callback(PreparationEvent::Downloaded);
-    let actual = format!("{:x}", hasher.finalize());
-    let expected = variant
-        .expected_sha256
-        .strip_prefix("sha256:")
-        .unwrap_or(&variant.expected_sha256);
-    if !actual.eq_ignore_ascii_case(expected) {
+    envelope.data.ok_or_else(|| {
+        failure(
+            ErrorKind::InvalidResult,
+            operation,
+            "模型下载成功响应缺少任务数据".into(),
+        )
+    })
+}
+
+fn valid_task_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && value.parse::<i64>().is_ok()
+}
+
+fn validate_download_task_shape(data: &DownloadTaskData) -> Result<(), ChatError> {
+    let operation = if data.status == "verifying" || data.status == "succeeded" {
+        Operation::Initialize(PreparationStage::Verifying)
+    } else {
+        Operation::Initialize(PreparationStage::Downloading)
+    };
+    if !valid_task_id(&data.task_id)
+        || !matches!(
+            data.status.as_str(),
+            "queued" | "downloading" | "verifying" | "succeeded" | "failed" | "cancelled"
+        )
+        || data.model.trim().is_empty()
+        || data.source.trim().is_empty()
+        || data.revision.trim().is_empty()
+        || data.variant_id.trim().is_empty()
+        || data
+            .total_bytes
+            .is_some_and(|total| total == 0 || data.completed_bytes > total)
+        || data
+            .local_path
+            .as_deref()
+            .is_some_and(|path| path.trim().is_empty() || path.contains('\0'))
+        || data
+            .actual_sha256
+            .as_deref()
+            .is_some_and(|digest| !valid_digest(digest))
+        || (data.status == "succeeded"
+            && (data.local_path.is_none() || data.actual_sha256.is_none()))
+        || (data.status == "failed"
+            && data.error.as_ref().is_none_or(|error| {
+                error.code.trim().is_empty() || error.message.trim().is_empty()
+            }))
+    {
         return Err(failure(
-            ErrorKind::VerificationFailed,
-            Operation::Initialize(PreparationStage::Verifying),
-            "校验失败：SHA-256 摘要不一致".into(),
+            ErrorKind::InvalidResult,
+            operation,
+            "模型下载任务响应字段无效".into(),
         ));
     }
     Ok(())
 }
 
-async fn remove_part(part: &Path) {
-    if let Err(error) = tokio::fs::remove_file(part).await {
-        // 清理失败不覆盖原始错误；残留的 .part 会在下次下载时被截断覆盖。
-        tracing::warn!("删除临时模型文件失败：{error}");
-    }
-}
-
-/// 路径段只保留 `[A-Za-z0-9._-]`，并拒绝纯点号段，防止路径穿越。
-fn segment(value: &str) -> String {
-    let cleaned: String = value
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if cleaned.chars().all(|c| c == '.') {
-        "_".into()
+fn map_download_task(
+    data: DownloadTaskData,
+    request: &InitializationRequest,
+) -> Result<DownloadTaskData, ChatError> {
+    validate_download_task_shape(&data)?;
+    let operation = if data.status == "verifying" || data.status == "succeeded" {
+        Operation::Initialize(PreparationStage::Verifying)
     } else {
-        cleaned
+        Operation::Initialize(PreparationStage::Downloading)
+    };
+    let selection = request.model.catalog_selection.as_ref().ok_or_else(|| {
+        failure(
+            ErrorKind::InvalidParameter,
+            operation,
+            "目录模型缺少仓库选择快照".into(),
+        )
+    })?;
+    if data.model != selection.version.model
+        || data.source != selection.version.source
+        || data.revision != selection.version.revision
+        || data.variant_id != request.variant.id
+    {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            operation,
+            "模型下载任务身份与当前选择不一致".into(),
+        ));
+    }
+    Ok(data)
+}
+
+fn download_task_terminal_error(data: &DownloadTaskData, operation: Operation) -> ChatError {
+    let error = data.error.clone().unwrap_or_else(|| RemoteHardwareError {
+        code: "download_failed".into(),
+        message: if data.status == "cancelled" {
+            "模型下载任务已取消".into()
+        } else {
+            "模型文件下载失败".into()
+        },
+    });
+    let mut mapped = download_error(error);
+    if matches!(mapped.operation, Operation::Initialize(_)) {
+        mapped.operation = operation;
+    }
+    mapped
+}
+
+fn emit_downloaded(callback: &mut impl FnMut(PreparationEvent), emitted: &mut bool) {
+    if !*emitted {
+        callback(PreparationEvent::Downloaded);
+        *emitted = true;
     }
 }
 
-fn download_failure(error: reqwest::Error) -> ChatError {
-    let reason = format!("模型文件下载失败，请重试：{error}");
-    let mut result = transport(error, Operation::Initialize(PreparationStage::Downloading));
-    result.reason = reason;
-    result
+fn download_error(error: RemoteHardwareError) -> ChatError {
+    let operation = if error.code == "checksum_mismatch" || error.code == "download_storage_failed"
+    {
+        Operation::Initialize(PreparationStage::Verifying)
+    } else {
+        Operation::Initialize(PreparationStage::Downloading)
+    };
+    let kind = match error.code.as_str() {
+        "invalid_download_request" => ErrorKind::InvalidParameter,
+        "checksum_mismatch" => ErrorKind::VerificationFailed,
+        "download_service_unavailable"
+        | "download_failed"
+        | "download_task_not_found"
+        | "download_task_not_cancellable" => ErrorKind::ExecutionFailed,
+        "download_storage_failed" => ErrorKind::VerificationFailed,
+        _ => ErrorKind::InvalidResult,
+    };
+    failure(
+        kind,
+        operation,
+        format!("{}: {}", error.code, error.message),
+    )
 }
 
 fn failure(kind: ErrorKind, operation: Operation, reason: String) -> ChatError {

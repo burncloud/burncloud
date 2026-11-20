@@ -1,6 +1,11 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Component, Path, PathBuf};
 
+#[cfg(windows)]
+use std::ffi::OsString;
+#[cfg(windows)]
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
 use tokio::net::lookup_host;
 use url::Url;
 
@@ -73,7 +78,15 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
         .next()
         .is_some_and(|component| component.as_os_str() == "models");
     let candidate = if requested.is_absolute() {
-        requested.to_path_buf()
+        #[cfg(windows)]
+        {
+            // canonicalize 返回扩展长度路径，先统一绝对输入的表示才能继续执行同一套边界检查。
+            to_extended_windows_path(requested)
+        }
+        #[cfg(not(windows))]
+        {
+            requested.to_path_buf()
+        }
     } else if starts_at_models {
         executable_dir.join(requested)
     } else {
@@ -101,6 +114,11 @@ pub(super) async fn normalize_download_dir(dir: &str) -> Result<PathBuf> {
             "目录解析后超出可执行文件同级 models 子目录".to_string(),
         ));
     }
+
+    #[cfg(windows)]
+    let candidate = to_regular_windows_path(&candidate)
+        .ok_or_else(|| DownloadError::InvalidDirectory("Windows 路径格式转换失败".to_string()))?;
+
     Ok(candidate)
 }
 
@@ -120,6 +138,92 @@ pub(super) async fn existing_database_file(final_path: &str) -> Result<Option<Pa
     }
 }
 
+#[cfg(windows)]
+fn to_extended_windows_path(path: &Path) -> PathBuf {
+    let path_units: Vec<u16> = path.as_os_str().encode_wide().collect();
+    let extended_prefix = "\\\\?\\".encode_utf16().collect::<Vec<_>>();
+    let slash_extended_prefix = "//?/".encode_utf16().collect::<Vec<_>>();
+    if path_units.starts_with(&extended_prefix) || path_units.starts_with(&slash_extended_prefix) {
+        return PathBuf::from(OsString::from_wide(&normalize_windows_separators(
+            &path_units,
+        )));
+    }
+
+    let unc_prefix = "\\\\".encode_utf16().collect::<Vec<_>>();
+    let slash_unc_prefix = "//".encode_utf16().collect::<Vec<_>>();
+    let mut extended_units = extended_prefix;
+    if path_units.starts_with(&unc_prefix) {
+        extended_units.extend("UNC\\".encode_utf16());
+        append_windows_path_units(&mut extended_units, &path_units[unc_prefix.len()..]);
+    } else if path_units.starts_with(&slash_unc_prefix) {
+        extended_units.extend("UNC\\".encode_utf16());
+        append_windows_path_units(&mut extended_units, &path_units[slash_unc_prefix.len()..]);
+    } else {
+        append_windows_path_units(&mut extended_units, &path_units);
+    }
+    PathBuf::from(OsString::from_wide(&extended_units))
+}
+
+#[cfg(windows)]
+fn to_regular_windows_path(path: &Path) -> Option<PathBuf> {
+    let path_units: Vec<u16> = path.as_os_str().encode_wide().collect();
+    let extended_prefix = "\\\\?\\".encode_utf16().collect::<Vec<_>>();
+    let slash_extended_prefix = "//?/".encode_utf16().collect::<Vec<_>>();
+    let path_units = if path_units.starts_with(&extended_prefix) {
+        &path_units[extended_prefix.len()..]
+    } else if path_units.starts_with(&slash_extended_prefix) {
+        &path_units[slash_extended_prefix.len()..]
+    } else {
+        // 即使系统返回普通路径，也统一分隔符，避免数据库记录与 aria2 返回路径使用不同表示。
+        let regular_units = normalize_windows_separators(&path_units);
+        return Some(PathBuf::from(OsString::from_wide(&regular_units)));
+    };
+
+    let unc_prefix = "UNC\\".encode_utf16().collect::<Vec<_>>();
+    let slash_unc_prefix = "UNC/".encode_utf16().collect::<Vec<_>>();
+    let (path_units, mut regular_units) = if path_units.starts_with(&unc_prefix) {
+        (
+            &path_units[unc_prefix.len()..],
+            "\\\\".encode_utf16().collect(),
+        )
+    } else if path_units.starts_with(&slash_unc_prefix) {
+        (
+            &path_units[slash_unc_prefix.len()..],
+            "\\\\".encode_utf16().collect(),
+        )
+    } else {
+        (path_units, Vec::new())
+    };
+    append_windows_path_units(&mut regular_units, path_units);
+    let regular_path = PathBuf::from(OsString::from_wide(&regular_units));
+    let regular_units = regular_path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if regular_units.starts_with(&extended_prefix)
+        || regular_units.starts_with(&slash_extended_prefix)
+    {
+        None
+    } else {
+        Some(regular_path)
+    }
+}
+
+#[cfg(windows)]
+fn append_windows_path_units(target: &mut Vec<u16>, source: &[u16]) {
+    target.extend(normalize_windows_separators(source));
+}
+
+#[cfg(windows)]
+fn normalize_windows_separators(path_units: &[u16]) -> Vec<u16> {
+    path_units
+        .iter()
+        .map(|unit| {
+            if *unit == b'/' as u16 {
+                b'\\' as u16
+            } else {
+                *unit
+            }
+        })
+        .collect()
+}
 async fn ensure_existing_path_inside(root: &Path, candidate: &Path) -> Result<()> {
     let relative = candidate.strip_prefix(root).map_err(|_| {
         DownloadError::InvalidDirectory("目录必须位于可执行文件同级 models 子目录内".to_string())

@@ -587,8 +587,14 @@ async fn test_t11() -> TestResult {
 }
 
 async fn find_models_directories(root: &Path) -> TestResult<Vec<PathBuf>> {
-    let mut pending = vec![root.to_path_buf()];
+    let models_root = root.join(MODELS_DIR);
+    let mut pending = vec![models_root.clone()];
     let mut models = Vec::new();
+    if tokio::fs::try_exists(&models_root).await? {
+        models.push(normalize_path(
+            &tokio::fs::canonicalize(&models_root).await?,
+        ));
+    }
     while let Some(directory) = pending.pop() {
         let mut entries = tokio::fs::read_dir(&directory).await?;
         while let Some(entry) = entries.next_entry().await? {

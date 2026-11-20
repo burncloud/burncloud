@@ -9,7 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::{DownloadError, Result};
 use crate::manager::{
-    invalid_record, DownloadManager, DownloadStatus, DownloadWaiter, MonitorState, MAX_RETRIES,
+    invalid_record, DownloadManager, DownloadStatus, DownloadTaskHandle, DownloadTaskSnapshot,
+    DownloadTaskStatus, DownloadWaiter, MonitorState, MAX_RETRIES,
 };
 use crate::monitor::monitor_loop;
 use crate::utils::{
@@ -49,6 +50,7 @@ impl DownloadManager {
             db,
             monitor_states,
             start_lock: Arc::new(tokio::sync::Mutex::new(())),
+            task_lock: Arc::new(tokio::sync::Mutex::new(())),
             cancellation,
             monitor: None,
         };
@@ -77,6 +79,248 @@ impl DownloadManager {
         Ok(manager)
     }
 
+    /// 创建或复用下载任务，并在任务登记后立即返回。
+    ///
+    /// # 示例
+    ///
+    /// ```no_run
+    /// # async fn example(
+    /// #     manager: &burncloud_download::DownloadManager,
+    /// # ) -> Result<(), Box<dyn std::error::Error>> {
+    /// let handle = manager
+    ///     .start_download("https://example.com/model.gguf", "models")
+    ///     .await?;
+    /// println!("task {}", handle.task_id);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # 注意
+    ///
+    /// 此方法只负责校验、登记和监控注册，不等待下载完成；`gid` 只在当前 aria2
+    /// 执行期间稳定，调用方应保存 `task_id`。
+    pub async fn start_download(&self, url: &str, dir: &str) -> Result<DownloadTaskHandle> {
+        validate_url(url).await?;
+        let filename = extract_filename_from_url(url)
+            .as_deref()
+            .map(sanitize_filename)
+            .transpose()?
+            .ok_or(DownloadError::InvalidFilename)?;
+        let directory = normalize_download_dir(dir).await?;
+        let directory_text = directory.to_string_lossy().into_owned();
+
+        let _start_guard = self.start_lock.lock().await;
+        if let Some(state) = self
+            .monitor_states
+            .lock()
+            .await
+            .values()
+            .find(|state| state.has_key(url, &directory_text, &filename))
+        {
+            return Ok(handle_from_monitor_state(state));
+        }
+
+        if let Some(record) = self
+            .find_reusable_record(url, &directory_text, &filename)
+            .await?
+        {
+            return handle_from_record(&record);
+        }
+
+        self.start_or_join(url, directory, filename).await
+    }
+
+    /// 读取指定稳定任务 ID 的当前下载快照。
+    ///
+    /// # 示例
+    ///
+    /// 查询成功但没有对应记录时返回 `None`，数据库或字段解析失败则返回错误。
+    ///
+    /// # 注意
+    ///
+    /// 任务快照只包含 aria2 与数据库可见的下载信息；摘要校验由上层服务维护。
+    pub async fn get_task(&self, task_id: i64) -> Result<Option<DownloadTaskSnapshot>> {
+        let record = self
+            .db
+            .list(None)
+            .await?
+            .into_iter()
+            .find(|record| record.id == task_id);
+        let Some(record) = record else {
+            return Ok(None);
+        };
+
+        let state = self
+            .monitor_states
+            .lock()
+            .await
+            .values()
+            .find(|state| state.db_id == task_id)
+            .map(|state| {
+                (
+                    state.gid.clone(),
+                    state.url.clone(),
+                    state.dir.clone(),
+                    state.filename.clone(),
+                    public_status(state.status),
+                    state.total_length,
+                    state.completed_length,
+                    state.download_speed,
+                )
+            });
+
+        let (gid, url, download_dir, filename, status, total_length, completed_length, speed) =
+            match state {
+                Some(state) => state,
+                None => (
+                    record.gid.clone(),
+                    record_url(&record)?,
+                    record_download_dir(&record)?,
+                    record_filename(&record)?,
+                    status_from_record(&record.status).ok_or_else(|| {
+                        invalid_record(format!(
+                            "任务 {} 的数据库状态无效：{}",
+                            record.id, record.status
+                        ))
+                    })?,
+                    record.total_length.unwrap_or(0),
+                    record.completed_length.unwrap_or(0),
+                    record.download_speed.unwrap_or(0),
+                ),
+            };
+
+        Ok(Some(DownloadTaskSnapshot {
+            task_id: record.id,
+            gid,
+            url,
+            download_dir,
+            filename,
+            status,
+            completed_bytes: non_negative_bytes(completed_length, "completed_length")?,
+            total_bytes: optional_non_negative_bytes(total_length, "total_length")?,
+            download_speed: non_negative_bytes(speed, "download_speed")?,
+            error: record.error,
+            final_path: record.final_path.map(PathBuf::from),
+        }))
+    }
+
+    /// 取消仍处于可取消状态的下载任务。
+    ///
+    /// # 示例
+    ///
+    /// 已取消任务可以重复调用并返回同一取消快照；成功、失败等终态不会被伪装成取消成功。
+    ///
+    /// # 注意
+    ///
+    /// aria2 移除与数据库持久化按固定顺序执行；持久化失败会返回补偿错误，调用方不得
+    /// 把它当作已取消处理。
+    pub async fn cancel_task(&self, task_id: i64) -> Result<DownloadTaskSnapshot> {
+        let _task_guard = self.task_lock.lock().await;
+        let Some(snapshot) = self.get_task(task_id).await? else {
+            return Err(DownloadError::TaskNotFound);
+        };
+        match snapshot.status {
+            DownloadTaskStatus::Cancelled => return Ok(snapshot),
+            DownloadTaskStatus::Succeeded | DownloadTaskStatus::Failed => {
+                return Err(DownloadError::TaskNotCancellable(format!(
+                    "任务当前状态为 {:?}",
+                    snapshot.status
+                )))
+            }
+            DownloadTaskStatus::Queued
+            | DownloadTaskStatus::Downloading
+            | DownloadTaskStatus::Verifying => {}
+        }
+
+        let should_remove_aria2 = matches!(
+            snapshot.status,
+            DownloadTaskStatus::Queued | DownloadTaskStatus::Downloading
+        );
+        if should_remove_aria2 {
+            let client = self.rpc_client()?;
+            if let Err(error) = client.remove(&snapshot.gid).await {
+                return Err(DownloadError::Aria2(error));
+            }
+        }
+
+        if let Err(error) = self
+            .db
+            .mark_cancelled(snapshot.task_id, &snapshot.gid)
+            .await
+        {
+            return Err(DownloadError::Compensation {
+                operation: error.to_string(),
+                cleanup: if should_remove_aria2 {
+                    "aria2 任务已移除，无法自动恢复原任务".to_string()
+                } else {
+                    "无需移除 aria2 任务".to_string()
+                },
+            });
+        }
+
+        let waiters = self.remove_monitor_state(task_id).await;
+        notify_cancelled_waiters(&snapshot.gid, waiters).await;
+        self.get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)
+    }
+
+    /// 等待指定下载任务完成并返回现存的最终文件路径。
+    ///
+    /// # 示例
+    ///
+    /// ```no_run
+    /// # async fn example(
+    /// #     manager: &burncloud_download::DownloadManager,
+    /// # ) -> Result<(), Box<dyn std::error::Error>> {
+    /// let handle = manager
+    ///     .start_download("https://example.com/model.gguf", "models")
+    ///     .await?;
+    /// let path = manager.wait_for_task(handle.task_id).await?;
+    /// println!("{}", path.display());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # 注意
+    ///
+    /// 等待复用监控器已有的通知通道；客户端 HTTP 连接断开不会影响后台任务。
+    pub async fn wait_for_task(&self, task_id: i64) -> Result<PathBuf> {
+        let receiver = {
+            let _start_guard = self.start_lock.lock().await;
+            let Some(snapshot) = self.get_task(task_id).await? else {
+                return Err(DownloadError::TaskNotFound);
+            };
+            match snapshot.status {
+                DownloadTaskStatus::Succeeded | DownloadTaskStatus::Verifying => {
+                    return final_path_from_snapshot(&snapshot).await;
+                }
+                DownloadTaskStatus::Failed => {
+                    return Err(DownloadError::Failed(
+                        snapshot.error.unwrap_or_else(|| "下载任务失败".to_string()),
+                    ));
+                }
+                DownloadTaskStatus::Cancelled => {
+                    return Err(DownloadError::Failed(
+                        snapshot
+                            .error
+                            .unwrap_or_else(|| "下载任务已取消".to_string()),
+                    ));
+                }
+                DownloadTaskStatus::Queued | DownloadTaskStatus::Downloading => {}
+            }
+
+            let (sender, receiver) = oneshot::channel();
+            let mut states = self.monitor_states.lock().await;
+            let Some(state) = states.values_mut().find(|state| state.db_id == task_id) else {
+                return Err(DownloadError::NotificationClosed);
+            };
+            state.waiters.push(sender);
+            receiver
+        };
+        receive_result(receiver).await
+    }
+
     /// 下载 HTTP 或 HTTPS 资源，并在任务完成后返回最终文件路径。
     ///
     /// # 示例
@@ -95,47 +339,11 @@ impl DownloadManager {
     ///
     /// # 注意
     ///
-    /// 成功时返回数据库记录中的绝对文件路径，并确认该文件仍存在。
-    /// 下载目录必须位于可执行文件同级的 `models` 子目录内；回环、私有和链路本地目标地址会被拒绝。
+    /// 这是兼容旧调用方的等待包装：先调用 `start_download` 登记任务，再调用
+    /// `wait_for_task` 等待同一稳定任务 ID。新模型下载接口应直接使用分离的异步生命周期。
     pub async fn download(&self, url: &str, dir: &str) -> Result<PathBuf> {
-        validate_url(url).await?;
-        let filename = extract_filename_from_url(url)
-            .as_deref()
-            .map(sanitize_filename)
-            .transpose()?
-            .ok_or(DownloadError::InvalidFilename)?;
-        let directory = normalize_download_dir(dir).await?;
-        let directory_text = directory.to_string_lossy().into_owned();
-
-        let receiver = {
-            let _start_guard = self.start_lock.lock().await;
-            let (sender, receiver) = oneshot::channel();
-            let (receiver, sender) = match self
-                .attach_waiter(url, &directory_text, &filename, sender)
-                .await
-            {
-                Ok(()) => (receiver, None),
-                Err(sender) => (receiver, Some(sender)),
-            };
-
-            if let Some(sender) = sender {
-                if let Some(record) = self
-                    .db
-                    .find_completed(url, &directory_text, &filename)
-                    .await?
-                {
-                    if let Some(path) = record.final_path.as_deref() {
-                        if let Some(path) = existing_database_file(path).await? {
-                            return Ok(path);
-                        }
-                    }
-                }
-
-                self.start_or_join(url, directory, filename, sender).await?;
-            }
-            receiver
-        };
-        receive_result(receiver).await
+        let handle = self.start_download(url, dir).await?;
+        self.wait_for_task(handle.task_id).await
     }
 
     async fn start_or_join(
@@ -143,8 +351,7 @@ impl DownloadManager {
         url: &str,
         directory: PathBuf,
         filename: String,
-        sender: DownloadWaiter,
-    ) -> Result<()> {
+    ) -> Result<DownloadTaskHandle> {
         let client = self.rpc_client()?;
         let directory_text = directory.to_string_lossy().into_owned();
         let outcome = client
@@ -169,11 +376,10 @@ impl DownloadManager {
 
         let mut states = self.monitor_states.lock().await;
         if let Some(state) = states
-            .values_mut()
+            .values()
             .find(|state| state.has_key(url, &directory_text, &filename))
         {
-            state.waiters.push(sender);
-            return Ok(());
+            return Ok(handle_from_monitor_state(state));
         }
         if let Some(state) = states.get_mut(&gid) {
             if state.db_id != db_id
@@ -185,8 +391,7 @@ impl DownloadManager {
                     "aria2 GID {gid} is already registered to a different download"
                 )));
             }
-            state.waiters.push(sender);
-            return Ok(());
+            return Ok(handle_from_monitor_state(state));
         }
 
         let state = MonitorState {
@@ -201,10 +406,11 @@ impl DownloadManager {
             total_length: 0,
             completed_length: 0,
             download_speed: 0,
-            waiters: vec![sender],
+            waiters: Vec::new(),
         };
+        let handle = handle_from_monitor_state(&state);
         states.insert(gid, state);
-        Ok(())
+        Ok(handle)
     }
 
     async fn persist_task(
@@ -249,23 +455,50 @@ impl DownloadManager {
         }
     }
 
-    async fn attach_waiter(
+    async fn find_reusable_record(
         &self,
         url: &str,
-        dir: &str,
+        directory: &str,
         filename: &str,
-        sender: DownloadWaiter,
-    ) -> std::result::Result<(), DownloadWaiter> {
-        let mut states = self.monitor_states.lock().await;
-        if let Some(state) = states
-            .values_mut()
-            .find(|state| state.has_key(url, dir, filename))
-        {
-            state.waiters.push(sender);
-            Ok(())
-        } else {
-            Err(sender)
+    ) -> Result<Option<burncloud_database_sys::SysDownload>> {
+        for record in self.db.list(None).await? {
+            if record.url.as_deref() != Some(url)
+                || record.download_dir.as_deref() != Some(directory)
+                || record.filename.as_deref() != Some(filename)
+            {
+                continue;
+            }
+            if matches!(record.status.as_str(), "failed" | "cancelled") {
+                continue;
+            }
+            if matches!(
+                record.status.as_str(),
+                "completed" | "succeeded" | "verifying"
+            ) {
+                let Some(path) = record.final_path.as_deref() else {
+                    continue;
+                };
+                if existing_database_file(path).await?.is_none() {
+                    continue;
+                }
+            }
+            return Ok(Some(record));
         }
+        Ok(None)
+    }
+
+    async fn remove_monitor_state(&self, task_id: i64) -> Vec<DownloadWaiter> {
+        let mut states = self.monitor_states.lock().await;
+        let Some(gid) = states
+            .iter()
+            .find_map(|(gid, state)| (state.db_id == task_id).then(|| gid.clone()))
+        else {
+            return Vec::new();
+        };
+        states
+            .remove(&gid)
+            .map(|mut state| state.take_waiters())
+            .unwrap_or_default()
     }
 
     async fn restore_incomplete(&mut self) -> Result<()> {
@@ -311,19 +544,22 @@ impl DownloadManager {
                     error = %error,
                     "aria2 中找不到已保存任务，尝试重建"
                 );
-                let outcome = client
-                    .add_uri(
-                        vec![url.clone()],
-                        Some(download_options(&directory_text, &filename)),
-                    )
-                    .await?;
-                gid = outcome.gid().to_string();
+                let (rebuilt_gid, rebuilt_task_created) = Self::rebuild_missing_task(
+                    &client,
+                    &url,
+                    &directory_text,
+                    &filename,
+                    &record.gid,
+                    record.id,
+                )
+                .await?;
+                gid = rebuilt_gid;
                 if let Err(error) = self
                     .db
                     .update_gid_by_id(record.id, &gid, i64::from(retry_count))
                     .await
                 {
-                    if outcome.is_created() {
+                    if rebuilt_task_created {
                         return match client.remove(&gid).await {
                             Ok(_) => Err(error.into()),
                             Err(cleanup) => Err(DownloadError::Compensation {
@@ -364,10 +600,151 @@ impl DownloadManager {
         Ok(())
     }
 
+    async fn rebuild_missing_task(
+        client: &Aria2RpcClient,
+        url: &str,
+        directory: &str,
+        filename: &str,
+        old_gid: &str,
+        record_id: i64,
+    ) -> Result<(String, bool)> {
+        let options = download_options(directory, filename);
+        let mut outcome = client.add_uri(vec![url.to_string()], Some(options)).await?;
+        if outcome.gid() == old_gid {
+            // aria2 偶尔会把恢复请求匹配到旧 GID；先移除该匹配任务，再重新创建，避免数据库继续指向旧任务。
+            client.remove(outcome.gid()).await?;
+            outcome = client
+                .add_uri(
+                    vec![url.to_string()],
+                    Some(download_options(directory, filename)),
+                )
+                .await?;
+            if outcome.gid() == old_gid {
+                client.remove(outcome.gid()).await?;
+                return Err(invalid_record(format!(
+                    "任务 {record_id} 重建后仍复用了旧 aria2 GID：{old_gid}"
+                )));
+            }
+        }
+        Ok((outcome.gid().to_string(), outcome.is_created()))
+    }
+
     fn rpc_client(&self) -> Result<Aria2RpcClient> {
         self.aria2
             .create_rpc_client()
             .ok_or_else(|| Aria2Error::RpcError("aria2 RPC 客户端未就绪".to_string()).into())
+    }
+}
+
+fn public_status(status: DownloadStatus) -> DownloadTaskStatus {
+    match status {
+        DownloadStatus::Pending => DownloadTaskStatus::Queued,
+        DownloadStatus::Active | DownloadStatus::Waiting | DownloadStatus::Paused => {
+            DownloadTaskStatus::Downloading
+        }
+        DownloadStatus::Completed => DownloadTaskStatus::Verifying,
+        DownloadStatus::Failed => DownloadTaskStatus::Failed,
+        DownloadStatus::Cancelled => DownloadTaskStatus::Cancelled,
+    }
+}
+
+fn status_from_record(value: &str) -> Option<DownloadTaskStatus> {
+    match value {
+        "pending" => Some(DownloadTaskStatus::Queued),
+        "active" | "waiting" | "paused" => Some(DownloadTaskStatus::Downloading),
+        "completed" | "complete" | "verifying" => Some(DownloadTaskStatus::Verifying),
+        "succeeded" => Some(DownloadTaskStatus::Succeeded),
+        "failed" => Some(DownloadTaskStatus::Failed),
+        "cancelled" | "canceled" | "removed" => Some(DownloadTaskStatus::Cancelled),
+        _ => None,
+    }
+}
+
+fn handle_from_monitor_state(state: &MonitorState) -> DownloadTaskHandle {
+    DownloadTaskHandle {
+        task_id: state.db_id,
+        gid: state.gid.clone(),
+        status: public_status(state.status),
+    }
+}
+
+fn handle_from_record(record: &burncloud_database_sys::SysDownload) -> Result<DownloadTaskHandle> {
+    let status = status_from_record(&record.status).ok_or_else(|| {
+        invalid_record(format!(
+            "任务 {} 的数据库状态无效：{}",
+            record.id, record.status
+        ))
+    })?;
+    Ok(DownloadTaskHandle {
+        task_id: record.id,
+        gid: record.gid.clone(),
+        status,
+    })
+}
+
+fn record_url(record: &burncloud_database_sys::SysDownload) -> Result<String> {
+    if let Some(url) = record.url.as_deref().filter(|url| !url.is_empty()) {
+        return Ok(url.to_string());
+    }
+    serde_json::from_str::<Vec<String>>(&record.uris)
+        .map_err(|error| invalid_record(format!("任务 {} 的 URI 数据无效：{error}", record.id)))?
+        .into_iter()
+        .next()
+        .filter(|url| !url.is_empty())
+        .ok_or_else(|| invalid_record(format!("任务 {} 缺少有效 URL", record.id)))
+}
+
+fn record_download_dir(record: &burncloud_database_sys::SysDownload) -> Result<PathBuf> {
+    record
+        .download_dir
+        .as_deref()
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| invalid_record(format!("任务 {} 缺少下载目录", record.id)))
+}
+
+fn record_filename(record: &burncloud_database_sys::SysDownload) -> Result<String> {
+    record
+        .filename
+        .as_deref()
+        .filter(|filename| !filename.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            record_url(record)
+                .ok()
+                .and_then(|url| extract_filename_from_url(&url))
+        })
+        .ok_or_else(|| invalid_record(format!("任务 {} 缺少有效文件名", record.id)))
+}
+
+fn non_negative_bytes(value: i64, field: &str) -> Result<u64> {
+    u64::try_from(value).map_err(|_| invalid_record(format!("任务字段 {field} 不能为负数")))
+}
+
+fn optional_non_negative_bytes(value: i64, field: &str) -> Result<Option<u64>> {
+    if value == 0 {
+        Ok(None)
+    } else {
+        non_negative_bytes(value, field).map(Some)
+    }
+}
+
+async fn final_path_from_snapshot(snapshot: &DownloadTaskSnapshot) -> Result<PathBuf> {
+    let Some(path) = snapshot.final_path.as_deref() else {
+        return Err(DownloadError::Failed(
+            "下载任务缺少最终文件路径".to_string(),
+        ));
+    };
+    existing_database_file(&path.to_string_lossy())
+        .await?
+        .ok_or_else(|| DownloadError::Failed("下载任务的最终文件路径无效".to_string()))
+}
+
+async fn notify_cancelled_waiters(gid: &str, waiters: Vec<DownloadWaiter>) {
+    for waiter in waiters {
+        if waiter.send(Err("下载任务已取消".to_string())).is_err() {
+            tracing::debug!(gid = %gid, "下载调用方已停止等待");
+        }
     }
 }
 

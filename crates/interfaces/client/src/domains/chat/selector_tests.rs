@@ -260,17 +260,14 @@ fn unavailable_selection_is_rejected_and_conversation_switch_keeps_snapshot() {
 }
 
 #[test]
-fn catalog_variants_download_verify_then_stop_without_ready() {
-    use super::super::{
-        catalog::deployment_missing,
-        model::{Gpu, ModelVariant, PreparationEvent, GIB},
-    };
+fn catalog_variants_download_verify_then_enter_artifact_ready() {
+    use super::super::model::{Gpu, ModelVariant, PreparationEvent, PreparedModel, GIB};
     let digest = format!("sha256:{}", "c".repeat(64));
     let variant = ModelVariant {
         id: "q4".into(),
         quantization: "Q4_K_M".into(),
         runtime: "llama.cpp".into(),
-        artifact_source: "https://example.com/q4.gguf".into(),
+        artifact_source: "https://modelscope.cn/models/Qwen/Qwen3-8B/resolve/master/q4.gguf".into(),
         expected_sha256: digest.clone(),
         ram_bytes: 1,
         vram_bytes: 1,
@@ -298,12 +295,12 @@ fn catalog_variants_download_verify_then_stop_without_ready() {
         PreparationStage::SelectingVariant
     );
     assert!(chat.choose_variant(run, "q4"));
-    assert!(chat.initialization_request(run).is_some());
+    let request = chat.initialization_request(run).expect("下载快照");
     chat.preparation_event(
         run,
         PreparationEvent::DownloadProgress {
-            completed: 10,
-            total: Some(10),
+            completed: 0,
+            total: None,
         },
     );
     chat.preparation_event(run, PreparationEvent::Downloaded);
@@ -311,89 +308,29 @@ fn catalog_variants_download_verify_then_stop_without_ready() {
         run,
         PreparationEvent::Verified {
             expected: digest.clone(),
-            actual: digest,
+            actual: digest.clone(),
             path: "q4.gguf".into(),
         },
     );
     assert_eq!(
         chat.preparation().expect("卡片").stage,
-        PreparationStage::LoadingPackage
+        PreparationStage::ArtifactReady
     );
-    // 部署未接入：校验通过后以 NotConnected 停止，不记录就绪、不续聊。
-    assert!(chat
-        .finish_preparation(run, Err(deployment_missing("q4.gguf")))
-        .is_none());
-    let card = chat.preparation().expect("卡片");
-    assert_eq!(card.stage, PreparationStage::Failed);
-    let error = card.error.as_ref().expect("停止原因");
-    assert_eq!(error.kind, ErrorKind::NotConnected);
-    assert!(error.reason.contains("尚未接入部署"));
-    assert!(!chat.is_model_ready(&selection().id()));
-    assert!(!chat.can_send());
-    assert_eq!(chat.draft(), "问题");
-}
 
-#[test]
-fn downloaded_catalog_artifact_stops_before_deployment_and_never_becomes_ready() {
-    use super::super::{
-        catalog::deployment_missing,
-        model::{Gpu, ModelVariant, PreparationEvent, GIB},
+    let prepared = PreparedModel {
+        model: request.model,
+        variant: request.variant,
+        actual_sha256: digest,
+        local_path: "q4.gguf".into(),
     };
-    let digest = format!("sha256:{}", "c".repeat(64));
-    let variant = ModelVariant {
-        id: "q4".into(),
-        quantization: "Q4_K_M".into(),
-        runtime: "llama.cpp".into(),
-        artifact_source: "https://example.com/q4.gguf".into(),
-        expected_sha256: digest.clone(),
-        ram_bytes: GIB,
-        vram_bytes: GIB,
-        disk_bytes: 10,
-    };
-    let mut chat = ChatState::default();
-    chat.set_draft("问题".into());
-    let run = chat
-        .accept_catalog(selection(), VersionStatus::Downloadable, vec![variant])
-        .expect("启动检测");
-    chat.finish_hardware(
-        run,
-        Ok(Hardware {
-            gpus: Some(vec![Gpu {
-                name: "GPU".into(),
-                available_bytes: Some(8 * GIB),
-            }]),
-            ram_bytes: Some(8 * GIB),
-            disk_bytes: Some(8 * GIB),
-            ..Hardware::default()
-        }),
-    );
+    assert!(chat.finish_preparation(run, Ok(prepared)).is_none());
+    let card = chat.preparation().expect("下载完成卡片");
+    assert_eq!(card.stage, PreparationStage::ArtifactReady);
+    assert_eq!(card.local_path.as_deref(), Some("q4.gguf"));
     assert_eq!(
-        chat.preparation().expect("卡片").stage,
-        PreparationStage::SelectingVariant
+        card.actual_digest.as_deref(),
+        Some(card.model.variants[0].expected_sha256.as_str())
     );
-    assert!(chat.choose_variant(run, "q4"));
-    for event in [
-        PreparationEvent::DownloadProgress {
-            completed: 10,
-            total: Some(10),
-        },
-        PreparationEvent::Downloaded,
-        PreparationEvent::Verified {
-            expected: digest.clone(),
-            actual: digest,
-            path: "model.gguf".into(),
-        },
-    ] {
-        chat.preparation_event(run, event);
-    }
-    assert!(chat
-        .finish_preparation(run, Err(deployment_missing("model.gguf")))
-        .is_none());
-    let card = chat.preparation().expect("卡片");
-    assert_eq!(card.stage, PreparationStage::Failed);
-    let error = card.error.as_ref().expect("部署未接入");
-    assert_eq!(error.kind, ErrorKind::NotConnected);
-    assert!(error.reason.contains("尚未接入部署"));
     assert!(!chat.is_model_ready(&selection().id()));
     assert!(!chat.can_send());
     assert_eq!(chat.draft(), "问题");

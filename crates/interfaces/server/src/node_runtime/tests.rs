@@ -22,6 +22,7 @@ use tokio::time::sleep;
 use super::LlamaCppRuntimeAdapter;
 
 #[tokio::test]
+#[ignore = "需要本机 llama-server 与 GGUF 模型"]
 async fn llama_runtime_adapter_plans_verified_local_artifact() {
     let model_file = tempfile::NamedTempFile::new().unwrap();
     let model_path = model_file.path().canonicalize().unwrap();

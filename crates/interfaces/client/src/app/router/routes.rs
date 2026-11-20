@@ -25,6 +25,11 @@ use crate::domains::supplier::settings::page::SupplierSettings as SupplierSettin
 use crate::domains::supplier::settlements::page::SupplierSettlements as SupplierSettlementsPage;
 use dioxus::prelude::*;
 
+// Dioxus 路由派生宏在无默认特性检查中会生成不可达分支，Clippy 将其视为错误，但不影响路由行为。
+#[allow(
+    unreachable_code,
+    reason = "Dioxus 路由派生宏会生成不可达分支，且该分支不影响实际路由行为。"
+)]
 #[derive(Clone, Routable, Debug, PartialEq)]
 pub enum Route {
     #[route("/")]

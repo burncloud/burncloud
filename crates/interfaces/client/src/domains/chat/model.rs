@@ -37,11 +37,17 @@ pub(super) struct ModelVariant {
     pub(super) disk_bytes: u64,
 }
 impl ModelVariant {
-    /// 未知资源不视为充足；显存只比较单卡最大可用量。
+    /// RAM 和磁盘未知时不视为充足；显存只比较单卡最大可用量。
+    ///
+    /// 显存门槛为 `0` 表示外部仓库未声明要求，不能因为当前没有可识别 GPU
+    /// 就阻挡该候选；真正的显存门槛仍必须有已知单卡容量才能通过。
     pub(super) fn fits(&self, hardware: &Hardware) -> bool {
+        let vram = (self.vram_bytes == 0)
+            .then_some(0)
+            .or_else(|| hardware.max_vram());
         [
             (self.ram_bytes, hardware.ram_bytes),
-            (self.vram_bytes, hardware.max_vram()),
+            (self.vram_bytes, vram),
             (self.disk_bytes, hardware.disk_bytes),
         ]
         .into_iter()
@@ -49,9 +55,12 @@ impl ModelVariant {
     }
     /// 直接列出不足差额或未知项，不计算推荐评分。
     pub(super) fn shortfall(&self, hardware: &Hardware) -> String {
+        let vram = (self.vram_bytes == 0)
+            .then_some(0)
+            .or_else(|| hardware.max_vram());
         [
             ("内存", self.ram_bytes, hardware.ram_bytes),
-            ("显存", self.vram_bytes, hardware.max_vram()),
+            ("显存", self.vram_bytes, vram),
             ("磁盘", self.disk_bytes, hardware.disk_bytes),
         ]
         .into_iter()
@@ -84,6 +93,7 @@ pub(super) enum Platform {
     Windows,
     MacOs,
     Linux,
+    Other,
 }
 impl Platform {
     /// 平台名称仅用于呈现后端结果。
@@ -92,6 +102,7 @@ impl Platform {
             Self::Windows => "Windows",
             Self::MacOs => "macOS",
             Self::Linux => "Linux",
+            Self::Other => "其他",
         }
     }
 }
@@ -100,6 +111,13 @@ pub(super) struct Gpu {
     pub(super) name: String,
     pub(super) available_bytes: Option<u64>,
 }
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct ModelResolution {
+    pub(super) hardware: Hardware,
+    pub(super) variants: Vec<ModelVariant>,
+    pub(super) reason: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Hardware {
     pub(super) platform: Option<Platform>,
@@ -136,6 +154,8 @@ pub(super) enum PreparationStage {
     SelectingVariant,
     Downloading,
     Verifying,
+    /// Node 已完成下载和摘要校验，但尚未部署模型。
+    ArtifactReady,
     LoadingPackage,
     Deploying,
     HealthChecking,
@@ -154,6 +174,7 @@ impl PreparationStage {
             Self::SelectingVariant => "模型解析完成，请选择量化版本",
             Self::Downloading => "正在下载模型…",
             Self::Verifying => "下载完成，正在校验摘要…",
+            Self::ArtifactReady => "模型文件已下载并完成校验（尚未部署）",
             Self::LoadingPackage => "正在加载安装包…",
             Self::Deploying => "正在自动部署…",
             Self::HealthChecking => "正在健康检查…",
@@ -171,6 +192,7 @@ impl PreparationStage {
             Self::Detecting
                 | Self::Downloading
                 | Self::Verifying
+                | Self::ArtifactReady
                 | Self::LoadingPackage
                 | Self::Deploying
                 | Self::HealthChecking
@@ -182,6 +204,9 @@ impl PreparationStage {
 /// 流程事件必须按现有阶段顺序消费；重复的同值回调不再次产生副作用。
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum PreparationEvent {
+    DownloadTaskCreated {
+        task_id: String,
+    },
     DownloadProgress {
         completed: u64,
         total: Option<u64>,
@@ -202,6 +227,8 @@ pub(super) struct Preparation {
     pub(super) run_id: u64,
     pub(super) model: ChatModel,
     pub(super) stage: PreparationStage,
+    /// 当前 Node 异步下载任务的稳定标识；本地模型初始化保持为空。
+    pub(super) download_task_id: Option<String>,
     pub(super) completed_bytes: u64,
     pub(super) total_bytes: Option<u64>,
     pub(super) hardware_events: Vec<HardwareEvent>,
@@ -250,7 +277,9 @@ impl PreparedModel {
         !self.model.id.trim().is_empty()
             && self.model.variants.contains(&self.variant)
             && valid_digest(&self.variant.expected_sha256)
-            && self.actual_sha256 == self.variant.expected_sha256
+            && self
+                .actual_sha256
+                .eq_ignore_ascii_case(&self.variant.expected_sha256)
             && !self.local_path.trim().is_empty()
             && !self.local_path.contains('\0')
     }
@@ -284,6 +313,7 @@ pub(super) enum Operation {
     Search,
     Status,
     Hardware,
+    Resolve,
     Initialize(PreparationStage),
     Generate,
 }

@@ -1,9 +1,10 @@
 use super::{
     backend::{ChatBackend, LocalBackend, LOCAL_DIGEST as DEMO_DIGEST, SIMULATED_REPLY_SEGMENTS},
+    catalog::{CatalogSelection, CatalogVersion, VersionStatus},
     model::{
         ChatError, ChatModel, ErrorKind, GenerationEvent, Gpu, Hardware as DemoHardware,
-        HardwareEvent, MessageRole, Operation, Platform as DemoPlatform, PreparationEvent,
-        PreparationStage, PreparedModel, GIB,
+        HardwareEvent, MessageRole, ModelResolution, ModelVariant, Operation,
+        Platform as DemoPlatform, PreparationEvent, PreparationStage, PreparedModel, GIB,
     },
     state::{ChatAction, ChatState, GenerationPlan, ReasoningEffort},
 };
@@ -40,6 +41,7 @@ fn hardware(platform: DemoPlatform) -> DemoHardware {
         DemoPlatform::Windows => ("x64 CPU · 8 核", "独立 GPU"),
         DemoPlatform::MacOs => ("Apple CPU · 8 核", "Apple GPU"),
         DemoPlatform::Linux => ("x64 CPU · 8 核", "Linux GPU"),
+        DemoPlatform::Other => ("Unknown CPU", "Unknown GPU"),
     };
     DemoHardware {
         platform: Some(platform),
@@ -82,6 +84,7 @@ fn path(platform: DemoPlatform, model: &str, variant: &str) -> String {
         DemoPlatform::Windows => format!(r"C:\BurnCloud\models\{name}-{variant}.gguf"),
         DemoPlatform::MacOs => format!("/Users/user/BurnCloud/models/{name}-{variant}.gguf"),
         DemoPlatform::Linux => format!("/home/user/BurnCloud/models/{name}-{variant}.gguf"),
+        DemoPlatform::Other => format!("/tmp/BurnCloud/models/{name}-{variant}.gguf"),
     }
 }
 fn tick(state: &mut ChatState, id: u64) -> Option<GenerationPlan> {
@@ -186,6 +189,65 @@ fn complete(state: &mut ChatState, id: u64) -> Option<GenerationPlan> {
         PreparationStage::Ready
     );
     generation
+}
+
+#[test]
+fn selected_catalog_model_resolution_populates_variants_and_hardware() {
+    let mut state = ChatState::default();
+    let run_id = state
+        .accept_catalog(
+            CatalogSelection {
+                name: "Qwen3-8B".into(),
+                preset: Some("qwen3-8b".into()),
+                version: CatalogVersion {
+                    name: "Qwen3-8B".into(),
+                    model: "Qwen/Qwen3-8B".into(),
+                    source: "modelscope".into(),
+                    revision: "master".into(),
+                    resource_url:
+                        "https://modelscope.cn/models/Qwen/Qwen3-8B/files?Revision=master".into(),
+                    variants: Vec::new(),
+                },
+            },
+            VersionStatus::Downloadable,
+            Vec::new(),
+        )
+        .expect("目录模型应启动准备流程");
+    let hardware = hardware(DemoPlatform::Windows);
+    for event in [
+        HardwareEvent::Cpu(hardware.cpu.clone().expect("CPU")),
+        HardwareEvent::Gpus(hardware.gpus.clone().expect("GPU")),
+        HardwareEvent::Memory(hardware.ram_bytes),
+        HardwareEvent::Disk(hardware.disk_bytes),
+    ] {
+        state.hardware_event(run_id, event);
+    }
+    state.finish_model_resolution(
+        run_id,
+        Ok(ModelResolution {
+            hardware,
+            variants: vec![ModelVariant {
+                id: "Qwen3-8B-GGUF/qwen3-8b-q4_k_m.gguf".into(),
+                quantization: "Q4_K_M".into(),
+                runtime: "llama.cpp".into(),
+                artifact_source: "https://example.invalid/qwen.gguf".into(),
+                expected_sha256:
+                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        .into(),
+                ram_bytes: 4 * GIB,
+                vram_bytes: 3 * GIB,
+                disk_bytes: 2 * GIB,
+            }],
+            reason: None,
+        }),
+    );
+    let preparation = state.preparation().expect("流程卡片");
+    assert_eq!(preparation.stage, PreparationStage::SelectingVariant);
+    assert_eq!(
+        preparation.model.variants[0].id,
+        "Qwen3-8B-GGUF/qwen3-8b-q4_k_m.gguf"
+    );
+    assert_eq!(preparation.hardware.max_vram(), Some(8 * GIB));
 }
 
 #[test]
@@ -368,6 +430,31 @@ fn resources_match_at_the_boundary_and_report_each_shortfall() {
     let id = start(&mut state);
     detected(&mut state, id, hardware);
     assert!(state.choose_variant(id, "q8"));
+}
+
+#[test]
+fn undeclared_vram_does_not_block_external_variant_without_a_detectable_gpu() {
+    let variant = ModelVariant {
+        id: "external-q4".into(),
+        quantization: "Q4_K_M".into(),
+        runtime: "llama.cpp".into(),
+        artifact_source: "https://example.invalid/model.gguf".into(),
+        expected_sha256: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        ram_bytes: 4 * GIB,
+        vram_bytes: 0,
+        disk_bytes: 2 * GIB,
+    };
+    let hardware = DemoHardware {
+        platform: Some(DemoPlatform::Windows),
+        cpu: Some("测试 CPU".into()),
+        gpus: Some(Vec::new()),
+        ram_bytes: Some(8 * GIB),
+        disk_bytes: Some(4 * GIB),
+    };
+
+    assert!(variant.fits(&hardware));
+    assert!(!variant.shortfall(&hardware).contains("显存"));
 }
 
 #[test]
@@ -827,3 +914,271 @@ fn metrics() -> super::model::InferenceMetrics {
 
 #[path = "backend_tests.rs"]
 mod backend_tests;
+
+#[test]
+fn artifact_ready_remains_running_without_changing_other_stages() {
+    for stage in [
+        PreparationStage::Detecting,
+        PreparationStage::Downloading,
+        PreparationStage::Verifying,
+        PreparationStage::ArtifactReady,
+        PreparationStage::LoadingPackage,
+        PreparationStage::Deploying,
+        PreparationStage::HealthChecking,
+        PreparationStage::Reporting,
+    ] {
+        assert!(stage.is_running(), "{stage:?} 应处于运行中");
+    }
+    for stage in [
+        PreparationStage::AwaitingStart,
+        PreparationStage::SelectingVariant,
+        PreparationStage::Ready,
+        PreparationStage::Failed,
+        PreparationStage::Cancelled,
+    ] {
+        assert!(!stage.is_running(), "{stage:?} 不应处于运行中");
+    }
+}
+
+fn catalog_downloading() -> (ChatState, u64) {
+    let mut state = ChatState::default();
+    let selection = CatalogSelection {
+        name: "测试模型".into(),
+        preset: None,
+        version: CatalogVersion {
+            name: "测试版本".into(),
+            model: "test/model".into(),
+            source: "modelscope".into(),
+            revision: "master".into(),
+            resource_url: "https://modelscope.cn/models/test/model/files?Revision=master".into(),
+            variants: Vec::new(),
+        },
+    };
+    let id = state
+        .accept_catalog(selection, VersionStatus::Downloadable, Vec::new())
+        .expect("开始");
+    state.finish_model_resolution(
+        id,
+        Ok(ModelResolution {
+            hardware: hardware(DemoPlatform::Windows),
+            variants: vec![ModelVariant {
+                id: "q4".into(),
+                quantization: "q4".into(),
+                runtime: "llama.cpp".into(),
+                artifact_source: "https://example.invalid/model.gguf".into(),
+                expected_sha256: DEMO_DIGEST.into(),
+                ram_bytes: GIB,
+                vram_bytes: 0,
+                disk_bytes: GIB,
+            }],
+            reason: None,
+        }),
+    );
+    assert!(state.choose_variant(id, "q4"));
+    state.preparation_event(
+        id,
+        PreparationEvent::DownloadTaskCreated {
+            task_id: "42".into(),
+        },
+    );
+    (state, id)
+}
+
+#[test]
+fn verified_catalog_artifact_clears_download_cancel_responsibility() {
+    let (mut state, id) = catalog_downloading();
+    state.preparation_event(id, PreparationEvent::Downloaded);
+    let event = PreparationEvent::Verified {
+        expected: DEMO_DIGEST.into(),
+        actual: DEMO_DIGEST.into(),
+        path: "  模型.gguf ".into(),
+    };
+    state.preparation_event(id + 1, event.clone());
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Verifying
+    );
+    state.preparation_event(id, event);
+    let p = state.preparation().expect("卡片");
+    assert_eq!(p.stage, PreparationStage::ArtifactReady);
+    assert_eq!(p.actual_digest.as_deref(), Some(DEMO_DIGEST));
+    assert_eq!(p.local_path.as_deref(), Some("  模型.gguf "));
+    assert_eq!(p.download_task_id, None);
+    assert!(!state.is_model_ready(p.model.id()));
+    assert_eq!(state.request_preparation_cancel(id), None);
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Cancelled
+    );
+}
+
+#[test]
+fn unfinished_catalog_download_still_returns_cancel_id() {
+    for verifying in [false, true] {
+        let (mut state, id) = catalog_downloading();
+        if verifying {
+            state.preparation_event(id, PreparationEvent::Downloaded);
+        }
+        assert_eq!(state.request_preparation_cancel(id).as_deref(), Some("42"));
+        let error = ChatError {
+            kind: ErrorKind::NotConnected,
+            operation: Operation::Initialize(PreparationStage::Downloading),
+            reason: "取消失败".into(),
+        };
+        assert!(state.finish_preparation_cancellation(id, error));
+        assert_eq!(
+            state.preparation().expect("卡片").stage,
+            PreparationStage::Failed
+        );
+    }
+}
+
+fn catalog_artifact() -> (ChatState, u64, PreparedModel) {
+    let (mut state, id) = catalog_downloading();
+    state.preparation_event(id, PreparationEvent::Downloaded);
+    state.preparation_event(
+        id,
+        PreparationEvent::Verified {
+            expected: DEMO_DIGEST.into(),
+            actual: DEMO_DIGEST.into(),
+            path: "model.gguf".into(),
+        },
+    );
+    let p = state.preparation().expect("卡片");
+    let ready = PreparedModel {
+        model: p.model.clone(),
+        variant: p.variant().expect("版本").clone(),
+        actual_sha256: DEMO_DIGEST.into(),
+        local_path: "model.gguf".into(),
+    };
+    (state, id, ready)
+}
+
+#[test]
+fn catalog_deployment_claim_is_unique_and_requires_matching_credentials() {
+    for corruption in 0..4 {
+        let (mut state, id, mut ready) = catalog_artifact();
+        match corruption {
+            0 => ready.model.name.push('x'),
+            1 => ready.variant.id.push('x'),
+            2 => ready.actual_sha256 = format!("sha256:{}", "b".repeat(64)),
+            _ => ready.local_path.push('x'),
+        }
+        assert!(!state.begin_catalog_deployment(id, &ready));
+        let p = state.preparation().expect("卡片");
+        assert_eq!(p.stage, PreparationStage::Failed);
+        assert_eq!(
+            p.error.as_ref().expect("错误").kind,
+            ErrorKind::InvalidResult
+        );
+    }
+    let (mut state, id, ready) = catalog_artifact();
+    assert!(!state.begin_catalog_deployment(id + 1, &ready));
+    assert!(state.begin_catalog_deployment(id, &ready));
+    assert!(!state.begin_catalog_deployment(id, &ready));
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Deploying
+    );
+    assert!(state
+        .finish_catalog_deployment(id, ready.clone(), Ok(()))
+        .is_none());
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Ready
+    );
+    assert!(state.is_model_ready(ready.model.id()));
+}
+
+#[test]
+fn catalog_deployment_failures_and_stale_results_preserve_state() {
+    for stage in [
+        PreparationStage::Deploying,
+        PreparationStage::HealthChecking,
+    ] {
+        let (mut state, id, ready) = catalog_artifact();
+        assert!(state.begin_catalog_deployment(id, &ready));
+        let error = ChatError {
+            kind: ErrorKind::ExecutionFailed,
+            operation: Operation::Initialize(stage),
+            reason: "部署错误".into(),
+        };
+        assert!(state
+            .finish_catalog_deployment(id, ready.clone(), Err(error))
+            .is_none());
+        let p = state.preparation().expect("卡片");
+        assert_eq!(p.stage, PreparationStage::Failed);
+        assert_eq!(
+            p.error.as_ref().expect("错误").operation,
+            Operation::Initialize(stage)
+        );
+        assert!(!state.is_model_ready(ready.model.id()));
+    }
+    let (mut state, id, ready) = catalog_artifact();
+    assert!(state.begin_catalog_deployment(id, &ready));
+    assert_eq!(state.request_preparation_cancel(id), None);
+    let cancelled = state.clone();
+    assert!(state.finish_catalog_deployment(id, ready, Ok(())).is_none());
+    assert_eq!(state, cancelled);
+}
+
+#[test]
+fn old_deployment_success_and_failure_do_not_change_restarted_run() {
+    for old_result in [
+        Ok(()),
+        Err(ChatError {
+            kind: ErrorKind::Timeout,
+            operation: Operation::Initialize(PreparationStage::Deploying),
+            reason: "旧错误".into(),
+        }),
+    ] {
+        let (mut state, old_id, ready) = catalog_artifact();
+        assert!(state.begin_catalog_deployment(old_id, &ready));
+        assert_eq!(state.request_preparation_cancel(old_id), None);
+        state.set_draft("新运行草稿".into());
+        let selection = ready.model.catalog_selection.clone().expect("目录选择");
+        let new_id = state
+            .accept_catalog(
+                selection,
+                VersionStatus::Downloadable,
+                vec![ready.variant.clone()],
+            )
+            .expect("重启目录运行");
+        assert_ne!(new_id, old_id);
+        state.finish_model_resolution(
+            new_id,
+            Ok(ModelResolution {
+                hardware: hardware(DemoPlatform::Windows),
+                variants: vec![ready.variant.clone()],
+                reason: None,
+            }),
+        );
+        assert!(state.choose_variant(new_id, &ready.variant.id));
+        let before = state.clone();
+        assert!(state
+            .finish_catalog_deployment(old_id, ready.clone(), old_result)
+            .is_none());
+        assert!(!state.begin_catalog_deployment(old_id, &ready));
+        assert_eq!(state, before);
+        assert_eq!(state.draft(), "新运行草稿");
+        assert!(!state.is_model_ready(ready.model.id()));
+    }
+}
+
+#[test]
+fn duplicate_verified_callbacks_cannot_reclaim_deployment() {
+    let (mut state, id, ready) = catalog_artifact();
+    let event = PreparationEvent::Verified {
+        expected: DEMO_DIGEST.into(),
+        actual: DEMO_DIGEST.into(),
+        path: "model.gguf".into(),
+    };
+    state.preparation_event(id, event.clone());
+    assert!(state.begin_catalog_deployment(id, &ready));
+    state.preparation_event(id, event);
+    assert!(!state.begin_catalog_deployment(id, &ready));
+    assert_eq!(
+        state.preparation().expect("卡片").stage,
+        PreparationStage::Deploying
+    );
+}

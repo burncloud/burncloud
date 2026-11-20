@@ -412,15 +412,6 @@ impl Drop for CatalogServer {
 }
 impl CatalogServer {
     async fn start(status: &'static str, fail_first: bool, fail_status: bool) -> Self {
-        Self::start_with_variants(status, fail_first, fail_status, false).await
-    }
-
-    async fn start_with_variants(
-        status: &'static str,
-        fail_first: bool,
-        fail_status: bool,
-        include_variants: bool,
-    ) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("测试服务");
@@ -459,23 +450,9 @@ impl CatalogServer {
                     if fail_status {
                         (503, json!({"message":"状态失败"}))
                     } else {
-                        let variants = if include_variants {
-                            json!([{
-                                "id":"test-q4",
-                                "quantization":"Q4_K_M",
-                                "runtime":"llama.cpp",
-                                "artifact_source":"https://example.com/test-q4.gguf",
-                                "expected_sha256":format!("sha256:{}", "a".repeat(64)),
-                                "ram_bytes":1,
-                                "vram_bytes":1,
-                                "disk_bytes":1
-                            }])
-                        } else {
-                            json!([])
-                        };
                         (
                             200,
-                            json!({"status":status,"model":"owner/Test-1","revision":"master","source":"modelscope","resource_url":"https://modelscope.cn/models/owner/Test-1/files?Revision=master","variants":variants}),
+                            json!({"status":status,"model":"owner/Test-1","revision":"master","source":"modelscope","resource_url":"https://modelscope.cn/models/owner/Test-1/files?Revision=master"}),
                         )
                     }
                 } else {
@@ -548,8 +525,11 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     assert!(ui
         .probe
         .static_text
-        .contains("导入配置支持资源解析和硬件匹配"));
-    assert!(!ui.probe.static_text.contains("工件下载并校验后停止"));
+        .contains("硬件检测、模型下载和 SHA-256 摘要校验由 Node 服务完成"));
+    assert!(!ui
+        .probe
+        .static_text
+        .contains("模型文件已下载并完成校验（尚未部署）"));
     assert_eq!(*backend.calls.borrow(), vec!["hardware"]);
     let input = ui.probe.find("aria-label", "输入消息或指令", "input");
     assert_eq!(ui.probe.attributes[&input.0]["value"], "目录草稿");
@@ -557,23 +537,15 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     assert_eq!(*backend.calls.borrow(), vec!["hardware"]);
     let calls = service.requests.lock().expect("请求记录");
     assert_eq!(calls.len(), 2);
-    assert!(calls[0].contains("/api/models/presets"));
-    assert!(calls[1].contains("/api/models/status?preset=test-1"));
-}
-
-#[tokio::test]
-async fn catalog_handoff_enters_variant_resolution_with_imported_configuration() {
-    let service = CatalogServer::start_with_variants("downloadable", false, false, true).await;
-    let backend = Rc::new(ControlledBackend::default());
-    let mut ui = Ui::catalog(backend.clone(), service.client.clone());
-    ui.input("输入消息或指令", "目录草稿");
-    ui.preview_catalog().await;
-    ui.label("下载");
-    ui.wait_for(|probe| probe.text.contains("模型解析完成，请选择量化版本"))
-        .await;
-    assert!(ui.probe.text.contains("Q4_K_M"));
-    assert!(ui.probe.text.contains("最低内存"));
-    assert_eq!(*backend.calls.borrow(), vec!["hardware"]);
+    assert!(!calls
+        .iter()
+        .any(|call| call.contains("/api/node/models/manifests")));
+    assert!(calls
+        .iter()
+        .any(|call| call.contains("/api/models/presets")));
+    assert!(calls
+        .iter()
+        .any(|call| call.contains("/api/models/status?preset=test-1")));
 }
 
 #[tokio::test]
@@ -771,4 +743,243 @@ async fn switching_queries_status_and_closing_picker_cancel_http_requests() {
     ui.wait_for(|_| service.closed.load(Ordering::SeqCst) == 4)
         .await;
     assert!(backend.calls.borrow().is_empty());
+}
+
+#[derive(Default)]
+struct DeploymentBackend {
+    calls: Rc<RefCell<Vec<String>>>,
+    mismatch: bool,
+    hold: bool,
+    dropped: Rc<Cell<bool>>,
+}
+impl ChatBackend for DeploymentBackend {
+    fn search(&self, _: String) -> BackendFuture<Vec<ChatModel>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    fn model_status(&self, _: String) -> BackendFuture<Vec<PreparedModel>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+    fn detect_hardware(&self, _: Callback<HardwareEvent>) -> BackendFuture<DemoHardware> {
+        Box::pin(async { Ok(hardware(DemoPlatform::Windows)) })
+    }
+    fn resolve_catalog_model(
+        &self,
+        _: CatalogSelection,
+        _: Callback<HardwareEvent>,
+    ) -> BackendFuture<ModelResolution> {
+        Box::pin(async {
+            Ok(ModelResolution {
+                hardware: hardware(DemoPlatform::Windows),
+                variants: vec![ModelVariant {
+                    id: "q4".into(),
+                    quantization: "q4".into(),
+                    runtime: "llama.cpp".into(),
+                    artifact_source: "https://example.invalid/model.gguf".into(),
+                    expected_sha256: DEMO_DIGEST.into(),
+                    ram_bytes: GIB,
+                    vram_bytes: 0,
+                    disk_bytes: GIB,
+                }],
+                reason: None,
+            })
+        })
+    }
+    fn initialize(
+        &self,
+        request: InitializationRequest,
+        mut callback: Callback<PreparationEvent>,
+    ) -> BackendFuture<PreparedModel> {
+        self.calls.borrow_mut().push("initialize".into());
+        let mismatch = self.mismatch;
+        Box::pin(async move {
+            callback(PreparationEvent::DownloadTaskCreated {
+                task_id: "42".into(),
+            });
+            callback(PreparationEvent::Downloaded);
+            callback(PreparationEvent::Verified {
+                expected: DEMO_DIGEST.into(),
+                actual: DEMO_DIGEST.into(),
+                path: "path.gguf".into(),
+            });
+            Ok(PreparedModel {
+                model: request.model,
+                variant: request.variant,
+                actual_sha256: DEMO_DIGEST.into(),
+                local_path: if mismatch { "other.gguf" } else { "path.gguf" }.into(),
+            })
+        })
+    }
+    fn deploy_model(&self, path: String) -> BackendFuture<()> {
+        self.calls.borrow_mut().push(format!("deploy:{path}"));
+        let hold = self.hold;
+        let notice = DropNotice(self.dropped.clone());
+        Box::pin(async move {
+            let _notice = notice;
+            if hold {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        })
+    }
+    fn cancel_download_task(&self, id: String) -> BackendFuture<()> {
+        self.calls.borrow_mut().push(format!("cancel:{id}"));
+        Box::pin(async { Ok(()) })
+    }
+    fn generate(
+        &self,
+        _: GenerationRequest,
+        _: Callback<GenerationEvent>,
+    ) -> BackendFuture<Option<InferenceMetrics>> {
+        self.calls.borrow_mut().push("generate".into());
+        Box::pin(async { Ok(None) })
+    }
+}
+
+#[tokio::test]
+async fn catalog_ui_deploys_once_and_cancellation_only_drops_local_deployment() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend {
+        hold: true,
+        ..Default::default()
+    });
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|_| {
+        backend
+            .calls
+            .borrow()
+            .iter()
+            .any(|call| call.starts_with("deploy:"))
+    })
+    .await;
+    assert_eq!(
+        *backend.calls.borrow(),
+        vec!["initialize", "deploy:path.gguf"]
+    );
+    ui.click("chat-flow-button");
+    ui.flush();
+    assert!(backend.dropped.get());
+    assert_eq!(
+        *backend.calls.borrow(),
+        vec!["initialize", "deploy:path.gguf"]
+    );
+}
+
+#[tokio::test]
+async fn catalog_ui_deployment_success_marks_ready() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend::default());
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|probe| probe.text.contains("部署成功，模型已就绪"))
+        .await;
+    assert_eq!(
+        *backend.calls.borrow(),
+        vec!["initialize", "deploy:path.gguf"]
+    );
+}
+
+#[tokio::test]
+async fn restarted_catalog_deployment_keeps_new_task_until_its_own_cancel() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend {
+        hold: true,
+        ..Default::default()
+    });
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|_| {
+        backend
+            .calls
+            .borrow()
+            .iter()
+            .filter(|call| call.starts_with("deploy:"))
+            .count()
+            == 1
+    })
+    .await;
+    ui.click("chat-flow-button");
+    assert!(backend.dropped.get());
+    backend.dropped.set(false);
+    ui.click("chat-model-trigger");
+    ui.wait_for(|probe| {
+        probe.attributes.values().any(|attrs| {
+            attrs
+                .get("class")
+                .is_some_and(|class| class == "chat-model-option")
+        })
+    })
+    .await;
+    ui.click("chat-model-option");
+    ui.wait_for(|probe| {
+        probe
+            .attributes
+            .values()
+            .any(|attrs| attrs.get("aria-label").is_some_and(|label| label == "下载"))
+    })
+    .await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|_| {
+        backend
+            .calls
+            .borrow()
+            .iter()
+            .filter(|call| call.starts_with("deploy:"))
+            .count()
+            == 2
+    })
+    .await;
+    ui.flush();
+    assert!(!backend.dropped.get(), "旧任务收尾不得取消新任务");
+    ui.click("chat-flow-button");
+    assert!(backend.dropped.get());
+    assert!(!backend
+        .calls
+        .borrow()
+        .iter()
+        .any(|call| call.starts_with("cancel:")));
+}
+
+#[tokio::test]
+async fn catalog_ui_mismatched_download_credentials_never_deploy() {
+    let service = CatalogServer::start("downloadable", false, false).await;
+    let backend = Rc::new(DeploymentBackend {
+        mismatch: true,
+        ..Default::default()
+    });
+    let dom = VirtualDom::new(super::super::super::ChatHome)
+        .with_root_context(BackendHandle(backend.clone()))
+        .with_root_context(service.client.clone());
+    let mut ui = Ui::mount(dom);
+    ui.preview_catalog().await;
+    ui.label("下载");
+    ui.wait_for(|probe| probe.text.contains("q4")).await;
+    ui.click("chat-variant");
+    ui.wait_for(|probe| {
+        probe
+            .text
+            .contains("部署凭据与下载模型、版本、摘要或路径不一致")
+    })
+    .await;
+    assert_eq!(*backend.calls.borrow(), vec!["initialize"]);
 }
