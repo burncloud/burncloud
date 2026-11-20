@@ -19,13 +19,6 @@ use std::sync::{
     Arc,
 };
 
-fn closed_monitor_errors(
-) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
-{
-    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
-    receiver
-}
-
 fn variant_with_backend(id: &str, backend: &str, ram: u64, vram: u64) -> Variant {
     Variant {
         id: id.into(),
@@ -175,10 +168,9 @@ async fn orchestrator_passes_real_ram_to_the_resolver_and_stops_before_preparati
         SystemHardwareProbe::new(),
         FakeArtifactPreparer,
         FakeRuntimePreparer,
-        Arc::new(FakeProcessManager::default()),
-        Arc::new(FakeReadinessProbe),
-        Arc::new(FakeHealthProbe),
-        closed_monitor_errors(),
+        FakeProcessManager::default(),
+        FakeReadinessProbe,
+        FakeHealthProbe,
     );
     let mut orchestrator = NodeOrchestrator::new(resolver, FakeRuntimeAdapter, machine);
     let outcome = orchestrator
@@ -209,10 +201,9 @@ async fn orchestrator_filters_runtime_before_preparing_the_artifact() {
         SystemHardwareProbe::new(),
         FakeArtifactPreparer,
         FakeRuntimePreparer,
-        Arc::new(FakeProcessManager::default()),
-        Arc::new(FakeReadinessProbe),
-        Arc::new(FakeHealthProbe),
-        closed_monitor_errors(),
+        FakeProcessManager::default(),
+        FakeReadinessProbe,
+        FakeHealthProbe,
     );
     let mut orchestrator = NodeOrchestrator::new(resolver, FakeRuntimeAdapter, machine);
 
@@ -308,10 +299,9 @@ async fn orchestrator_retries_the_next_candidate_after_runtime_failure() {
         FailOnceRuntimePreparer {
             attempts: attempts.clone(),
         },
-        Arc::new(FakeProcessManager::default()),
-        Arc::new(FakeReadinessProbe),
-        Arc::new(FakeHealthProbe),
-        closed_monitor_errors(),
+        FakeProcessManager::default(),
+        FakeReadinessProbe,
+        FakeHealthProbe,
     );
     let mut orchestrator = NodeOrchestrator::new(RetryResolver, FakeRuntimeAdapter, machine);
 

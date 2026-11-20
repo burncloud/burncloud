@@ -41,6 +41,21 @@ pub(super) struct CatalogModel {
     pub(super) model: String,
     pub(super) source: String,
     pub(super) revision: String,
+    #[serde(default)]
+    pub(super) resource_url: Option<String>,
+    #[serde(default)]
+    pub(super) hardware: Option<HardwareRequirements>,
+}
+
+/// 目录接口中的六项硬件配置，保留来源表格的数值及单位。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(super) struct HardwareRequirements {
+    pub(super) vram_min: String,
+    pub(super) ram_min: String,
+    pub(super) disk_min: String,
+    pub(super) vram_recommended: String,
+    pub(super) ram_recommended: String,
+    pub(super) disk_recommended: String,
 }
 
 /// 已确认的仓库快照；页面地址不是可部署的模型文件。
@@ -384,18 +399,37 @@ impl CatalogModel {
     /// 在 HTTP 响应边界验证展示项及其资源绑定。
     ///
     /// # Examples
-    /// 无来源或含路径跳转的仓库必须拒收。
+    /// 无来源、含路径跳转的仓库或非 HTTP(S) 链接必须拒收。
     ///
     /// # Notes
-    /// 不把缺失字段补成虚构仓库。
+    /// 重复预置仓库以原表行号区分；搜索项仍严格使用仓库短名作为标识。
     pub(super) fn validate(&self) -> Result<(), ChatError> {
+        let repository_id = self
+            .model
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let id_valid = self.id == repository_id
+            || (self.preset
+                && self
+                    .id
+                    .strip_prefix(&format!("{repository_id}-row-"))
+                    .is_some_and(|row| {
+                        !row.is_empty() && row.bytes().all(|byte| byte.is_ascii_digit())
+                    }));
+        let link_valid = self.resource_url.as_ref().is_none_or(|link| {
+            Url::parse(link).is_ok_and(|url| {
+                matches!(url.scheme(), "http" | "https")
+                    && url.host_str().is_some()
+                    && url.username().is_empty()
+                    && url.password().is_none()
+            })
+        });
         if self.name.trim().is_empty()
             || !valid_resource(&self.model, &self.source, &self.revision)
-            || self
-                .model
-                .rsplit('/')
-                .next()
-                .is_none_or(|name| name.to_ascii_lowercase() != self.id)
+            || !id_valid
+            || !link_valid
         {
             return Err(invalid_search("模型目录条目无效或资源不完整"));
         }
