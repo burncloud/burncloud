@@ -108,6 +108,10 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
         version: "0019_download_stable_identity",
         sql: include_str!("../../migrations/sqlite/0019_download_stable_identity.sql"),
     },
+    Migration {
+        version: "0020_download_model_identity",
+        sql: include_str!("../../migrations/sqlite/0020_download_model_identity.sql"),
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -190,6 +194,10 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0019_download_stable_identity",
         sql: include_str!("../../migrations/postgres/0019_download_stable_identity.sql"),
+    },
+    Migration {
+        version: "0020_download_model_identity",
+        sql: include_str!("../../migrations/postgres/0020_download_model_identity.sql"),
     },
 ];
 

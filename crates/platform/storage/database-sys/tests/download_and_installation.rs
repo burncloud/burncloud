@@ -832,3 +832,69 @@ async fn the_two_stores_do_not_see_each_others_records() -> Result<(), Box<dyn s
 
     Ok(())
 }
+
+#[tokio::test]
+async fn model_identity_and_verified_digest_survive_database_reads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDb::new("model_identity");
+    let downloads = temp.downloads().await?;
+    let task_id = downloads
+        .insert_task(
+            "gid-model",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "models/modelscope/qwen",
+            "Q4_K_M.gguf",
+        )
+        .await?;
+    downloads
+        .set_identity(
+            task_id,
+            "gid-model",
+            "Qwen/Qwen3-8B-GGUF",
+            "modelscope",
+            "master",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?;
+    downloads
+        .mark_completed(task_id, "gid-model", "C:/models/Q4_K_M.gguf", 10, 10)
+        .await?;
+    downloads
+        .mark_verified(
+            task_id,
+            "gid-model",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?;
+
+    let record = downloads
+        .find_model_artifact(
+            "Qwen/Qwen3-8B-GGUF",
+            "modelscope",
+            "master",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?
+        .expect("完整身份应命中");
+    assert_eq!(record.status, "succeeded");
+    assert_eq!(
+        record.actual_sha256.as_deref(),
+        Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert!(downloads
+        .find_model_artifact(
+            "Qwen/Qwen3-8B-GGUF",
+            "modelscope",
+            "main",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?
+        .is_none());
+    Ok(())
+}
