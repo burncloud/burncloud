@@ -144,7 +144,7 @@ impl Harness {
 }
 
 #[tokio::test]
-async fn presets_keep_all_names_order_and_bound_resources() {
+async fn presets_keep_spreadsheet_rows_links_and_hardware() {
     let h = Harness::new().await;
     let presets = h.json("/api/models/presets").await;
     let names: Vec<_> = presets
@@ -153,29 +153,14 @@ async fn presets_keep_all_names_order_and_bound_resources() {
         .iter()
         .map(|p| p["name"].as_str().expect("名称"))
         .collect();
+    assert_eq!(names.len(), 388);
     assert_eq!(
-        names,
-        [
-            "DeepSeek V4.1 Flash",
-            "DeepSeek V4 Pro",
-            "GLM‑5.3",
-            "GLM‑5.3‑Flash",
-            "Kimi K3",
-            "MiniMax M3.1 Flash",
-            "Qwen3.8-27B",
-            "Qwen3-8B",
-            "Qwen3-Coder-Next",
-            "Qwen3.8-2.4T-A95B",
-            "Qwen3.8-Flash-Next",
-            "Qwen-Image-2512",
-            "Wan2.2-TI2V-5B",
-            "MiMo-V2.6-Flash-RL",
-            "gpt-oss-20b",
-            "gpt-oss-120b",
-            "Gemma 4 E4B IT",
-            "Gemma 4 31B"
-        ]
+        &names[..3],
+        ["llama3.1-8B", "llama3.1-70B", "llama3.1-405B"]
     );
+    assert_eq!(names[22], "qwen3-8B");
+    assert_eq!(names.last(), Some(&"nimble-v3-9B"));
+    assert_eq!(names.iter().filter(|name| **name == "llama2-7B").count(), 3);
     let items = presets.as_array().expect("列表");
     let mut ids: Vec<_> = items
         .iter()
@@ -183,10 +168,72 @@ async fn presets_keep_all_names_order_and_bound_resources() {
         .collect();
     ids.sort_unstable();
     ids.dedup();
-    assert_eq!(ids.len(), 18);
-    assert!(items.iter().all(|item| item["source"] == "modelscope"
-        && item["revision"] == "master"
-        && item["preset"] == true));
+    assert_eq!(ids.len(), 388);
+    assert_eq!(
+        items
+            .iter()
+            .filter(|item| item["source"] == "modelscope")
+            .count(),
+        95
+    );
+    assert_eq!(
+        items
+            .iter()
+            .filter(|item| item["source"] == "hf-mirror")
+            .count(),
+        293
+    );
+    assert_eq!(
+        items[0]["resource_url"],
+        "https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8b-Instruct"
+    );
+    assert_eq!(
+        items[0]["hardware"],
+        json!({
+            "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
+            "vram_recommended":"8.00G", "ram_recommended":"16.00G", "disk_recommended":"8.00G"
+        })
+    );
+    for item in items {
+        assert_eq!(item["preset"], true);
+        assert_eq!(
+            item["revision"],
+            if item["source"] == "modelscope" {
+                "master"
+            } else {
+                "main"
+            }
+        );
+        let link = reqwest::Url::parse(item["resource_url"].as_str().expect("模型链接"))
+            .expect("有效链接");
+        assert_eq!(link.scheme(), "https");
+        let model = item["model"].as_str().expect("仓库");
+        assert_eq!(
+            link.path()
+                .strip_prefix("/models/")
+                .unwrap_or_else(|| link.path().trim_start_matches('/')),
+            model
+        );
+        for field in [
+            "vram_min",
+            "ram_min",
+            "disk_min",
+            "vram_recommended",
+            "ram_recommended",
+            "disk_recommended",
+        ] {
+            assert!(item["hardware"][field]
+                .as_str()
+                .expect("配置")
+                .strip_suffix('G')
+                .is_some_and(|number| {
+                    let decimals = number.split_once('.').map(|(_, decimals)| decimals);
+                    decimals.is_some_and(|decimals| decimals.len() == 2)
+                }));
+        }
+        let bound = presets::find(item["id"].as_str().expect("标识")).expect("绑定");
+        assert_eq!(bound.resource.model, model);
+    }
     assert!(h.calls.lock().expect("请求锁").is_empty());
     let response = routes()
         .expect("生产路由")
@@ -208,12 +255,12 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
         .json("/api/models/status?preset=qwen3-8b&model=evil/override&source=huggingface")
         .await;
     assert_eq!(value["status"], "downloadable");
-    assert_eq!(value["model"], "Qwen/Qwen3-8B");
+    assert_eq!(value["model"], "Qwen/Qwen3-8b");
     assert_eq!(value["source"], "modelscope");
     assert!(value["resource_url"]
         .as_str()
         .expect("资源地址")
-        .ends_with("/ms/models/Qwen/Qwen3-8B/files?Revision=master"));
+        .ends_with("/ms/models/Qwen/Qwen3-8b/files?Revision=master"));
     assert_eq!(value["variants"][0]["id"], "qwen3-8b-q4");
     assert_eq!(value["variants"][0]["quantization"], "Q4");
     assert_eq!(value["variants"][0]["runtime"], "llama.cpp");
@@ -246,16 +293,43 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
 #[tokio::test]
 async fn status_attaches_imported_variants_to_matching_presets() {
     let h = Harness::new().await;
-    let presets = h.json("/api/models/presets").await;
-    for preset in presets.as_array().expect("预置列表") {
-        let id = preset["id"].as_str().expect("预置标识");
+    for (id, has_variants) in [
+        ("qwen3-8b", true),
+        ("gpt-oss-20b", true),
+        ("gpt-oss-120b", true),
+        ("meta-llama-3.1-8b-instruct", false),
+        ("qwen3.5-9b", false),
+    ] {
         let value = h.json(&format!("/api/models/status?preset={id}")).await;
         let variants = value["variants"].as_array().expect("Variant 列表");
-        if id == "deepseek-v4-pro" {
-            assert!(variants.is_empty(), "{id} 不在导入的 17 个模型中");
-        } else {
-            assert!(!variants.is_empty(), "{id} 未匹配默认 Manifest");
-        }
+        assert_eq!(!variants.is_empty(), has_variants, "{id}");
+    }
+}
+
+#[tokio::test]
+async fn duplicate_repository_rows_keep_independent_preset_bindings() {
+    let h = Harness::new().await;
+    let presets = h.json("/api/models/presets").await;
+    let duplicates: Vec<_> = presets
+        .as_array()
+        .expect("清单")
+        .iter()
+        .filter(|item| item["model"] == "ggml-org/Bespoke-Nimble-9B-v3-GGUF")
+        .collect();
+    assert_eq!(duplicates.len(), 2);
+    assert_ne!(duplicates[0]["id"], duplicates[1]["id"]);
+    assert_eq!(duplicates[0]["name"], "flint-9B");
+    assert_eq!(duplicates[1]["name"], "nimble-v3-9B");
+    for preset in duplicates {
+        let id = preset["id"].as_str().expect("标识");
+        let value = h.json(&format!("/api/models/status?preset={id}")).await;
+        assert_eq!(value["model"], preset["model"]);
+        assert_eq!(value["source"], "hf-mirror");
+        assert_eq!(value["revision"], "main");
+        assert!(value["resource_url"]
+            .as_str()
+            .expect("地址")
+            .ends_with("/mirror/ggml-org/Bespoke-Nimble-9B-v3-GGUF/tree/main"));
     }
 }
 

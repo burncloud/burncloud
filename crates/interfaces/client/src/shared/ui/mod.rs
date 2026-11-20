@@ -1838,7 +1838,7 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-composer-footer .chat-model-selector { position: relative; max-width: calc(100% - 52px); }
 .chat-composer-footer .chat-model-trigger { max-width: min(250px, calc(100vw - 100px)); }
 .chat-online-dot.pending { background: #9ca3af; box-shadow: none; }
-.chat-composer-footer .chat-model-search { right: 0; bottom: calc(100% + 8px); left: auto; width: min(220px, calc(100vw - 84px)); max-height: min(400px, calc(100svh - 200px)); padding: 8px; }
+.chat-composer-footer .chat-model-search { right: 0; bottom: calc(100% + 8px); left: auto; width: min(400px, calc(100vw - 84px)); max-height: min(400px, calc(100svh - 200px)); padding: 8px; }
 .chat-reasoning-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #374151; font-size: 12px; }
 .chat-platform-badge { flex: 0 0 auto; padding: 3px 7px; border-radius: 5px; color: #92400e; background: #fffbeb; font-size: 10px; font-weight: 500; }
 .chat-model-search-input { width: 100%; min-height: 32px; flex: 0 0 auto; margin-top: 6px; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 13px; line-height: 20px; }
@@ -1847,6 +1847,8 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-model-option-copy { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; gap: 4px; }
 .chat-model-option-copy > span { color: #6b7280; font-size: 11px; line-height: 1.45; }
 .chat-model-option-copy > small { color: #6b7280; font-size: 10px; }
+.chat-model-hardware { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.chat-model-hardware > span { white-space: nowrap; }
 .chat-inline-button { flex: 0 0 auto; margin: 6px 0 0; padding: 9px; border: 0; border-radius: 8px; color: #2563eb; background: #f8fafc; font-size: 12px; cursor: pointer; }
 /* 目录与版本共用弹层，长仓库名不能撑破移动端宽度。 */
 .chat-catalog-heading { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; font-size: 13px; line-height: 20px; }
@@ -1860,9 +1862,10 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-model-search .chat-model-option > .chat-model-option-name { font-size: 15px; line-height: 20px; }
 .chat-model-search .chat-model-option-copy > small { overflow-wrap: anywhere; }
 /* v0.1.2：状态与下载图标在模型行内显示，无独立详情面板。 */
-.chat-model-row { display: flex; min-width: 0; align-items: center; gap: 6px; border-radius: 10px; }
+.chat-model-row { display: flex; min-width: 0; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 6px; border-radius: 10px; }
 .chat-model-row.selected { background: #eff6ff; }
-.chat-model-row > .chat-model-option { flex: 1 1 auto; background: transparent; }
+.chat-model-row > .chat-model-option { flex: 1 1 0; background: transparent; }
+.chat-model-link { margin-right: 6px; text-decoration: none; }
 .chat-model-row-state { display: flex; flex: 0 0 auto; max-width: 50%; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 8px; }
 .chat-row-status { color: #6b7280; font-size: 11px; line-height: 16px; white-space: nowrap; }
 .chat-row-status.available { color: #047857; }

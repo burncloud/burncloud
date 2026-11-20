@@ -31,6 +31,8 @@ fn model(name: &str) -> CatalogModel {
         model: format!("Qwen/{name}"),
         source: "modelscope".into(),
         revision: "master".into(),
+        resource_url: None,
+        hardware: None,
     }
 }
 fn page(names: &[&str], done: bool) -> CatalogPage<CatalogModel> {

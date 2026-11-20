@@ -185,8 +185,8 @@ async fn model_selection_shares_gateway_port_with_or_without_liveview() -> anyho
             .to_str()?
             .starts_with("application/json"));
         let presets: Value = response.json().await?;
-        assert_eq!(presets.as_array().expect("预置列表").len(), 18);
-        assert_eq!(presets[0]["name"], "DeepSeek V4.1 Flash");
+        assert_eq!(presets.as_array().expect("预置列表").len(), 388);
+        assert_eq!(presets[0]["name"], "llama3.1-8B");
         assert_eq!(
             client.get(format!("{base}/health")).send().await?.status(),
             StatusCode::OK

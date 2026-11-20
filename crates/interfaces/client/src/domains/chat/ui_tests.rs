@@ -443,7 +443,9 @@ impl CatalogServer {
                     } else {
                         (
                             200,
-                            json!([{"id":"test-1","name":"测试型号","preset":true,"model":"owner/Test-1","revision":"master","source":"modelscope"}]),
+                            json!([{"id":"test-1","name":"测试型号","preset":true,"model":"owner/Test-1","revision":"master","source":"modelscope",
+                                "resource_url":"https://www.modelscope.cn/models/owner/Test-1",
+                                "hardware":{"vram_min":"6.00G","ram_min":"12.00G","disk_min":"6.00G","vram_recommended":"8.00G","ram_recommended":"16.00G","disk_recommended":"8.00G"}}]),
                         )
                     }
                 } else if request.contains("/api/models/status?") {
@@ -518,6 +520,25 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
     let mut ui = Ui::catalog(backend.clone(), service.client.clone());
     ui.input("输入消息或指令", "目录草稿");
     ui.preview_catalog().await;
+    for text in [
+        "显存 6.00G",
+        "内存 12.00G",
+        "磁盘 6.00G",
+        "显存 8.00G",
+        "内存 16.00G",
+        "磁盘 8.00G",
+    ] {
+        assert!(ui.probe.text.contains(text), "缺少硬件配置：{text}");
+    }
+    assert!(ui.probe.attributes.values().any(|attrs| {
+        attrs
+            .get("href")
+            .is_some_and(|href| href == "https://www.modelscope.cn/models/owner/Test-1")
+            && attrs.get("target").is_some_and(|target| target == "_blank")
+            && attrs
+                .get("rel")
+                .is_some_and(|rel| rel == "noopener noreferrer")
+    }));
     assert!(backend.calls.borrow().is_empty());
     ui.label("下载");
     ui.wait_for(|probe| probe.text.contains("尚未接入该仓库版本的工件解析与部署"))

@@ -19,13 +19,6 @@ use std::sync::{
     Arc,
 };
 
-fn closed_monitor_errors(
-) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
-{
-    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
-    receiver
-}
-
 fn variant_with_backend(id: &str, backend: &str, ram: u64, vram: u64) -> Variant {
     Variant {
         id: id.into(),
@@ -71,6 +64,13 @@ fn maximum_vram(profile: &HardwareProfile) -> u64 {
         .iter()
         .filter_map(|gpu| gpu.memory_bytes)
         .fold(0u64, u64::saturating_add)
+}
+
+fn closed_monitor_errors(
+) -> tokio::sync::mpsc::UnboundedReceiver<burncloud_node_runtime::deployment::DeploymentMonitorError>
+{
+    let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+    receiver
 }
 
 #[test]

@@ -186,6 +186,26 @@ pub(super) fn CatalogPicker(
                             onclick: move |_| load_status(picker, client.clone(), next.clone()),
                             span { class: "chat-model-option-copy",
                                 strong { class: "chat-model-option-name", "{model.name}" }
+                                if let Some(hardware) = &model.hardware {
+                                    span { class: "chat-model-hardware",
+                                        span { "最低" }
+                                        span { "显存 {hardware.vram_min}" }
+                                        span { "内存 {hardware.ram_min}" }
+                                        span { "磁盘 {hardware.disk_min}" }
+                                    }
+                                    span { class: "chat-model-hardware",
+                                        span { "推荐" }
+                                        span { "显存 {hardware.vram_recommended}" }
+                                        span { "内存 {hardware.ram_recommended}" }
+                                        span { "磁盘 {hardware.disk_recommended}" }
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(link) = &model.resource_url {
+                            a { class: "chat-row-icon-button chat-model-link", href: "{link}", target: "_blank", rel: "noopener noreferrer",
+                                aria_label: "{model.name} 模型链接", title: "模型链接：{link}",
+                                Icon { name: IconName::Globe, size: 16 }
                             }
                         }
                         if selected && !status_loading {
