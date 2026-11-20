@@ -1,7 +1,7 @@
 #[cfg(windows)]
 use std::path::Path;
 
-use super::{is_retryable_error, parse_length};
+use super::{is_retryable_error, normalize_progress, parse_length};
 
 #[cfg(windows)]
 use super::normalize_aria2_path;
@@ -38,4 +38,16 @@ fn normalizes_windows_extended_paths_returned_by_aria2() {
         normalize_aria2_path(r"\\?\E:\burnCloud\models\model.gguf"),
         Path::new(r"E:\burnCloud\models\model.gguf")
     );
+}
+
+#[test]
+fn progress_is_monotonic_and_bounded() {
+    let first = normalize_progress(0, 0, 10, 0);
+    let second = normalize_progress(first.0, first.1, 10, 5);
+    let stale = normalize_progress(second.0, second.1, 8, 3);
+    let complete = normalize_progress(stale.0, stale.1, 10, 10);
+    assert_eq!(first, (10, 0));
+    assert_eq!(second, (10, 5));
+    assert_eq!(stale, (10, 5));
+    assert_eq!(complete, (10, 10));
 }

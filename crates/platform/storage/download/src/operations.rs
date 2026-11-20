@@ -201,7 +201,83 @@ impl DownloadManager {
             download_speed: non_negative_bytes(speed, "download_speed")?,
             error: record.error,
             final_path: record.final_path.map(PathBuf::from),
+            actual_sha256: record.actual_sha256,
         }))
+    }
+
+    /// 为稳定下载任务写入完整模型身份。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在、任务 GID 已被重试替换或数据库写入失败时返回错误。
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "下载身份字段必须显式逐项传递，保持数据库身份契约可审计"
+    )]
+    pub async fn set_task_identity(
+        &self,
+        task_id: i64,
+        model: &str,
+        source: &str,
+        revision: &str,
+        variant_id: &str,
+        artifact_uri: &str,
+        checksum: &str,
+    ) -> Result<()> {
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        self.db
+            .set_identity(
+                task_id,
+                &snapshot.gid,
+                model,
+                source,
+                revision,
+                variant_id,
+                artifact_uri,
+                checksum,
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// 持久化摘要校验成功的下载终态。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在、当前 GID 已过期或数据库更新失败时返回错误。
+    pub async fn mark_task_verified(&self, task_id: i64, actual_sha256: &str) -> Result<()> {
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        self.db
+            .mark_verified(task_id, &snapshot.gid, actual_sha256)
+            .await?;
+        Ok(())
+    }
+
+    /// 持久化摘要校验失败的下载终态。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在、当前 GID 已过期或数据库更新失败时返回错误。
+    pub async fn mark_task_verification_failed(
+        &self,
+        task_id: i64,
+        actual_sha256: Option<&str>,
+        error: &str,
+    ) -> Result<()> {
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        self.db
+            .mark_verification_failed(task_id, &snapshot.gid, actual_sha256, error)
+            .await?;
+        Ok(())
     }
 
     /// 取消仍处于可取消状态的下载任务。
