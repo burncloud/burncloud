@@ -308,3 +308,31 @@ fn validated_identity_contains_scoped_storage_and_filename() {
     assert!(validated.storage_directory.contains("huggingface"));
     assert!(validated.storage_directory.contains(&CHECKSUM[7..]));
 }
+
+#[tokio::test]
+async fn repeated_requests_claim_only_one_verifier() {
+    let registry = Arc::new(Mutex::new(HashMap::new()));
+    let identity = validate_request(request(
+        DownloadSource::ModelScope,
+        "org/repo",
+        "master",
+        "model.gguf",
+        "https://modelscope.cn/models/org/repo/resolve/master/model.gguf",
+        CHECKSUM,
+    ))
+    .expect("有效身份");
+    let (left, right) = tokio::join!(
+        register_task(&registry, 1, identity.clone(), ManagerTaskStatus::Queued),
+        register_task(&registry, 1, identity, ManagerTaskStatus::Downloading)
+    );
+    assert_ne!(left, right);
+    assert!(begin_verification(&registry, 1).await);
+    let tasks = registry.lock().await;
+    assert_eq!(
+        effective_task_state(
+            tasks.get(&1).expect("已登记任务"),
+            ManagerTaskStatus::Downloading
+        ),
+        DownloadTaskState::Verifying
+    );
+}

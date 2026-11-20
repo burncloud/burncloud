@@ -916,23 +916,18 @@ async fn restarted_catalog_deployment_keeps_new_task_until_its_own_cancel() {
     ui.click("chat-flow-button");
     assert!(backend.dropped.get());
     backend.dropped.set(false);
-    ui.click("chat-model-trigger");
-    ui.wait_for(|probe| {
-        probe.attributes.values().any(|attrs| {
-            attrs
-                .get("class")
-                .is_some_and(|class| class == "chat-model-option")
+    // 探针不维护完整 DOM 子树。忽略已卸载弹层的属性，等待新弹层实际装载。
+    ui.probe.attributes.retain(|_, attrs| {
+        attrs.get("class").is_none_or(|class| {
+            !matches!(
+                class.as_str(),
+                "chat-model-option" | "chat-variant" | "chat-row-icon-button"
+            )
         })
-    })
-    .await;
-    ui.click("chat-model-option");
-    ui.wait_for(|probe| {
-        probe
-            .attributes
-            .values()
-            .any(|attrs| attrs.get("aria-label").is_some_and(|label| label == "下载"))
-    })
-    .await;
+    });
+    ui.probe.text.clear();
+    ui.preview_catalog().await;
+    ui.probe.text.clear();
     ui.label("下载");
     ui.wait_for(|probe| probe.text.contains("q4")).await;
     ui.click("chat-variant");

@@ -47,6 +47,17 @@ pub(super) struct CatalogVersion {
     pub(super) resource_url: String,
     #[serde(default)]
     pub(super) variants: Vec<ModelVariant>,
+    #[serde(skip)]
+    pub(super) verified_variants: Vec<VerifiedVariant>,
+}
+
+/// 目录查验通过的单个文件；不得把模型级路径交给另一个候选版本部署。
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct VerifiedVariant {
+    id: String,
+    uri: String,
+    sha256: String,
+    path: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -449,6 +460,17 @@ impl CatalogClient {
     ) -> Result<CatalogInspection, ChatError> {
         model.validate()?;
         #[derive(Deserialize)]
+        struct VariantStatus {
+            #[serde(flatten)]
+            variant: ModelVariant,
+            #[serde(default)]
+            artifact_status: ArtifactStatus,
+            #[serde(default)]
+            downloaded: bool,
+            local_path: Option<String>,
+            actual_sha256: Option<String>,
+        }
+        #[derive(Deserialize)]
         struct Status {
             status: VersionStatus,
             model: String,
@@ -456,7 +478,7 @@ impl CatalogClient {
             revision: String,
             resource_url: String,
             #[serde(default)]
-            variants: Vec<ModelVariant>,
+            variants: Vec<VariantStatus>,
             #[serde(default)]
             artifact_status: ArtifactStatus,
             #[serde(default)]
@@ -476,13 +498,44 @@ impl CatalogClient {
         let result: Status = self
             .get("/api/models/status", &params, Operation::Status)
             .await?;
+        let mut variants = Vec::new();
+        let mut verified_variants = Vec::new();
+        for entry in result.variants {
+            if entry.artifact_status == ArtifactStatus::Downloaded {
+                let receipt = entry
+                    .local_path
+                    .zip(entry.actual_sha256)
+                    .filter(|(path, sha)| {
+                        entry.downloaded
+                            && !path.trim().is_empty()
+                            && !path.contains('\0')
+                            && valid_digest(sha)
+                            && sha.eq_ignore_ascii_case(&entry.variant.expected_sha256)
+                    });
+                let (path, sha256) = receipt.ok_or_else(|| {
+                    failure(
+                        ErrorKind::InvalidResult,
+                        Operation::Status,
+                        "已下载变体缺少有效的工件凭据".into(),
+                    )
+                })?;
+                verified_variants.push(VerifiedVariant {
+                    id: entry.variant.id.clone(),
+                    uri: entry.variant.artifact_source.clone(),
+                    sha256,
+                    path,
+                });
+            }
+            variants.push(entry.variant);
+        }
         let version = CatalogVersion {
             name: model.name.clone(),
             model: result.model,
             source: result.source,
             revision: result.revision,
             resource_url: result.resource_url,
-            variants: result.variants,
+            variants,
+            verified_variants,
         };
         version.validate()?;
         if version.model != model.model
@@ -863,6 +916,13 @@ impl CatalogClient {
         loop {
             let data = self.get_download_task(task_id).await?;
             let data = map_download_task(data, expected)?;
+            if data.task_id != task_id {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Initialize(PreparationStage::Downloading),
+                    "轮询返回了其他下载任务".into(),
+                ));
+            }
             match data.status.as_str() {
                 "queued" | "downloading" => {
                     callback(PreparationEvent::DownloadProgress {
@@ -900,9 +960,36 @@ impl CatalogClient {
         callback: impl FnMut(PreparationEvent),
     ) -> Result<PreparedModel, ChatError> {
         let operation = Operation::Initialize(PreparationStage::Downloading);
+        let mut callback = callback;
+        if let Some(path) = request
+            .model
+            .catalog_selection
+            .as_ref()
+            .and_then(|s| s.version.verified_path(&request.variant))
+        {
+            let prepared = PreparedModel {
+                model: request.model.clone(),
+                variant: request.variant.clone(),
+                actual_sha256: request.variant.expected_sha256.clone(),
+                local_path: path.into(),
+            };
+            if !prepared.is_valid() {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    operation,
+                    "本地工件与选中变体不匹配".into(),
+                ));
+            }
+            callback(PreparationEvent::Downloaded);
+            callback(PreparationEvent::Verified {
+                expected: prepared.actual_sha256.clone(),
+                actual: prepared.actual_sha256.clone(),
+                path: prepared.local_path.clone(),
+            });
+            return Ok(prepared);
+        }
         let initial = self.create_download_task(request).await?;
         let initial = map_download_task(initial, request)?;
-        let mut callback = callback;
         callback(PreparationEvent::DownloadTaskCreated {
             task_id: initial.task_id.clone(),
         });
@@ -1217,6 +1304,18 @@ impl CatalogModel {
 }
 
 impl CatalogVersion {
+    /// 只复用同一仓库修订下 ID、URI、摘要同时匹配的已校验工件。
+    pub(super) fn verified_path(&self, variant: &ModelVariant) -> Option<&str> {
+        self.verified_variants
+            .iter()
+            .find(|r| {
+                r.id == variant.id
+                    && r.uri == variant.artifact_source
+                    && r.sha256.eq_ignore_ascii_case(&variant.expected_sha256)
+            })
+            .map(|r| r.path.as_str())
+    }
+
     /// 验证仓库快照可交接，且资源页面为 HTTP(S) 地址。
     ///
     /// # Examples
@@ -1428,13 +1527,12 @@ fn map_download_task(
 }
 
 fn download_task_terminal_error(data: &DownloadTaskData, operation: Operation) -> ChatError {
+    if data.status == "cancelled" {
+        return failure(ErrorKind::Cancelled, operation, "模型下载任务已取消".into());
+    }
     let error = data.error.clone().unwrap_or_else(|| RemoteHardwareError {
         code: "download_failed".into(),
-        message: if data.status == "cancelled" {
-            "模型下载任务已取消".into()
-        } else {
-            "模型文件下载失败".into()
-        },
+        message: "模型文件下载失败".into(),
     });
     let mut mapped = download_error(error);
     if matches!(mapped.operation, Operation::Initialize(_)) {

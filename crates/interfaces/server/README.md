@@ -33,13 +33,7 @@ Request → Axum Router
 
 ## API 模块
 
-`crates/interfaces/server/src/api/` 下按认证、管理、监控和硬件能力拆分 HTTP 模块。
-
-- `GET /api/node/hardware`：公开读取运行 Node/Server 主机的一次性硬件快照，不要求 JWT；成功响应禁止缓存。
-- 详细请求、响应、错误码和前端接入规则见 [`docs/hardware-api.md`](docs/hardware-api.md)。
-- `POST /api/node/models/resolve`：接收前端当前选中的外部仓库模型、来源和修订号，在服务端发现 GGUF 工件、检测硬件并返回全部兼容 Variant；服务端不再内置默认模型 Manifest。
-- 硬件检测、模型目录、模型解析和前端调用流程见 [`docs/hardware-model-resolution-api.md`](docs/hardware-model-resolution-api.md)。
-- OpenAPI 文档由 `/api-docs/openapi.json` 提供，Swagger UI 入口为 `/swagger-ui`。
+`crates/interfaces/server/src/api/` 下 7 个模块:auth, channel, group, log, monitor, token, user
 
 ## Sources
 

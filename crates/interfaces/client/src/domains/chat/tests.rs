@@ -200,6 +200,7 @@ fn selected_catalog_model_resolution_populates_variants_and_hardware() {
                 name: "Qwen3-8B".into(),
                 preset: Some("qwen3-8b".into()),
                 version: CatalogVersion {
+                    verified_variants: Vec::new(),
                     name: "Qwen3-8B".into(),
                     model: "Qwen/Qwen3-8B".into(),
                     source: "modelscope".into(),
@@ -946,6 +947,7 @@ fn catalog_downloading() -> (ChatState, u64) {
         name: "测试模型".into(),
         preset: None,
         version: CatalogVersion {
+            verified_variants: Vec::new(),
             name: "测试版本".into(),
             model: "test/model".into(),
             source: "modelscope".into(),
@@ -1219,4 +1221,43 @@ fn progress_ratio_keeps_fractional_progress_visible_for_large_files() {
         .progress_ratio()
         .expect("已知总大小");
     assert!(ratio > 0.0 && ratio < 1.0);
+}
+
+#[test]
+fn stale_resolution_error_and_download_progress_do_not_overwrite_current_run() {
+    let mut state = selected_chat();
+    let id = start(&mut state);
+    let before = state.clone();
+    state.finish_model_resolution(
+        id.wrapping_sub(1),
+        Err(ChatError {
+            kind: ErrorKind::Timeout,
+            operation: Operation::Resolve,
+            reason: "旧请求超时".into(),
+        }),
+    );
+    assert_eq!(state, before);
+    reach(&mut state, id, PreparationStage::Downloading);
+    for completed in [5, 3] {
+        state.preparation_event(
+            id,
+            PreparationEvent::DownloadProgress {
+                completed,
+                total: Some(10),
+            },
+        );
+    }
+    assert_eq!(state.preparation().expect("当前运行").completed_bytes, 5);
+    state.finish_preparation(
+        id,
+        Err(ChatError {
+            kind: ErrorKind::Cancelled,
+            operation: Operation::Initialize(PreparationStage::Downloading),
+            reason: "远端取消".into(),
+        }),
+    );
+    assert_eq!(
+        state.preparation().expect("当前运行").stage,
+        PreparationStage::Cancelled
+    );
 }

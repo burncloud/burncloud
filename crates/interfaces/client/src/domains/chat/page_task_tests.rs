@@ -103,6 +103,7 @@ fn downloading() -> (ChatState, u64, CatalogSelection, ModelVariant, Hardware) {
         name: "模型".into(),
         preset: None,
         version: CatalogVersion {
+            verified_variants: Vec::new(),
             name: "版本".into(),
             model: "test/model".into(),
             source: "modelscope".into(),

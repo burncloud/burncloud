@@ -136,10 +136,6 @@ fn contradictory_hardware_callbacks_and_final_snapshot_fail_closed() {
 fn byte_progress_unknown_totals_duplicates_and_invalid_progress_are_explicit() {
     for invalid in [
         PreparationEvent::DownloadProgress {
-            completed: 4,
-            total: None,
-        },
-        PreparationEvent::DownloadProgress {
             completed: 20,
             total: Some(10),
         },
@@ -175,6 +171,7 @@ fn download_task_id_is_recorded_and_cancel_invalidates_late_events() {
                 name: "测试目录模型".into(),
                 preset: None,
                 version: CatalogVersion {
+                    verified_variants: Vec::new(),
                     name: "测试目录模型".into(),
                     model: "Qwen/Test".into(),
                     source: "modelscope".into(),

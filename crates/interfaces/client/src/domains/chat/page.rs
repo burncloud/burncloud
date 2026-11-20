@@ -361,13 +361,26 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
         .variant()
         .map(|variant| variant.expected_sha256.clone())
         .unwrap_or_default();
-    let progress = preparation.progress_ratio();
+    let progress = if stage == PreparationStage::Detecting {
+        preparation.progress().map(f64::from)
+    } else {
+        preparation.progress_ratio()
+    };
     let variants: Vec<_> = preparation
         .model
         .variants
         .iter()
         .filter(|variant| variant.fits(hardware))
-        .cloned()
+        .map(|v| {
+            (
+                v.clone(),
+                preparation
+                    .model
+                    .catalog_selection
+                    .as_ref()
+                    .is_some_and(|s| s.version.verified_path(v).is_some()),
+            )
+        })
         .collect();
     let platform = hardware
         .platform
@@ -412,13 +425,13 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
                     div { class: "chat-preparation-progress",
                         if let Some(percent) = progress {
                             progress { max: 100, value: percent, aria_label: format!("进度：{}", stage.label()) }
-                            span { "{percent:.1}% · {preparation.completed_bytes} B" }
-                        } else { progress { aria_label: "下载进行中" } span { "进行中" } }
+                            span { if stage == PreparationStage::Downloading { "{percent:.1}% · {preparation.completed_bytes} B" } else { "{percent:.0}%" } }
+                        } else { progress { aria_label: "下载进行中" } span { "已接收 {preparation.completed_bytes} B" } }
                     }
                 }
                 if stage == PreparationStage::SelectingVariant {
                     div { class: "chat-variant-list", aria_label: "符合硬件要求的量化版本",
-                        for variant in variants {
+                        for (variant, downloaded) in variants {
                             button {
                                 class: "chat-variant", r#type: "button", disabled: !active,
                                 onclick: move |_| {
@@ -436,7 +449,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
                                         " · 磁盘 {gib(variant.disk_bytes)} GiB"
                                     }
                                 }
-                                span { "下载此版本" }
+                                span { if downloaded { "使用已下载版本" } else { "下载此版本" } }
                             }
                         }
                     }

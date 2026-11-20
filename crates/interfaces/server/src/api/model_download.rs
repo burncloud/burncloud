@@ -192,7 +192,7 @@ async fn create_download_task(
 
     let manager = match state
         .download_manager
-        .get_or_try_init(|| async { DownloadManager::new().await })
+        .get_or_try_init(|| DownloadManager::with_database(state.db.clone()))
         .await
     {
         Ok(manager) => manager,
@@ -235,13 +235,14 @@ async fn create_download_task(
     }
 
     let registry = task_registry();
-    register_task(registry, handle.task_id, request.clone(), handle.status).await;
-    spawn_task_verification(
-        Arc::clone(&state.download_manager),
-        Arc::clone(registry),
-        handle.task_id,
-        request,
-    );
+    if register_task(registry, handle.task_id, request.clone(), handle.status).await {
+        spawn_task_verification(
+            Arc::clone(&state.download_manager),
+            Arc::clone(registry),
+            handle.task_id,
+            request,
+        );
+    }
 
     match task_snapshot(manager, registry, handle.task_id).await {
         Ok(Some(snapshot)) => task_response(StatusCode::ACCEPTED, snapshot),
@@ -266,7 +267,7 @@ async fn get_download_task(
     };
     let manager = match state
         .download_manager
-        .get_or_try_init(|| async { DownloadManager::new().await })
+        .get_or_try_init(|| DownloadManager::with_database(state.db.clone()))
         .await
     {
         Ok(manager) => manager,
@@ -302,7 +303,7 @@ async fn cancel_download_task(
     };
     let manager = match state
         .download_manager
-        .get_or_try_init(|| async { DownloadManager::new().await })
+        .get_or_try_init(|| DownloadManager::with_database(state.db.clone()))
         .await
     {
         Ok(manager) => manager,
@@ -350,9 +351,12 @@ async fn register_task(
     task_id: i64,
     identity: DownloadRequestIdentity,
     status: ManagerTaskStatus,
-) {
+) -> bool {
     let mut tasks = registry.lock().await;
-    tasks.entry(task_id).or_insert_with(|| NodeTaskState {
+    let std::collections::hash_map::Entry::Vacant(entry) = tasks.entry(task_id) else {
+        return false;
+    };
+    entry.insert(NodeTaskState {
         identity,
         status: task_state_from_manager(status),
         error: None,
@@ -360,6 +364,10 @@ async fn register_task(
         actual_sha256: None,
         cancel_requested: false,
     });
+    matches!(
+        status,
+        ManagerTaskStatus::Queued | ManagerTaskStatus::Downloading | ManagerTaskStatus::Verifying
+    )
 }
 
 fn task_state_from_manager(status: ManagerTaskStatus) -> DownloadTaskState {
@@ -378,13 +386,13 @@ async fn task_snapshot(
     registry: &TaskRegistry,
     task_id: i64,
 ) -> Result<Option<DownloadTaskSnapshot>, DownloadError> {
+    // 先取 Node 快照，再读持久化进度；避免把较早的字节数和较晚的成功终态拼在一起。
+    let node_state = registry.lock().await.get(&task_id).cloned();
     let Some(manager_snapshot) = manager.get_task(task_id).await? else {
         return Ok(None);
     };
-    let Some(node_state) = registry.lock().await.get(&task_id).cloned() else {
-        return Err(DownloadError::InvalidRecord(format!(
-            "任务 {task_id} 缺少 Node 下载任务状态"
-        )));
+    let Some(node_state) = node_state else {
+        return Ok(None);
     };
     if node_state.identity.filename != manager_snapshot.filename {
         tracing::debug!(
@@ -395,10 +403,15 @@ async fn task_snapshot(
         );
     }
     let status = effective_task_state(&node_state, manager_snapshot.status);
-    let error = node_state.error.clone().or_else(|| {
-        (status == DownloadTaskState::Failed)
-            .then(|| manager_error(&manager_snapshot))
-            .flatten()
+    let error = (status == DownloadTaskState::Failed).then(|| {
+        node_state.error.unwrap_or_else(|| TaskError {
+            code: "download_failed".into(),
+            message: manager_snapshot
+                .error
+                .clone()
+                .filter(|message| !message.trim().is_empty())
+                .unwrap_or_else(|| "模型文件下载失败".into()),
+        })
     });
     Ok(Some(DownloadTaskSnapshot {
         task_id: manager_snapshot.task_id,
@@ -421,6 +434,17 @@ fn effective_task_state(
     node_state: &NodeTaskState,
     manager_status: ManagerTaskStatus,
 ) -> DownloadTaskState {
+    if node_state.status == DownloadTaskState::Verifying
+        && matches!(
+            manager_status,
+            ManagerTaskStatus::Queued | ManagerTaskStatus::Downloading
+        )
+    {
+        return DownloadTaskState::Verifying;
+    }
+    if manager_status == ManagerTaskStatus::Cancelled {
+        return DownloadTaskState::Cancelled;
+    }
     match node_state.status {
         DownloadTaskState::Succeeded | DownloadTaskState::Failed | DownloadTaskState::Cancelled => {
             node_state.status
@@ -429,17 +453,6 @@ fn effective_task_state(
         | DownloadTaskState::Downloading
         | DownloadTaskState::Verifying => task_state_from_manager(manager_status),
     }
-}
-
-fn manager_error(snapshot: &ManagerTaskSnapshot) -> Option<TaskError> {
-    snapshot.error.as_ref().map(|message| TaskError {
-        code: "download_failed".to_string(),
-        message: if message.is_empty() {
-            "模型文件下载失败".to_string()
-        } else {
-            message.clone()
-        },
-    })
 }
 
 fn task_response(status: StatusCode, snapshot: DownloadTaskSnapshot) -> Response {
@@ -452,7 +465,8 @@ fn task_response(status: StatusCode, snapshot: DownloadTaskSnapshot) -> Response
                 .actual_sha256
                 .as_deref()
                 .and_then(normalize_checksum)
-                .is_none())
+                .as_deref()
+                != Some(&snapshot.identity.checksum))
     {
         tracing::error!(
             task_id = snapshot.task_id,
@@ -619,7 +633,7 @@ async fn verify_task(
     let Some(task) = tasks.get_mut(&task_id) else {
         return;
     };
-    if task.cancel_requested || task.status == DownloadTaskState::Cancelled {
+    if task.status == DownloadTaskState::Cancelled {
         return;
     }
     task.final_path = Some(path.to_string_lossy().into_owned());
@@ -633,12 +647,10 @@ async fn begin_verification(registry: &TaskRegistry, task_id: i64) -> bool {
     let Some(task) = tasks.get_mut(&task_id) else {
         return false;
     };
-    if task.cancel_requested
-        || matches!(
-            task.status,
-            DownloadTaskState::Succeeded | DownloadTaskState::Failed | DownloadTaskState::Cancelled
-        )
-    {
+    if matches!(
+        task.status,
+        DownloadTaskState::Succeeded | DownloadTaskState::Failed | DownloadTaskState::Cancelled
+    ) {
         return false;
     }
     task.status = DownloadTaskState::Verifying;
@@ -650,12 +662,10 @@ async fn finish_task_error(registry: &TaskRegistry, task_id: i64, error: TaskErr
     let Some(task) = tasks.get_mut(&task_id) else {
         return;
     };
-    if task.cancel_requested
-        || matches!(
-            task.status,
-            DownloadTaskState::Cancelled | DownloadTaskState::Succeeded
-        )
-    {
+    if matches!(
+        task.status,
+        DownloadTaskState::Cancelled | DownloadTaskState::Succeeded
+    ) {
         return;
     }
     task.status = DownloadTaskState::Failed;

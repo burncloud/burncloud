@@ -72,6 +72,22 @@ impl DownloadDB {
         Ok(Self { db: Arc::new(db) })
     }
 
+    /// 按稳定任务 ID 读取单条记录，避免每次 HTTP 轮询扫描完整历史。
+    ///
+    /// # Examples
+    /// 已删除任务返回 `Ok(None)`，数据库读取错误作为 `Err` 返回。
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<SysDownload>> {
+        if id <= 0 {
+            return Err(DatabaseError::Query("下载任务 ID 必须为正数".into()));
+        }
+        self.db
+            .fetch_optional_with_params(
+                "SELECT * FROM sys_downloads WHERE id = ?",
+                vec![id.to_string()],
+            )
+            .await
+    }
+
     /// 使用主服务已经打开的数据库连接创建下载数据库门面。
     ///
     /// # Errors
@@ -219,7 +235,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET gid = ?, retry_count = ?, status = 'pending', \
-                 error = NULL, updated_at = ? WHERE id = ?",
+                 error = NULL, updated_at = ? WHERE id = ? AND status IN ('pending','active','waiting','paused')",
                 vec![
                     gid.to_string(),
                     retry_count.to_string(),
@@ -245,7 +261,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = ?, total_length = ?, completed_length = ?, \
-                 download_speed = ?, updated_at = ? WHERE id = ? AND gid = ?",
+                 download_speed = ?, updated_at = ? WHERE id = ? AND gid = ? AND status IN ('pending','active','waiting','paused')",
                 vec![
                     status.to_string(),
                     total_length.to_string(),
@@ -275,7 +291,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'completed', final_path = ?, total_length = ?, \
-                 completed_length = ?, completed_at = ?, updated_at = ? WHERE id = ? AND gid = ?",
+                 completed_length = ?, completed_at = ?, updated_at = ? WHERE id = ? AND gid = ? AND status IN ('pending','active','waiting','paused')",
                 vec![
                     final_path.to_string(),
                     total_length.to_string(),
@@ -303,7 +319,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'failed', retry_count = ?, error = ?, \
-                 updated_at = ? WHERE id = ? AND gid = ?",
+                 updated_at = ? WHERE id = ? AND gid = ? AND status NOT IN ('cancelled', 'succeeded')",
                 vec![
                     retry_count.to_string(),
                     error.to_string(),
@@ -323,7 +339,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'cancelled', updated_at = ? \
-                 WHERE id = ? AND gid = ?",
+                 WHERE id = ? AND gid = ? AND status NOT IN ('succeeded', 'failed')",
                 vec![Self::now_string(), id.to_string(), gid.to_string()],
             )
             .await?;
@@ -358,7 +374,8 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET model = ?, source = ?, revision = ?, variant_id = ?, \
-                 artifact_uri = ?, checksum = ?, updated_at = ? WHERE id = ? AND gid = ?",
+                 artifact_uri = ?, checksum = ?, updated_at = ? WHERE id = ? AND gid = ? \
+                 AND (model IS NULL OR (model = ? AND source = ? AND revision = ? AND variant_id = ? AND artifact_uri = ? AND checksum = ?))",
                 vec![
                     model.to_string(),
                     source.to_string(),
@@ -368,7 +385,7 @@ impl DownloadDB {
                     checksum.to_string(),
                     Self::now_string(),
                     id.to_string(),
-                    gid.to_string(),
+                    gid.to_string(), model.into(), source.into(), revision.into(), variant_id.into(), artifact_uri.into(), checksum.into(),
                 ],
             )
             .await?;
@@ -387,13 +404,14 @@ impl DownloadDB {
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'succeeded', actual_sha256 = ?, \
                  completed_at = COALESCE(completed_at, ?), updated_at = ? WHERE id = ? AND gid = ? \
-                 AND status IN ('completed', 'verifying')",
+                 AND status IN ('completed', 'verifying') AND checksum = ? AND final_path IS NOT NULL AND final_path <> ''",
                 vec![
                     actual_sha256.to_string(),
                     now.clone(),
                     now,
                     id.to_string(),
                     gid.to_string(),
+                    actual_sha256.to_string(),
                 ],
             )
             .await?;
@@ -465,33 +483,27 @@ impl DownloadDB {
             .await
     }
 
-    /// 按模型、来源、修订号和变体 ID 查找最新记录。
+    /// 查找指定仓库修订的下载记录，最新任务在前；旧记录不补造模型身份。
     ///
-    /// 该查询仅用于远程目录仍使用占位摘要时的兼容读取；真正判定已下载时仍会校验记录自身的
-    /// 完整 URI、期望摘要、实际摘要和文件路径。
-    pub async fn find_model_variant(
+    /// # Examples
+    /// 目录查询传入 `org/model`、`modelscope`、`master`，再逐变体匹配 URI 和摘要。
+    pub async fn model_downloads(
         &self,
         model: &str,
         source: &str,
         revision: &str,
-        variant_id: &str,
-    ) -> Result<Option<SysDownload>> {
-        self.db
-            .fetch_optional_with_params::<SysDownload>(
-                "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, \
-                 download_dir, filename, connections, split, retry_count, error, final_path, \
-                 completed_at, created_at, updated_at, model, source, revision, variant_id, \
-                 artifact_uri, checksum, actual_sha256 FROM sys_downloads \
-                 WHERE model = ? AND source = ? AND revision = ? AND variant_id = ? \
-                 ORDER BY id DESC LIMIT 1",
-                vec![
-                    model.to_string(),
-                    source.to_string(),
-                    revision.to_string(),
-                    variant_id.to_string(),
-                ],
-            )
-            .await
+    ) -> Result<Vec<SysDownload>> {
+        if [model, source, revision]
+            .iter()
+            .any(|v| v.trim().is_empty())
+        {
+            return Err(DatabaseError::Query("模型仓库身份不完整".into()));
+        }
+        self.db.fetch_all_with_params::<SysDownload>(
+            "SELECT * FROM sys_downloads WHERE model = ? AND source = ? AND revision = ? \
+             AND variant_id IS NOT NULL AND artifact_uri IS NOT NULL AND checksum IS NOT NULL ORDER BY id DESC",
+            vec![model.into(), source.into(), revision.into()],
+        ).await
     }
 
     /// Update download status

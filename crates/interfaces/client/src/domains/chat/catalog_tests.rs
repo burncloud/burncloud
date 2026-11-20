@@ -65,6 +65,7 @@ async fn json_server(values: Vec<impl serde::Serialize>) -> Server {
 }
 fn version() -> CatalogVersion {
     CatalogVersion {
+        verified_variants: Vec::new(),
         name: "Qwen3-8B".into(),
         model: "Qwen/Qwen3-8B".into(),
         source: "modelscope".into(),
@@ -1187,4 +1188,40 @@ async fn deploy_http_connection_failure_is_not_connected() {
         Operation::Initialize(PreparationStage::Deploying)
     );
     server.await.expect("服务端任务");
+}
+
+#[tokio::test]
+async fn verified_catalog_variant_is_used_without_posting_a_download() {
+    let mut request = download_request(DOWNLOAD_DIGEST);
+    let v = &request.variant;
+    let response = json!({"status":"downloadable", "model":"Qwen/Qwen3-8B", "source":"modelscope", "revision":"master", "resource_url":version().resource_url, "artifact_status":"downloaded", "downloaded":true, "local_path":"/node/m.gguf", "actual_sha256":DOWNLOAD_DIGEST,
+        "variants":[{"id":v.id,"quantization":v.quantization,"runtime":v.runtime,"artifact_source":v.artifact_source,"expected_sha256":DOWNLOAD_DIGEST,"ram_bytes":1,"vram_bytes":0,"disk_bytes":1,"downloaded":true,"artifact_status":"downloaded","local_path":"/node/m.gguf","actual_sha256":DOWNLOAD_DIGEST}]});
+    let service = json_server(vec![response]).await;
+    let model: CatalogModel = serde_json::from_value(item(true, "modelscope")).expect("目录项");
+    let inspection = service.client.inspect(&model).await.expect("已下载工件");
+    let mut other = v.clone();
+    other.artifact_source.push_str(".other");
+    assert!(inspection.version.verified_path(&other).is_none());
+    request
+        .model
+        .catalog_selection
+        .as_mut()
+        .expect("目录选择")
+        .version = inspection.version;
+    let mut events = Vec::new();
+    let prepared = service
+        .client
+        .download_model(&request, |e| events.push(e))
+        .await
+        .expect("复用工件");
+    assert!(prepared.is_valid());
+    assert_eq!(prepared.local_path, "/node/m.gguf");
+    assert!(matches!(
+        events.as_slice(),
+        [
+            PreparationEvent::Downloaded,
+            PreparationEvent::Verified { .. }
+        ]
+    ));
+    assert_eq!(service.requests.lock().expect("请求记录").len(), 1);
 }

@@ -93,7 +93,7 @@ fn repository_urls_encode_external_model_identity() {
         ModelSource::ModelScope,
         "Qwen/Qwen3-8B",
         "master",
-        RepositoryOperation::Files,
+        ModelSource::ModelScope.base_url(),
     )
     .expect("ModelScope 地址");
     assert_eq!(
@@ -105,7 +105,7 @@ fn repository_urls_encode_external_model_identity() {
         ModelSource::HuggingFace,
         "TheBloke/TinyLlama",
         "main",
-        RepositoryOperation::Files,
+        ModelSource::HuggingFace.base_url(),
     )
     .expect("Hugging Face 地址");
     assert_eq!(

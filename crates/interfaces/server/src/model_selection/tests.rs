@@ -36,6 +36,9 @@ async fn upstream(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     calls.lock().expect("请求记录锁").push(uri.to_string());
+    if uri.path().ends_with("/api/models/org/repo/tree/main") {
+        return Json(json!([{"type":"file", "path":"model.gguf", "size":3, "lfs":{"oid":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}}])).into_response();
+    }
     if !params.contains_key("search") {
         let status = if uri.path().contains("/missing/") {
             StatusCode::NOT_FOUND
@@ -400,54 +403,50 @@ async fn unreachable_resource_is_not_downloadable() {
 }
 
 #[tokio::test]
-async fn artifact_status_requires_existing_file_and_matching_digest() {
-    let file = tempfile::NamedTempFile::new().expect("测试工件");
-    let path = file.path().to_string_lossy().into_owned();
-    let checksum = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    let base = SysDownload {
-        id: 1,
-        gid: "gid".into(),
-        url: None,
-        status: "succeeded".into(),
-        uris: "[]".into(),
-        total_length: Some(1),
-        completed_length: Some(1),
-        download_speed: Some(0),
-        download_dir: None,
-        filename: None,
-        connections: None,
-        split: None,
-        retry_count: 0,
-        error: None,
-        final_path: Some(path.clone()),
-        completed_at: None,
-        created_at: None,
-        updated_at: None,
-        model: Some("Qwen/Qwen3-8B".into()),
-        source: Some("modelscope".into()),
-        revision: Some("master".into()),
-        variant_id: Some("q4.gguf".into()),
-        artifact_uri: Some("https://modelscope.cn/q4.gguf".into()),
-        checksum: Some(checksum.into()),
-        actual_sha256: Some(checksum.into()),
+async fn catalog_survives_restart_and_matches_current_remote_artifact() {
+    let mut h = Harness::new().await;
+    let dir = tempfile::tempdir().expect("临时目录");
+    let path = dir.path().join("model.gguf");
+    tokio::fs::write(&path, b"abc").await.expect("工件");
+    let file = dir.path().join("catalog.db");
+    let url = burncloud_database::sqlite_url(
+        &file.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
+    let digest = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let db = burncloud_database::create_database_with_url(&url)
+        .await
+        .expect("建库");
+    db.execute_query_with_params("INSERT INTO sys_downloads (gid, uris, status, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256, final_path, total_length, completed_length) VALUES ('test', '[]', 'succeeded', 'org/repo', 'huggingface', 'main', 'model.gguf', 'https://huggingface.co/org/repo/resolve/main/model.gguf', ?, ?, ?, 3, 3)", vec![digest.into(), digest.into(), path.to_string_lossy().into_owned()]).await.expect("写入校验凭据");
+    drop(db);
+    let db = Arc::new(
+        burncloud_database::create_database_with_url(&url)
+            .await
+            .expect("重新连接同一数据库"),
+    );
+    let config = Config {
+        huggingface: h.state.config.huggingface.clone(),
+        ..Config::default()
     };
-    let snapshot = artifact_from_record(base.clone()).await;
-    assert_eq!(snapshot.status, ArtifactStatus::Downloaded);
-    assert_eq!(snapshot.local_path.as_deref(), Some(path.as_str()));
-    assert_eq!(snapshot.actual_sha256.as_deref(), Some(checksum));
-
-    let mut wrong_digest = base.clone();
-    wrong_digest.actual_sha256 =
-        Some("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into());
-    assert_eq!(
-        artifact_from_record(wrong_digest).await.status,
-        ArtifactStatus::Failed
-    );
-
-    let mut missing_file = base;
-    missing_file.final_path = Some(format!("{path}.missing"));
-    assert_eq!(
-        artifact_from_record(missing_file).await.status,
-        ArtifactStatus::Failed
-    );
+    h.router = app(config, h.state.client.clone(), Some(db.clone()));
+    let query = "/api/models/status?model=org/repo&source=huggingface&revision=main";
+    for (update, expected) in [
+        ("", "downloaded"),
+        ("UPDATE sys_downloads SET status='active'", "downloading"),
+        ("UPDATE sys_downloads SET status='completed'", "verifying"),
+        ("UPDATE sys_downloads SET status='succeeded', actual_sha256=NULL", "failed"),
+        ("UPDATE sys_downloads SET actual_sha256=checksum, final_path='nonexistent-file'", "failed"),
+        ("UPDATE sys_downloads SET checksum='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'", "not_downloaded"),
+    ] {
+        if !update.is_empty() { db.execute_query_with_params(update, Vec::new()).await.expect("更新测试记录"); }
+        let (code, body) = h.get(query).await;
+        assert_eq!(code, StatusCode::OK);
+        let body: Value = serde_json::from_str(&body).expect("目录响应");
+        assert_eq!(body["status"], "downloadable");
+        assert_eq!(body["artifact_status"], expected);
+        assert_eq!(body["variants"][0]["artifact_status"], expected);
+        assert_eq!(body["downloaded"], expected == "downloaded");
+        assert_eq!(body["actual_sha256"].as_str(), (expected == "downloaded").then_some(digest));
+    }
 }

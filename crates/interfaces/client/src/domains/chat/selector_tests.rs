@@ -8,6 +8,7 @@ use serde_json::json;
 
 fn version(source: &str, revision: &str) -> CatalogVersion {
     CatalogVersion {
+        verified_variants: Vec::new(),
         name: "Qwen3-8B".into(),
         model: "Qwen/Qwen3-8B".into(),
         revision: revision.into(),

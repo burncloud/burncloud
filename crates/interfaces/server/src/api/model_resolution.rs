@@ -29,7 +29,7 @@ pub(super) fn routes() -> Router<AppState> {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-enum ModelSource {
+pub(crate) enum ModelSource {
     #[serde(rename = "modelscope")]
     ModelScope,
     #[serde(rename = "hf-mirror")]
@@ -111,7 +111,7 @@ struct ResolveModelErrorBody {
 }
 
 #[derive(Debug)]
-enum DiscoveryError {
+pub(crate) enum DiscoveryError {
     Invalid(String),
     NotFound,
     Unavailable(String),
@@ -288,15 +288,27 @@ async fn discover_manifest(
         .timeout(MODEL_DISCOVERY_TIMEOUT)
         .build()
         .map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
+    discover_manifest_at(&client, *source, source.base_url(), model, revision).await
+}
+
+/// 从指定站点读取真实文件清单；目录和硬件解析共用同一份身份生成规则。
+pub(crate) async fn discover_manifest_at(
+    client: &Client,
+    source: ModelSource,
+    base: &str,
+    model: &str,
+    revision: &str,
+) -> Result<ModelManifest, DiscoveryError> {
+    let url = repository_url(source, model, revision, base)?;
     let artifacts = match source {
-        ModelSource::ModelScope => discover_modelscope(&client, model, revision).await?,
+        ModelSource::ModelScope => discover_modelscope(client, url).await?,
         ModelSource::HfMirror | ModelSource::HuggingFace => {
-            discover_huggingface(&client, *source, model, revision).await?
+            discover_huggingface(client, url).await?
         }
     };
     let variants = artifacts
         .into_iter()
-        .map(|artifact| build_variant(*source, model, revision, artifact))
+        .map(|artifact| build_variant(source, model, revision, artifact))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(ModelManifest {
         model_name: model.to_owned(),
@@ -312,15 +324,8 @@ async fn discover_manifest(
 
 async fn discover_modelscope(
     client: &Client,
-    model: &str,
-    revision: &str,
+    url: Url,
 ) -> Result<Vec<DiscoveredArtifact>, DiscoveryError> {
-    let url = repository_url(
-        ModelSource::ModelScope,
-        model,
-        revision,
-        RepositoryOperation::Files,
-    )?;
     let response = client
         .get(url)
         .send()
@@ -373,11 +378,8 @@ async fn discover_modelscope(
 
 async fn discover_huggingface(
     client: &Client,
-    source: ModelSource,
-    model: &str,
-    revision: &str,
+    url: Url,
 ) -> Result<Vec<DiscoveredArtifact>, DiscoveryError> {
-    let url = repository_url(source, model, revision, RepositoryOperation::Files)?;
     let response = client
         .get(url)
         .send()
@@ -418,32 +420,27 @@ async fn discover_huggingface(
         .collect())
 }
 
-#[derive(Clone, Copy)]
-enum RepositoryOperation {
-    Files,
-}
-
 fn repository_url(
     source: ModelSource,
     model: &str,
     revision: &str,
-    operation: RepositoryOperation,
+    base: &str,
 ) -> Result<Url, DiscoveryError> {
     let (owner, name) = model
         .split_once('/')
         .ok_or_else(|| DiscoveryError::Invalid("模型名称必须包含组织和名称".into()))?;
-    let mut url = Url::parse(source.base_url())
-        .map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
+    let mut url =
+        Url::parse(base).map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
     {
         let mut segments = url
             .path_segments_mut()
             .map_err(|_| DiscoveryError::Invalid("模型仓库地址无效".into()))?;
         segments.pop_if_empty();
-        match (source, operation) {
-            (ModelSource::ModelScope, RepositoryOperation::Files) => {
+        match source {
+            ModelSource::ModelScope => {
                 segments.extend(["api", "v1", "models", owner, name, "repo", "files"]);
             }
-            (_, RepositoryOperation::Files) => {
+            _ => {
                 segments.extend(["api", "models", owner, name, "tree", revision]);
             }
         }
@@ -459,6 +456,23 @@ fn repository_url(
         }
     }
     Ok(url)
+}
+
+/// 离线目录只还原有完整身份的历史版本；不能把旧凭据赋给占位清单。
+pub(crate) fn recorded_variant(
+    source: ModelSource,
+    model: &str,
+    revision: &str,
+    record: &burncloud_download::CatalogDownload,
+) -> Option<Variant> {
+    let sha256 = normalize_sha256(record.checksum.strip_prefix("sha256:")?)?;
+    let artifact = DiscoveredArtifact {
+        path: record.variant_id.clone(),
+        size: record.total_bytes,
+        sha256,
+    };
+    let variant = build_variant(source, model, revision, artifact).ok()?;
+    (variant.artifact_uri == record.artifact_uri).then_some(variant)
 }
 
 fn build_variant(

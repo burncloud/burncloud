@@ -212,7 +212,10 @@ pub(super) fn CatalogPicker(
                                         span { class: "chat-row-status preparing", role: "status", "校验中..." }
                                     },
                                     (Some(ArtifactStatus::Failed), _) => rsx! {
-                                        span { class: "chat-row-status failed", role: "status", "下载失败，可重试" }
+                                        span { class: "chat-row-status failed", role: "status", "下载失败" }
+                                        if has_version && status == Some(VersionStatus::Downloadable) {
+                                            button { class: "chat-row-text-button", r#type: "button", disabled: busy, onclick: move |_| confirm_selection(picker, state, on_confirm), "重试下载" }
+                                        }
                                     },
                                     (_, Some(VersionStatus::Available)) if has_version => rsx! {
                                         span { class: "chat-row-status available", "可用" }

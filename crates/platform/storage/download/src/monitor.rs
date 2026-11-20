@@ -32,6 +32,7 @@ pub(super) async fn monitor_loop(
                         result = monitor_task(&aria2, &db, &states, &gid) => {
                             if let Err(error) = result {
                                 tracing::error!(gid = %gid, error = %error, "下载监控操作失败");
+                                finish_failed(&db, &states, &gid, format!("下载监控操作失败：{error}")).await;
                             }
                         }
                     }
@@ -452,13 +453,14 @@ fn normalize_progress(
     incoming_total: i64,
     incoming_completed: i64,
 ) -> (i64, i64) {
-    let total = previous_total
-        .max(incoming_total)
-        .max(previous_completed)
-        .max(incoming_completed)
-        .max(0);
-    let completed = previous_completed.max(incoming_completed).max(0).min(total);
-    (total, completed)
+    let total = previous_total.max(incoming_total).max(0);
+    let completed = previous_completed.max(incoming_completed).max(0);
+    // 未知长度的输入流有字节进展也不意味着已经达到 100%。
+    if total == 0 {
+        return (0, completed);
+    }
+    let total = total.max(previous_completed);
+    (total, completed.min(total))
 }
 
 fn parse_length(value: &str, field: &str) -> Result<i64> {

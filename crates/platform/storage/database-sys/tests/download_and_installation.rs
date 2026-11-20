@@ -898,3 +898,60 @@ async fn model_identity_and_verified_digest_survive_database_reads(
         .is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn cancellation_and_checksum_guards_survive_late_writes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDb::new("late_model_callbacks");
+    let store = temp.downloads().await?;
+    let uri = "https://huggingface.co/org/model/resolve/main/model.gguf";
+    let id = store
+        .insert_task("old-gid", uri, "models", "model.gguf")
+        .await?;
+    let sha = format!("sha256:{}", "a".repeat(64));
+    let wrong = format!("sha256:{}", "b".repeat(64));
+    store
+        .set_identity(
+            id,
+            "old-gid",
+            "org/model",
+            "huggingface",
+            "main",
+            "model.gguf",
+            uri,
+            &sha,
+        )
+        .await?;
+    assert!(store
+        .set_identity(
+            id,
+            "old-gid",
+            "org/model",
+            "huggingface",
+            "main",
+            "model.gguf",
+            uri,
+            &wrong
+        )
+        .await
+        .is_err());
+    store
+        .mark_completed(id, "old-gid", "/models/model.gguf", 10, 10)
+        .await?;
+    assert!(store.mark_verified(id, "old-gid", &wrong).await.is_err());
+    store.mark_cancelled(id, "old-gid").await?;
+    assert!(store.mark_verified(id, "old-gid", &sha).await.is_err());
+    assert!(store
+        .update_task_progress(id, "old-gid", "active", (10, 5, 2))
+        .await
+        .is_err());
+    assert!(store
+        .mark_completed(id, "old-gid", "/models/model.gguf", 10, 10)
+        .await
+        .is_err());
+    assert_eq!(
+        store.get_by_id(id).await?.expect("存在的任务").status,
+        "cancelled"
+    );
+    Ok(())
+}

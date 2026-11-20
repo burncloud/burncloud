@@ -42,7 +42,7 @@ impl Source {
         }
     }
 
-    fn base(self, config: &Config) -> &str {
+    pub(super) fn base(self, config: &Config) -> &str {
         match self {
             Source::ModelScope => &config.modelscope,
             Source::HfMirror => &config.hf_mirror,

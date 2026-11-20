@@ -1,10 +1,12 @@
 //! 基于 aria2 与 SQLite 持久化的下载管理。
 
+mod catalog;
 mod error;
 mod manager;
 mod monitor;
 mod operations;
 mod utils;
 
+pub use catalog::{catalog_downloads, CatalogDownload};
 pub use error::DownloadError;
 pub use manager::{DownloadManager, DownloadTaskHandle, DownloadTaskSnapshot, DownloadTaskStatus};

@@ -46,6 +46,7 @@ fn progress_is_monotonic_and_bounded() {
     let second = normalize_progress(first.0, first.1, 10, 5);
     let stale = normalize_progress(second.0, second.1, 8, 3);
     let complete = normalize_progress(stale.0, stale.1, 10, 10);
+    assert_eq!(normalize_progress(0, 0, 0, 5), (0, 5));
     assert_eq!(first, (10, 0));
     assert_eq!(second, (10, 5));
     assert_eq!(stale, (10, 5));

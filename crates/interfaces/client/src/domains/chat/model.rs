@@ -299,6 +299,7 @@ pub(super) fn valid_digest(value: &str) -> bool {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum ErrorKind {
+    Cancelled,
     InvalidParameter,
     NotFound,
     NotConnected,

@@ -339,14 +339,16 @@ impl ChatState {
         status: VersionStatus,
         variants: Vec<ModelVariant>,
     ) -> Option<u64> {
+        let has_verified_variant = !selection.version.verified_variants.is_empty();
         if self.is_busy()
             || self.status_loading
             || selection.name.trim().is_empty()
             || selection.version.validate().is_err()
-            || !matches!(
-                status,
-                VersionStatus::Downloadable | VersionStatus::Available
-            )
+            || (!has_verified_variant
+                && !matches!(
+                    status,
+                    VersionStatus::Downloadable | VersionStatus::Available
+                ))
         {
             return None;
         }
@@ -369,7 +371,7 @@ impl ChatState {
         if !self.set_model(&id) {
             return None;
         }
-        if status == VersionStatus::Available {
+        if status == VersionStatus::Available && !has_verified_variant {
             self.fail_preparation(ChatError {
                 kind: ErrorKind::NotConnected,
                 operation: Operation::Status,
@@ -707,6 +709,12 @@ impl ChatState {
         run_id: u64,
         result: Result<ModelResolution, ChatError>,
     ) {
+        if !self
+            .preparation()
+            .is_some_and(|p| p.run_id == run_id && p.stage == PreparationStage::Detecting)
+        {
+            return;
+        }
         let resolution = match result {
             Ok(resolution) => resolution,
             Err(error) => {
@@ -813,20 +821,21 @@ impl ChatState {
             PreparationEvent::DownloadProgress { completed, total }
                 if p.stage == PreparationStage::Downloading =>
             {
-                if *completed < p.completed_bytes
-                    || total.is_some_and(|total| total == 0 || *completed > total)
-                    || (p.total_bytes.is_some() && p.total_bytes != *total)
-                {
+                if total.is_some_and(|size| size == 0 || *completed > size) {
                     false
                 } else {
-                    p.completed_bytes = *completed;
-                    p.total_bytes = *total;
+                    p.completed_bytes = p.completed_bytes.max(*completed);
+                    p.total_bytes = p
+                        .total_bytes
+                        .max(*total)
+                        .map(|size| size.max(p.completed_bytes));
                     true
                 }
             }
             PreparationEvent::Downloaded if p.stage == PreparationStage::Downloading => {
                 // 下载器完成事件是校验阶段的唯一边界；进度快照可能来自较早的轮询，
                 // 不能因为一次暂时落后的 completed_bytes 阻断摘要校验。
+                p.completed_bytes = p.total_bytes.unwrap_or(p.completed_bytes);
                 p.stage = PreparationStage::Verifying;
                 true
             }
@@ -1064,6 +1073,10 @@ impl ChatState {
         }
         let ready = match result {
             Ok(value) => value,
+            Err(error) if error.kind == ErrorKind::Cancelled => {
+                self.request_preparation_cancel(run_id);
+                return None;
+            }
             Err(error) => {
                 self.fail_preparation(error);
                 return None;
