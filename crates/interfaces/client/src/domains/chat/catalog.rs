@@ -1169,20 +1169,20 @@ impl CatalogModel {
     /// # Notes
     /// 重复预置仓库以原表行号区分；搜索项仍严格使用仓库短名作为标识。
     pub(super) fn validate(&self) -> Result<(), ChatError> {
-        let repository_id = self
+        let id_matches_model = self
             .model
             .rsplit('/')
             .next()
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        let id_valid = self.id == repository_id
-            || (self.preset
-                && self
-                    .id
-                    .strip_prefix(&format!("{repository_id}-row-"))
-                    .is_some_and(|row| {
-                        !row.is_empty() && row.bytes().all(|byte| byte.is_ascii_digit())
-                    }));
+            .is_some_and(|name| name.to_ascii_lowercase() == self.id);
+        let preset_id_valid = !self.id.is_empty()
+            && self.id.len() <= 128
+            && !matches!(self.id.as_str(), "." | "..")
+            && self.id.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+            })
+            && self.id.split_once("-row-").is_none_or(|(_, row)| {
+                !row.is_empty() && row.bytes().all(|byte| byte.is_ascii_digit())
+            });
         let link_valid = self.resource_url.as_ref().is_none_or(|link| {
             Url::parse(link).is_ok_and(|url| {
                 matches!(url.scheme(), "http" | "https")
@@ -1193,7 +1193,8 @@ impl CatalogModel {
         });
         if self.name.trim().is_empty()
             || !valid_resource(&self.model, &self.source, &self.revision)
-            || !id_valid
+            || (self.preset && !preset_id_valid)
+            || (!self.preset && !id_matches_model)
             || !link_valid
         {
             return Err(invalid_search("模型目录条目无效或资源不完整"));

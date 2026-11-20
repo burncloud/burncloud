@@ -108,6 +108,25 @@ pub trait RuntimeAdapter: Send + Sync {
     ) -> Result<ProcessPlan, RuntimeAdapterError>;
 }
 
+/// 根据模型地址生成本地运行时进程计划的部署专用接口。
+///
+/// 实现方负责把地址转换成运行时参数；Node 部署服务不下载或校验模型文件。
+///
+/// # Examples
+///
+/// use burncloud_node_runtime::ModelUrlRuntimeAdapter;
+///
+/// fn accepts_model_url_adapter(_: &dyn ModelUrlRuntimeAdapter) {}
+#[async_trait]
+pub trait ModelUrlRuntimeAdapter: Send + Sync {
+    /// 根据已准备的运行时和 HTTP(S) 模型地址生成进程启动计划。
+    async fn plan_model_url(
+        &self,
+        runtime: &PreparedRuntime,
+        model_url: &str,
+    ) -> Result<ProcessPlan, RuntimeAdapterError>;
+}
+
 /// 就绪检查失败时返回的错误。
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ReadinessError {

@@ -199,7 +199,11 @@ where
     /// # };
     /// # use burncloud_server::node_orchestrator::{ModelDemand, NodeOrchestrator};
     /// # use burncloud_supply_model::FakeModelResolver;
+    /// # use std::sync::Arc;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let (_, monitor_errors) = tokio::sync::mpsc::unbounded_channel::<
+    /// #     burncloud_node_runtime::deployment::DeploymentMonitorError,
+    /// # >();
     /// let node = NodeOrchestrator::new(
     ///     FakeModelResolver,
     ///     FakeRuntimeAdapter,
@@ -207,9 +211,10 @@ where
     ///         SystemHardwareProbe::new(),
     ///         FakeArtifactPreparer,
     ///         FakeRuntimePreparer,
-    ///         FakeProcessManager::default(),
-    ///         FakeReadinessProbe,
-    ///         FakeHealthProbe,
+    ///         Arc::new(FakeProcessManager::default()),
+    ///         Arc::new(FakeReadinessProbe),
+    ///         Arc::new(FakeHealthProbe),
+    ///         monitor_errors,
     ///     ),
     /// );
     /// let _ = node.resolve_candidates(ModelDemand::new("demo")?).await?;
@@ -720,6 +725,14 @@ mod tests {
         FakeModelResolver, LocalModelUnsupportedReason, ModelResolutionError,
         ModelResolutionOutcome,
     };
+    use std::sync::Arc;
+
+    fn closed_monitor_errors() -> tokio::sync::mpsc::UnboundedReceiver<
+        burncloud_node_runtime::deployment::DeploymentMonitorError,
+    > {
+        let (_, receiver) = tokio::sync::mpsc::unbounded_channel();
+        receiver
+    }
 
     fn fake_orchestrator() -> NodeOrchestrator<
         FakeModelResolver,
@@ -738,9 +751,10 @@ mod tests {
                 SystemHardwareProbe::new(),
                 FakeArtifactPreparer,
                 FakeRuntimePreparer,
-                FakeProcessManager::default(),
-                FakeReadinessProbe,
-                FakeHealthProbe,
+                Arc::new(FakeProcessManager::default()),
+                Arc::new(FakeReadinessProbe),
+                Arc::new(FakeHealthProbe),
+                closed_monitor_errors(),
             ),
         )
     }
@@ -789,9 +803,10 @@ mod tests {
             SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
-            FakeProcessManager::default(),
-            FakeReadinessProbe,
-            FakeHealthProbe,
+            Arc::new(FakeProcessManager::default()),
+            Arc::new(FakeReadinessProbe),
+            Arc::new(FakeHealthProbe),
+            closed_monitor_errors(),
         );
         let mut orchestrator = NodeOrchestrator::new(FailingResolver, FakeRuntimeAdapter, machine)
             .with_request_state(request_state.clone());
@@ -1096,9 +1111,10 @@ mod tests {
             SystemHardwareProbe::new(),
             FakeArtifactPreparer,
             FakeRuntimePreparer,
-            FakeProcessManager::default(),
-            FakeReadinessProbe,
-            FakeHealthProbe,
+            Arc::new(FakeProcessManager::default()),
+            Arc::new(FakeReadinessProbe),
+            Arc::new(FakeHealthProbe),
+            closed_monitor_errors(),
         );
         let mut orchestrator =
             NodeOrchestrator::new(UnsupportedResolver, FakeRuntimeAdapter, machine);

@@ -521,6 +521,8 @@ fn preset_accepts_stable_id_for_gguf_repository_but_search_result_does_not() {
         model: "Qwen/Qwen3-8B-GGUF".into(),
         source: "modelscope".into(),
         revision: "master".into(),
+        resource_url: Some("https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF".into()),
+        hardware: None,
     };
     assert!(preset.validate().is_ok());
 
