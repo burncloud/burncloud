@@ -361,7 +361,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
         .variant()
         .map(|variant| variant.expected_sha256.clone())
         .unwrap_or_default();
-    let progress = preparation.progress();
+    let progress = preparation.progress_ratio();
     let variants: Vec<_> = preparation
         .model
         .variants
@@ -385,7 +385,14 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
             }
             if let Some(selection) = preparation.model.catalog_selection.as_ref() {
                 p { class: "chat-preparation-note", "{selection.name} · {selection.version.source} · {selection.version.model} · {selection.version.revision}" }
-                p { class: "chat-preparation-note", "硬件检测、模型下载和 SHA-256 摘要校验由 Node 服务完成；文件尚未部署。" }
+                p { class: "chat-preparation-note", match stage {
+                    PreparationStage::ArtifactReady => "模型文件已下载并完成校验，尚未部署。",
+                    PreparationStage::Deploying => "模型文件已校验，正在部署。",
+                    PreparationStage::HealthChecking => "模型已部署，正在检查健康状态。",
+                    PreparationStage::Ready => "模型已部署并就绪。",
+                    PreparationStage::Failed => "模型下载、校验或部署失败。",
+                    _ => "硬件检测、模型下载和 SHA-256 摘要校验由 Node 服务完成。",
+                } }
             }
             if !preparation.collapsed {
                 if stage != PreparationStage::AwaitingStart {
@@ -405,7 +412,7 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
                     div { class: "chat-preparation-progress",
                         if let Some(percent) = progress {
                             progress { max: 100, value: percent, aria_label: format!("进度：{}", stage.label()) }
-                            span { "{percent}%" }
+                            span { "{percent:.1}% · {preparation.completed_bytes} B" }
                         } else { progress { aria_label: "下载进行中" } span { "进行中" } }
                     }
                 }

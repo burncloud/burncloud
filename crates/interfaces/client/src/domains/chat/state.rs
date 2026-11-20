@@ -825,14 +825,16 @@ impl ChatState {
                 }
             }
             PreparationEvent::Downloaded if p.stage == PreparationStage::Downloading => {
-                if p.total_bytes
-                    .is_some_and(|total| total != p.completed_bytes)
-                {
-                    false
-                } else {
-                    p.stage = PreparationStage::Verifying;
-                    true
-                }
+                // 下载器完成事件是校验阶段的唯一边界；进度快照可能来自较早的轮询，
+                // 不能因为一次暂时落后的 completed_bytes 阻断摘要校验。
+                p.stage = PreparationStage::Verifying;
+                true
+            }
+            PreparationEvent::DownloadProgress { completed, total }
+                if p.stage == PreparationStage::Verifying =>
+            {
+                // 校验阶段不再修改下载进度，但允许合法的迟到快照通过，避免轮询竞态误报非法状态。
+                total.is_none_or(|total| total > 0 && *completed <= total)
             }
             PreparationEvent::Verified {
                 expected,

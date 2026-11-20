@@ -234,6 +234,29 @@ pub(super) enum VersionStatus {
     Downloadable,
 }
 
+/// 模型目录对应的本地工件状态。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ArtifactStatus {
+    #[default]
+    NotDownloaded,
+    Downloading,
+    Verifying,
+    Downloaded,
+    Failed,
+}
+
+/// 一次模型目录状态检查的远程资源和本地工件快照。
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CatalogInspection {
+    pub(super) version: CatalogVersion,
+    pub(super) remote_status: VersionStatus,
+    pub(super) artifact_status: ArtifactStatus,
+    pub(super) downloaded: bool,
+    pub(super) local_path: Option<String>,
+    pub(super) actual_sha256: Option<String>,
+}
+
 impl CatalogClient {
     /// 请求统一主服务，默认跟随 HOST/PORT，可用 BURNCLOUD_SERVER_URL 指向远程主服务。
     ///
@@ -423,7 +446,7 @@ impl CatalogClient {
     pub(super) async fn inspect(
         &self,
         model: &CatalogModel,
-    ) -> Result<(Option<CatalogVersion>, VersionStatus), ChatError> {
+    ) -> Result<CatalogInspection, ChatError> {
         model.validate()?;
         #[derive(Deserialize)]
         struct Status {
@@ -434,6 +457,12 @@ impl CatalogClient {
             resource_url: String,
             #[serde(default)]
             variants: Vec<ModelVariant>,
+            #[serde(default)]
+            artifact_status: ArtifactStatus,
+            #[serde(default)]
+            downloaded: bool,
+            local_path: Option<String>,
+            actual_sha256: Option<String>,
         }
         let params = if model.preset {
             vec![("preset", model.id.clone())]
@@ -459,6 +488,17 @@ impl CatalogClient {
         if version.model != model.model
             || version.source != model.source
             || version.revision != model.revision
+            || result.downloaded != (result.artifact_status == ArtifactStatus::Downloaded)
+            || (result.downloaded
+                && (result.local_path.as_deref().is_none_or(str::is_empty)
+                    || result
+                        .actual_sha256
+                        .as_deref()
+                        .is_none_or(|digest| !valid_digest(digest))))
+            || result
+                .actual_sha256
+                .as_deref()
+                .is_some_and(|digest| !valid_digest(digest))
         {
             return Err(failure(
                 ErrorKind::InvalidResult,
@@ -466,7 +506,14 @@ impl CatalogClient {
                 "状态响应与选中资源不一致".into(),
             ));
         }
-        Ok((Some(version), result.status))
+        Ok(CatalogInspection {
+            version,
+            remote_status: result.status,
+            artifact_status: result.artifact_status,
+            downloaded: result.downloaded,
+            local_path: result.local_path,
+            actual_sha256: result.actual_sha256,
+        })
     }
 
     /// 在一次主服务请求中获取硬件快照和全部兼容 Variant。

@@ -2,7 +2,8 @@
 
 use super::{
     catalog::{
-        CatalogClient, CatalogModel, CatalogPage, CatalogSelection, CatalogVersion, VersionStatus,
+        ArtifactStatus, CatalogClient, CatalogInspection, CatalogModel, CatalogPage,
+        CatalogSelection, CatalogVersion, VersionStatus,
     },
     model::ChatError,
     state::ChatState,
@@ -20,6 +21,8 @@ struct PickerState {
     preview: Option<CatalogModel>,
     preview_version: Option<CatalogVersion>,
     status: Option<VersionStatus>,
+    artifact_status: Option<ArtifactStatus>,
+    downloaded: bool,
     loading: bool,
     status_loading: bool,
     feedback: Option<String>,
@@ -39,6 +42,8 @@ impl PickerState {
         self.preview = None;
         self.preview_version = None;
         self.status = None;
+        self.artifact_status = None;
+        self.downloaded = false;
         self.status_error = None;
         self.status_loading = false;
         self.confirmed = false;
@@ -104,19 +109,17 @@ impl PickerState {
         self.status_id
     }
 
-    fn finish_status(
-        &mut self,
-        id: u64,
-        result: Result<(Option<CatalogVersion>, VersionStatus), String>,
-    ) {
+    fn finish_status(&mut self, id: u64, result: Result<CatalogInspection, String>) {
         if id != self.status_id {
             return;
         }
         self.status_loading = false;
         match result {
-            Ok((version, status)) => {
-                self.preview_version = version;
-                self.status = Some(status);
+            Ok(inspection) => {
+                self.preview_version = Some(inspection.version);
+                self.status = Some(inspection.remote_status);
+                self.artifact_status = Some(inspection.artifact_status);
+                self.downloaded = inspection.downloaded;
             }
             Err(error) => self.status_error = Some(error),
         }
@@ -154,6 +157,7 @@ pub(super) fn CatalogPicker(
         snapshot.loading && snapshot.models.is_empty() && snapshot.query.trim().is_empty();
     // 行内状态需要的字段先取出，避免与列表迭代的部分移动冲突。
     let status = snapshot.status;
+    let artifact_status = snapshot.artifact_status;
     let status_loading = snapshot.status_loading;
     let status_error = snapshot.status_error.clone();
     let has_version = snapshot.preview_version.is_some();
@@ -195,24 +199,38 @@ pub(super) fn CatalogPicker(
                                     button { class: "chat-row-text-button", r#type: "button", aria_label: "重试版本状态",
                                         onclick: move |_| load_status(picker, retry_client.clone(), retry.clone()), "重试" }
                                 }
-                                match status {
-                                    Some(VersionStatus::Available) if has_version => rsx! {
+                                match (artifact_status, status) {
+                                    (Some(ArtifactStatus::Downloaded), _) if has_version => rsx! {
+                                        span { class: "chat-row-status available", role: "status", "已下载" }
+                                        button { class: "chat-row-text-button", r#type: "button", aria_label: "使用已下载版本", disabled: busy,
+                                            onclick: move |_| confirm_selection(picker, state, on_confirm), "使用" }
+                                    },
+                                    (Some(ArtifactStatus::Downloading), _) => rsx! {
+                                        span { class: "chat-row-status preparing", role: "status", "下载中..." }
+                                    },
+                                    (Some(ArtifactStatus::Verifying), _) => rsx! {
+                                        span { class: "chat-row-status preparing", role: "status", "校验中..." }
+                                    },
+                                    (Some(ArtifactStatus::Failed), _) => rsx! {
+                                        span { class: "chat-row-status failed", role: "status", "下载失败，可重试" }
+                                    },
+                                    (_, Some(VersionStatus::Available)) if has_version => rsx! {
                                         span { class: "chat-row-status available", "可用" }
                                         button { class: "chat-row-text-button", r#type: "button", aria_label: "使用此版本", disabled: busy,
                                             onclick: move |_| confirm_selection(picker, state, on_confirm), "使用" }
                                     },
-                                    Some(VersionStatus::Available) => rsx! {
+                                    (_, Some(VersionStatus::Available)) => rsx! {
                                         span { class: "chat-row-status", title: "服务报告可用，但未提供可验证的仓库凭据", "暂不可用" }
                                     },
-                                    Some(VersionStatus::Downloadable) if has_version => rsx! {
+                                    (_, Some(VersionStatus::Downloadable)) if has_version => rsx! {
                                         button { class: "chat-row-icon-button", r#type: "button", aria_label: "下载", title: "下载", disabled: busy,
                                             onclick: move |_| confirm_selection(picker, state, on_confirm),
                                             Icon { name: IconName::Download, size: 16 }
                                         }
                                     },
-                                    Some(VersionStatus::Preparing) => rsx! { span { class: "chat-row-status preparing", role: "status", "启用中..." } },
-                                    Some(VersionStatus::Developing | VersionStatus::Downloadable) => rsx! { span { class: "chat-row-status", role: "status", "正在开发中..." } },
-                                    None => rsx! {},
+                                    (_, Some(VersionStatus::Preparing)) => rsx! { span { class: "chat-row-status preparing", role: "status", "启用中..." } },
+                                    (_, Some(VersionStatus::Developing | VersionStatus::Downloadable)) => rsx! { span { class: "chat-row-status", role: "status", "正在开发中..." } },
+                                    (_, None) => rsx! {},
                                 }
                             }
                         }
