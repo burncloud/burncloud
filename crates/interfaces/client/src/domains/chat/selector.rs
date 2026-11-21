@@ -5,7 +5,7 @@ use super::{
         ArtifactStatus, CatalogClient, CatalogInspection, CatalogModel, CatalogPage,
         CatalogSelection, CatalogVersion, VersionStatus,
     },
-    model::ChatError,
+    model::{gib, ChatError},
     state::ChatState,
 };
 use crate::shared::ui::{Icon, IconName};
@@ -160,7 +160,8 @@ pub(super) fn CatalogPicker(
     let artifact_status = snapshot.artifact_status;
     let status_loading = snapshot.status_loading;
     let status_error = snapshot.status_error.clone();
-    let has_version = snapshot.preview_version.is_some();
+    let preview_version = snapshot.preview_version.clone();
+    let has_version = preview_version.is_some();
     let busy = state.read().is_busy() || snapshot.confirmed;
     rsx! {
         div { class: "chat-catalog-heading",
@@ -183,7 +184,7 @@ pub(super) fn CatalogPicker(
         }
         div { id: "chat-model-results", class: "chat-model-options", role: "listbox", aria_label: "模型搜索结果", "onkeydown": OPTION_KEYS,
             for model in snapshot.models {
-                { let selected = snapshot.preview.as_ref().is_some_and(|preview| preview.id == model.id && preview.preset == model.preset); let key = format!("{}:{}", model.preset, model.id); let next = model.clone(); let retry = model.clone(); let client = status_client.clone(); let retry_client = status_client.clone(); let row_error = status_error.clone(); rsx! {
+                { let selected = snapshot.preview.as_ref().is_some_and(|preview| preview.id == model.id && preview.preset == model.preset); let key = format!("{}:{}", model.preset, model.id); let next = model.clone(); let retry = model.clone(); let client = status_client.clone(); let retry_client = status_client.clone(); let row_error = status_error.clone(); let resource_preview = selected && preview_version.as_ref().is_some_and(|version| !version.variants.is_empty()); rsx! {
                     // 复用原弹层行内状态，避免额外页面或第二套界面。
                     div { key: "{key}", class: if selected { "chat-model-row selected" } else { "chat-model-row" }, role: "presentation",
                         button { class: if selected { "chat-model-option selected" } else { "chat-model-option" }, r#type: "button", role: "option", aria_selected: selected,
@@ -210,6 +211,13 @@ pub(super) fn CatalogPicker(
                             a { class: "chat-row-icon-button chat-model-link", href: "{link}", target: "_blank", rel: "noopener noreferrer",
                                 aria_label: "{model.name} 模型链接", title: "模型链接：{link}",
                                 Icon { name: IconName::Globe, size: 16 }
+                            }
+                        }
+                        if resource_preview {
+                            div { class: "chat-model-resource",
+                                button { class: "chat-model-resource-trigger", r#type: "button", aria_label: "查看 GGUF 资源配置", title: "查看 GGUF 资源配置",
+                                    "资源"
+                                }
                             }
                         }
                         if selected && !status_loading {
@@ -259,6 +267,29 @@ pub(super) fn CatalogPicker(
                         }
                     }
                 } }
+            }
+        }
+        if let Some(version) = preview_version
+            .as_ref()
+            .filter(|version| !version.variants.is_empty()) {
+            div { class: "chat-model-preview", aria_label: "GGUF 资源配置",
+                p { class: "chat-model-preview-title", "GGUF 资源配置" }
+                p { class: "chat-model-preview-source", "{version.model} · {version.source} · {version.revision}" }
+                for variant in version.variants.iter() {
+                    div { class: "chat-model-preview-variant",
+                        strong { "{variant.quantization}" }
+                        small {
+                            "最低内存 {gib(variant.ram_bytes)} GiB · "
+                            if variant.vram_bytes == 0 {
+                                "显存要求未声明"
+                            } else {
+                                "显存 {gib(variant.vram_bytes)} GiB"
+                            }
+                            " · 磁盘 {gib(variant.disk_bytes)} GiB"
+                        }
+                        small { "GGUF 仓库：{variant.artifact_source}" }
+                    }
+                }
             }
         }
         if empty_initial {

@@ -49,11 +49,24 @@ async fn llama_runtime_adapter_plans_verified_local_artifact() {
     assert_eq!(plan.process.args[3], "127.0.0.1");
     assert_eq!(plan.process.args[4], "--port");
     assert_ne!(port, 0);
+    assert_eq!(plan.process.args[6], "--alias");
+    assert_eq!(plan.process.args[7], "local-model");
+    assert_eq!(plan.process.args[8], "--parallel");
+    assert!(plan.process.args[9].parse::<u32>().unwrap() > 0);
     assert_eq!(plan.local_endpoint, format!("http://127.0.0.1:{port}"));
     assert_eq!(
         plan.readiness.endpoint,
         format!("{}/health", plan.local_endpoint)
     );
+}
+
+#[test]
+fn node_slot_configuration_accepts_only_positive_decimal_values() {
+    for raw in ["", "0", "-1", "+1", " 1", "1 ", "1.0", "4294967296"] {
+        assert!(super::parse_node_slots(raw).is_err(), "{raw}");
+    }
+    assert_eq!(super::parse_node_slots("1").unwrap(), 1);
+    assert_eq!(super::parse_node_slots("4294967295").unwrap(), u32::MAX);
 }
 
 #[tokio::test]
@@ -85,8 +98,9 @@ async fn live_local_llama_deployment_records_process_and_heartbeat() {
         .join("../../..")
         .canonicalize()
         .unwrap();
-    let model_path = workspace
-        .join("iso/DeepSeek-R1-Distill-Qwen-1.5B-Q2_K.gguf")
+    let model_path = std::env::var_os("BURNCLOUD_LIVE_MODEL_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| workspace.join("iso/DeepSeek-R1-Distill-Qwen-1.5B-Q2_K.gguf"))
         .canonicalize()
         .unwrap();
     let executable = std::env::var_os("BURNCLOUD_LLAMA_SERVER")

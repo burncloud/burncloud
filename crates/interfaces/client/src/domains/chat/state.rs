@@ -305,6 +305,7 @@ impl ChatState {
                 variant_id: None,
                 actual_digest: None,
                 local_path: None,
+                route_status: None,
                 error: None,
                 collapsed: false,
             };
@@ -568,6 +569,7 @@ impl ChatState {
         preparation.variant_id = None;
         preparation.actual_digest = None;
         preparation.local_path = None;
+        preparation.route_status = None;
         preparation.error = None;
         preparation.collapsed = false;
         self.close_menus();
@@ -1056,6 +1058,29 @@ impl ChatState {
             return self.begin_generation();
         }
         None
+    }
+
+    /// 更新当前目录部署的 Router 准入状态；状态查询失败不改变已就绪结果。
+    pub(super) fn set_deployment_route_status(&mut self, run_id: u64, route_status: String) {
+        let Some(preparation) = self.preparation_mut() else {
+            return;
+        };
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Ready {
+            return;
+        }
+        if matches!(
+            route_status.as_str(),
+            "unroutable"
+                | "routable"
+                | "saturated"
+                | "quarantined"
+                | "lost"
+                | "detaching"
+                | "detached"
+                | "failed"
+        ) {
+            preparation.route_status = Some(route_status);
+        }
     }
 
     /// 最终返回值与全部阶段凭据一致才能记录就绪；目录模型只停在文件已就绪。

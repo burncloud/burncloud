@@ -141,6 +141,9 @@ impl Fixture {
                     base_url: base_url.into(),
                 },
                 Some(tokio::time::Instant::now()),
+                0,
+                None,
+                false,
             )
             .await
             .unwrap()

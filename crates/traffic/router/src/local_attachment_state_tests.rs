@@ -369,7 +369,7 @@ impl EvidenceAttacher {
     ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError> {
         let target = crate::local_attachment::adapter::normalize_attachment(target)?;
         LocalAttachmentState::for_database(&self.db)
-            .attach(&self.db, target, Some(Instant::now()))
+            .attach(&self.db, target, Some(Instant::now()), 0, None, false)
             .await
     }
     async fn quarantine(
@@ -388,6 +388,208 @@ impl EvidenceAttacher {
 }
 
 #[tokio::test]
+async fn runtime_capacity_is_required_for_dynamic_route_admission() {
+    let (_file, db) = database().await;
+    let state = LocalAttachmentState::for_database(&db);
+    state.configure(4).unwrap();
+    let epoch = state.claim_manager().unwrap();
+    state.activate_manager(epoch).unwrap();
+    let target = attachment("capacity");
+    let id = state
+        .attach(&db, target.clone(), Some(Instant::now()), 7, None, false)
+        .await
+        .unwrap();
+    assert!(!state.lifecycle_allows(id.0, &target.model, &target.base_url));
+    state
+        .record_heartbeat(
+            id.0,
+            7,
+            &target.base_url,
+            true,
+            Some(LocalRouteCapacity {
+                total_slots: 2,
+                free_slots: 0,
+                observed_at_unix_ms: 1,
+            }),
+        )
+        .unwrap();
+    assert!(!state.lifecycle_allows(id.0, &target.model, &target.base_url));
+    state
+        .record_heartbeat(
+            id.0,
+            7,
+            &target.base_url,
+            true,
+            Some(LocalRouteCapacity {
+                total_slots: 2,
+                free_slots: 1,
+                observed_at_unix_ms: 2,
+            }),
+        )
+        .unwrap();
+    assert!(state.lifecycle_allows(id.0, &target.model, &target.base_url));
+    state
+        .record_heartbeat(
+            id.0,
+            8,
+            &target.base_url,
+            true,
+            Some(LocalRouteCapacity {
+                total_slots: 2,
+                free_slots: 1,
+                observed_at_unix_ms: 3,
+            }),
+        )
+        .unwrap_err();
+    state.stop_manager(epoch);
+    db.get_connection().unwrap().pool().close().await;
+}
+
+#[tokio::test]
+async fn quarantine_and_lost_attachments_are_not_reactivated_by_heartbeats() {
+    let (_file, db) = database().await;
+    let state = LocalAttachmentState::for_database(&db);
+    state.configure(1).unwrap();
+    let epoch = state.claim_manager().unwrap();
+    state.activate_manager(epoch).unwrap();
+    let attacher = ExistingRouterLocalAttacher::new(db.clone());
+    let target = attachment("locked");
+    let id = state
+        .attach(
+            &db,
+            target.clone(),
+            Some(Instant::now()),
+            11,
+            Some(LocalRouteCapacity {
+                total_slots: 1,
+                free_slots: 1,
+                observed_at_unix_ms: 1,
+            }),
+            false,
+        )
+        .await
+        .unwrap();
+    assert!(state.lifecycle_allows(id.0, &target.model, &target.base_url));
+
+    attacher.quarantine(id).await.unwrap();
+    state
+        .record_heartbeat(
+            id.0,
+            11,
+            &target.base_url,
+            true,
+            Some(LocalRouteCapacity {
+                total_slots: 1,
+                free_slots: 1,
+                observed_at_unix_ms: 2,
+            }),
+        )
+        .unwrap();
+    assert!(!state.lifecycle_allows(id.0, &target.model, &target.base_url));
+    attacher.detach(id).await.unwrap();
+
+    let lost_target = attachment("lost");
+    let lost_id = state
+        .attach(
+            &db,
+            lost_target.clone(),
+            Some(Instant::now()),
+            12,
+            Some(LocalRouteCapacity {
+                total_slots: 1,
+                free_slots: 1,
+                observed_at_unix_ms: 3,
+            }),
+            false,
+        )
+        .await
+        .unwrap();
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(30)).await;
+    assert!(!state.lifecycle_allows(lost_id.0, &lost_target.model, &lost_target.base_url));
+    state
+        .record_heartbeat(
+            lost_id.0,
+            12,
+            &lost_target.base_url,
+            true,
+            Some(LocalRouteCapacity {
+                total_slots: 1,
+                free_slots: 1,
+                observed_at_unix_ms: 4,
+            }),
+        )
+        .unwrap_err();
+    assert!(!state.lifecycle_allows(lost_id.0, &lost_target.model, &lost_target.base_url));
+    tokio::time::resume();
+    attacher.detach(lost_id).await.unwrap();
+    state.stop_manager(epoch);
+    db.get_connection().unwrap().pool().close().await;
+}
+
+#[tokio::test]
+async fn expired_heartbeat_cannot_refresh_lost_attachment() {
+    let (_file, db) = database().await;
+    let state = LocalAttachmentState::for_database(&db);
+    let epoch = state.claim_manager().unwrap();
+    state.activate_manager(epoch).unwrap();
+    let target = attachment("lost-heartbeat");
+    let id = state
+        .attach(
+            &db,
+            target.clone(),
+            Some(Instant::now()),
+            21,
+            Some(LocalRouteCapacity {
+                total_slots: 1,
+                free_slots: 1,
+                observed_at_unix_ms: 1,
+            }),
+            false,
+        )
+        .await
+        .unwrap();
+
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(30)).await;
+    let heartbeat = || {
+        state.record_heartbeat(
+            id.0,
+            21,
+            &target.base_url,
+            true,
+            Some(LocalRouteCapacity {
+                total_slots: 1,
+                free_slots: 1,
+                observed_at_unix_ms: 2,
+            }),
+        )
+    };
+    assert!(heartbeat().is_err());
+    assert!(heartbeat().is_err());
+    assert!(!state.lifecycle_allows(id.0, &target.model, &target.base_url));
+    let observed_at = {
+        let index = state.index.lock().unwrap();
+        let slot = index
+            .targets
+            .get(&AttachmentTarget {
+                model: target.model.clone(),
+                base_url: target.base_url.clone(),
+            })
+            .unwrap();
+        slot.capacity
+            .as_ref()
+            .map(|value| value.observed_at_unix_ms)
+    };
+    assert_eq!(observed_at, Some(1));
+
+    tokio::time::resume();
+    state.detach(&db, id.0).await.unwrap();
+    state.stop_manager(epoch);
+    db.get_connection().unwrap().pool().close().await;
+}
+
+#[tokio::test]
 async fn heartbeat_expiry_requires_two_successes_and_never_unlocks_inference_fault() {
     let (_file, db) = database().await;
     let state = LocalAttachmentState::for_database(&db);
@@ -400,7 +602,7 @@ async fn heartbeat_expiry_requires_two_successes_and_never_unlocks_inference_fau
         .unwrap();
     tokio::time::pause();
     state.record_probe(epoch, id.0, Some(Instant::now()));
-    tokio::time::advance(std::time::Duration::from_millis(14999)).await;
+    tokio::time::advance(std::time::Duration::from_millis(29999)).await;
     assert!(state.lifecycle_allows(id.0, &target.model, &target.base_url));
     tokio::time::advance(std::time::Duration::from_millis(1)).await;
     assert!(!state.lifecycle_allows(id.0, &target.model, &target.base_url));

@@ -1057,6 +1057,44 @@ fn catalog_artifact() -> (ChatState, u64, PreparedModel) {
 }
 
 #[test]
+fn deployment_route_status_updates_only_the_current_ready_run() {
+    let (mut state, run_id, ready) = catalog_artifact();
+    assert!(state.begin_catalog_deployment(run_id, &ready));
+    assert!(state
+        .finish_catalog_deployment(run_id, ready, Ok(()))
+        .is_none());
+
+    state.set_deployment_route_status(run_id, "routable".into());
+    assert_eq!(
+        state
+            .preparation()
+            .expect("就绪卡片")
+            .route_status
+            .as_deref(),
+        Some("routable")
+    );
+
+    state.set_deployment_route_status(run_id, "unknown".into());
+    assert_eq!(
+        state
+            .preparation()
+            .expect("就绪卡片")
+            .route_status
+            .as_deref(),
+        Some("routable")
+    );
+    state.set_deployment_route_status(run_id + 1, "lost".into());
+    assert_eq!(
+        state
+            .preparation()
+            .expect("就绪卡片")
+            .route_status
+            .as_deref(),
+        Some("routable")
+    );
+}
+
+#[test]
 fn catalog_deployment_claim_is_unique_and_requires_matching_credentials() {
     for corruption in 0..4 {
         let (mut state, id, mut ready) = catalog_artifact();

@@ -6,7 +6,9 @@
 )]
 
 use super::*;
-use burncloud_supply_model::{load_default_manifests, LocalModelUnsupportedReason};
+use burncloud_supply_model::{
+    load_default_manifests, LocalModelUnsupportedReason, ModelManifest, Variant,
+};
 
 #[test]
 fn candidate_serializes_frontend_contract() {
@@ -71,10 +73,103 @@ fn dynamic_artifact_building_preserves_path_checksum_and_source() {
 }
 
 #[test]
+fn discovered_qwen_q4_uses_builtin_resource_budget() {
+    let mut manifest = ModelManifest {
+        model_name: "Qwen/Qwen3-8B-GGUF".into(),
+        description: "动态发现".into(),
+        supported_backends: vec![LLAMA_CPP.into()],
+        version: "master".into(),
+        variants: vec![Variant {
+            id: "Qwen3-8B-Q4_K_M.gguf".into(),
+            model_size: None,
+            quantization: "Q4_K_M".into(),
+            backend: LLAMA_CPP.into(),
+            min_ram_bytes: 1,
+            min_vram_bytes: 0,
+            disk_size_bytes: 1,
+            checksum: "sha256:dynamic".into(),
+            artifact_uri: "https://example.invalid/qwen.gguf".into(),
+        }],
+    };
+
+    apply_builtin_resource_config(&mut manifest).expect("内置资源配置应有效");
+
+    let variant = &manifest.variants[0];
+    assert_eq!(variant.min_ram_bytes, 16 * 1024 * 1024 * 1024);
+    assert_eq!(variant.min_vram_bytes, 6 * 1024 * 1024 * 1024);
+    assert_eq!(variant.disk_size_bytes, 6 * 1024 * 1024 * 1024);
+    assert_eq!(variant.checksum, "sha256:dynamic");
+    assert_eq!(variant.artifact_uri, "https://example.invalid/qwen.gguf");
+}
+
+#[test]
+fn all_builtin_gguf_models_use_their_resource_budget() {
+    let builtin_manifests = load_default_manifests().expect("默认 Manifest 应有效");
+    let preset_manifests = builtin_manifests
+        .iter()
+        .filter(|manifest| manifest.version.starts_with("preset-"))
+        .collect::<Vec<_>>();
+    assert_eq!(preset_manifests.len(), 17);
+
+    for builtin in preset_manifests {
+        let repository = artifact_repository_key(&builtin.variants[0].artifact_uri)
+            .expect("内置 GGUF 仓库地址应可解析");
+        let mut discovered = ModelManifest {
+            model_name: format!("owner/{repository}"),
+            description: "动态发现".into(),
+            supported_backends: vec![LLAMA_CPP.into()],
+            version: "master".into(),
+            variants: vec![Variant {
+                id: format!("{repository}.gguf"),
+                model_size: None,
+                quantization: "GGUF".into(),
+                backend: LLAMA_CPP.into(),
+                min_ram_bytes: 1,
+                min_vram_bytes: 2,
+                disk_size_bytes: 3,
+                checksum: "sha256:dynamic".into(),
+                artifact_uri: "https://example.invalid/dynamic.gguf".into(),
+            }],
+        };
+
+        apply_builtin_resource_config(&mut discovered).expect("内置资源配置应有效");
+        let configured = &discovered.variants[0];
+        let expected = &builtin.variants[0];
+        assert_eq!(
+            configured.min_ram_bytes, expected.min_ram_bytes,
+            "{repository}"
+        );
+        assert_eq!(
+            configured.min_vram_bytes, expected.min_vram_bytes,
+            "{repository}"
+        );
+        assert_eq!(
+            configured.disk_size_bytes, expected.disk_size_bytes,
+            "{repository}"
+        );
+        assert_eq!(configured.checksum, "sha256:dynamic");
+        assert_eq!(
+            configured.artifact_uri,
+            "https://example.invalid/dynamic.gguf"
+        );
+    }
+}
+
+#[test]
+fn quantization_matching_accepts_builtin_aliases() {
+    assert!(quantization_matches("Q4/Q5", "Q4_K_M"));
+    assert!(quantization_matches("4-bit", "Q4_K_M"));
+    assert!(quantization_matches("IQ1_S", "UD-IQ1_S"));
+    assert!(quantization_matches("MXFP4", "MXFP4"));
+    assert!(!quantization_matches("Q4", "Q8_0"));
+}
+
+#[test]
 fn discovery_helpers_filter_paths_and_normalize_hashes() {
     assert!(is_gguf("model.GgUf"));
     assert!(!is_gguf("model.safetensors"));
     assert_eq!(quantization_from_path("demo-q8_0.gguf"), "Q8_0");
+    assert_eq!(quantization_from_path("demo-mxfp4.gguf"), "MXFP4");
     assert_eq!(quantization_from_path("demo.gguf"), "GGUF");
     assert_eq!(
         normalize_sha256("sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),

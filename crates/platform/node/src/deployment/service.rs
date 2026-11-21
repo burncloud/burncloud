@@ -18,8 +18,8 @@ use std::{
     // Arc：DeploymentServiceInner 被 service 本体、队列 worker、每个监控任务共享；
     //       Arc 是原子引用计数，跨线程/跨任务共享的标准做法。
 
-    // 从 std::time 导入 Duration。
-    time::Duration,
+    // 从 std::time 导入时间工具。
+    time::{Duration, SystemTime, UNIX_EPOCH},
     // Duration：监控轮询周期（10 秒）以及 interval 的周期参数。
 };
 
@@ -99,15 +99,16 @@ use crate::{
 
 // 从父模块（deployment）导入契约类型。
 use super::{
+    // DeploymentErrorKind：错误种类枚举（PlanFailed / ProcessStartFailed / ReadinessFailed 等）。
+
+    // 导入 DeploymentCapacity 和 DeploymentEvent。
+    DeploymentCapacity,
     // 导入 DeploymentError。
     DeploymentError,
     // DeploymentError：部署顶层错误（含 kind / message / cleanup_error / notification_error / preserved_state）。
 
     // 导入 DeploymentErrorKind。
     DeploymentErrorKind,
-    // DeploymentErrorKind：错误种类枚举（PlanFailed / ProcessStartFailed / ReadinessFailed 等）。
-
-    // 导入 DeploymentEvent。
     DeploymentEvent,
     // DeploymentEvent：部署事件（对外发布的统一结构，含 model_id / kind / state / endpoint / pid / error 等）。
 
@@ -303,6 +304,14 @@ struct MonitoredRuntime {
 
     // 监控任务句柄。
     task: JoinHandle<()>,
+}
+
+// 停止操作返回的旧运行时上下文，供停止事件携带精确代次和 endpoint。
+struct StoppedRuntime {
+    handle: ProcessHandle,
+    plan: ProcessPlan,
+    state: NodeState,
+    generation: u64,
 }
 
 // ============================================================================
@@ -576,16 +585,19 @@ impl DeploymentService {
         }
 
         let stopped = Self::stop_old_runtime(Arc::clone(&self.inner), model_id).await?;
-        if stopped.is_some() {
+        let was_stopped = stopped.is_some();
+        if let Some(stopped) = stopped {
             let event = DeploymentEvent {
                 model_id: model_id.to_string(),
                 kind: DeploymentEventKind::Stopped,
                 state: Some(NodeState::Absent),
                 error_kind: None,
-                local_endpoint: None,
-                pid: None,
+                local_endpoint: Some(stopped.plan.local_endpoint),
+                pid: Some(stopped.handle.pid),
                 error: None,
                 cleanup_error: None,
+                generation: stopped.generation,
+                capacity: None,
             };
             if let Err(error) =
                 Self::publish_with_retry(self.inner.event_publisher.as_ref(), event).await
@@ -593,7 +605,7 @@ impl DeploymentService {
                 tracing::error!(%error, model_id, "runtime stopped but stop event could not be published");
             }
         }
-        Ok(stopped.is_some())
+        Ok(was_stopped)
     }
 
     // ------------------------------------------------------------------------
@@ -674,13 +686,18 @@ impl DeploymentService {
         // 1) 若该模型已有旧运行时在跑，先停掉，拿到被保留的旧状态。
         //    失败时（如停旧失败）直接返回错误，不继续启新。
         //    ? 运算符：错误直接冒泡。
-        let preserved_state = Self::stop_old_runtime(Arc::clone(&inner), &request.model_id).await?;
+        let preserved_runtime =
+            Self::stop_old_runtime(Arc::clone(&inner), &request.model_id).await?;
+        let preserved_state = preserved_runtime.as_ref().map(|runtime| runtime.state);
+        // 在停止旧实例后立即分配新代次，使本次部署的所有运行时相关事件都能被旧事件过滤。
+        let generation = reserve_generation(Arc::clone(&inner)).await;
 
         // 2) 发布 Planning 进度事件（带 preserved_state，让外部知道旧状态被保留）。
         //    发布失败 => 返回 EventPublishFailed（此时还未启动进程，无需清理）。
         if let Err(error) = publish_progress(
             &inner,
             &request.model_id,
+            generation,
             DeploymentStage::Planning,
             preserved_state,
             None,
@@ -705,6 +722,7 @@ impl DeploymentService {
                 publish_deployment_failure(
                     &inner,
                     &request.model_id,
+                    generation,
                     &mut deployment_error,
                     None,
                     None,
@@ -720,6 +738,7 @@ impl DeploymentService {
         if let Err(error) = publish_progress(
             &inner,
             &request.model_id,
+            generation,
             DeploymentStage::Starting,
             preserved_state,
             Some(&plan),
@@ -745,6 +764,7 @@ impl DeploymentService {
                 publish_deployment_failure(
                     &inner,
                     &request.model_id,
+                    generation,
                     &mut deployment_error,
                     Some(&plan),
                     None,
@@ -758,6 +778,7 @@ impl DeploymentService {
         if let Err(error) = publish_progress(
             &inner,
             &request.model_id,
+            generation,
             DeploymentStage::WaitingReady,
             preserved_state,
             Some(&plan),
@@ -795,6 +816,7 @@ impl DeploymentService {
             publish_deployment_failure(
                 &inner,
                 &request.model_id,
+                generation,
                 &mut error,
                 Some(&plan),
                 Some(handle),
@@ -808,6 +830,7 @@ impl DeploymentService {
         if let Err(error) = publish_progress(
             &inner,
             &request.model_id,
+            generation,
             DeploymentStage::HealthChecking,
             preserved_state,
             Some(&plan),
@@ -842,6 +865,7 @@ impl DeploymentService {
                 publish_deployment_failure(
                     &inner,
                     &request.model_id,
+                    generation,
                     &mut error,
                     Some(&plan),
                     Some(handle),
@@ -859,7 +883,11 @@ impl DeploymentService {
         } else {
             NodeState::Unhealthy
         };
-        // 构造 InitialResult 事件（带 endpoint 与 pid，让外部知道怎么路由/观测）。
+        // 容量探测失败不杀掉已经健康的进程；事件带 None，Router 进入不可路由状态。
+        let capacity = query_runtime_capacity(&plan.local_endpoint, &request.model_id)
+            .await
+            .ok();
+        // 构造 InitialResult 事件（带 endpoint、pid、代次和容量）。
         let initial_result = DeploymentEvent {
             model_id: request.model_id.clone(),
             kind: DeploymentEventKind::InitialResult(state),
@@ -869,6 +897,8 @@ impl DeploymentService {
             pid: Some(handle.pid),
             error: None,
             cleanup_error: None,
+            generation,
+            capacity,
         };
         // 发布 InitialResult（失败重试一次）。
         if let Err(error) =
@@ -892,6 +922,8 @@ impl DeploymentService {
             plan.clone(),
             handle,
             state,
+            generation,
+            capacity,
         )
         .await;
 
@@ -911,7 +943,7 @@ impl DeploymentService {
         inner: Arc<DeploymentServiceInner>,
         // 模型标识。
         model_id: &str,
-    ) -> Result<Option<NodeState>, DeploymentError> {
+    ) -> Result<Option<StoppedRuntime>, DeploymentError> {
         // 先查该模型是否已有受监控运行时（持锁时间短，只做查询）。
         let previous = {
             // 拿锁。
@@ -921,10 +953,17 @@ impl DeploymentService {
                 .monitored
                 .get(model_id)
                 // 拷贝出 (state, plan, handle)，避免持锁做后续异步操作。
-                .map(|runtime| (runtime.state, runtime.plan.clone(), runtime.handle))
+                .map(|runtime| {
+                    (
+                        runtime.state,
+                        runtime.plan.clone(),
+                        runtime.handle,
+                        runtime.generation,
+                    )
+                })
         };
         // 没有旧运行时：直接返回 None（表示无 preserved_state）。
-        let Some((state, plan, handle)) = previous else {
+        let Some((state, plan, handle, previous_generation)) = previous else {
             return Ok(None);
         };
 
@@ -938,6 +977,8 @@ impl DeploymentService {
             pid: Some(handle.pid),
             error: None,
             cleanup_error: None,
+            generation: previous_generation,
+            capacity: None,
         };
         // 发布事件（失败重试一次）。
         if let Err(error) =
@@ -957,10 +998,9 @@ impl DeploymentService {
             handle,
             plan,
             state,
+            generation,
             cancel,
             task,
-            // `..` 忽略其余字段（generation 不需要）。
-            ..
         } = runtime;
         // 取消旧监控任务。
         cancel.send_replace(true);
@@ -971,18 +1011,26 @@ impl DeploymentService {
 
         // 停止旧进程。
         match inner.process_manager.stop(handle).await {
-            // 停止成功：返回旧状态作为 preserved_state。
-            Ok(()) => Ok(Some(state)),
+            // 停止成功：返回旧运行时上下文，供调用方发布精确停止事件。
+            Ok(()) => Ok(Some(StoppedRuntime {
+                handle,
+                plan,
+                state,
+                generation,
+            })),
             // 停止失败：重新挂回监控（保持可观测，避免“失联”的运行时），
             // 然后返回 OldRuntimeStopFailed 错误（带 preserved_state=Some(state)）。
             Err(error) => {
                 // 重新挂监控。
+                let generation = reserve_generation(Arc::clone(&inner)).await;
                 Self::spawn_monitor(
                     Arc::clone(&inner),
                     model_id.to_string(),
                     plan,
                     handle,
                     state,
+                    generation,
+                    None,
                 )
                 .await;
                 // 返回错误。
@@ -1035,6 +1083,10 @@ impl DeploymentService {
     // ------------------------------------------------------------------------
     // 启动运行期监控任务并登记到 monitored
     // ------------------------------------------------------------------------
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "监控任务需要同时接收生命周期、代次和首次容量证据"
+    )]
     async fn spawn_monitor(
         // 共享 Inner。
         inner: Arc<DeploymentServiceInner>,
@@ -1046,6 +1098,10 @@ impl DeploymentService {
         handle: ProcessHandle,
         // 初始状态。
         initial_state: NodeState,
+        // 当前运行实例代次。
+        generation: u64,
+        // 首次准入时已采样到的容量；后续由后台探测刷新。
+        initial_capacity: Option<DeploymentCapacity>,
     ) {
         // 断言：只允许 Ready / Unhealthy 进入监控（其他状态是非法调用）。
         assert!(matches!(
@@ -1063,10 +1119,6 @@ impl DeploymentService {
             !coordinator.monitored.contains_key(&model_id),
             "a runtime must be stopped before its monitor is replaced"
         );
-        // 世代号自增（wrapping 防溢出；u64 实际不会溢出）。
-        coordinator.generation = coordinator.generation.wrapping_add(1);
-        // 取出本次世代号。
-        let generation = coordinator.generation;
         // 克隆 Inner 与 model_id 给任务。
         let task_inner = Arc::clone(&inner);
         let task_model_id = model_id.clone();
@@ -1082,6 +1134,7 @@ impl DeploymentService {
                 handle,
                 initial_state,
                 generation,
+                initial_capacity,
                 cancel_rx,
                 &mut shutdown,
             )
@@ -1151,6 +1204,8 @@ impl DeploymentService {
         mut state: NodeState,
         // 本次监控的世代号。
         generation: u64,
+        // 首次准入时已采样到的容量。
+        mut capacity: Option<DeploymentCapacity>,
         // 取消信号接收端。
         mut cancel: watch::Receiver<bool>,
         // 服务级关闭信号接收端。
@@ -1166,6 +1221,8 @@ impl DeploymentService {
         );
         // 错过 tick 时用 Delay 策略：不补发、不连发，而是延后下一次 tick。
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        // 容量探测放到后台，避免槽位端点的短暂抖动阻塞健康心跳。
+        let mut capacity_probe = CapacityProbeHandle::default();
 
         // 监控循环。
         loop {
@@ -1214,6 +1271,7 @@ impl DeploymentService {
                         },
                         false,
                         true,
+                        generation,
                     )
                     .await;
                 }
@@ -1235,6 +1293,7 @@ impl DeploymentService {
                         },
                         true,
                         true,
+                        generation,
                     )
                     .await;
                 }
@@ -1273,11 +1332,73 @@ impl DeploymentService {
                         },
                         true,
                         true,
+                        generation,
                     )
                     .await;
                 }
             };
 
+            // 只消费已经完成的后台容量探测；未完成时沿用最近一次证据，避免
+            // 槽位端点抖动阻塞健康心跳或拖延状态隔离。
+            if capacity_probe.is_finished() {
+                if let Some(probe) = capacity_probe.take() {
+                    capacity = match probe.await {
+                        Ok(Ok(value)) => Some(value),
+                        Ok(Err(_)) | Err(_) => None,
+                    };
+                }
+            }
+            if capacity_probe.is_none() {
+                let endpoint = plan.local_endpoint.clone();
+                let model = model_id.clone();
+                capacity_probe.replace(tokio::spawn(async move {
+                    query_runtime_capacity(&endpoint, &model).await
+                }));
+            }
+
+            if next_state != state {
+                // 状态变化先于心跳发布，确保异常节点先被隔离，恢复节点也不能
+                // 仅凭 StateChanged 事件绕过故障锁或 quarantine。
+                let event = monitor_state_event(
+                    &model_id, &plan, handle, next_state, generation, None, None, None,
+                );
+                if let Err(error) =
+                    Self::publish_with_retry(inner.event_publisher.as_ref(), event).await
+                {
+                    // 发布失败时停止当前进程，但不再递归发布 Failed 事件。
+                    return report_monitor_failure(
+                        &inner,
+                        &model_id,
+                        &plan,
+                        handle,
+                        DeploymentError {
+                            kind: DeploymentErrorKind::EventPublishFailed,
+                            message: error.to_string(),
+                            cleanup_error: None,
+                            notification_error: None,
+                            preserved_state: None,
+                        },
+                        true,
+                        false,
+                        generation,
+                    )
+                    .await;
+                }
+
+                // 只有当前代次仍被监控时才写入状态；替换后的旧任务不得覆盖新任务。
+                let mut coordinator = inner.coordinator.lock().await;
+                match coordinator.monitored.get_mut(&model_id) {
+                    Some(runtime) if runtime.generation == generation => {
+                        runtime.state = next_state;
+                        state = next_state;
+                    }
+                    _ => return Ok(()),
+                }
+                drop(coordinator);
+            }
+
+            // 每个监控周期只发布一条心跳，并携带最近一次容量采样；没有有效采样
+            // 时为 None，Router 会保持 fail-closed。
             let heartbeat = DeploymentEvent {
                 model_id: model_id.clone(),
                 kind: DeploymentEventKind::Heartbeat(next_state),
@@ -1287,61 +1408,17 @@ impl DeploymentService {
                 pid: Some(handle.pid),
                 error: None,
                 cleanup_error: None,
+                generation,
+                capacity,
             };
             if let Err(error) =
                 Self::publish_with_retry(inner.event_publisher.as_ref(), heartbeat).await
             {
                 tracing::warn!(%error, model_id, "runtime heartbeat could not be published");
             }
-
-            // 状态未变：跳过发布（避免刷屏）。
-            if next_state == state {
-                continue;
-            }
-
-            // 状态变化：发布 StateChanged 事件。
-            let event = monitor_state_event(&model_id, &plan, handle, next_state, None, None, None);
-            // 发布事件（失败重试一次）。
-            if let Err(error) =
-                Self::publish_with_retry(inner.event_publisher.as_ref(), event).await
-            {
-                // 发布失败：上报 EventPublishFailed（stop、不发布 Failed）。
-                //   publish_failed_state=false：避免“发布失败事件本身又失败”的循环。
-                return report_monitor_failure(
-                    &inner,
-                    &model_id,
-                    &plan,
-                    handle,
-                    DeploymentError {
-                        kind: DeploymentErrorKind::EventPublishFailed,
-                        message: error.to_string(),
-                        cleanup_error: None,
-                        notification_error: None,
-                        preserved_state: None,
-                    },
-                    true,
-                    false,
-                )
-                .await;
-            }
-
-            // 更新协调器中的状态；若 generation 不匹配说明已被替换，直接退出。
-            let mut coordinator = inner.coordinator.lock().await;
-            match coordinator.monitored.get_mut(&model_id) {
-                // generation 匹配：更新状态。
-                Some(runtime) if runtime.generation == generation => {
-                    runtime.state = next_state;
-                    state = next_state;
-                }
-                // 已被替换：退出。
-                _ => return Ok(()),
-            }
         }
     }
 
-    // ------------------------------------------------------------------------
-    // 入队或加入在途请求：返回一个 oneshot 接收端
-    // ------------------------------------------------------------------------
     async fn enqueue_or_join(
         // &self：服务共享。
         &self,
@@ -1405,6 +1482,8 @@ impl DeploymentService {
             pid: None,
             error: None,
             cleanup_error: None,
+            generation: 0,
+            capacity: None,
         };
 
         // 发布 Queued 事件；失败则回滚入队并通知所有等待者。
@@ -1478,7 +1557,6 @@ impl Drop for DeploymentService {
 // 自由函数（辅助）
 // ============================================================================
 
-// 把结果回填给所有等待者。
 fn complete_waiters(
     // 等待者列表。
     waiters: Vec<oneshot::Sender<Result<DeploymentOutcome, DeploymentError>>>,
@@ -1520,11 +1598,17 @@ fn take_next_deployment(coordinator: &mut DeploymentCoordinator) -> Option<Queue
 }
 
 // 发布 Progress 事件（带可选 state/plan/handle）。
+#[expect(
+    clippy::too_many_arguments,
+    reason = "进度事件需要完整携带当前部署代次和运行上下文"
+)]
 async fn publish_progress(
     // 共享 Inner。
     inner: &DeploymentServiceInner,
     // 模型标识。
     model_id: &str,
+    // 当前部署尝试的运行代次；即使尚未启动进程，也要让失败事件可区分。
+    generation: u64,
     // 阶段。
     stage: DeploymentStage,
     // 可选状态。
@@ -1546,6 +1630,8 @@ async fn publish_progress(
         pid: handle.map(|handle| handle.pid),
         error: None,
         cleanup_error: None,
+        generation,
+        capacity: None,
     };
     // 发布（失败重试一次）。
     DeploymentService::publish_with_retry(inner.event_publisher.as_ref(), event).await
@@ -1589,6 +1675,8 @@ async fn publish_deployment_failure(
     inner: &DeploymentServiceInner,
     // 模型标识。
     model_id: &str,
+    // 当前部署尝试的运行代次。
+    generation: u64,
     // 错误（可变，可能回填 notification_error）。
     error: &mut DeploymentError,
     // 可选 plan。
@@ -1611,6 +1699,8 @@ async fn publish_deployment_failure(
         pid: handle.map(|handle| handle.pid),
         error: Some(error.message.clone()),
         cleanup_error: error.cleanup_error.clone(),
+        generation,
+        capacity: None,
     };
     // 发布失败时把通知错误回填到 error.notification_error（不覆盖原始错误）。
     if let Err(notification_error) =
@@ -1641,6 +1731,8 @@ async fn report_monitor_failure(
     stop_process: bool,
     // 是否发布 Failed 状态。
     publish_failed_state: bool,
+    // 当前运行实例代次。
+    generation: u64,
 ) -> Result<(), DeploymentMonitorError> {
     // 记录错误种类（后面构造 monitor_error 用）。
     let kind = error.kind;
@@ -1670,6 +1762,7 @@ async fn report_monitor_failure(
             plan,
             handle,
             NodeState::Failed,
+            generation,
             Some(kind),
             Some(error.message),
             error.cleanup_error,
@@ -1707,6 +1800,8 @@ fn monitor_state_event(
     handle: ProcessHandle,
     // 状态。
     state: NodeState,
+    // 当前运行实例代次。
+    generation: u64,
     // 可选错误种类。
     error_kind: Option<DeploymentErrorKind>,
     // 可选错误消息。
@@ -1724,5 +1819,125 @@ fn monitor_state_event(
         pid: Some(handle.pid),
         error,
         cleanup_error,
+        generation,
+        capacity: None,
     }
+}
+
+// 为一次新的运行时实例分配单调递增的代次；代次耗尽属于内部不可恢复错误。
+async fn reserve_generation(inner: Arc<DeploymentServiceInner>) -> u64 {
+    let mut coordinator = inner.coordinator.lock().await;
+    coordinator.generation = match coordinator.generation.checked_add(1) {
+        Some(generation) => generation,
+        None => panic!("deployment generation exhausted"),
+    };
+    coordinator.generation
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelRecord>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ModelRecord {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SlotRecord {
+    is_processing: bool,
+}
+
+/// 后台容量探测句柄；监控循环退出时必须取消仍在等待的 HTTP 请求。
+#[derive(Default)]
+struct CapacityProbeHandle {
+    task: Option<JoinHandle<Result<DeploymentCapacity, String>>>,
+}
+
+impl CapacityProbeHandle {
+    fn is_none(&self) -> bool {
+        self.task.is_none()
+    }
+
+    fn is_finished(&self) -> bool {
+        self.task.as_ref().is_some_and(|task| task.is_finished())
+    }
+
+    fn take(&mut self) -> Option<JoinHandle<Result<DeploymentCapacity, String>>> {
+        self.task.take()
+    }
+
+    fn replace(&mut self, task: JoinHandle<Result<DeploymentCapacity, String>>) {
+        if let Some(previous) = self.task.replace(task) {
+            previous.abort();
+        }
+    }
+}
+
+impl Drop for CapacityProbeHandle {
+    fn drop(&mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+/// 查询本地运行时的精确模型能力和槽位容量。
+async fn query_runtime_capacity(
+    endpoint: &str,
+    model_id: &str,
+) -> Result<DeploymentCapacity, String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(2))
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .build()
+        .map_err(|error| error.to_string())?;
+    let root = endpoint.trim_end_matches('/');
+    let models = client
+        .get(format!("{root}/v1/models"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<ModelsResponse>()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !models.data.iter().any(|model| model.id == model_id) {
+        return Err(format!(
+            "runtime model list does not contain exact model '{model_id}'"
+        ));
+    }
+
+    let slots = client
+        .get(format!("{root}/slots"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<Vec<SlotRecord>>()
+        .await
+        .map_err(|error| error.to_string())?;
+    let total_slots = u32::try_from(slots.len())
+        .map_err(|_| "runtime reported more slots than supported".to_string())?;
+    let free_slots = u32::try_from(slots.iter().filter(|slot| !slot.is_processing).count())
+        .map_err(|_| "runtime reported more free slots than supported".to_string())?;
+    if total_slots == 0 || free_slots > total_slots {
+        return Err("runtime reported invalid slot capacity".to_string());
+    }
+
+    let observed_at_unix_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            duration.as_millis().min(u64::MAX as u128) as u64
+        });
+    Ok(DeploymentCapacity {
+        total_slots,
+        free_slots,
+        observed_at_unix_ms,
+    })
 }

@@ -1861,12 +1861,23 @@ table.supplier-earnings-table > thead > tr > th:nth-child(6), table.supplier-ear
 .chat-model-search .chat-model-option-name { white-space: normal; font: 600 13px/18px var(--sans); }
 .chat-model-search .chat-model-option > .chat-model-option-name { font-size: 15px; line-height: 20px; }
 .chat-model-search .chat-model-option-copy > small { overflow-wrap: anywhere; }
-/* v0.1.2：状态与下载图标在模型行内显示，无独立详情面板。 */
+/* 资源详情只在需要时浮出，避免挤压模型列表和遮挡下载按钮。 */
+.chat-model-search { overflow: visible; }
 .chat-model-row { display: flex; min-width: 0; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 6px; border-radius: 10px; }
 .chat-model-row.selected { background: #eff6ff; }
-.chat-model-row > .chat-model-option { flex: 1 1 0; background: transparent; }
+.chat-model-row > .chat-model-option { min-width: 0; flex: 1 1 0; background: transparent; }
+.chat-model-resource { position: relative; z-index: 2; flex: 0 0 auto; }
+.chat-model-resource-trigger { display: inline-grid; min-width: 32px; height: 28px; place-items: center; padding: 0 6px; border: 1px solid #bfdbfe; border-radius: 7px; color: #2563eb; background: #eff6ff; font-size: 10px; line-height: 1; cursor: help; }
+.chat-model-resource-trigger:hover { border-color: #93c5fd; color: #1d4ed8; background: #dbeafe; }
+.chat-model-resource-trigger:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.chat-model-row-state { display: flex; min-width: 0; flex: 0 0 auto; max-width: 50%; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 8px; }
+.chat-model-preview { position: absolute; right: 8px; bottom: calc(100% + 8px); z-index: 4; width: min(340px, calc(100vw - 120px)); max-height: min(280px, calc(100svh - 220px)); min-width: 0; margin: 0; padding: 8px 10px; overflow-y: auto; border: 1px solid #dbeafe; border-radius: 8px; background: #f8fbff; box-shadow: 0 12px 28px rgba(15,23,42,.14); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity .12s ease, visibility .12s ease, transform .12s ease; }
+.chat-model-search:has(.chat-model-resource:hover, .chat-model-resource:focus-within, .chat-model-preview:hover) .chat-model-preview { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
+.chat-model-preview-title { margin: 0; color: #1e3a8a; font-size: 11px; font-weight: 700; }
+.chat-model-preview-source, .chat-model-preview-variant { margin: 4px 0 0; overflow-wrap: anywhere; color: #4b5563; font-size: 10px; line-height: 1.5; }
+.chat-model-preview-variant { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; border-top: 1px solid #e0ecff; }
+.chat-model-preview-variant strong { color: #1f2937; font: 700 11px/16px var(--mono); }
 .chat-model-link { margin-right: 6px; text-decoration: none; }
-.chat-model-row-state { display: flex; flex: 0 0 auto; max-width: 50%; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 8px; }
 .chat-row-status { color: #6b7280; font-size: 11px; line-height: 16px; white-space: nowrap; }
 .chat-row-status.available { color: #047857; }
 .chat-row-status.preparing { color: #1d4ed8; }

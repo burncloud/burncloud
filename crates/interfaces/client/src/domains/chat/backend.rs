@@ -116,6 +116,11 @@ pub(super) trait ChatBackend {
         })
     }
     /// 传入实际用户/助手历史及推理强度；流式回调正文和思考，指标可缺省。
+    /// 部署后查询 Router 准入状态；默认替身只报告部署完成，不伪造本机路由状态。
+    fn deploy_model_with_route(&self, model_path: String) -> BackendFuture<Option<String>> {
+        let future = self.deploy_model(model_path);
+        Box::pin(async move { future.await.map(|()| None) })
+    }
     fn generate(
         &self,
         request: GenerationRequest,
@@ -326,6 +331,33 @@ impl ChatBackend for HttpBackend {
                 reason: error.reason,
             })?;
             client.deploy_model(&model_path).await
+        })
+    }
+    fn deploy_model_with_route(&self, model_path: String) -> BackendFuture<Option<String>> {
+        let hardware_client = self.hardware_client.clone();
+        Box::pin(async move {
+            let client = hardware_client.map_err(|error| ChatError {
+                kind: error.kind,
+                operation: Operation::Initialize(PreparationStage::Deploying),
+                reason: error.reason,
+            })?;
+            client.deploy_model(&model_path).await?;
+            let model_id = std::path::Path::new(&model_path)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .filter(|stem| !stem.is_empty())
+                .ok_or_else(|| ChatError {
+                    kind: ErrorKind::InvalidParameter,
+                    operation: Operation::Initialize(PreparationStage::Reporting),
+                    reason: "模型路径没有有效的模型 ID".into(),
+                })?;
+            match client.poll_deployment_route_status(model_id).await {
+                Ok(status) => Ok(Some(status)),
+                Err(error) => {
+                    tracing::warn!(%error, "deployment succeeded but Router status query failed");
+                    Ok(None)
+                }
+            }
         })
     }
     fn generate(

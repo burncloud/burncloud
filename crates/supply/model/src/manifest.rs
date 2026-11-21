@@ -65,7 +65,7 @@ const DEFAULT_MANIFEST_JSON: &str = r#"[
   },
   {
     "model_name": "DeepSeek V4.1 Flash",
-    "description": "推荐 GPU：4×3090 或 80GB 级单卡；磁盘：1TB+ PCIe4/5 NVMe；RAM：128GB+。最低解析门槛：RAM 233GiB、显存 48GiB、磁盘 220GiB。来源：unsloth/DeepSeek-V4.1-Flash-GGUF。",
+    "description": "推荐 GPU：4×3090 或 80GB 级单卡；磁盘：1TB+ PCIe4/5 NVMe；RAM：128GB+。最低解析门槛：RAM 233GiB、显存 48GiB、磁盘 220GiB。来源：smalinin/DeepSeek-V4.1-Flash-GGUF（Hugging Face）。",
     "supported_backends": ["llama.cpp"],
     "version": "preset-2026-11-14",
     "variants": [
@@ -78,7 +78,7 @@ const DEFAULT_MANIFEST_JSON: &str = r#"[
         "min_vram_bytes": 51539607552,
         "disk_size_bytes": 236223201280,
         "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-        "artifact_uri": "https://modelscope.cn/models/unsloth/DeepSeek-V4.1-Flash-GGUF/files?Revision=master"
+        "artifact_uri": "https://huggingface.co/smalinin/DeepSeek-V4.1-Flash-GGUF/tree/main"
       }
     ]
   },

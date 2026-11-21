@@ -96,7 +96,7 @@ async fn constructor_validates_whole_list_before_claiming_session() {
     .is_err());
     // 无效清单不能认领会话或改变既有直接 attach 的行为。
     let id = LocalAttachmentState::for_database(&db)
-        .attach(&db, valid.clone(), Some(Instant::now()))
+        .attach(&db, valid.clone(), Some(Instant::now()), 0, None, false)
         .await
         .unwrap();
     let local = LocalAttachmentState::for_database(&db);
@@ -118,7 +118,7 @@ async fn empty_manager_lives_until_cancelled_and_closes_new_permits() {
     assert!(futures::poll!(running.as_mut()).is_pending());
     let target = attachment("http://127.0.0.1:18080");
     let id = LocalAttachmentState::for_database(&db)
-        .attach(&db, target.clone(), Some(Instant::now()))
+        .attach(&db, target.clone(), Some(Instant::now()), 0, None, false)
         .await
         .unwrap();
     let local = LocalAttachmentState::for_database(&db);
@@ -171,19 +171,22 @@ async fn startup_publishes_only_configured_alias_and_restart_does_not_adopt_it()
     assert!(!local.lifecycle_allows(id, &target.model, &target.base_url));
     let manager = LocalRouteManager::new(db.clone(), vec![target.clone()]).unwrap();
     manager.local.activate_manager(manager.epoch).unwrap();
-    timeout(Duration::from_secs(3), manager.run_startup(&target))
-        .await
-        .unwrap();
-    assert_eq!(wait_for_channels(&db, 1).await[0].id, id);
+    manager.reconcile_persisted_attachments().await.unwrap();
+    assert!(ChannelService::list(&db, 100, 0).await.unwrap().is_empty());
+    let replacement_id = tokio::select! {
+        _ = manager.run_startup(&target) => panic!("启动监控不应自行结束"),
+        channels = wait_for_channels(&db, 1) => channels[0].id,
+    };
+    assert_ne!(replacement_id, id);
     assert!(!local.lifecycle_allows(id, &target.model, &target.base_url));
     let attacher = ExistingRouterLocalAttacher::new(db.clone());
     attacher
-        .detach(super::super::LocalRouteAttachmentId(id))
+        .detach(super::super::LocalRouteAttachmentId(replacement_id))
         .await
         .unwrap();
     assert!(ChannelService::list(&db, 100, 0).await.unwrap().is_empty());
     let replacement = attacher.attach(target.clone()).await.unwrap();
-    assert_ne!(replacement.0, id);
+    assert_ne!(replacement.0, replacement_id);
     assert!(local.lifecycle_allows(replacement.0, &target.model, &target.base_url));
     drop(manager);
     db.get_connection().unwrap().pool().close().await;

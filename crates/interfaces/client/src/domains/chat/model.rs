@@ -237,6 +237,8 @@ pub(super) struct Preparation {
     pub(super) events: Vec<PreparationEvent>,
     pub(super) actual_digest: Option<String>,
     pub(super) local_path: Option<String>,
+    /// Node 部署成功后返回的 Router 准入状态；查询失败时保持未知。
+    pub(super) route_status: Option<String>,
     pub(super) error: Option<ChatError>,
     pub(super) collapsed: bool,
 }

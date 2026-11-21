@@ -60,7 +60,7 @@ use burncloud_node_runtime::{
 };
 // 引入路由应用创建函数（带 route_miss 回调）与 SyncResult
 use burncloud_router::create_router_app_with_route_miss;
-use burncloud_router::local_attachment::LocalRouteManager;
+use burncloud_router::local_attachment::{ExistingRouterLocalAttacher, LocalRouteManager};
 use burncloud_router::price_sync::SyncResult;
 // 引入路由数据库初始化
 use burncloud_router::RouterDatabase;
@@ -230,7 +230,10 @@ pub async fn create_app_with_node_request_state(
     let node_context = NodeRuntime::new().start();
 
     // 创建部署事件存储
-    let deployment_events = Arc::new(node_deployment::DeploymentEventStore::default());
+    let local_attacher = Arc::new(ExistingRouterLocalAttacher::new(db.clone()));
+    let deployment_events = Arc::new(node_deployment::DeploymentEventStore::with_attacher(
+        local_attacher,
+    ));
     // 转为 trait 对象（供 DeploymentService 使用）
     let event_publisher: Arc<dyn DeploymentEventPublisher> = deployment_events.clone();
     // 创建本地进程管理器（with_kill_on_drop：Drop 时杀进程，防止泄漏）
@@ -241,9 +244,13 @@ pub async fn create_app_with_node_request_state(
     // 返回服务实例和错误接收端
     let (deployment_service, mut monitor_errors) =
         DeploymentService::new(processes, probe.clone(), probe, event_publisher);
-    // 后台任务：持续消费监控错误并记录 error 日志
+    // 后台任务：监控失败先让部署快照和 Router 进入 fail-closed，再记录诊断。
+    let monitor_events = Arc::clone(&deployment_events);
     tokio::spawn(async move {
         while let Some(error) = monitor_errors.recv().await {
+            monitor_events
+                .set_error(&error.model_id, error.to_string())
+                .await;
             tracing::error!(%error, "local model runtime monitor failed");
         }
     });
@@ -374,8 +381,9 @@ pub async fn create_app_with_node_request_state(
 /// `error` 只能缺省或为 null。两项配置互斥；均未设置或唯一来源为 `[]` 时不创建挂载。
 /// 全量校验先于探测与挂载。部署 Ready、PID、历史心跳和事件不能代替当前端点的
 /// `/v1/models` 直接探测，也不改变认证、计费或模型报价。
-/// 取消本 future 同步关闭本机挂载准入，不自动删除持久化记录；重启残留须核对后
-/// 显式 detach。低层 `create_app` 不读取这两项配置，也不启动管理器。
+/// 取消本 future 同步关闭本机挂载准入，不自动删除持久化记录；新的 Server 会话
+/// 启动时先隔离并摘除残留本机挂载，再按当前配置重新探测和挂载。低层 `create_app`
+/// 不读取这两项配置，也不启动管理器。
 #[tracing::instrument(skip_all)]
 pub async fn start_server(host: &str, port: u16, enable_liveview: bool) -> anyhow::Result<()> {
     let attachments = local_routes::configured_attachments()?;

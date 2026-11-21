@@ -751,7 +751,7 @@ fn generate_schemas() -> serde_json::Value {
                     "type": "string",
                     "minLength": 3,
                     "description": "External repository identity in owner/name form.",
-                    "example": "Qwen/Qwen3-8B"
+                    "example": "Qwen/Qwen3-8B-GGUF"
                 },
                 "source": {
                     "type": "string",
@@ -780,7 +780,7 @@ fn generate_schemas() -> serde_json::Value {
             "required": ["status", "model", "hardware", "candidates"],
             "properties": {
                 "status": {"type": "string", "enum": ["resolved", "unsupported"]},
-                "model": {"type": "string", "example": "Qwen/Qwen3-8B"},
+                "model": {"type": "string", "example": "Qwen/Qwen3-8B-GGUF"},
                 "hardware": {"$ref": "#/components/schemas/HardwareSnapshot"},
                 "candidates": {
                     "type": "array",
@@ -831,11 +831,11 @@ fn generate_schemas() -> serde_json::Value {
             "type": "object",
             "required": ["model", "source", "revision", "variant_id", "artifact_uri", "checksum"],
             "properties": {
-                "model": {"type": "string", "example": "Qwen/Qwen3-8B"},
+                "model": {"type": "string", "example": "Qwen/Qwen3-8B-GGUF"},
                 "source": {"type": "string", "enum": ["modelscope", "hf-mirror", "huggingface"]},
                 "revision": {"type": "string", "example": "master"},
-                "variant_id": {"type": "string", "example": "Q4_K_M.gguf"},
-                "artifact_uri": {"type": "string", "format": "uri", "example": "https://modelscope.cn/models/Qwen/Qwen3-8B/resolve/master/Q4_K_M.gguf"},
+                "variant_id": {"type": "string", "example": "Qwen3-8B-Q4_K_M.gguf"},
+                "artifact_uri": {"type": "string", "format": "uri", "example": "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf"},
                 "checksum": {"type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$"}
             }
         },

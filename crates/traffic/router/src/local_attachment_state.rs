@@ -1,4 +1,6 @@
-use super::{LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId};
+use super::{
+    LocalRouteAttachment, LocalRouteAttachmentError, LocalRouteAttachmentId, LocalRouteCapacity,
+};
 use burncloud_database::Database;
 use burncloud_supply_channel::ChannelService;
 use burncloud_supply_contracts::{Channel, ChannelType};
@@ -36,6 +38,8 @@ struct AttachmentSlot {
     probe_healthy: bool,
     recovery_successes: u8,
     faulted: bool,
+    generation: u64,
+    capacity: Option<LocalRouteCapacity>,
     in_flight: Arc<AtomicU32>,
 }
 
@@ -152,11 +156,19 @@ impl LocalAttachmentState {
         Ok(())
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        clippy::too_many_lines,
+        reason = "挂载需要集中完成幂等、残留清理、探测和供给提交"
+    )]
     pub(super) async fn attach(
         &self,
         db: &Database,
         attachment: LocalRouteAttachment,
         evidence: Option<Instant>,
+        generation: u64,
+        capacity: Option<LocalRouteCapacity>,
+        replace_existing: bool,
     ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError> {
         debug_assert!(!attachment.model.is_empty() && attachment.model.chars().count() <= 34);
         debug_assert!(!attachment.base_url.ends_with('/'));
@@ -182,11 +194,28 @@ impl LocalAttachmentState {
             (slot.id, slot.unresolved)
         };
         if let Some(id) = id {
-            let index = self
+            let mut index = self
                 .index
                 .lock()
                 .unwrap_or_else(|_| panic!("local attachment index poisoned"));
-            if slot_ready(&index.targets[&target], &index, Instant::now()) {
+            if generation != 0 {
+                let slot = index
+                    .targets
+                    .get_mut(&target)
+                    .unwrap_or_else(|| panic!("managed target missing"));
+                if slot.lifecycle == Lifecycle::Attached && !slot.unresolved && !slot.faulted {
+                    slot.generation = generation;
+                    slot.capacity = capacity;
+                    slot.heartbeat = Some(Instant::now());
+                    slot.probe_healthy = true;
+                    return Ok(LocalRouteAttachmentId(id));
+                }
+            }
+            let ready = index
+                .targets
+                .get(&target)
+                .is_some_and(|slot| slot_ready(slot, &index, Instant::now()));
+            if ready {
                 return Ok(LocalRouteAttachmentId(id));
             }
             return Err(LocalRouteAttachmentError::AttachFailed(format!(
@@ -207,21 +236,48 @@ impl LocalAttachmentState {
             }
         };
         if let Some(channel) = existing {
-            let mut index = self
-                .index
-                .lock()
-                .unwrap_or_else(|_| panic!("local attachment index poisoned"));
-            let slot = index
-                .targets
-                .get_mut(&target)
-                .unwrap_or_else(|| panic!("managed target missing"));
-            slot.id = Some(channel.id);
-            slot.unresolved = true;
-            index.ids.insert(channel.id, target);
-            return Err(LocalRouteAttachmentError::AttachFailed(format!(
-                "unpublished attachment {} exists; explicitly detach it before attaching again",
-                channel.id
-            )));
+            if replace_existing {
+                let changed = ChannelService::delete_if_tag(db, channel.id, "burncloud-node-local")
+                    .await
+                    .map_err(|e| LocalRouteAttachmentError::AttachFailed(e.to_string()))?;
+                if !changed {
+                    return Err(LocalRouteAttachmentError::AttachFailed(
+                        "stored local attachment disappeared during reconciliation".into(),
+                    ));
+                }
+                let mut index = self
+                    .index
+                    .lock()
+                    .unwrap_or_else(|_| panic!("local attachment index poisoned"));
+                index.ids.remove(&channel.id);
+                if let Some(slot) = index.targets.get_mut(&target) {
+                    slot.id = None;
+                    slot.lifecycle = Lifecycle::Absent;
+                    slot.unresolved = false;
+                    slot.heartbeat = None;
+                    slot.probe_healthy = false;
+                    slot.recovery_successes = 0;
+                    slot.faulted = false;
+                    slot.generation = 0;
+                    slot.capacity = None;
+                }
+            } else {
+                let mut index = self
+                    .index
+                    .lock()
+                    .unwrap_or_else(|_| panic!("local attachment index poisoned"));
+                let slot = index
+                    .targets
+                    .get_mut(&target)
+                    .unwrap_or_else(|| panic!("managed target missing"));
+                slot.id = Some(channel.id);
+                slot.unresolved = true;
+                index.ids.insert(channel.id, target);
+                return Err(LocalRouteAttachmentError::AttachFailed(format!(
+                    "unpublished attachment {} exists; explicitly detach it before attaching again",
+                    channel.id
+                )));
+            }
         }
         if unresolved {
             return Err(LocalRouteAttachmentError::AttachFailed("previous attachment outcome is unknown; absence does not prove it cannot commit later".into()));
@@ -274,6 +330,8 @@ impl LocalAttachmentState {
         slot.probe_healthy = true;
         slot.recovery_successes = 0;
         slot.faulted = false;
+        slot.generation = generation;
+        slot.capacity = capacity;
         slot.epoch = epoch;
         slot.lifecycle = Lifecycle::Attached;
         slot.unresolved = false;
@@ -430,6 +488,8 @@ impl LocalAttachmentState {
                             probe_healthy: false,
                             recovery_successes: 0,
                             faulted: false,
+                            generation: 0,
+                            capacity: None,
                             in_flight: Arc::new(AtomicU32::new(0)),
                         })
                         .management,
@@ -545,7 +605,7 @@ impl LocalAttachmentState {
             && index.targets.get(target).is_some_and(|slot| {
                 slot.id == Some(id)
                     && slot_ready(slot, &index, Instant::now())
-                    && slot.in_flight.load(Ordering::Acquire) < index.max_concurrency.max(1)
+                    && slot.in_flight.load(Ordering::Acquire) < effective_concurrency(slot, &index)
             })
     }
 
@@ -584,7 +644,7 @@ impl LocalAttachmentState {
             || target.base_url != base_url
             || slot.id != Some(id)
             || !slot_ready(slot, &index, Instant::now())
-            || slot.in_flight.load(Ordering::Acquire) >= index.max_concurrency.max(1)
+            || slot.in_flight.load(Ordering::Acquire) >= effective_concurrency(slot, &index)
         {
             return None;
         }
@@ -658,6 +718,77 @@ impl LocalAttachmentState {
         }
     }
 
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "共享索引中毒表示内部不变量损坏，不是可恢复业务错误"
+    )]
+    pub(crate) fn record_heartbeat(
+        &self,
+        id: i32,
+        generation: u64,
+        endpoint: &str,
+        healthy: bool,
+        capacity: Option<LocalRouteCapacity>,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        if id <= 0 || generation == 0 {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "attachment heartbeat identity is invalid".into(),
+            ));
+        }
+        if capacity
+            .is_some_and(|value| value.total_slots == 0 || value.free_slots > value.total_slots)
+        {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "runtime capacity is invalid".into(),
+            ));
+        }
+        let mut index = self
+            .index
+            .lock()
+            .unwrap_or_else(|_| panic!("local attachment index poisoned"));
+        let Some(target) = index.ids.get(&id).cloned() else {
+            return Err(LocalRouteAttachmentError::AttachFailed(format!(
+                "local route attachment {id} does not exist"
+            )));
+        };
+        if target.base_url != endpoint.trim_end_matches('/') {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "heartbeat endpoint does not match attachment".into(),
+            ));
+        }
+        let Some(slot) = index.targets.get_mut(&target) else {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "managed attachment target is missing".into(),
+            ));
+        };
+        if slot.id != Some(id) || (slot.generation != 0 && slot.generation != generation) {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "heartbeat generation does not match attachment".into(),
+            ));
+        }
+        // 隔离和失联状态只允许记录诊断，不允许普通心跳解除准入锁。
+        if slot.lifecycle != Lifecycle::Attached {
+            return Ok(());
+        }
+        let heartbeat_expired = slot
+            .heartbeat
+            .is_none_or(|at| at.elapsed() >= HEARTBEAT_TTL);
+        if heartbeat_expired {
+            // 失联后不刷新证据或容量；普通心跳不能把 Lost 节点重新投入派发。
+            slot.probe_healthy = false;
+            slot.recovery_successes = 0;
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "heartbeat expired; detach and attach again before routing".into(),
+            ));
+        }
+        slot.generation = generation;
+        slot.capacity = capacity;
+        slot.heartbeat = Some(Instant::now());
+        slot.probe_healthy = healthy;
+        slot.recovery_successes = if healthy { 1 } else { 0 };
+        Ok(())
+    }
+
     pub(crate) async fn local_client(&self) -> Result<&reqwest::Client, reqwest::Error> {
         self.client
             .get_or_try_init(|| async {
@@ -724,13 +855,23 @@ mod tests;
 #[path = "local_attachment_dispatch_tests.rs"]
 mod dispatch_tests;
 
-const HEARTBEAT_TTL: std::time::Duration = std::time::Duration::from_secs(15);
+const HEARTBEAT_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn effective_concurrency(slot: &AttachmentSlot, index: &AttachmentIndex) -> u32 {
+    let configured = index.max_concurrency.max(1);
+    slot.capacity
+        .map_or(configured, |capacity| configured.min(capacity.free_slots))
+}
 
 fn slot_ready(slot: &AttachmentSlot, index: &AttachmentIndex, now: Instant) -> bool {
     slot.lifecycle == Lifecycle::Attached
         && !slot.unresolved
         && !slot.faulted
         && slot.probe_healthy
+        && (slot.generation == 0
+            || slot
+                .capacity
+                .is_some_and(|capacity| capacity.free_slots > 0))
         && slot
             .heartbeat
             .is_some_and(|t| now.duration_since(t) < HEARTBEAT_TTL)

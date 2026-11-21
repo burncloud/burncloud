@@ -17,6 +17,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{sync::mpsc, task::JoinSet};
@@ -304,19 +305,46 @@ fn model_key(value: &str) -> String {
         .collect()
 }
 
+fn repository_model_key(value: &str) -> String {
+    let key = model_key(value);
+    // GGUF 仓库名描述文件格式，默认清单仍使用面向用户的逻辑模型名。
+    key.strip_suffix("gguf").unwrap_or(&key).to_owned()
+}
+
+fn artifact_repository_key(value: &str) -> Option<String> {
+    let url = Url::parse(value).ok()?;
+    let segments = url.path_segments()?.collect::<Vec<_>>();
+    if let Some(index) = segments.iter().position(|segment| *segment == "models") {
+        return segments
+            .get(index + 2)
+            .map(|segment| repository_model_key(segment));
+    }
+    segments
+        .iter()
+        .position(|segment| *segment == "resolve" || *segment == "tree")
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| segments.get(index))
+        .map(|segment| repository_model_key(segment))
+}
+
+fn manifest_matches_resource(manifest: &ModelManifest, repository_key: &str) -> bool {
+    model_key(&manifest.model_name) == repository_key
+        || manifest.variants.iter().any(|variant| {
+            artifact_repository_key(&variant.artifact_uri).is_some_and(|key| key == repository_key)
+        })
+}
+
 fn variants_for_resource(
     manifests: &[ModelManifest],
     resource: &ModelResource,
 ) -> Vec<StatusVariant> {
-    if resource.source != Source::ModelScope {
-        return Vec::new();
-    }
     let Some(repository_name) = resource.model.rsplit('/').next() else {
         return Vec::new();
     };
+    let repository_key = repository_model_key(repository_name);
     manifests
         .iter()
-        .find(|manifest| model_key(&manifest.model_name) == model_key(repository_name))
+        .find(|manifest| manifest_matches_resource(manifest, &repository_key))
         .map(|manifest| manifest.variants.iter().map(StatusVariant::from).collect())
         .unwrap_or_default()
 }

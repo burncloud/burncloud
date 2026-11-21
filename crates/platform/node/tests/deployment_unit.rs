@@ -97,6 +97,8 @@ async fn u001_public_types_and_state_error_display_match_the_contract() {
         pid: None,
         error: None,
         cleanup_error: None,
+        generation: 0,
+        capacity: None,
     };
     assert_eq!(event.model_id, "model-u001");
     let invalid = InvalidNodeTransition {

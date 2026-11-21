@@ -7,8 +7,8 @@ use axum::{
 };
 use burncloud_node_runtime::HardwareProbeError;
 use burncloud_supply_model::{
-    CandidateResolutionOutcome, LocalModelUnsupportedReason, ModelManifest, ModelResolutionError,
-    ResolvedModelCandidate, Variant,
+    load_default_manifests, CandidateResolutionOutcome, LocalModelUnsupportedReason, ModelManifest,
+    ModelResolutionError, ResolvedModelCandidate, Variant,
 };
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
@@ -21,8 +21,8 @@ const LLAMA_CPP: &str = "llama.cpp";
 
 /// 构建服务端模型解析接口。
 ///
-/// 该路由在一次请求内完成外部模型仓库文件发现、服务端硬件检测和兼容 Variant 过滤。
-/// 前端必须提交当前选中的仓库模型、来源和修订号；服务端不再维护内置模型清单。
+/// 该路由在一次请求内完成外部模型仓库文件发现、服务端资源配置合并、硬件检测和兼容 Variant 过滤。
+/// 前端必须提交当前选中的仓库模型、来源和修订号；工件元数据来自上游，资源门槛优先使用匹配的内置清单配置。
 pub(super) fn routes() -> Router<AppState> {
     Router::new().route("/api/node/models/resolve", post(resolve_model))
 }
@@ -310,16 +310,101 @@ pub(crate) async fn discover_manifest_at(
         .into_iter()
         .map(|artifact| build_variant(source, model, revision, artifact))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(ModelManifest {
+    let mut manifest = ModelManifest {
         model_name: model.to_owned(),
         description: format!(
-            "从 {} 仓库实时发现的 GGUF 工件；系统内存最低按工件大小保守过滤，显存要求由仓库文件元数据未声明。",
+            "从 {} 仓库实时发现的 GGUF 工件；资源门槛优先使用匹配的服务端内置配置，未配置的量化版本按工件大小保守估算。",
             source.label()
         ),
         supported_backends: vec![LLAMA_CPP.into()],
         version: revision.to_owned(),
         variants,
-    })
+    };
+    apply_builtin_resource_config(&mut manifest)?;
+    Ok(manifest)
+}
+
+fn apply_builtin_resource_config(manifest: &mut ModelManifest) -> Result<(), DiscoveryError> {
+    let builtin_manifests = load_default_manifests()
+        .map_err(|error| DiscoveryError::Unavailable(format!("内置模型资源配置无效：{error}")))?;
+    let Some(builtin) = builtin_manifests.iter().find(|candidate| {
+        let repository_key = model_key(&manifest.model_name);
+        model_key(&candidate.model_name) == repository_key
+            || candidate.variants.iter().any(|variant| {
+                artifact_repository_key(&variant.artifact_uri)
+                    .is_some_and(|key| key == repository_key)
+            })
+    }) else {
+        return Ok(());
+    };
+
+    for discovered in &mut manifest.variants {
+        let configured = builtin
+            .variants
+            .iter()
+            .find(|candidate| {
+                quantization_matches(&candidate.quantization, &discovered.quantization)
+            })
+            .or_else(|| (builtin.variants.len() == 1).then(|| &builtin.variants[0]));
+        let Some(configured) = configured else {
+            continue;
+        };
+        discovered.min_ram_bytes = configured.min_ram_bytes;
+        discovered.min_vram_bytes = configured.min_vram_bytes;
+        discovered.disk_size_bytes = configured.disk_size_bytes;
+    }
+    Ok(())
+}
+
+fn model_key(value: &str) -> String {
+    let value = value.rsplit('/').next().unwrap_or(value);
+    let value = value.strip_suffix("-GGUF").unwrap_or(value);
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn artifact_repository_key(value: &str) -> Option<String> {
+    let url = Url::parse(value).ok()?;
+    let segments = url.path_segments()?.collect::<Vec<_>>();
+    if let Some(index) = segments.iter().position(|segment| *segment == "models") {
+        return segments.get(index + 2).map(|segment| model_key(segment));
+    }
+    segments
+        .iter()
+        .position(|segment| *segment == "resolve" || *segment == "tree")
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| segments.get(index))
+        .map(|segment| model_key(segment))
+}
+
+fn quantization_matches(configured: &str, discovered: &str) -> bool {
+    let configured = quantization_families(configured);
+    let discovered = quantization_families(discovered);
+    configured
+        .iter()
+        .any(|family| discovered.iter().any(|candidate| family == candidate))
+}
+
+fn quantization_families(value: &str) -> Vec<String> {
+    value
+        .to_ascii_uppercase()
+        .split(['_', '-', '/', ' '])
+        .filter_map(|token| {
+            if token.is_empty() {
+                None
+            } else if token.chars().all(|character| character.is_ascii_digit()) {
+                Some(format!("Q{token}"))
+            } else if token.starts_with("Q") || token.starts_with("IQ") || token.starts_with("MXFP")
+            {
+                Some(token.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 async fn discover_modelscope(
@@ -529,9 +614,9 @@ fn artifact_url(
 
 fn quantization_from_path(path: &str) -> String {
     const LABELS: &[&str] = &[
-        "IQ1_S", "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ3_XXS", "IQ3_XS", "IQ3_S", "IQ4_XS", "IQ4_NL",
-        "Q2_K", "Q3_K_L", "Q3_K_M", "Q3_K_S", "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S", "Q5_0", "Q5_1",
-        "Q5_K_M", "Q5_K_S", "Q6_K", "Q8_0", "F16", "BF16", "F32",
+        "MXFP4", "IQ1_S", "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ3_XXS", "IQ3_XS", "IQ3_S", "IQ4_XS",
+        "IQ4_NL", "Q2_K", "Q3_K_L", "Q3_K_M", "Q3_K_S", "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S", "Q5_0",
+        "Q5_1", "Q5_K_M", "Q5_K_S", "Q6_K", "Q8_0", "F16", "BF16", "F32",
     ];
     let upper = path.to_ascii_uppercase();
     LABELS

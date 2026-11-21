@@ -1,6 +1,6 @@
 use super::{
     LocalAttachmentState, LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentError,
-    LocalRouteAttachmentId,
+    LocalRouteAttachmentId, LocalRouteCapacity,
 };
 use async_trait::async_trait;
 use burncloud_database::Database;
@@ -42,6 +42,93 @@ impl ExistingRouterLocalAttacher {
         let local = LocalAttachmentState::for_database(&db);
         Self { db, local }
     }
+
+    /// 使用 Node 运行代次和首次容量完成一次生产挂载。
+    ///
+    /// 该方法是 Server 内部编排 Node 事件的桥接入口；普通调用方继续使用
+    /// [`LocalRouteAttacher::attach`]，既有挂载接口不携带心跳字段。
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(db: std::sync::Arc<burncloud_database::Database>) -> Result<(), burncloud_router::local_attachment::LocalRouteAttachmentError> {
+    /// use burncloud_router::local_attachment::{
+    ///     ExistingRouterLocalAttacher, LocalRouteAttachment, LocalRouteCapacity,
+    /// };
+    /// let attacher = ExistingRouterLocalAttacher::new(db);
+    /// let _id = attacher
+    ///     .attach_with_runtime(
+    ///         LocalRouteAttachment {
+    ///             model: "qwen:4b".into(),
+    ///             base_url: "http://127.0.0.1:8080".into(),
+    ///         },
+    ///         1,
+    ///         Some(LocalRouteCapacity {
+    ///             total_slots: 1,
+    ///             free_slots: 1,
+    ///             observed_at_unix_ms: 1,
+    ///         }),
+    ///     )
+    ///     .await?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn attach_with_runtime(
+        &self,
+        attachment: LocalRouteAttachment,
+        generation: u64,
+        capacity: Option<LocalRouteCapacity>,
+    ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError> {
+        if generation == 0 {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "runtime generation must be positive".into(),
+            ));
+        }
+        if capacity
+            .is_some_and(|value| value.total_slots == 0 || value.free_slots > value.total_slots)
+        {
+            return Err(LocalRouteAttachmentError::AttachFailed(
+                "runtime capacity is invalid".into(),
+            ));
+        }
+        let attachment = normalize_attachment(attachment)?;
+        self.local
+            .attach(&self.db, attachment, None, generation, capacity, true)
+            .await
+    }
+
+    /// 接收 Node 的一次运行心跳并更新 Router 准入状态。
+    ///
+    /// 隔离、失联和故障锁状态不会被普通健康心跳自动解除。
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn example(attacher: &burncloud_router::local_attachment::ExistingRouterLocalAttacher) -> Result<(), burncloud_router::local_attachment::LocalRouteAttachmentError> {
+    /// use burncloud_router::local_attachment::{LocalRouteAttachmentId, LocalRouteCapacity};
+    /// attacher.record_heartbeat(
+    ///     LocalRouteAttachmentId(1),
+    ///     1,
+    ///     "http://127.0.0.1:8080",
+    ///     true,
+    ///     Some(LocalRouteCapacity {
+    ///         total_slots: 1,
+    ///         free_slots: 1,
+    ///         observed_at_unix_ms: 1,
+    ///     }),
+    /// )?;
+    /// # Ok(()) }
+    /// ```
+    pub fn record_heartbeat(
+        &self,
+        attachment_id: LocalRouteAttachmentId,
+        generation: u64,
+        endpoint: &str,
+        healthy: bool,
+        capacity: Option<LocalRouteCapacity>,
+    ) -> Result<(), LocalRouteAttachmentError> {
+        self.local
+            .record_heartbeat(attachment_id.0, generation, endpoint, healthy, capacity)
+    }
 }
 
 #[async_trait]
@@ -51,7 +138,9 @@ impl LocalRouteAttacher for ExistingRouterLocalAttacher {
         attachment: LocalRouteAttachment,
     ) -> Result<LocalRouteAttachmentId, LocalRouteAttachmentError> {
         let attachment = normalize_attachment(attachment)?;
-        self.local.attach(&self.db, attachment, None).await
+        self.local
+            .attach(&self.db, attachment, None, 0, None, false)
+            .await
     }
 
     async fn quarantine(

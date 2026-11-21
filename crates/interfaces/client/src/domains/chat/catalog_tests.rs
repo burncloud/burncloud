@@ -83,6 +83,12 @@ fn item(preset: bool, source: &str) -> serde_json::Value {
         "revision":if source == "modelscope" { "master" } else { "main" }})
 }
 
+#[allow(clippy::disallowed_types, reason = "测试需要构造完整预置目录协议")]
+fn preset_item(source: &str) -> serde_json::Value {
+    json!({"id":"qwen3-8b","name":"Qwen3-8B","preset":true,"model":"Qwen/Qwen3-8B-GGUF","source":source,
+        "revision":if source == "modelscope" { "master" } else { "main" }})
+}
+
 #[allow(clippy::disallowed_types, reason = "测试需要构造完整状态协议")]
 fn status(source: &str, status: &str) -> serde_json::Value {
     json!({"status":status,"model":"Qwen/Qwen3-8B","source":source,
@@ -202,11 +208,12 @@ async fn model_resolution_rejects_mismatched_candidate_model() {
 
 #[tokio::test]
 async fn presets_load_from_main_service_with_flat_resources() {
-    let service = json_server(vec![json!([item(true, "modelscope")])]).await;
+    let service = json_server(vec![json!([preset_item("modelscope")])]).await;
     let pages = collect(&service.client, " ").await.expect("预置列表");
     assert_eq!(pages.len(), 1);
     assert!(pages[0].done && pages[0].items[0].preset);
-    assert_eq!(pages[0].items[0].model, "Qwen/Qwen3-8B");
+    assert_eq!(pages[0].items[0].id, "qwen3-8b");
+    assert_eq!(pages[0].items[0].model, "Qwen/Qwen3-8B-GGUF");
     let calls = service.requests.lock().expect("请求记录");
     assert_eq!(calls.len(), 1);
     assert!(calls[0].starts_with("GET /api/models/presets"));
@@ -852,14 +859,47 @@ async fn download_model_polls_progress_and_verification_until_succeeded() {
         ),
     ])
     .await;
-    let request = download_request(DOWNLOAD_DIGEST);
+    let selected = download_request(DOWNLOAD_DIGEST);
+    let mut chat = super::super::state::ChatState::default();
+    let run_id = chat
+        .accept_catalog(
+            selected.model.catalog_selection.expect("目录选择"),
+            VersionStatus::Downloadable,
+            vec![selected.variant],
+        )
+        .expect("启动目录模型准备");
+    chat.finish_hardware(
+        run_id,
+        Ok(Hardware {
+            ram_bytes: Some(100),
+            disk_bytes: Some(100),
+            gpus: Some(Vec::new()),
+            ..Hardware::default()
+        }),
+    );
+    assert!(chat.choose_variant(run_id, "Q4_K_M.gguf"));
+    let request = chat.initialization_request(run_id).expect("下载快照");
     let mut events = Vec::new();
     let prepared = service
         .client
-        .download_model(&request, |event| events.push(event))
+        .download_model(&request, |event| {
+            // 两次轮询跨过下载完成点时，真实状态机也必须能接收校验边界。
+            chat.preparation_event(run_id, event.clone());
+            events.push(event);
+        })
         .await
         .expect("轮询下载成功");
 
+    let preparation = chat.preparation().expect("准备卡片");
+    assert_eq!(preparation.stage, PreparationStage::ArtifactReady);
+    assert!(preparation.error.is_none());
+    assert_eq!(preparation.completed_bytes, 10);
+    assert_eq!(preparation.total_bytes, Some(10));
+    assert_eq!(
+        preparation.local_path.as_deref(),
+        Some("/node/models/model.gguf")
+    );
+    assert_eq!(preparation.actual_digest.as_deref(), Some(DOWNLOAD_DIGEST));
     assert_eq!(prepared.actual_sha256, DOWNLOAD_DIGEST);
     assert_eq!(
         events,
@@ -1065,6 +1105,123 @@ fn deploy_snapshot(status: &str) -> serde_json::Value {
     json!({"model_id":"model", "status":status, "stage":null, "state":null,
         "endpoint":null, "pid":null, "last_heartbeat_unix_ms":null,
         "error":null, "events":[]})
+}
+
+#[expect(
+    clippy::disallowed_types,
+    reason = "部署协议替身需要构造动态 JSON，不参与生产业务逻辑"
+)]
+fn route_snapshot(route_status: &str) -> serde_json::Value {
+    let mut snapshot = deploy_snapshot("ready");
+    snapshot["route_status"] = json!(route_status);
+    // 测试不绑定任何固定持久化 ID；真实 ID 由 Router 创建并返回。
+    snapshot["route_attachment_id"] = json!(null);
+    snapshot["capacity"] = json!({
+        "total_slots": 1,
+        "free_slots": if route_status == "saturated" { 0 } else { 1 },
+        "observed_at_unix_ms": 1790000000000u64
+    });
+    snapshot["last_heartbeat_unix_ms"] = json!(1790000000000u64);
+    snapshot
+}
+
+#[tokio::test]
+async fn deployment_route_status_validates_model_and_stable_status() {
+    for status in [
+        "unroutable",
+        "routable",
+        "saturated",
+        "quarantined",
+        "lost",
+        "detaching",
+        "detached",
+        "failed",
+    ] {
+        let service = json_server(vec![route_snapshot(status)]).await;
+        assert_eq!(
+            service
+                .client
+                .deployment_route_status("model")
+                .await
+                .expect("合法 Router 状态"),
+            status
+        );
+    }
+
+    let mut mismatch = route_snapshot("routable");
+    mismatch["model_id"] = json!("other");
+    let service = json_server(vec![mismatch]).await;
+    let error = service
+        .client
+        .deployment_route_status("model")
+        .await
+        .expect_err("模型 ID 不一致");
+    assert_eq!(error.kind, ErrorKind::InvalidResult);
+
+    let service = json_server(vec![deploy_snapshot("ready")]).await;
+    let error = service
+        .client
+        .deployment_route_status("model")
+        .await
+        .expect_err("缺少 Router 状态");
+    assert_eq!(error.kind, ErrorKind::InvalidResult);
+
+    let mut unknown = route_snapshot("routable");
+    unknown["route_status"] = json!("unknown");
+    let service = json_server(vec![unknown]).await;
+    let error = service
+        .client
+        .deployment_route_status("model")
+        .await
+        .expect_err("未知 Router 状态");
+    assert_eq!(error.kind, ErrorKind::InvalidResult);
+}
+
+#[tokio::test]
+async fn deployment_route_status_polls_unroutable_until_capacity_is_ready() {
+    let service = json_server(vec![
+        deploy_snapshot("ready"),
+        route_snapshot("unroutable"),
+        route_snapshot("unroutable"),
+        route_snapshot("routable"),
+    ])
+    .await;
+    service
+        .client
+        .deploy_model("model.gguf")
+        .await
+        .expect("部署就绪");
+    let status = service
+        .client
+        .poll_deployment_route_status("model")
+        .await
+        .expect("Router 状态查询");
+    assert_eq!(status, "routable");
+    assert_eq!(service.requests.lock().expect("请求记录").len(), 4);
+}
+
+#[tokio::test]
+async fn deployment_route_status_query_failure_does_not_cancel_deployment() {
+    let service = server(
+        vec![
+            (200, deploy_snapshot("ready").to_string()),
+            (503, "service unavailable".into()),
+        ],
+        Duration::ZERO,
+        Duration::from_secs(2),
+    )
+    .await;
+    service
+        .client
+        .deploy_model("model.gguf")
+        .await
+        .expect("部署应保持成功");
+    let error = service
+        .client
+        .poll_deployment_route_status("model")
+        .await
+        .expect_err("状态查询失败");
+    assert_eq!(error.kind, ErrorKind::ExecutionFailed);
 }
 
 #[tokio::test]

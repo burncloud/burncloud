@@ -45,6 +45,32 @@ pub struct LocalRouteAttachment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalRouteAttachmentId(pub i32);
 
+/// Node 最近一次上报的本地运行时槽位容量。
+///
+/// 该类型只描述挂载运行状态，不改变 [`LocalRouteAttachment`] 的输入契约。
+///
+/// # Examples
+///
+/// ```
+/// use burncloud_router::local_attachment::LocalRouteCapacity;
+///
+/// let capacity = LocalRouteCapacity {
+///     total_slots: 1,
+///     free_slots: 1,
+///     observed_at_unix_ms: 1,
+/// };
+/// assert!(capacity.free_slots <= capacity.total_slots);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalRouteCapacity {
+    /// 运行时槽位总数。
+    pub total_slots: u32,
+    /// 运行时最近采样的空闲槽位数。
+    pub free_slots: u32,
+    /// 容量采样的 Unix 毫秒时间戳。
+    pub observed_at_unix_ms: u64,
+}
+
 /// 可恢复的本机挂载管理错误，隔离沿用 DetachFailed。
 ///
 /// # 注意

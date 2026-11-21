@@ -179,9 +179,22 @@ struct DeployRequest<'a> {
 type DeployEvent = serde_json::Value;
 
 #[derive(Debug, Deserialize)]
+struct DeployCapacity {
+    total_slots: u32,
+    free_slots: u32,
+    observed_at_unix_ms: u64,
+}
+
+#[derive(Debug, Deserialize)]
 struct DeploySnapshot {
     model_id: String,
     status: String,
+    #[serde(default)]
+    route_status: Option<String>,
+    #[serde(default)]
+    route_attachment_id: Option<i32>,
+    #[serde(default)]
+    capacity: Option<DeployCapacity>,
     #[serde(rename = "stage", deserialize_with = "required_option")]
     _stage: Option<String>,
     #[serde(rename = "state", deserialize_with = "required_option")]
@@ -215,6 +228,11 @@ where
 }
 
 const DOWNLOAD_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+// 容量探测可能在首次 Ready 之后才完成；客户端只做有限的展示状态收敛，不能阻塞
+// Node 部署本身，也不能因为查询失败撤销已经提交的部署。
+const ROUTE_STATUS_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const ROUTE_STATUS_POLL_ATTEMPTS: usize = 20;
 
 #[derive(Debug, Deserialize)]
 struct DownloadTaskEnvelope {
@@ -804,6 +822,15 @@ impl CatalogClient {
                 "部署响应模型 ID 为空".into(),
             ));
         }
+        let _route_status = snapshot.route_status.as_deref();
+        let _route_attachment_id = snapshot.route_attachment_id;
+        let _capacity = snapshot.capacity.as_ref().map(|capacity| {
+            (
+                capacity.total_slots,
+                capacity.free_slots,
+                capacity.observed_at_unix_ms,
+            )
+        });
         match snapshot.status.as_str() {
             "ready" => Ok(()),
             "failed" | "unhealthy" => {
@@ -824,6 +851,131 @@ impl CatalogClient {
                 format!("部署响应状态无效：{}", snapshot.status),
             )),
         }
+    }
+
+    /// 查询已提交部署对应的 Router 准入状态。
+    pub(super) async fn deployment_route_status(
+        &self,
+        model_id: &str,
+    ) -> Result<String, ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Reporting);
+        if model_id.trim().is_empty() || model_id.contains('\0') {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                operation,
+                "模型 ID 无效".into(),
+            ));
+        }
+        let mut url = self
+            .base
+            .join("/console/api/node/deployments/")
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        url.path_segments_mut()
+            .map_err(|_| {
+                failure(
+                    ErrorKind::InvalidParameter,
+                    operation,
+                    "模型 ID URL 无效".into(),
+                )
+            })?
+            .push(model_id);
+        let response = self
+            .client
+            .get(url)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let status = response.status();
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        if !status.is_success() {
+            let reason = serde_json::from_slice::<DeployError>(&body)
+                .ok()
+                .map(|error| error.error)
+                .filter(|error| !error.trim().is_empty())
+                .unwrap_or_else(|| format!("部署状态接口返回 HTTP {status}"));
+            return Err(failure(ErrorKind::ExecutionFailed, operation, reason));
+        }
+        let snapshot: DeploySnapshot = serde_json::from_slice(&body).map_err(|error| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                format!("部署状态响应格式无效：{error}"),
+            )
+        })?;
+        if snapshot.model_id != model_id {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署状态响应模型 ID 与请求不一致".into(),
+            ));
+        }
+        let route_status = snapshot.route_status.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署状态响应缺少 Router 状态".into(),
+            )
+        })?;
+        if !matches!(
+            route_status.as_str(),
+            "unroutable"
+                | "routable"
+                | "saturated"
+                | "quarantined"
+                | "lost"
+                | "detaching"
+                | "detached"
+                | "failed"
+        ) {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署状态响应包含未知 Router 状态".into(),
+            ));
+        }
+        Ok(route_status)
+    }
+
+    /// 在部署完成后有限等待 Router 准入状态收敛。
+    ///
+    /// # Examples
+    /// 首次容量探测暂不可用时，方法会继续查询，直到得到稳定状态或达到等待上限。
+    ///
+    /// # Notes
+    /// 该方法只查询状态，不会停止、重启或撤销 Node 部署；查询失败由调用方按“状态未知”处理。
+    pub(super) async fn poll_deployment_route_status(
+        &self,
+        model_id: &str,
+    ) -> Result<String, ChatError> {
+        let mut last_status = None;
+        for attempt in 0..ROUTE_STATUS_POLL_ATTEMPTS {
+            let status = match self.deployment_route_status(model_id).await {
+                Ok(status) => status,
+                Err(_error) if last_status.is_some() => {
+                    // 已经拿到过合法状态时，后续一次查询失败不能把已提交部署
+                    // 误报成失败；保留最近一次 fail-closed 状态供页面展示。
+                    if let Some(status) = last_status.take() {
+                        return Ok(status);
+                    }
+                    return Ok("unroutable".to_string());
+                }
+                Err(error) => return Err(error),
+            };
+            if status != "unroutable" || attempt + 1 == ROUTE_STATUS_POLL_ATTEMPTS {
+                return Ok(status);
+            }
+            last_status = Some(status);
+            tokio::time::sleep(ROUTE_STATUS_POLL_INTERVAL).await;
+        }
+        Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Initialize(PreparationStage::Reporting),
+            "Router 状态轮询未返回结果".into(),
+        ))
     }
 
     async fn create_download_task(

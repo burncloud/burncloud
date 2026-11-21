@@ -292,6 +292,19 @@ fn ModelSelector(state: Signal<ChatState>, selected_model: Option<ChatModel>) ->
     }
 }
 
+fn route_status_label(status: &str) -> &'static str {
+    match status {
+        "routable" => "模型已部署，可路由",
+        "unroutable" => "模型已启动，等待 Router 准入",
+        "saturated" => "模型运行中，当前容量已满",
+        "quarantined" | "lost" => "模型暂不可路由，需要重新挂载或恢复",
+        "detaching" => "模型正在停止新请求并清理挂载",
+        "detached" => "模型已完成摘除",
+        "failed" => "模型部署或运行时失败",
+        _ => "Router 状态未知",
+    }
+}
+
 #[component]
 fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Element {
     let run_id = preparation.run_id;
@@ -470,6 +483,11 @@ fn PreparationCard(preparation: Preparation, state: Signal<ChatState>) -> Elemen
                     p { class: "chat-local-path", "校验成功 · Node 文件路径" code { {path} } }
                 } else if stage == PreparationStage::Failed {
                     p { class: "chat-preparation-note", "Node 文件路径：空；不会继续后续阶段。" }
+                }
+                if stage == PreparationStage::Ready {
+                    if let Some(route_status) = preparation.route_status.as_deref() {
+                        p { class: "chat-preparation-note", "Router：{route_status_label(route_status)}" }
+                    }
                 }
             }
             if active {
@@ -832,10 +850,22 @@ fn spawn_preparation(mut state: Signal<ChatState>, run_id: u64) {
                     Ok(prepared) if is_catalog => {
                         if state.with_mut(|value| value.begin_catalog_deployment(run_id, &prepared))
                         {
-                            let result = backend.deploy_model(prepared.local_path.clone()).await;
-                            state.with_mut(|value| {
+                            let (result, route_status) = match backend
+                                .deploy_model_with_route(prepared.local_path.clone())
+                                .await
+                            {
+                                Ok(route_status) => (Ok(()), route_status),
+                                Err(error) => (Err(error), None),
+                            };
+                            let plan = state.with_mut(|value| {
                                 value.finish_catalog_deployment(run_id, prepared, result)
-                            })
+                            });
+                            if let Some(route_status) = route_status {
+                                state.with_mut(|value| {
+                                    value.set_deployment_route_status(run_id, route_status)
+                                });
+                            }
+                            plan
                         } else {
                             None
                         }
