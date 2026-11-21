@@ -2,9 +2,10 @@
 
 use super::{
     catalog::{
-        CatalogClient, CatalogModel, CatalogPage, CatalogSelection, CatalogVersion, VersionStatus,
+        ArtifactStatus, CatalogClient, CatalogInspection, CatalogModel, CatalogPage,
+        CatalogSelection, CatalogVersion, VersionStatus,
     },
-    model::ChatError,
+    model::{gib, ChatError},
     state::ChatState,
 };
 use crate::shared::ui::{Icon, IconName};
@@ -20,6 +21,8 @@ struct PickerState {
     preview: Option<CatalogModel>,
     preview_version: Option<CatalogVersion>,
     status: Option<VersionStatus>,
+    artifact_status: Option<ArtifactStatus>,
+    downloaded: bool,
     loading: bool,
     status_loading: bool,
     feedback: Option<String>,
@@ -39,6 +42,8 @@ impl PickerState {
         self.preview = None;
         self.preview_version = None;
         self.status = None;
+        self.artifact_status = None;
+        self.downloaded = false;
         self.status_error = None;
         self.status_loading = false;
         self.confirmed = false;
@@ -104,19 +109,17 @@ impl PickerState {
         self.status_id
     }
 
-    fn finish_status(
-        &mut self,
-        id: u64,
-        result: Result<(Option<CatalogVersion>, VersionStatus), String>,
-    ) {
+    fn finish_status(&mut self, id: u64, result: Result<CatalogInspection, String>) {
         if id != self.status_id {
             return;
         }
         self.status_loading = false;
         match result {
-            Ok((version, status)) => {
-                self.preview_version = version;
-                self.status = Some(status);
+            Ok(inspection) => {
+                self.preview_version = Some(inspection.version);
+                self.status = Some(inspection.remote_status);
+                self.artifact_status = Some(inspection.artifact_status);
+                self.downloaded = inspection.downloaded;
             }
             Err(error) => self.status_error = Some(error),
         }
@@ -154,9 +157,11 @@ pub(super) fn CatalogPicker(
         snapshot.loading && snapshot.models.is_empty() && snapshot.query.trim().is_empty();
     // 行内状态需要的字段先取出，避免与列表迭代的部分移动冲突。
     let status = snapshot.status;
+    let artifact_status = snapshot.artifact_status;
     let status_loading = snapshot.status_loading;
     let status_error = snapshot.status_error.clone();
-    let has_version = snapshot.preview_version.is_some();
+    let preview_version = snapshot.preview_version.clone();
+    let has_version = preview_version.is_some();
     let busy = state.read().is_busy() || snapshot.confirmed;
     rsx! {
         div { class: "chat-catalog-heading",
@@ -179,7 +184,7 @@ pub(super) fn CatalogPicker(
         }
         div { id: "chat-model-results", class: "chat-model-options", role: "listbox", aria_label: "模型搜索结果", "onkeydown": OPTION_KEYS,
             for model in snapshot.models {
-                { let selected = snapshot.preview.as_ref().is_some_and(|preview| preview.id == model.id && preview.preset == model.preset); let key = format!("{}:{}", model.preset, model.id); let next = model.clone(); let retry = model.clone(); let client = status_client.clone(); let retry_client = status_client.clone(); let row_error = status_error.clone(); rsx! {
+                { let selected = snapshot.preview.as_ref().is_some_and(|preview| preview.id == model.id && preview.preset == model.preset); let key = format!("{}:{}", model.preset, model.id); let next = model.clone(); let retry = model.clone(); let client = status_client.clone(); let retry_client = status_client.clone(); let row_error = status_error.clone(); let resource_preview = selected && preview_version.as_ref().is_some_and(|version| !version.variants.is_empty()); rsx! {
                     // 复用原弹层行内状态，避免额外页面或第二套界面。
                     div { key: "{key}", class: if selected { "chat-model-row selected" } else { "chat-model-row" }, role: "presentation",
                         button { class: if selected { "chat-model-option selected" } else { "chat-model-option" }, r#type: "button", role: "option", aria_selected: selected,
@@ -208,6 +213,13 @@ pub(super) fn CatalogPicker(
                                 Icon { name: IconName::Globe, size: 16 }
                             }
                         }
+                        if resource_preview {
+                            div { class: "chat-model-resource",
+                                button { class: "chat-model-resource-trigger", r#type: "button", aria_label: "查看 GGUF 资源配置", title: "查看 GGUF 资源配置",
+                                    "资源"
+                                }
+                            }
+                        }
                         if selected && !status_loading {
                             div { class: "chat-model-row-state", aria_live: "polite",
                                 if let Some(error) = row_error {
@@ -215,29 +227,69 @@ pub(super) fn CatalogPicker(
                                     button { class: "chat-row-text-button", r#type: "button", aria_label: "重试版本状态",
                                         onclick: move |_| load_status(picker, retry_client.clone(), retry.clone()), "重试" }
                                 }
-                                match status {
-                                    Some(VersionStatus::Available) if has_version => rsx! {
+                                match (artifact_status, status) {
+                                    (Some(ArtifactStatus::Downloaded), _) if has_version => rsx! {
+                                        span { class: "chat-row-status available", role: "status", "已下载" }
+                                        button { class: "chat-row-text-button", r#type: "button", aria_label: "使用已下载版本", disabled: busy,
+                                            onclick: move |_| confirm_selection(picker, state, on_confirm), "使用" }
+                                    },
+                                    (Some(ArtifactStatus::Downloading), _) => rsx! {
+                                        span { class: "chat-row-status preparing", role: "status", "下载中..." }
+                                    },
+                                    (Some(ArtifactStatus::Verifying), _) => rsx! {
+                                        span { class: "chat-row-status preparing", role: "status", "校验中..." }
+                                    },
+                                    (Some(ArtifactStatus::Failed), _) => rsx! {
+                                        span { class: "chat-row-status failed", role: "status", "下载失败" }
+                                        if has_version && status == Some(VersionStatus::Downloadable) {
+                                            button { class: "chat-row-text-button", r#type: "button", disabled: busy, onclick: move |_| confirm_selection(picker, state, on_confirm), "重试下载" }
+                                        }
+                                    },
+                                    (_, Some(VersionStatus::Available)) if has_version => rsx! {
                                         span { class: "chat-row-status available", "可用" }
                                         button { class: "chat-row-text-button", r#type: "button", aria_label: "使用此版本", disabled: busy,
                                             onclick: move |_| confirm_selection(picker, state, on_confirm), "使用" }
                                     },
-                                    Some(VersionStatus::Available) => rsx! {
+                                    (_, Some(VersionStatus::Available)) => rsx! {
                                         span { class: "chat-row-status", title: "服务报告可用，但未提供可验证的仓库凭据", "暂不可用" }
                                     },
-                                    Some(VersionStatus::Downloadable) if has_version => rsx! {
+                                    (_, Some(VersionStatus::Downloadable)) if has_version => rsx! {
                                         button { class: "chat-row-icon-button", r#type: "button", aria_label: "下载", title: "下载", disabled: busy,
                                             onclick: move |_| confirm_selection(picker, state, on_confirm),
                                             Icon { name: IconName::Download, size: 16 }
                                         }
                                     },
-                                    Some(VersionStatus::Preparing) => rsx! { span { class: "chat-row-status preparing", role: "status", "启用中..." } },
-                                    Some(VersionStatus::Developing | VersionStatus::Downloadable) => rsx! { span { class: "chat-row-status", role: "status", "正在开发中..." } },
-                                    None => rsx! {},
+                                    (_, Some(VersionStatus::Preparing)) => rsx! { span { class: "chat-row-status preparing", role: "status", "启用中..." } },
+                                    (_, Some(VersionStatus::Developing | VersionStatus::Downloadable)) => rsx! { span { class: "chat-row-status", role: "status", "正在开发中..." } },
+                                    (_, None) => rsx! {},
                                 }
                             }
                         }
                     }
                 } }
+            }
+        }
+        if let Some(version) = preview_version
+            .as_ref()
+            .filter(|version| !version.variants.is_empty()) {
+            div { class: "chat-model-preview", aria_label: "GGUF 资源配置",
+                p { class: "chat-model-preview-title", "GGUF 资源配置" }
+                p { class: "chat-model-preview-source", "{version.model} · {version.source} · {version.revision}" }
+                for variant in version.variants.iter() {
+                    div { class: "chat-model-preview-variant",
+                        strong { "{variant.quantization}" }
+                        small {
+                            "最低内存 {gib(variant.ram_bytes)} GiB · "
+                            if variant.vram_bytes == 0 {
+                                "显存要求未声明"
+                            } else {
+                                "显存 {gib(variant.vram_bytes)} GiB"
+                            }
+                            " · 磁盘 {gib(variant.disk_bytes)} GiB"
+                        }
+                        small { "GGUF 仓库：{variant.artifact_source}" }
+                    }
+                }
             }
         }
         if empty_initial {

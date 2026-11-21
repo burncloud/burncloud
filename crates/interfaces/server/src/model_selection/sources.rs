@@ -25,6 +25,14 @@ pub(super) enum Source {
 }
 
 impl Source {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelScope => "modelscope",
+            Self::HfMirror => "hf-mirror",
+            Self::HuggingFace => "huggingface",
+        }
+    }
+
     // 同名型号在不同站点出现时，优先选择国内来源，而不改变到达顺序。
     fn priority(self) -> u8 {
         match self {
@@ -34,7 +42,7 @@ impl Source {
         }
     }
 
-    fn base(self, config: &Config) -> &str {
+    pub(super) fn base(self, config: &Config) -> &str {
         match self {
             Source::ModelScope => &config.modelscope,
             Source::HfMirror => &config.hf_mirror,
@@ -69,7 +77,7 @@ impl ModelResource {
     /// 校验外部仓库参数并构造资源页面地址，不接受用户提供的任意网址。
     ///
     /// # Examples
-    /// `Qwen/Qwen3-8B` 配合 ModelScope 的 `master` 修订号定位仓库页面。
+    /// `Qwen/Qwen3-8B-GGUF` 配合 ModelScope 的 `master` 修订号定位仓库页面。
     ///
     /// # Notes
     /// 页面地址不是可部署的模型文件。

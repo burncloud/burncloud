@@ -41,7 +41,25 @@ impl DownloadManager {
     ///
     /// 此方法需要 Tokio 运行时，并会启动 aria2 服务。
     pub async fn new() -> Result<Self> {
-        let db = Arc::new(burncloud_database_sys::DownloadDB::new().await?);
+        Self::with_store(burncloud_database_sys::DownloadDB::new().await?).await
+    }
+
+    /// 使用主服务的数据库连接启动下载器，使目录读取与下载写入始终指向同一数据库。
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # async fn example(db: std::sync::Arc<burncloud_database::Database>) -> Result<(), burncloud_download::DownloadError> {
+    /// let manager = burncloud_download::DownloadManager::with_database(db).await?;
+    /// # Ok(()) }
+    /// ```
+    /// # Notes
+    /// 与 `new` 一样会恢复未完成任务并启动 aria2，仅应初始化一次。
+    pub async fn with_database(db: Arc<burncloud_database::Database>) -> Result<Self> {
+        Self::with_store(burncloud_database_sys::DownloadDB::new_shared_db(db).await?).await
+    }
+
+    async fn with_store(db: burncloud_database_sys::DownloadDB) -> Result<Self> {
+        let db = Arc::new(db);
         let aria2 = Arc::new(quick_start().await?);
         let monitor_states = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
         let cancellation = CancellationToken::new();
@@ -140,12 +158,7 @@ impl DownloadManager {
     ///
     /// 任务快照只包含 aria2 与数据库可见的下载信息；摘要校验由上层服务维护。
     pub async fn get_task(&self, task_id: i64) -> Result<Option<DownloadTaskSnapshot>> {
-        let record = self
-            .db
-            .list(None)
-            .await?
-            .into_iter()
-            .find(|record| record.id == task_id);
+        let record = self.db.get_by_id(task_id).await?;
         let Some(record) = record else {
             return Ok(None);
         };
@@ -201,7 +214,83 @@ impl DownloadManager {
             download_speed: non_negative_bytes(speed, "download_speed")?,
             error: record.error,
             final_path: record.final_path.map(PathBuf::from),
+            actual_sha256: record.actual_sha256,
         }))
+    }
+
+    /// 为稳定下载任务写入完整模型身份。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在、任务 GID 已被重试替换或数据库写入失败时返回错误。
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "下载身份字段必须显式逐项传递，保持数据库身份契约可审计"
+    )]
+    pub async fn set_task_identity(
+        &self,
+        task_id: i64,
+        model: &str,
+        source: &str,
+        revision: &str,
+        variant_id: &str,
+        artifact_uri: &str,
+        checksum: &str,
+    ) -> Result<()> {
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        self.db
+            .set_identity(
+                task_id,
+                &snapshot.gid,
+                model,
+                source,
+                revision,
+                variant_id,
+                artifact_uri,
+                checksum,
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// 持久化摘要校验成功的下载终态。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在、当前 GID 已过期或数据库更新失败时返回错误。
+    pub async fn mark_task_verified(&self, task_id: i64, actual_sha256: &str) -> Result<()> {
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        self.db
+            .mark_verified(task_id, &snapshot.gid, actual_sha256)
+            .await?;
+        Ok(())
+    }
+
+    /// 持久化摘要校验失败的下载终态。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在、当前 GID 已过期或数据库更新失败时返回错误。
+    pub async fn mark_task_verification_failed(
+        &self,
+        task_id: i64,
+        actual_sha256: Option<&str>,
+        error: &str,
+    ) -> Result<()> {
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        self.db
+            .mark_verification_failed(task_id, &snapshot.gid, actual_sha256, error)
+            .await?;
+        Ok(())
     }
 
     /// 取消仍处于可取消状态的下载任务。
@@ -288,37 +377,38 @@ impl DownloadManager {
     pub async fn wait_for_task(&self, task_id: i64) -> Result<PathBuf> {
         let receiver = {
             let _start_guard = self.start_lock.lock().await;
-            let Some(snapshot) = self.get_task(task_id).await? else {
-                return Err(DownloadError::TaskNotFound);
-            };
-            match snapshot.status {
-                DownloadTaskStatus::Succeeded | DownloadTaskStatus::Verifying => {
-                    return final_path_from_snapshot(&snapshot).await;
-                }
-                DownloadTaskStatus::Failed => {
-                    return Err(DownloadError::Failed(
-                        snapshot.error.unwrap_or_else(|| "下载任务失败".to_string()),
-                    ));
-                }
-                DownloadTaskStatus::Cancelled => {
-                    return Err(DownloadError::Failed(
-                        snapshot
-                            .error
-                            .unwrap_or_else(|| "下载任务已取消".to_string()),
-                    ));
-                }
-                DownloadTaskStatus::Queued | DownloadTaskStatus::Downloading => {}
-            }
-
-            let (sender, receiver) = oneshot::channel();
             let mut states = self.monitor_states.lock().await;
-            let Some(state) = states.values_mut().find(|state| state.db_id == task_id) else {
-                return Err(DownloadError::NotificationClosed);
-            };
-            state.waiters.push(sender);
-            receiver
+            if let Some(state) = states.values_mut().find(|state| state.db_id == task_id) {
+                let (sender, receiver) = oneshot::channel();
+                state.waiters.push(sender);
+                Some(receiver)
+            } else {
+                None
+            }
         };
-        receive_result(receiver).await
+        if let Some(receiver) = receiver {
+            return receive_result(receiver).await;
+        }
+        let snapshot = self
+            .get_task(task_id)
+            .await?
+            .ok_or(DownloadError::TaskNotFound)?;
+        match snapshot.status {
+            DownloadTaskStatus::Succeeded | DownloadTaskStatus::Verifying => {
+                final_path_from_snapshot(&snapshot).await
+            }
+            DownloadTaskStatus::Failed => Err(DownloadError::Failed(
+                snapshot.error.unwrap_or_else(|| "下载任务失败".to_string()),
+            )),
+            DownloadTaskStatus::Cancelled => Err(DownloadError::Failed(
+                snapshot
+                    .error
+                    .unwrap_or_else(|| "下载任务已取消".to_string()),
+            )),
+            DownloadTaskStatus::Queued | DownloadTaskStatus::Downloading => {
+                Err(DownloadError::NotificationClosed)
+            }
+        }
     }
 
     /// 下载 HTTP 或 HTTPS 资源，并在任务完成后返回最终文件路径。
@@ -648,7 +738,7 @@ fn public_status(status: DownloadStatus) -> DownloadTaskStatus {
     }
 }
 
-fn status_from_record(value: &str) -> Option<DownloadTaskStatus> {
+pub(super) fn status_from_record(value: &str) -> Option<DownloadTaskStatus> {
     match value {
         "pending" => Some(DownloadTaskStatus::Queued),
         "active" | "waiting" | "paused" => Some(DownloadTaskStatus::Downloading),
@@ -769,3 +859,7 @@ async fn receive_result(
         Err(_) => Err(DownloadError::NotificationClosed),
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/support/model_artifact_reuse.rs"]
+mod model_artifact_reuse_tests;

@@ -62,6 +62,17 @@ pub(super) struct CatalogVersion {
     pub(super) resource_url: String,
     #[serde(default)]
     pub(super) variants: Vec<ModelVariant>,
+    #[serde(skip)]
+    pub(super) verified_variants: Vec<VerifiedVariant>,
+}
+
+/// 目录查验通过的单个文件；不得把模型级路径交给另一个候选版本部署。
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct VerifiedVariant {
+    id: String,
+    uri: String,
+    sha256: String,
+    path: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -168,9 +179,22 @@ struct DeployRequest<'a> {
 type DeployEvent = serde_json::Value;
 
 #[derive(Debug, Deserialize)]
+struct DeployCapacity {
+    total_slots: u32,
+    free_slots: u32,
+    observed_at_unix_ms: u64,
+}
+
+#[derive(Debug, Deserialize)]
 struct DeploySnapshot {
     model_id: String,
     status: String,
+    #[serde(default)]
+    route_status: Option<String>,
+    #[serde(default)]
+    route_attachment_id: Option<i32>,
+    #[serde(default)]
+    capacity: Option<DeployCapacity>,
     #[serde(rename = "stage", deserialize_with = "required_option")]
     _stage: Option<String>,
     #[serde(rename = "state", deserialize_with = "required_option")]
@@ -204,6 +228,11 @@ where
 }
 
 const DOWNLOAD_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+// 容量探测可能在首次 Ready 之后才完成；客户端只做有限的展示状态收敛，不能阻塞
+// Node 部署本身，也不能因为查询失败撤销已经提交的部署。
+const ROUTE_STATUS_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const ROUTE_STATUS_POLL_ATTEMPTS: usize = 20;
 
 #[derive(Debug, Deserialize)]
 struct DownloadTaskEnvelope {
@@ -247,6 +276,29 @@ pub(super) enum VersionStatus {
     Preparing,
     Developing,
     Downloadable,
+}
+
+/// 模型目录对应的本地工件状态。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ArtifactStatus {
+    #[default]
+    NotDownloaded,
+    Downloading,
+    Verifying,
+    Downloaded,
+    Failed,
+}
+
+/// 一次模型目录状态检查的远程资源和本地工件快照。
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CatalogInspection {
+    pub(super) version: CatalogVersion,
+    pub(super) remote_status: VersionStatus,
+    pub(super) artifact_status: ArtifactStatus,
+    pub(super) downloaded: bool,
+    pub(super) local_path: Option<String>,
+    pub(super) actual_sha256: Option<String>,
 }
 
 impl CatalogClient {
@@ -438,8 +490,19 @@ impl CatalogClient {
     pub(super) async fn inspect(
         &self,
         model: &CatalogModel,
-    ) -> Result<(Option<CatalogVersion>, VersionStatus), ChatError> {
+    ) -> Result<CatalogInspection, ChatError> {
         model.validate()?;
+        #[derive(Deserialize)]
+        struct VariantStatus {
+            #[serde(flatten)]
+            variant: ModelVariant,
+            #[serde(default)]
+            artifact_status: ArtifactStatus,
+            #[serde(default)]
+            downloaded: bool,
+            local_path: Option<String>,
+            actual_sha256: Option<String>,
+        }
         #[derive(Deserialize)]
         struct Status {
             status: VersionStatus,
@@ -448,7 +511,13 @@ impl CatalogClient {
             revision: String,
             resource_url: String,
             #[serde(default)]
-            variants: Vec<ModelVariant>,
+            variants: Vec<VariantStatus>,
+            #[serde(default)]
+            artifact_status: ArtifactStatus,
+            #[serde(default)]
+            downloaded: bool,
+            local_path: Option<String>,
+            actual_sha256: Option<String>,
         }
         let params = if model.preset {
             vec![("preset", model.id.clone())]
@@ -462,18 +531,60 @@ impl CatalogClient {
         let result: Status = self
             .get("/api/models/status", &params, Operation::Status)
             .await?;
+        let mut variants = Vec::new();
+        let mut verified_variants = Vec::new();
+        for entry in result.variants {
+            if entry.artifact_status == ArtifactStatus::Downloaded {
+                let receipt = entry
+                    .local_path
+                    .zip(entry.actual_sha256)
+                    .filter(|(path, sha)| {
+                        entry.downloaded
+                            && !path.trim().is_empty()
+                            && !path.contains('\0')
+                            && valid_digest(sha)
+                            && sha.eq_ignore_ascii_case(&entry.variant.expected_sha256)
+                    });
+                let (path, sha256) = receipt.ok_or_else(|| {
+                    failure(
+                        ErrorKind::InvalidResult,
+                        Operation::Status,
+                        "已下载变体缺少有效的工件凭据".into(),
+                    )
+                })?;
+                verified_variants.push(VerifiedVariant {
+                    id: entry.variant.id.clone(),
+                    uri: entry.variant.artifact_source.clone(),
+                    sha256,
+                    path,
+                });
+            }
+            variants.push(entry.variant);
+        }
         let version = CatalogVersion {
             name: model.name.clone(),
             model: result.model,
             source: result.source,
             revision: result.revision,
             resource_url: result.resource_url,
-            variants: result.variants,
+            variants,
+            verified_variants,
         };
         version.validate()?;
         if version.model != model.model
             || version.source != model.source
             || version.revision != model.revision
+            || result.downloaded != (result.artifact_status == ArtifactStatus::Downloaded)
+            || (result.downloaded
+                && (result.local_path.as_deref().is_none_or(str::is_empty)
+                    || result
+                        .actual_sha256
+                        .as_deref()
+                        .is_none_or(|digest| !valid_digest(digest))))
+            || result
+                .actual_sha256
+                .as_deref()
+                .is_some_and(|digest| !valid_digest(digest))
         {
             return Err(failure(
                 ErrorKind::InvalidResult,
@@ -481,7 +592,14 @@ impl CatalogClient {
                 "状态响应与选中资源不一致".into(),
             ));
         }
-        Ok((Some(version), result.status))
+        Ok(CatalogInspection {
+            version,
+            remote_status: result.status,
+            artifact_status: result.artifact_status,
+            downloaded: result.downloaded,
+            local_path: result.local_path,
+            actual_sha256: result.actual_sha256,
+        })
     }
 
     /// 在一次主服务请求中获取硬件快照和全部兼容 Variant。
@@ -704,6 +822,15 @@ impl CatalogClient {
                 "部署响应模型 ID 为空".into(),
             ));
         }
+        let _route_status = snapshot.route_status.as_deref();
+        let _route_attachment_id = snapshot.route_attachment_id;
+        let _capacity = snapshot.capacity.as_ref().map(|capacity| {
+            (
+                capacity.total_slots,
+                capacity.free_slots,
+                capacity.observed_at_unix_ms,
+            )
+        });
         match snapshot.status.as_str() {
             "ready" => Ok(()),
             "failed" | "unhealthy" => {
@@ -724,6 +851,131 @@ impl CatalogClient {
                 format!("部署响应状态无效：{}", snapshot.status),
             )),
         }
+    }
+
+    /// 查询已提交部署对应的 Router 准入状态。
+    pub(super) async fn deployment_route_status(
+        &self,
+        model_id: &str,
+    ) -> Result<String, ChatError> {
+        let operation = Operation::Initialize(PreparationStage::Reporting);
+        if model_id.trim().is_empty() || model_id.contains('\0') {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                operation,
+                "模型 ID 无效".into(),
+            ));
+        }
+        let mut url = self
+            .base
+            .join("/console/api/node/deployments/")
+            .map_err(|error| failure(ErrorKind::InvalidParameter, operation, error.to_string()))?;
+        url.path_segments_mut()
+            .map_err(|_| {
+                failure(
+                    ErrorKind::InvalidParameter,
+                    operation,
+                    "模型 ID URL 无效".into(),
+                )
+            })?
+            .push(model_id);
+        let response = self
+            .client
+            .get(url)
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        let status = response.status();
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| transport(error, operation))?;
+        if !status.is_success() {
+            let reason = serde_json::from_slice::<DeployError>(&body)
+                .ok()
+                .map(|error| error.error)
+                .filter(|error| !error.trim().is_empty())
+                .unwrap_or_else(|| format!("部署状态接口返回 HTTP {status}"));
+            return Err(failure(ErrorKind::ExecutionFailed, operation, reason));
+        }
+        let snapshot: DeploySnapshot = serde_json::from_slice(&body).map_err(|error| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                format!("部署状态响应格式无效：{error}"),
+            )
+        })?;
+        if snapshot.model_id != model_id {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署状态响应模型 ID 与请求不一致".into(),
+            ));
+        }
+        let route_status = snapshot.route_status.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署状态响应缺少 Router 状态".into(),
+            )
+        })?;
+        if !matches!(
+            route_status.as_str(),
+            "unroutable"
+                | "routable"
+                | "saturated"
+                | "quarantined"
+                | "lost"
+                | "detaching"
+                | "detached"
+                | "failed"
+        ) {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                operation,
+                "部署状态响应包含未知 Router 状态".into(),
+            ));
+        }
+        Ok(route_status)
+    }
+
+    /// 在部署完成后有限等待 Router 准入状态收敛。
+    ///
+    /// # Examples
+    /// 首次容量探测暂不可用时，方法会继续查询，直到得到稳定状态或达到等待上限。
+    ///
+    /// # Notes
+    /// 该方法只查询状态，不会停止、重启或撤销 Node 部署；查询失败由调用方按“状态未知”处理。
+    pub(super) async fn poll_deployment_route_status(
+        &self,
+        model_id: &str,
+    ) -> Result<String, ChatError> {
+        let mut last_status = None;
+        for attempt in 0..ROUTE_STATUS_POLL_ATTEMPTS {
+            let status = match self.deployment_route_status(model_id).await {
+                Ok(status) => status,
+                Err(_error) if last_status.is_some() => {
+                    // 已经拿到过合法状态时，后续一次查询失败不能把已提交部署
+                    // 误报成失败；保留最近一次 fail-closed 状态供页面展示。
+                    if let Some(status) = last_status.take() {
+                        return Ok(status);
+                    }
+                    return Ok("unroutable".to_string());
+                }
+                Err(error) => return Err(error),
+            };
+            if status != "unroutable" || attempt + 1 == ROUTE_STATUS_POLL_ATTEMPTS {
+                return Ok(status);
+            }
+            last_status = Some(status);
+            tokio::time::sleep(ROUTE_STATUS_POLL_INTERVAL).await;
+        }
+        Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Initialize(PreparationStage::Reporting),
+            "Router 状态轮询未返回结果".into(),
+        ))
     }
 
     async fn create_download_task(
@@ -831,6 +1083,13 @@ impl CatalogClient {
         loop {
             let data = self.get_download_task(task_id).await?;
             let data = map_download_task(data, expected)?;
+            if data.task_id != task_id {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Initialize(PreparationStage::Downloading),
+                    "轮询返回了其他下载任务".into(),
+                ));
+            }
             match data.status.as_str() {
                 "queued" | "downloading" => {
                     callback(PreparationEvent::DownloadProgress {
@@ -868,9 +1127,36 @@ impl CatalogClient {
         callback: impl FnMut(PreparationEvent),
     ) -> Result<PreparedModel, ChatError> {
         let operation = Operation::Initialize(PreparationStage::Downloading);
+        let mut callback = callback;
+        if let Some(path) = request
+            .model
+            .catalog_selection
+            .as_ref()
+            .and_then(|s| s.version.verified_path(&request.variant))
+        {
+            let prepared = PreparedModel {
+                model: request.model.clone(),
+                variant: request.variant.clone(),
+                actual_sha256: request.variant.expected_sha256.clone(),
+                local_path: path.into(),
+            };
+            if !prepared.is_valid() {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    operation,
+                    "本地工件与选中变体不匹配".into(),
+                ));
+            }
+            callback(PreparationEvent::Downloaded);
+            callback(PreparationEvent::Verified {
+                expected: prepared.actual_sha256.clone(),
+                actual: prepared.actual_sha256.clone(),
+                path: prepared.local_path.clone(),
+            });
+            return Ok(prepared);
+        }
         let initial = self.create_download_task(request).await?;
         let initial = map_download_task(initial, request)?;
-        let mut callback = callback;
         callback(PreparationEvent::DownloadTaskCreated {
             task_id: initial.task_id.clone(),
         });
@@ -1204,6 +1490,18 @@ impl CatalogModel {
 }
 
 impl CatalogVersion {
+    /// 只复用同一仓库修订下 ID、URI、摘要同时匹配的已校验工件。
+    pub(super) fn verified_path(&self, variant: &ModelVariant) -> Option<&str> {
+        self.verified_variants
+            .iter()
+            .find(|r| {
+                r.id == variant.id
+                    && r.uri == variant.artifact_source
+                    && r.sha256.eq_ignore_ascii_case(&variant.expected_sha256)
+            })
+            .map(|r| r.path.as_str())
+    }
+
     /// 验证仓库快照可交接，且资源页面为 HTTP(S) 地址。
     ///
     /// # Examples
@@ -1415,13 +1713,12 @@ fn map_download_task(
 }
 
 fn download_task_terminal_error(data: &DownloadTaskData, operation: Operation) -> ChatError {
+    if data.status == "cancelled" {
+        return failure(ErrorKind::Cancelled, operation, "模型下载任务已取消".into());
+    }
     let error = data.error.clone().unwrap_or_else(|| RemoteHardwareError {
         code: "download_failed".into(),
-        message: if data.status == "cancelled" {
-            "模型下载任务已取消".into()
-        } else {
-            "模型文件下载失败".into()
-        },
+        message: "模型文件下载失败".into(),
     });
     let mut mapped = download_error(error);
     if matches!(mapped.operation, Operation::Initialize(_)) {

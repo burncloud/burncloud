@@ -79,6 +79,8 @@ pub use service::DeploymentService;
 
 // 从 types 子模块批量导出所有契约类型，分组列出便于阅读：
 pub use types::{
+    // 运行时槽位容量。
+    DeploymentCapacity,
     // 部署过程的顶层错误
     DeploymentError,
     // 错误分类（便于匹配/分类处理）

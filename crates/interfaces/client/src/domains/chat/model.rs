@@ -237,11 +237,14 @@ pub(super) struct Preparation {
     pub(super) events: Vec<PreparationEvent>,
     pub(super) actual_digest: Option<String>,
     pub(super) local_path: Option<String>,
+    /// Node 部署成功后返回的 Router 准入状态；查询失败时保持未知。
+    pub(super) route_status: Option<String>,
     pub(super) error: Option<ChatError>,
     pub(super) collapsed: bool,
 }
 impl Preparation {
     /// 未知下载总量不生成百分比；检测项按已完成回调显示。
+    #[allow(dead_code, reason = "测试保留整数百分比接口，页面使用细粒度比例")]
     pub(super) fn progress(&self) -> Option<u8> {
         if self.stage == PreparationStage::Detecting {
             return Some((self.hardware_events.len() * 25) as u8);
@@ -250,6 +253,13 @@ impl Preparation {
             .filter(|total| *total > 0)
             .map(|total| ((u128::from(self.completed_bytes) * 100) / u128::from(total)) as u8)
     }
+    /// 返回细粒度下载百分比，避免大文件早期整数百分比长期显示为 0。
+    pub(super) fn progress_ratio(&self) -> Option<f64> {
+        let total = self.total_bytes.filter(|total| *total > 0)?;
+        let percent = (self.completed_bytes as f64 * 100.0) / total as f64;
+        Some(percent.clamp(0.0, 100.0))
+    }
+
     /// 获取已确认的版本快照。
     pub(super) fn variant(&self) -> Option<&ModelVariant> {
         self.model
@@ -291,6 +301,7 @@ pub(super) fn valid_digest(value: &str) -> bool {
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum ErrorKind {
+    Cancelled,
     InvalidParameter,
     NotFound,
     NotConnected,

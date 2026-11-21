@@ -305,6 +305,7 @@ impl ChatState {
                 variant_id: None,
                 actual_digest: None,
                 local_path: None,
+                route_status: None,
                 error: None,
                 collapsed: false,
             };
@@ -339,14 +340,16 @@ impl ChatState {
         status: VersionStatus,
         variants: Vec<ModelVariant>,
     ) -> Option<u64> {
+        let has_verified_variant = !selection.version.verified_variants.is_empty();
         if self.is_busy()
             || self.status_loading
             || selection.name.trim().is_empty()
             || selection.version.validate().is_err()
-            || !matches!(
-                status,
-                VersionStatus::Downloadable | VersionStatus::Available
-            )
+            || (!has_verified_variant
+                && !matches!(
+                    status,
+                    VersionStatus::Downloadable | VersionStatus::Available
+                ))
         {
             return None;
         }
@@ -369,7 +372,7 @@ impl ChatState {
         if !self.set_model(&id) {
             return None;
         }
-        if status == VersionStatus::Available {
+        if status == VersionStatus::Available && !has_verified_variant {
             self.fail_preparation(ChatError {
                 kind: ErrorKind::NotConnected,
                 operation: Operation::Status,
@@ -566,6 +569,7 @@ impl ChatState {
         preparation.variant_id = None;
         preparation.actual_digest = None;
         preparation.local_path = None;
+        preparation.route_status = None;
         preparation.error = None;
         preparation.collapsed = false;
         self.close_menus();
@@ -707,6 +711,12 @@ impl ChatState {
         run_id: u64,
         result: Result<ModelResolution, ChatError>,
     ) {
+        if !self
+            .preparation()
+            .is_some_and(|p| p.run_id == run_id && p.stage == PreparationStage::Detecting)
+        {
+            return;
+        }
         let resolution = match result {
             Ok(resolution) => resolution,
             Err(error) => {
@@ -813,26 +823,29 @@ impl ChatState {
             PreparationEvent::DownloadProgress { completed, total }
                 if p.stage == PreparationStage::Downloading =>
             {
-                if *completed < p.completed_bytes
-                    || total.is_some_and(|total| total == 0 || *completed > total)
-                    || (p.total_bytes.is_some() && p.total_bytes != *total)
-                {
+                if total.is_some_and(|size| size == 0 || *completed > size) {
                     false
                 } else {
-                    p.completed_bytes = *completed;
-                    p.total_bytes = *total;
+                    p.completed_bytes = p.completed_bytes.max(*completed);
+                    p.total_bytes = p
+                        .total_bytes
+                        .max(*total)
+                        .map(|size| size.max(p.completed_bytes));
                     true
                 }
             }
             PreparationEvent::Downloaded if p.stage == PreparationStage::Downloading => {
-                if p.total_bytes
-                    .is_some_and(|total| total != p.completed_bytes)
-                {
-                    false
-                } else {
-                    p.stage = PreparationStage::Verifying;
-                    true
-                }
+                // 下载器完成事件是校验阶段的唯一边界；进度快照可能来自较早的轮询，
+                // 不能因为一次暂时落后的 completed_bytes 阻断摘要校验。
+                p.completed_bytes = p.total_bytes.unwrap_or(p.completed_bytes);
+                p.stage = PreparationStage::Verifying;
+                true
+            }
+            PreparationEvent::DownloadProgress { completed, total }
+                if p.stage == PreparationStage::Verifying =>
+            {
+                // 校验阶段不再修改下载进度，但允许合法的迟到快照通过，避免轮询竞态误报非法状态。
+                total.is_none_or(|total| total > 0 && *completed <= total)
             }
             PreparationEvent::Verified {
                 expected,
@@ -1047,6 +1060,29 @@ impl ChatState {
         None
     }
 
+    /// 更新当前目录部署的 Router 准入状态；状态查询失败不改变已就绪结果。
+    pub(super) fn set_deployment_route_status(&mut self, run_id: u64, route_status: String) {
+        let Some(preparation) = self.preparation_mut() else {
+            return;
+        };
+        if preparation.run_id != run_id || preparation.stage != PreparationStage::Ready {
+            return;
+        }
+        if matches!(
+            route_status.as_str(),
+            "unroutable"
+                | "routable"
+                | "saturated"
+                | "quarantined"
+                | "lost"
+                | "detaching"
+                | "detached"
+                | "failed"
+        ) {
+            preparation.route_status = Some(route_status);
+        }
+    }
+
     /// 最终返回值与全部阶段凭据一致才能记录就绪；目录模型只停在文件已就绪。
     pub(super) fn finish_preparation(
         &mut self,
@@ -1062,6 +1098,10 @@ impl ChatState {
         }
         let ready = match result {
             Ok(value) => value,
+            Err(error) if error.kind == ErrorKind::Cancelled => {
+                self.request_preparation_cancel(run_id);
+                return None;
+            }
             Err(error) => {
                 self.fail_preparation(error);
                 return None;

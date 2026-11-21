@@ -18,7 +18,7 @@ pub(super) async fn monitor_loop(
     states: Arc<Mutex<std::collections::HashMap<String, MonitorState>>>,
     cancellation: CancellationToken,
 ) {
-    let mut ticker = interval(Duration::from_secs(2));
+    let mut ticker = interval(Duration::from_millis(250));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
@@ -32,6 +32,7 @@ pub(super) async fn monitor_loop(
                         result = monitor_task(&aria2, &db, &states, &gid) => {
                             if let Err(error) = result {
                                 tracing::error!(gid = %gid, error = %error, "下载监控操作失败");
+                                finish_failed(&db, &states, &gid, format!("下载监控操作失败：{error}")).await;
                             }
                         }
                     }
@@ -69,7 +70,7 @@ async fn monitor_task(
     let Some(snapshot) = snapshot(states, gid).await else {
         return Ok(());
     };
-    let (total_length, completed_length, download_speed) = match (
+    let (incoming_total, incoming_completed, download_speed) = match (
         parse_length(&status.total_length, "totalLength"),
         parse_length(&status.completed_length, "completedLength"),
         parse_length(&status.download_speed, "downloadSpeed"),
@@ -80,18 +81,17 @@ async fn monitor_task(
             return Ok(());
         }
     };
+    let (total_length, completed_length) = normalize_progress(
+        snapshot.total_length,
+        snapshot.completed_length,
+        incoming_total,
+        incoming_completed,
+    );
 
     match task_status {
         DownloadStatus::Completed => {
-            complete_task(
-                &client,
-                db,
-                states,
-                gid,
-                snapshot,
-                (total_length, completed_length),
-            )
-            .await
+            let final_size = total_length.max(completed_length);
+            complete_task(&client, db, states, gid, snapshot, (final_size, final_size)).await
         }
         DownloadStatus::Failed => handle_failed(aria2, db, states, gid, &status, snapshot).await,
         DownloadStatus::Cancelled => {
@@ -317,6 +317,13 @@ async fn update_progress(
     status: DownloadStatus,
     progress: (i64, i64, i64),
 ) -> Result<()> {
+    let (total_length, completed_length) = normalize_progress(
+        snapshot.total_length,
+        snapshot.completed_length,
+        progress.0,
+        progress.1,
+    );
+    let progress = (total_length, completed_length, progress.2);
     if snapshot.status == status
         && snapshot.total_length == progress.0
         && snapshot.completed_length == progress.1
@@ -438,6 +445,22 @@ async fn notify_waiters(
             tracing::debug!(gid = %gid, "下载调用方已停止等待");
         }
     }
+}
+
+fn normalize_progress(
+    previous_total: i64,
+    previous_completed: i64,
+    incoming_total: i64,
+    incoming_completed: i64,
+) -> (i64, i64) {
+    let total = previous_total.max(incoming_total).max(0);
+    let completed = previous_completed.max(incoming_completed).max(0);
+    // 未知长度的输入流有字节进展也不意味着已经达到 100%。
+    if total == 0 {
+        return (0, completed);
+    }
+    let total = total.max(previous_completed);
+    (total, completed.min(total))
 }
 
 fn parse_length(value: &str, field: &str) -> Result<i64> {

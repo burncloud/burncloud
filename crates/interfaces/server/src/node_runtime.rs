@@ -104,6 +104,10 @@ impl RuntimeAdapter for LlamaCppRuntimeAdapter {
                     "127.0.0.1".to_string(),
                     "--port".to_string(),
                     port.to_string(),
+                    "--alias".to_string(),
+                    self.model_id.clone(),
+                    "--parallel".to_string(),
+                    configured_node_slots()?.to_string(),
                 ],
             },
             // readiness 与本次实际监听端口绑定，避免计划和探测访问不同实例。
@@ -178,6 +182,10 @@ impl ModelUrlRuntimeAdapter for LlamaCppRuntimeAdapter {
                     "127.0.0.1".to_string(),
                     "--port".to_string(),
                     port.to_string(),
+                    "--alias".to_string(),
+                    self.model_id.clone(),
+                    "--parallel".to_string(),
+                    configured_node_slots()?.to_string(),
                 ],
             },
             readiness: ReadinessTarget {
@@ -186,6 +194,27 @@ impl ModelUrlRuntimeAdapter for LlamaCppRuntimeAdapter {
             local_endpoint: endpoint,
         })
     }
+}
+
+fn configured_node_slots() -> Result<u32, RuntimeAdapterError> {
+    match std::env::var("BURNCLOUD_NODE_MODEL_SLOTS") {
+        Ok(raw) => parse_node_slots(&raw),
+        Err(std::env::VarError::NotPresent) => Ok(1),
+        Err(error) => Err(RuntimeAdapterError::PlanFailed(format!(
+            "failed to read BURNCLOUD_NODE_MODEL_SLOTS: {error}"
+        ))),
+    }
+}
+
+fn parse_node_slots(raw: &str) -> Result<u32, RuntimeAdapterError> {
+    if !raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        if let Ok(slots @ 1..=u32::MAX) = raw.parse::<u32>() {
+            return Ok(slots);
+        }
+    }
+    Err(RuntimeAdapterError::PlanFailed(
+        "BURNCLOUD_NODE_MODEL_SLOTS must be a positive integer".to_string(),
+    ))
 }
 
 async fn allocate_loopback_port() -> Result<u16, RuntimeAdapterError> {

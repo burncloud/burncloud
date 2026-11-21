@@ -832,3 +832,126 @@ async fn the_two_stores_do_not_see_each_others_records() -> Result<(), Box<dyn s
 
     Ok(())
 }
+
+#[tokio::test]
+async fn model_identity_and_verified_digest_survive_database_reads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDb::new("model_identity");
+    let downloads = temp.downloads().await?;
+    let task_id = downloads
+        .insert_task(
+            "gid-model",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "models/modelscope/qwen",
+            "Q4_K_M.gguf",
+        )
+        .await?;
+    downloads
+        .set_identity(
+            task_id,
+            "gid-model",
+            "Qwen/Qwen3-8B-GGUF",
+            "modelscope",
+            "master",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?;
+    downloads
+        .mark_completed(task_id, "gid-model", "C:/models/Q4_K_M.gguf", 10, 10)
+        .await?;
+    downloads
+        .mark_verified(
+            task_id,
+            "gid-model",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?;
+
+    let record = downloads
+        .find_model_artifact(
+            "Qwen/Qwen3-8B-GGUF",
+            "modelscope",
+            "master",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?
+        .expect("完整身份应命中");
+    assert_eq!(record.status, "succeeded");
+    assert_eq!(
+        record.actual_sha256.as_deref(),
+        Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert!(downloads
+        .find_model_artifact(
+            "Qwen/Qwen3-8B-GGUF",
+            "modelscope",
+            "main",
+            "Q4_K_M.gguf",
+            "https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Q4_K_M.gguf",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancellation_and_checksum_guards_survive_late_writes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDb::new("late_model_callbacks");
+    let store = temp.downloads().await?;
+    let uri = "https://huggingface.co/org/model/resolve/main/model.gguf";
+    let id = store
+        .insert_task("old-gid", uri, "models", "model.gguf")
+        .await?;
+    let sha = format!("sha256:{}", "a".repeat(64));
+    let wrong = format!("sha256:{}", "b".repeat(64));
+    store
+        .set_identity(
+            id,
+            "old-gid",
+            "org/model",
+            "huggingface",
+            "main",
+            "model.gguf",
+            uri,
+            &sha,
+        )
+        .await?;
+    assert!(store
+        .set_identity(
+            id,
+            "old-gid",
+            "org/model",
+            "huggingface",
+            "main",
+            "model.gguf",
+            uri,
+            &wrong
+        )
+        .await
+        .is_err());
+    store
+        .mark_completed(id, "old-gid", "/models/model.gguf", 10, 10)
+        .await?;
+    assert!(store.mark_verified(id, "old-gid", &wrong).await.is_err());
+    store.mark_cancelled(id, "old-gid").await?;
+    assert!(store.mark_verified(id, "old-gid", &sha).await.is_err());
+    assert!(store
+        .update_task_progress(id, "old-gid", "active", (10, 5, 2))
+        .await
+        .is_err());
+    assert!(store
+        .mark_completed(id, "old-gid", "/models/model.gguf", 10, 10)
+        .await
+        .is_err());
+    assert_eq!(
+        store.get_by_id(id).await?.expect("存在的任务").status,
+        "cancelled"
+    );
+    Ok(())
+}

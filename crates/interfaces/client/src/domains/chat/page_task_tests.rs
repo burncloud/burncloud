@@ -103,6 +103,7 @@ fn downloading() -> (ChatState, u64, CatalogSelection, ModelVariant, Hardware) {
         name: "模型".into(),
         preset: None,
         version: CatalogVersion {
+            verified_variants: Vec::new(),
             name: "版本".into(),
             model: "test/model".into(),
             source: "modelscope".into(),
@@ -235,4 +236,21 @@ async fn stale_task_cleanup_cannot_clear_new_run_handle() {
             }
         });
     }
+}
+
+#[test]
+fn route_status_labels_cover_the_stable_router_contract() {
+    for (status, label) in [
+        ("routable", "模型已部署，可路由"),
+        ("unroutable", "模型已启动，等待 Router 准入"),
+        ("saturated", "模型运行中，当前容量已满"),
+        ("quarantined", "模型暂不可路由，需要重新挂载或恢复"),
+        ("lost", "模型暂不可路由，需要重新挂载或恢复"),
+        ("detaching", "模型正在停止新请求并清理挂载"),
+        ("detached", "模型已完成摘除"),
+        ("failed", "模型部署或运行时失败"),
+    ] {
+        assert_eq!(super::route_status_label(status), label);
+    }
+    assert_eq!(super::route_status_label("unknown"), "Router 状态未知");
 }

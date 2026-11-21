@@ -36,6 +36,9 @@ async fn upstream(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     calls.lock().expect("请求记录锁").push(uri.to_string());
+    if uri.path().ends_with("/api/models/org/repo/tree/main") {
+        return Json(json!([{"type":"file", "path":"model.gguf", "size":3, "lfs":{"oid":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}}])).into_response();
+    }
     if !params.contains_key("search") {
         let status = if uri.path().contains("/missing/") {
             StatusCode::NOT_FOUND
@@ -92,11 +95,12 @@ impl Harness {
             .no_proxy()
             .build()
             .expect("测试客户端");
-        let router = app(config(), client.clone());
+        let router = app(config(), client.clone(), None);
         let state = Arc::new(AppState {
             config: config(),
             client,
             manifests: load_default_manifests().expect("默认模型清单"),
+            database: None,
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, mock).await.expect("测试站点运行");
@@ -235,17 +239,43 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
         assert_eq!(bound.resource.model, model);
     }
     assert!(h.calls.lock().expect("请求锁").is_empty());
-    let response = routes()
-        .expect("生产路由")
-        .oneshot(
-            Request::builder()
-                .uri("/api/models/presets")
-                .body(Body::empty())
-                .expect("请求"),
-        )
-        .await
-        .expect("路由");
+    let response = routes(Arc::new(
+        burncloud_database::Database::new()
+            .await
+            .expect("测试数据库"),
+    ))
+    .expect("生产路由")
+    .oneshot(
+        Request::builder()
+            .uri("/api/models/presets")
+            .body(Body::empty())
+            .expect("请求"),
+    )
+    .await
+    .expect("路由");
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[test]
+fn gguf_repository_aliases_keep_resource_variants() {
+    let manifests = default_manifests();
+    for (model, source, revision) in [
+        ("Qwen/Qwen3-8B-GGUF", Source::ModelScope, "master"),
+        (
+            "smalinin/DeepSeek-V4.1-Flash-GGUF",
+            Source::HuggingFace,
+            "main",
+        ),
+    ] {
+        let resource = ModelResource {
+            model: model.into(),
+            source,
+            revision: revision.into(),
+        };
+        let variants = variants_for_resource(&manifests, &resource);
+        assert_eq!(variants.len(), 1, "GGUF 仓库缺少资源配置：{model}");
+        assert!(variants[0].artifact_source.contains(model));
+    }
 }
 
 #[tokio::test]
@@ -261,6 +291,14 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
         .as_str()
         .expect("资源地址")
         .ends_with("/ms/models/Qwen/Qwen3-8b/files?Revision=master"));
+    assert_eq!(value["artifact_status"], "not_downloaded");
+    assert_eq!(value["downloaded"], false);
+    assert!(value["local_path"].is_null());
+    assert!(value["actual_sha256"].is_null());
+    assert_eq!(value["variants"][0]["artifact_status"], "not_downloaded");
+    assert_eq!(value["variants"][0]["downloaded"], false);
+    assert!(value["variants"][0]["local_path"].is_null());
+    assert!(value["variants"][0]["actual_sha256"].is_null());
     assert_eq!(value["variants"][0]["id"], "qwen3-8b-q4");
     assert_eq!(value["variants"][0]["quantization"], "Q4");
     assert_eq!(value["variants"][0]["runtime"], "llama.cpp");
@@ -442,7 +480,7 @@ async fn unreachable_resource_is_not_downloadable() {
         probe_timeout: Duration::from_millis(50),
         ..Config::default()
     };
-    let response = app(config, reqwest::Client::new())
+    let response = app(config, reqwest::Client::new(), None)
         .oneshot(
             Request::builder()
                 .uri("/api/models/status?preset=qwen3-8b")
@@ -458,4 +496,53 @@ async fn unreachable_resource_is_not_downloadable() {
         serde_json::from_slice::<Value>(&body).expect("JSON")["status"],
         "developing"
     );
+}
+
+#[tokio::test]
+async fn catalog_survives_restart_and_matches_current_remote_artifact() {
+    let mut h = Harness::new().await;
+    let dir = tempfile::tempdir().expect("临时目录");
+    let path = dir.path().join("model.gguf");
+    tokio::fs::write(&path, b"abc").await.expect("工件");
+    let file = dir.path().join("catalog.db");
+    let url = burncloud_database::sqlite_url(
+        &file.to_string_lossy().replace('\\', "/"),
+        cfg!(windows),
+        true,
+    );
+    let digest = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let db = burncloud_database::create_database_with_url(&url)
+        .await
+        .expect("建库");
+    db.execute_query_with_params("INSERT INTO sys_downloads (gid, uris, status, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256, final_path, total_length, completed_length) VALUES ('test', '[]', 'succeeded', 'org/repo', 'huggingface', 'main', 'model.gguf', 'https://huggingface.co/org/repo/resolve/main/model.gguf', ?, ?, ?, 3, 3)", vec![digest.into(), digest.into(), path.to_string_lossy().into_owned()]).await.expect("写入校验凭据");
+    drop(db);
+    let db = Arc::new(
+        burncloud_database::create_database_with_url(&url)
+            .await
+            .expect("重新连接同一数据库"),
+    );
+    let config = Config {
+        huggingface: h.state.config.huggingface.clone(),
+        ..Config::default()
+    };
+    h.router = app(config, h.state.client.clone(), Some(db.clone()));
+    let query = "/api/models/status?model=org/repo&source=huggingface&revision=main";
+    for (update, expected) in [
+        ("", "downloaded"),
+        ("UPDATE sys_downloads SET status='active'", "downloading"),
+        ("UPDATE sys_downloads SET status='completed'", "verifying"),
+        ("UPDATE sys_downloads SET status='succeeded', actual_sha256=NULL", "failed"),
+        ("UPDATE sys_downloads SET actual_sha256=checksum, final_path='nonexistent-file'", "failed"),
+        ("UPDATE sys_downloads SET checksum='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'", "not_downloaded"),
+    ] {
+        if !update.is_empty() { db.execute_query_with_params(update, Vec::new()).await.expect("更新测试记录"); }
+        let (code, body) = h.get(query).await;
+        assert_eq!(code, StatusCode::OK);
+        let body: Value = serde_json::from_str(&body).expect("目录响应");
+        assert_eq!(body["status"], "downloadable");
+        assert_eq!(body["artifact_status"], expected);
+        assert_eq!(body["variants"][0]["artifact_status"], expected);
+        assert_eq!(body["downloaded"], expected == "downloaded");
+        assert_eq!(body["actual_sha256"].as_str(), (expected == "downloaded").then_some(digest));
+    }
 }

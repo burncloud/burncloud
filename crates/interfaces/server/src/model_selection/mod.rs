@@ -5,6 +5,10 @@ mod sources;
 
 use std::{sync::Arc, time::Duration};
 
+use crate::api::model_resolution::{discover_manifest_at, recorded_variant, ModelSource};
+use burncloud_database::Database;
+use burncloud_download::{catalog_downloads, CatalogDownload, DownloadTaskStatus};
+
 use axum::{
     body::Body,
     extract::{Query, State},
@@ -13,6 +17,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{sync::mpsc, task::JoinSet};
@@ -52,6 +57,7 @@ struct AppState {
     config: Config,
     client: reqwest::Client,
     manifests: Vec<ModelManifest>,
+    database: Option<Arc<Database>>,
 }
 
 /// 构建由主服务统一管理的三个模型选择接口。
@@ -61,11 +67,15 @@ struct AppState {
 ///
 /// # Notes
 /// HTTP 客户端初始化失败会阻止本次应用构建，不静默降级为模拟目录。
-pub(super) fn routes() -> anyhow::Result<Router> {
-    Ok(app(Config::default(), reqwest::Client::builder().build()?))
+pub(super) fn routes(database: Arc<Database>) -> anyhow::Result<Router> {
+    Ok(app(
+        Config::default(),
+        reqwest::Client::builder().build()?,
+        Some(database),
+    ))
 }
 
-fn app(config: Config, client: reqwest::Client) -> Router {
+fn app(config: Config, client: reqwest::Client, database: Option<Arc<Database>>) -> Router {
     Router::new()
         .route("/api/models/presets", get(list_presets))
         .route("/api/models/search", get(search))
@@ -74,6 +84,7 @@ fn app(config: Config, client: reqwest::Client) -> Router {
             config,
             client,
             manifests: default_manifests(),
+            database,
         }))
 }
 
@@ -241,29 +252,47 @@ struct StatusQuery {
     revision: Option<String>,
 }
 
-#[derive(Serialize)]
-struct StatusVariant<'a> {
-    id: &'a str,
-    quantization: &'a str,
-    runtime: &'a str,
-    artifact_source: &'a str,
-    expected_sha256: &'a str,
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ArtifactStatus {
+    NotDownloaded,
+    Downloading,
+    Verifying,
+    Downloaded,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct StatusVariant {
+    id: String,
+    quantization: String,
+    runtime: String,
+    artifact_source: String,
+    expected_sha256: String,
     ram_bytes: u64,
     vram_bytes: u64,
     disk_bytes: u64,
+    artifact_status: ArtifactStatus,
+    downloaded: bool,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
 }
 
-impl<'a> From<&'a Variant> for StatusVariant<'a> {
-    fn from(variant: &'a Variant) -> Self {
+impl From<&Variant> for StatusVariant {
+    fn from(variant: &Variant) -> Self {
         Self {
-            id: &variant.id,
-            quantization: &variant.quantization,
-            runtime: &variant.backend,
-            artifact_source: &variant.artifact_uri,
-            expected_sha256: &variant.checksum,
+            id: variant.id.clone(),
+            quantization: variant.quantization.clone(),
+            runtime: variant.backend.clone(),
+            artifact_source: variant.artifact_uri.clone(),
+            expected_sha256: variant.checksum.clone(),
             ram_bytes: variant.min_ram_bytes,
             vram_bytes: variant.min_vram_bytes,
             disk_bytes: variant.disk_size_bytes,
+            artifact_status: ArtifactStatus::NotDownloaded,
+            downloaded: false,
+            local_path: None,
+            actual_sha256: None,
         }
     }
 }
@@ -276,23 +305,118 @@ fn model_key(value: &str) -> String {
         .collect()
 }
 
-fn variants_for_resource<'a>(
-    manifests: &'a [ModelManifest],
-    resource: &ModelResource,
-) -> Vec<StatusVariant<'a>> {
-    if resource.source != Source::ModelScope {
-        return Vec::new();
+fn repository_model_key(value: &str) -> String {
+    let key = model_key(value);
+    // GGUF 仓库名描述文件格式，默认清单仍使用面向用户的逻辑模型名。
+    key.strip_suffix("gguf").unwrap_or(&key).to_owned()
+}
+
+fn artifact_repository_key(value: &str) -> Option<String> {
+    let url = Url::parse(value).ok()?;
+    let segments = url.path_segments()?.collect::<Vec<_>>();
+    if let Some(index) = segments.iter().position(|segment| *segment == "models") {
+        return segments
+            .get(index + 2)
+            .map(|segment| repository_model_key(segment));
     }
+    segments
+        .iter()
+        .position(|segment| *segment == "resolve" || *segment == "tree")
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| segments.get(index))
+        .map(|segment| repository_model_key(segment))
+}
+
+fn manifest_matches_resource(manifest: &ModelManifest, repository_key: &str) -> bool {
+    model_key(&manifest.model_name) == repository_key
+        || manifest.variants.iter().any(|variant| {
+            artifact_repository_key(&variant.artifact_uri).is_some_and(|key| key == repository_key)
+        })
+}
+
+fn variants_for_resource(
+    manifests: &[ModelManifest],
+    resource: &ModelResource,
+) -> Vec<StatusVariant> {
     let Some(repository_name) = resource.model.rsplit('/').next() else {
         return Vec::new();
     };
+    let repository_key = repository_model_key(repository_name);
     manifests
         .iter()
-        .find(|manifest| model_key(&manifest.model_name) == model_key(repository_name))
+        .find(|manifest| manifest_matches_resource(manifest, &repository_key))
         .map(|manifest| manifest.variants.iter().map(StatusVariant::from).collect())
         .unwrap_or_default()
 }
 
+async fn catalog_variants(
+    state: &AppState,
+    resource: &ModelResource,
+    records: &[CatalogDownload],
+) -> Vec<StatusVariant> {
+    if records.is_empty() {
+        return variants_for_resource(&state.manifests, resource);
+    }
+    let source = match resource.source {
+        Source::ModelScope => ModelSource::ModelScope,
+        Source::HfMirror => ModelSource::HfMirror,
+        Source::HuggingFace => ModelSource::HuggingFace,
+    };
+    let discovery = discover_manifest_at(
+        &state.client,
+        source,
+        resource.source.base(&state.config),
+        &resource.model,
+        &resource.revision,
+    );
+    match tokio::time::timeout(state.config.probe_timeout, discovery).await {
+        Ok(Ok(manifest)) => manifest.variants.iter().map(StatusVariant::from).collect(),
+        error => {
+            tracing::debug!(?error, "目录文件清单不可用，仅展示本地记录固定的工件身份");
+            let mut seen = std::collections::HashSet::new();
+            records
+                .iter()
+                .filter_map(|r| recorded_variant(source, &resource.model, &resource.revision, r))
+                .filter(|v| seen.insert(v.id.clone()))
+                .map(|v| StatusVariant::from(&v))
+                .collect()
+        }
+    }
+}
+
+fn apply_catalog_record(variant: &mut StatusVariant, records: &[CatalogDownload]) {
+    let Some(r) = records.iter().find(|r| {
+        r.variant_id == variant.id
+            && r.artifact_uri == variant.artifact_source
+            && r.checksum == variant.expected_sha256
+    }) else {
+        return;
+    };
+    variant.artifact_status = match r.status {
+        DownloadTaskStatus::Queued | DownloadTaskStatus::Downloading => ArtifactStatus::Downloading,
+        DownloadTaskStatus::Verifying => ArtifactStatus::Verifying,
+        DownloadTaskStatus::Succeeded => ArtifactStatus::Downloaded,
+        DownloadTaskStatus::Failed | DownloadTaskStatus::Cancelled => ArtifactStatus::Failed,
+    };
+    variant.downloaded = variant.artifact_status == ArtifactStatus::Downloaded;
+    variant.local_path.clone_from(&r.local_path);
+    variant.actual_sha256.clone_from(&r.actual_sha256);
+}
+
+fn artifact_rank(status: ArtifactStatus) -> u8 {
+    match status {
+        ArtifactStatus::NotDownloaded => 0,
+        ArtifactStatus::Failed => 1,
+        ArtifactStatus::Downloading => 2,
+        ArtifactStatus::Verifying => 3,
+        ArtifactStatus::Downloaded => 4,
+    }
+}
+
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "状态接口需要在一次响应中保留远程探测、变体工件查询和模型级聚合语义"
+)]
 async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQuery>) -> Response {
     let resource = match (query.preset, query.model, query.source) {
         (Some(id), _, _) => match presets::find(&id) {
@@ -311,8 +435,7 @@ async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQu
     let Some(url) = resource.url(&state.config) else {
         return bad_request("模型仓库或修订号无效");
     };
-    // 尚未接入真实本地运行状态，页面可访问只允许交接选择，不代表模型已可用。
-    let status = match sources::probe(&state.client, &state.config, url.clone()).await {
+    let remote_status = match sources::probe(&state.client, &state.config, url.clone()).await {
         Ok(200) => "downloadable",
         Ok(code) => {
             tracing::debug!(code, model = %resource.model, "模型资源页面不可下载");
@@ -323,13 +446,49 @@ async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQu
             "developing"
         }
     };
-    let variants = variants_for_resource(&state.manifests, &resource);
+    let records = match &state.database {
+        Some(database) => match catalog_downloads(
+            database.clone(),
+            &resource.model,
+            resource.source.as_str(),
+            &resource.revision,
+        )
+        .await
+        {
+            Ok(records) => records,
+            Err(error) => {
+                tracing::error!(%error, "读取本地模型目录失败");
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({ "message": "本地模型目录暂时不可用" })),
+                )
+                    .into_response();
+            }
+        },
+        None => Vec::new(),
+    };
+    let mut variants = catalog_variants(&state, &resource, &records).await;
+    let mut model_artifact_status = ArtifactStatus::NotDownloaded;
+    let mut model_local_path = None;
+    let mut model_actual_sha256 = None;
+    for variant in &mut variants {
+        apply_catalog_record(variant, &records);
+        if artifact_rank(variant.artifact_status) > artifact_rank(model_artifact_status) {
+            model_artifact_status = variant.artifact_status;
+            model_local_path.clone_from(&variant.local_path);
+            model_actual_sha256.clone_from(&variant.actual_sha256);
+        }
+    }
     Json(json!({
-        "status": status,
+        "status": remote_status,
         "model": resource.model,
         "source": resource.source,
         "revision": resource.revision,
         "resource_url": url.as_str(),
+        "artifact_status": model_artifact_status,
+        "downloaded": matches!(model_artifact_status, ArtifactStatus::Downloaded),
+        "local_path": model_local_path,
+        "actual_sha256": model_actual_sha256,
         "variants": variants,
     }))
     .into_response()

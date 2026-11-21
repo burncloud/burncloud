@@ -3,6 +3,7 @@ use super::{
     LocalRouteAttachmentError,
 };
 use burncloud_database::Database;
+use burncloud_supply_channel::ChannelService;
 use futures::{stream::FuturesUnordered, StreamExt};
 use serde::Deserialize;
 use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -98,11 +99,13 @@ impl LocalRouteManager {
     /// ```
     ///
     /// # Notes
-    /// 首检失败每 5 秒重试，单次 2 秒；首次成功后只调用一次 attach，随后继续探测；15 秒心跳过期禁派，临时故障需两次成功恢复。
+    /// 首检失败每 5 秒重试，单次 2 秒；首次成功后只调用一次 attach，随后继续探测；30 秒心跳过期禁派，临时故障需两次成功恢复。
     /// 单节点 attach 错误记录后停止该项，不重试持久化、不使其他供给停止服务。
-    /// 取消时不自动 detach，重启残留须核对后显式清理；低层 create_app 不隐式启动本管理器。
+    /// 取消时不自动 detach；新的 `run` 会话启动时先隔离并摘除数据库残留，再按当前
+    /// 启动清单重新探测。低层 `create_app` 不隐式启动本管理器。
     pub async fn run(self) -> Result<(), LocalRouteAttachmentError> {
         self.local.activate_manager(self.epoch)?;
+        self.reconcile_persisted_attachments().await?;
         let mut pending: FuturesUnordered<_> = self
             .attachments
             .iter()
@@ -111,6 +114,34 @@ impl LocalRouteManager {
         while pending.next().await.is_some() {}
         // 即使所有项成功或停止，仍保留会话直到 Server 结束，而非立即禁派。
         std::future::pending().await
+    }
+
+    /// 清理数据库中不属于本次 Server 会话的旧本机供给。
+    ///
+    /// # Notes
+    /// 数据库中的 attachment 只代表过去曾经发布过供给，不能作为当前进程健康或
+    /// generation 证据。先按标签隔离并删除所有残留，再由启动清单重新探测和挂载，
+    /// 因此重启后不会直接收养旧 ID。
+    async fn reconcile_persisted_attachments(&self) -> Result<(), LocalRouteAttachmentError> {
+        let channels = ChannelService::list(&self.db, i32::MAX, 0)
+            .await
+            .map_err(|error| LocalRouteAttachmentError::DetachFailed(error.to_string()))?;
+        for channel in channels {
+            if channel.tag.as_deref() != Some("burncloud-node-local") {
+                continue;
+            }
+            let id = channel.id;
+            if let Err(error) = self.local.quarantine(&self.db, id).await {
+                tracing::error!(%error, attachment_id = id, "failed to quarantine stale local attachment");
+                return Err(error);
+            }
+            self.local.detach(&self.db, id).await?;
+            tracing::info!(
+                attachment_id = id,
+                "stale local attachment reconciled on startup"
+            );
+        }
+        Ok(())
     }
 
     #[allow(
@@ -131,7 +162,7 @@ impl LocalRouteManager {
             };
             match self
                 .local
-                .attach(&self.db, attachment.clone(), Some(evidence))
+                .attach(&self.db, attachment.clone(), Some(evidence), 0, None, false)
                 .await
             {
                 Ok(id) => {

@@ -17,10 +17,7 @@ use axum::{
     Json, Router,
 };
 use burncloud_database::Database;
-use burncloud_router::{
-    local_attachment::{ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachmentId},
-    price_sync::PriceSyncService,
-};
+use burncloud_router::price_sync::PriceSyncService;
 use burncloud_supply_channel::ChannelService;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -404,7 +401,7 @@ async fn normal_server_accepts_absent_and_empty_config_and_rejects_invalid_whole
 }
 
 #[tokio::test]
-async fn normal_server_routes_ready_model_retries_missing_alias_and_keeps_restart_residue_closed() {
+async fn normal_server_routes_ready_model_reconciles_restart_residue() {
     let fixture = Fixture::new().await;
     let model = ModelServer::new().await;
     let raw = config(&model.url, &[MODEL, LATER]);
@@ -436,42 +433,21 @@ async fn normal_server_routes_ready_model_retries_missing_alias_and_keeps_restar
     let raw = config(&model.url, &[MODEL, LATER, FRESH]);
     let mut restarted = fixture.start(Some(&raw));
     restarted.ready().await;
-    fixture.wait_for_count(3).await;
     restarted
-        .wait_for_log("local route automatic attachment stopped", 2)
+        .wait_for_log("local route startup attachment published", 3)
         .await;
-    let before = model.chats.load(Ordering::SeqCst);
-    let rejected = chat(&restarted, MODEL).await;
-    assert_eq!(rejected.status(), 503, "{}", rejected.text().await.unwrap());
-    assert_eq!(
-        rejected.headers().get("x-rejected-by").unwrap(),
-        "scheduler"
-    );
-    assert_eq!(model.chats.load(Ordering::SeqCst), before);
-    let accepted = chat(&restarted, FRESH).await;
-    assert_eq!(accepted.status(), 200, "{}", accepted.text().await.unwrap());
-    accepted.bytes().await.unwrap();
-    fixture.wait_for_logged(FRESH).await;
-    let original = old.iter().find(|channel| channel.models == MODEL).unwrap();
-    assert!(ChannelService::get_by_id(&fixture.db, original.id)
-        .await
-        .unwrap()
-        .is_some());
-    ExistingRouterLocalAttacher::new(fixture.db.clone())
-        .detach(LocalRouteAttachmentId(original.id))
-        .await
-        .unwrap();
-    let probes = model.probes.load(Ordering::SeqCst);
-    sleep(Duration::from_millis(5200)).await;
-    assert_eq!(
-        ChannelService::list(&fixture.db, 100, 0)
+    let response = chat(&restarted, MODEL).await;
+    assert_eq!(response.status(), 200, "{}", response.text().await.unwrap());
+    let response = chat(&restarted, FRESH).await;
+    assert_eq!(response.status(), 200, "{}", response.text().await.unwrap());
+    let current = ChannelService::list(&fixture.db, 100, 0).await.unwrap();
+    assert_eq!(current.len(), 3);
+    for channel in old {
+        assert!(ChannelService::get_by_id(&fixture.db, channel.id)
             .await
             .unwrap()
-            .len(),
-        2
-    );
-    // 运行中已挂载目标持续每 5 秒探测；detach 后该目标停止探测，残留项仍不可收养。
-    assert!(model.probes.load(Ordering::SeqCst) >= probes);
+            .is_none());
+    }
     restarted.stop().await;
     fixture.db.get_connection().unwrap().pool().close().await;
 }
@@ -685,7 +661,7 @@ async fn deployment_arrays_validate_all_targets_and_conflicts_before_probing() {
 }
 
 #[tokio::test]
-async fn deployment_array_mounts_exact_targets_but_restart_cannot_adopt_residue() {
+async fn deployment_array_mounts_exact_targets_and_reconciles_restart_residue() {
     let fixture = Fixture::new().await;
     let model = ModelServer::new().await;
     let raw = json!([
@@ -712,19 +688,23 @@ async fn deployment_array_mounts_exact_targets_but_restart_cannot_adopt_residue(
     let mut restarted = fixture.start_options(None, Some(&raw), None, "{}");
     restarted.ready().await;
     restarted
-        .wait_for_log("local route automatic attachment stopped", 2)
+        .wait_for_log("local route startup attachment published", 2)
         .await;
     for name in [MODEL, FRESH] {
-        assert_eq!(chat(&restarted, name).await.status(), 503);
+        assert_eq!(chat(&restarted, name).await.status(), 200);
     }
-    assert_eq!(model.chats.load(Ordering::SeqCst), chats);
-    assert_eq!(
-        ChannelService::list(&fixture.db, 100, 0)
+    assert_eq!(model.chats.load(Ordering::SeqCst), chats + 2);
+    let current = ChannelService::list(&fixture.db, 100, 0).await.unwrap();
+    assert_eq!(current.len(), 2);
+    for channel in &original {
+        assert!(ChannelService::get_by_id(&fixture.db, channel.id)
             .await
             .unwrap()
-            .len(),
-        2
-    );
+            .is_none());
+    }
+    assert!(current
+        .iter()
+        .all(|channel| !original.iter().any(|old| old.id == channel.id)));
     restarted.stop().await;
     fixture.db.get_connection().unwrap().pool().close().await;
 }

@@ -96,6 +96,37 @@ pub enum DeploymentEventKind {
 }
 
 // ============================================================================
+// DeploymentCapacity：运行时槽位容量
+// ============================================================================
+
+/// 本地推理运行时最近一次采样到的并行槽位容量。
+///
+/// `free_slots` 只表示采样时刻的空闲槽位；Router 仍会结合自身在途许可
+/// 做一次保守准入，不能把该值当作跨进程的强一致锁。
+///
+/// # Examples
+///
+/// ```
+/// use burncloud_node_runtime::deployment::DeploymentCapacity;
+///
+/// let capacity = DeploymentCapacity {
+///     total_slots: 2,
+///     free_slots: 1,
+///     observed_at_unix_ms: 1,
+/// };
+/// assert!(capacity.free_slots <= capacity.total_slots);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeploymentCapacity {
+    /// 运行时配置并实际暴露的槽位总数。
+    pub total_slots: u32,
+    /// 最近一次采样时尚未处理请求占用的槽位数。
+    pub free_slots: u32,
+    /// 容量采样发生时的 Unix 毫秒时间戳。
+    pub observed_at_unix_ms: u64,
+}
+
+// ============================================================================
 // DeploymentEvent：对外发布的事件结构
 // ============================================================================
 
@@ -119,6 +150,8 @@ pub enum DeploymentEventKind {
 ///     pid: None,
 ///     error: None,
 ///     cleanup_error: None,
+///     generation: 1,
+///     capacity: None,
 /// };
 /// assert_eq!(event.model_id, "model-1");
 /// ```
@@ -149,6 +182,10 @@ pub struct DeploymentEvent {
     pub error: Option<String>,
     /// 进程清理失败时的附加诊断，不覆盖 `error`。
     pub cleanup_error: Option<String>,
+    /// 当前模型运行实例的代次；旧进程事件不能影响新代次。
+    pub generation: u64,
+    /// 当前运行时最近一次槽位容量采样。
+    pub capacity: Option<DeploymentCapacity>,
 }
 
 // ============================================================================

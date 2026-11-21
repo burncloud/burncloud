@@ -136,10 +136,6 @@ fn contradictory_hardware_callbacks_and_final_snapshot_fail_closed() {
 fn byte_progress_unknown_totals_duplicates_and_invalid_progress_are_explicit() {
     for invalid in [
         PreparationEvent::DownloadProgress {
-            completed: 4,
-            total: None,
-        },
-        PreparationEvent::DownloadProgress {
             completed: 20,
             total: Some(10),
         },
@@ -175,6 +171,7 @@ fn download_task_id_is_recorded_and_cancel_invalidates_late_events() {
                 name: "测试目录模型".into(),
                 preset: None,
                 version: CatalogVersion {
+                    verified_variants: Vec::new(),
                     name: "测试目录模型".into(),
                     model: "Qwen/Test".into(),
                     source: "modelscope".into(),
@@ -254,30 +251,35 @@ fn download_task_id_is_recorded_and_cancel_invalidates_late_events() {
 }
 
 #[test]
-fn incomplete_download_and_changed_totals_are_not_verification_success() {
-    for event in [
-        PreparationEvent::Downloaded,
+fn download_completion_enters_verifying_before_digest_result() {
+    let mut state = selected_chat();
+    let id = start(&mut state);
+    reach(&mut state, id, PreparationStage::Downloading);
+    state.preparation_event(
+        id,
+        PreparationEvent::DownloadProgress {
+            completed: 5,
+            total: Some(10),
+        },
+    );
+    state.preparation_event(id, PreparationEvent::Downloaded);
+    assert_eq!(
+        state.preparation().expect("流程").stage,
+        PreparationStage::Verifying
+    );
+
+    // 校验阶段允许暂时收到较早的进度快照，不能把它误判为非法状态。
+    state.preparation_event(
+        id,
         PreparationEvent::DownloadProgress {
             completed: 6,
             total: Some(11),
         },
-    ] {
-        let mut state = selected_chat();
-        let id = start(&mut state);
-        reach(&mut state, id, PreparationStage::Downloading);
-        state.preparation_event(
-            id,
-            PreparationEvent::DownloadProgress {
-                completed: 5,
-                total: Some(10),
-            },
-        );
-        state.preparation_event(id, event);
-        assert_eq!(
-            state.preparation().expect("流程").stage,
-            PreparationStage::Failed
-        );
-    }
+    );
+    assert_eq!(
+        state.preparation().expect("流程").stage,
+        PreparationStage::Verifying
+    );
 }
 
 #[test]

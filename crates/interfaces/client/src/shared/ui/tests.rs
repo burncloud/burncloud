@@ -36,3 +36,12 @@ fn retired_picker_styles_are_removed_without_dropping_current_controls() {
     assert!(STYLE.contains(".chat-catalog-heading {"));
     assert!(STYLE.contains(".model-chat-app {"));
 }
+
+#[test]
+fn model_resource_preview_is_hidden_until_hover_or_focus() {
+    assert!(STYLE.contains(".chat-model-search { overflow: visible; }"));
+    assert!(STYLE.contains(".chat-model-preview { position: absolute;"));
+    assert!(STYLE.contains("opacity: 0; visibility: hidden; pointer-events: none;"));
+    assert!(STYLE.contains(".chat-model-search:has(.chat-model-resource:hover"));
+    assert!(STYLE.contains(".chat-model-resource:focus-within"));
+}

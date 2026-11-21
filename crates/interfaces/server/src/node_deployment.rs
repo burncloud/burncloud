@@ -31,6 +31,11 @@ use burncloud_node_runtime::{
 };
 
 // 引入 serde 的 Serialize trait，用于把快照序列化为 JSON 返回给前端
+use burncloud_router::local_attachment::{
+    ExistingRouterLocalAttacher, LocalRouteAttacher, LocalRouteAttachment, LocalRouteAttachmentId,
+    LocalRouteCapacity,
+};
+
 use serde::Serialize;
 
 // 引入标准库工具
@@ -39,6 +44,7 @@ use std::{
     collections::{HashMap, VecDeque},
     // PathBuf：文件系统路径类型
     path::PathBuf,
+    sync::Arc,
     // 时间相关：SystemTime、UNIX_EPOCH 用于生成 Unix 毫秒时间戳
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -64,6 +70,22 @@ pub(crate) struct DeploymentEventRecord {
     pub error: Option<String>,
     // 事件发生的时间戳（Unix 毫秒）
     pub occurred_at_unix_ms: u64,
+    pub generation: u64,
+    pub capacity: Option<CapacitySnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub(crate) struct CapacitySnapshot {
+    pub total_slots: u32,
+    pub free_slots: u32,
+    pub observed_at_unix_ms: u64,
+}
+
+struct RouteBinding {
+    id: LocalRouteAttachmentId,
+    generation: u64,
+    endpoint: String,
+    quarantined: bool,
 }
 
 // 定义部署快照（某 model_id 的当前完整状态，供查询接口返回）
@@ -85,35 +107,48 @@ pub(crate) struct DeploymentSnapshot {
     pub last_heartbeat_unix_ms: Option<u64>,
     // 最近一次错误信息
     pub error: Option<String>,
+    pub route_status: String,
+    pub route_attachment_id: Option<i32>,
+    pub generation: u64,
+    pub capacity: Option<CapacitySnapshot>,
     // 事件历史队列（最多 128 条，见 push_event）
     pub events: VecDeque<DeploymentEventRecord>,
 }
 
 // 定义部署事件存储（内存中的"数据库"，按 model_id 索引快照）
 // Debug：调试；Default：默认构造（空 HashMap）
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct DeploymentEventStore {
-    // RwLock 包裹的 HashMap：异步读写锁保护，允许多读单写
     snapshots: RwLock<HashMap<String, DeploymentSnapshot>>,
+    attacher: Option<Arc<ExistingRouterLocalAttacher>>,
+    routes: RwLock<HashMap<String, RouteBinding>>,
 }
 
 // 为 DeploymentEventStore 实现方法
 impl DeploymentEventStore {
+    pub(crate) fn with_attacher(attacher: Arc<ExistingRouterLocalAttacher>) -> Self {
+        Self {
+            snapshots: RwLock::new(HashMap::new()),
+            attacher: Some(attacher),
+            routes: RwLock::new(HashMap::new()),
+        }
+    }
+
     // 插入一个 "queued" 状态的初始快照（部署刚入队时调用）
     pub(crate) async fn insert_queued(&self, model_id: &str) {
         // 获取写锁（await 因为 tokio RwLock 是异步的）
         let mut snapshots = self.snapshots.write().await;
-        // entry API：若 key 不存在则用闭包构造新快照插入；若已存在则不动
-        snapshots
-            .entry(model_id.to_string())
-            .or_insert_with(|| DeploymentSnapshot {
-                // 设置 model_id
+        // 每次重新部署都必须建立新的快照边界，避免旧终态的 endpoint
+        // 被新代次的 Starting 事件误判为同代次端点冲突。
+        snapshots.insert(
+            model_id.to_string(),
+            DeploymentSnapshot {
                 model_id: model_id.to_string(),
-                // 初始状态为 queued
                 status: "queued".to_string(),
-                // 其余字段用 Default 填充
+                route_status: "unroutable".to_string(),
                 ..DeploymentSnapshot::default()
-            });
+            },
+        );
     }
 
     // 读取某个 model_id 的快照
@@ -121,11 +156,22 @@ impl DeploymentEventStore {
         // 获取读锁（多个读者可并发）
         // .get() 返回 Option<&DeploymentSnapshot>
         // .cloned() 克隆成拥有所有权的快照返回（避免锁释放后引用失效）
-        self.snapshots.read().await.get(model_id).cloned()
+        let mut snapshot = self.snapshots.read().await.get(model_id).cloned()?;
+        if matches!(
+            snapshot.route_status.as_str(),
+            "routable" | "saturated" | "unroutable"
+        ) && snapshot
+            .last_heartbeat_unix_ms
+            .is_some_and(|heartbeat| now_unix_ms().saturating_sub(heartbeat) >= 30_000)
+        {
+            snapshot.route_status = "lost".to_string();
+        }
+        Some(snapshot)
     }
 
     // 将某个部署标记为失败，并追加一条错误事件
     pub(crate) async fn set_error(&self, model_id: &str, message: String) {
+        self.cleanup_route(model_id, "deployment error").await;
         // 获取写锁
         let mut snapshots = self.snapshots.write().await;
         // entry API：不存在则用 Default 构造（status 为空串等），存在则取出可变引用
@@ -134,6 +180,7 @@ impl DeploymentEventStore {
         snapshot.model_id = model_id.to_string();
         // 状态置为 failed
         snapshot.status = "failed".to_string();
+        snapshot.route_status = "failed".to_string();
         // 记录错误信息（克隆一份，因为下面事件里还要用 message）
         snapshot.error = Some(message.clone());
         // 向快照追加一条 deployment_error 事件
@@ -154,14 +201,238 @@ impl DeploymentEventStore {
 
     // 将某个部署标记为已停止
     pub(crate) async fn set_stopped(&self, model_id: &str) {
+        self.cleanup_route(model_id, "deployment stopped").await;
         // 获取写锁
         let mut snapshots = self.snapshots.write().await;
         // 若该 model_id 存在，取出可变引用
         if let Some(snapshot) = snapshots.get_mut(model_id) {
             // 状态置为 stopped
             snapshot.status = "stopped".to_string();
+            snapshot.route_status = "detached".to_string();
+            snapshot.route_attachment_id = None;
             // 节点状态置为 "Absent"（表示进程已不存在）
-            snapshot.state = Some("Absent".to_string());
+            snapshot.state = Some("absent".to_string());
+        }
+    }
+
+    async fn cleanup_route(&self, model_id: &str, reason: &str) {
+        let Some(binding) = self.routes.write().await.remove(model_id) else {
+            return;
+        };
+        let Some(attacher) = &self.attacher else {
+            return;
+        };
+        if let Err(error) = attacher.quarantine(binding.id).await {
+            tracing::error!(%error, model = %model_id, attachment_id = binding.id.0, reason, "failed to quarantine local route during cleanup");
+        }
+        if let Err(error) = attacher.detach(binding.id).await {
+            tracing::error!(%error, model = %model_id, attachment_id = binding.id.0, reason, "failed to detach local route during cleanup");
+        }
+    }
+    async fn route_view(&self, event: &DeploymentEvent) -> (String, Option<i32>) {
+        match event.kind {
+            DeploymentEventKind::Progress(
+                burncloud_node_runtime::deployment::DeploymentStage::StoppingOldRuntime,
+            ) => {
+                let routes = self.routes.read().await;
+                return routes
+                    .get(&event.model_id)
+                    .map_or(("detaching".to_string(), None), |binding| {
+                        ("detaching".to_string(), Some(binding.id.0))
+                    });
+            }
+            DeploymentEventKind::Stopped => return ("detached".to_string(), None),
+            DeploymentEventKind::DeploymentFailed
+            | DeploymentEventKind::StateChanged(burncloud_node_runtime::NodeState::Failed) => {
+                return ("failed".to_string(), None);
+            }
+            DeploymentEventKind::Heartbeat(burncloud_node_runtime::NodeState::Unhealthy)
+            | DeploymentEventKind::StateChanged(burncloud_node_runtime::NodeState::Unhealthy) => {
+                let routes = self.routes.read().await;
+                return routes
+                    .get(&event.model_id)
+                    .map_or(("quarantined".to_string(), None), |binding| {
+                        ("quarantined".to_string(), Some(binding.id.0))
+                    });
+            }
+            _ => {}
+        }
+        let routes = self.routes.read().await;
+        let Some(binding) = routes.get(&event.model_id) else {
+            return ("unroutable".to_string(), None);
+        };
+        if binding.quarantined {
+            return ("quarantined".to_string(), Some(binding.id.0));
+        }
+        if event.generation != 0
+            && (binding.generation != event.generation
+                || event.local_endpoint.as_deref() != Some(binding.endpoint.as_str()))
+        {
+            return ("unroutable".to_string(), None);
+        }
+        let status = match event.capacity {
+            Some(capacity) if capacity.free_slots > 0 => "routable",
+            Some(_) => "saturated",
+            None => "unroutable",
+        };
+        (status.to_string(), Some(binding.id.0))
+    }
+
+    async fn is_stale_event(&self, event: &DeploymentEvent) -> bool {
+        if event.generation == 0 {
+            return false;
+        }
+        let snapshots = self.snapshots.read().await;
+        let Some(snapshot) = snapshots.get(&event.model_id) else {
+            return false;
+        };
+        if snapshot.generation > event.generation {
+            return true;
+        }
+        if event.generation != 0
+            && event.generation <= snapshot.generation
+            && matches!(snapshot.status.as_str(), "stopped" | "failed")
+        {
+            // 终态快照是旧运行代次的墓碑；普通旧心跳不能重新激活它。
+            return true;
+        }
+        snapshot.generation == event.generation
+            && snapshot.endpoint.is_some()
+            && event.local_endpoint.as_ref() != snapshot.endpoint.as_ref()
+    }
+
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "路由生命周期事件必须集中保证先隔离、再清理、后替换的顺序"
+    )]
+    async fn apply_route_event(&self, event: &DeploymentEvent) {
+        let Some(attacher) = &self.attacher else {
+            return;
+        };
+        let model_id = &event.model_id;
+        match event.kind {
+            DeploymentEventKind::InitialResult(burncloud_node_runtime::NodeState::Ready)
+            | DeploymentEventKind::Heartbeat(burncloud_node_runtime::NodeState::Ready) => {
+                let Some(endpoint) = event.local_endpoint.as_deref() else {
+                    return;
+                };
+                let Some(generation) = (event.generation != 0).then_some(event.generation) else {
+                    return;
+                };
+                let capacity = event.capacity.map(local_capacity);
+                let mut routes = self.routes.write().await;
+                let matches_current = routes.get(model_id).is_some_and(|binding| {
+                    binding.generation == generation && binding.endpoint == endpoint
+                });
+                if capacity.is_none() {
+                    // 新代次已经接管模型时，旧挂载不能因为容量探测失败而残留；
+                    // 当前代次则只记录容量未知，保持已启动但不可派发。
+                    if !matches_current {
+                        if let Some(old) = routes.remove(model_id) {
+                            if let Err(error) = attacher.quarantine(old.id).await {
+                                tracing::error!(%error, model = %model_id, attachment_id = old.id.0, "failed to quarantine replaced local route");
+                            }
+                            if let Err(error) = attacher.detach(old.id).await {
+                                tracing::error!(%error, model = %model_id, attachment_id = old.id.0, "failed to detach replaced local route");
+                            }
+                        }
+                    } else if let Some(binding) = routes.get(model_id) {
+                        if let Err(error) =
+                            attacher.record_heartbeat(binding.id, generation, endpoint, true, None)
+                        {
+                            tracing::warn!(%error, model = %model_id, "local route heartbeat rejected");
+                            let id = binding.id;
+                            if let Some(current) = routes.get_mut(model_id) {
+                                current.quarantined = true;
+                            }
+                            if let Err(error) = attacher.quarantine(id).await {
+                                tracing::error!(%error, model = %model_id, attachment_id = id.0, "failed to quarantine rejected local route heartbeat");
+                            }
+                        }
+                    }
+                    return;
+                }
+                if !matches_current {
+                    if let Some(old) = routes.remove(model_id) {
+                        if let Err(error) = attacher.quarantine(old.id).await {
+                            tracing::error!(%error, model = %model_id, attachment_id = old.id.0, "failed to quarantine replaced local route");
+                        }
+                        if let Err(error) = attacher.detach(old.id).await {
+                            tracing::error!(%error, model = %model_id, attachment_id = old.id.0, "failed to detach replaced local route");
+                        }
+                    }
+                    match attacher
+                        .attach_with_runtime(
+                            LocalRouteAttachment {
+                                model: model_id.clone(),
+                                base_url: endpoint.to_string(),
+                            },
+                            generation,
+                            capacity,
+                        )
+                        .await
+                    {
+                        Ok(id) => {
+                            routes.insert(
+                                model_id.clone(),
+                                RouteBinding {
+                                    id,
+                                    generation,
+                                    endpoint: endpoint.to_string(),
+                                    quarantined: false,
+                                },
+                            );
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, model = %model_id, "local route attachment is not routable yet");
+                        }
+                    }
+                } else if let Some(binding) = routes.get(model_id) {
+                    if let Err(error) =
+                        attacher.record_heartbeat(binding.id, generation, endpoint, true, capacity)
+                    {
+                        tracing::warn!(%error, model = %model_id, "local route heartbeat rejected");
+                        let id = binding.id;
+                        if let Some(current) = routes.get_mut(model_id) {
+                            current.quarantined = true;
+                        }
+                        if let Err(error) = attacher.quarantine(id).await {
+                            tracing::error!(%error, model = %model_id, attachment_id = id.0, "failed to quarantine rejected local route heartbeat");
+                        }
+                    }
+                }
+            }
+            DeploymentEventKind::Progress(
+                burncloud_node_runtime::deployment::DeploymentStage::StoppingOldRuntime,
+            )
+            | DeploymentEventKind::Heartbeat(burncloud_node_runtime::NodeState::Unhealthy)
+            | DeploymentEventKind::StateChanged(burncloud_node_runtime::NodeState::Unhealthy) => {
+                let binding = {
+                    let mut routes = self.routes.write().await;
+                    let Some(binding) = routes.get_mut(model_id) else {
+                        return;
+                    };
+                    binding.quarantined = true;
+                    binding.id
+                };
+                if let Err(error) = attacher.quarantine(binding).await {
+                    tracing::error!(%error, model = %model_id, attachment_id = binding.0, "failed to quarantine local route");
+                }
+            }
+            DeploymentEventKind::DeploymentFailed
+            | DeploymentEventKind::StateChanged(burncloud_node_runtime::NodeState::Failed)
+            | DeploymentEventKind::Stopped => {
+                if let Some(binding) = self.routes.write().await.remove(model_id) {
+                    if let Err(error) = attacher.quarantine(binding.id).await {
+                        tracing::error!(%error, model = %model_id, attachment_id = binding.id.0, "failed to quarantine stopped local route");
+                    }
+                    if let Err(error) = attacher.detach(binding.id).await {
+                        tracing::error!(%error, model = %model_id, attachment_id = binding.id.0, "failed to detach stopped local route");
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -171,8 +442,18 @@ impl DeploymentEventStore {
 impl DeploymentEventPublisher for DeploymentEventStore {
     // 发布一个部署事件：更新快照 + 追加事件记录
     async fn publish(&self, event: DeploymentEvent) -> Result<(), DeploymentEventPublishError> {
+        if self.is_stale_event(&event).await {
+            tracing::warn!(
+                model = %event.model_id,
+                generation = event.generation,
+                endpoint = ?event.local_endpoint,
+                "ignored stale local deployment event"
+            );
+            return Ok(());
+        }
         // 根据事件种类推导三元组 (kind 字符串, stage 可选, status 字符串)
-        let (kind, stage, status) = match event.kind {
+        let event_kind = event.kind;
+        let (kind, stage, status) = match event_kind {
             // 进度事件：阶段名用 Debug 格式化为字符串，状态视为 deploying
             DeploymentEventKind::Progress(stage) => {
                 ("progress", Some(format!("{stage:?}")), "deploying")
@@ -191,6 +472,9 @@ impl DeploymentEventPublisher for DeploymentEventStore {
             DeploymentEventKind::DeploymentFailed => ("deployment_failed", None, "failed"),
         };
 
+        self.apply_route_event(&event).await;
+        let (route_status, route_attachment_id) = self.route_view(&event).await;
+
         // 记录当前时间戳（毫秒）
         let now = now_unix_ms();
         // 构造要追加到事件队列的记录
@@ -200,7 +484,7 @@ impl DeploymentEventPublisher for DeploymentEventStore {
             // stage 克隆（后面还要用 stage 更新 snapshot）
             stage: stage.clone(),
             // 把 event.state 转成 Debug 字符串；event.state 是 Option<NodeState>
-            state: event.state.map(|state| format!("{state:?}")),
+            state: event.state.map(|state| state_name(state).to_string()),
             // 克隆端点字符串
             endpoint: event.local_endpoint.clone(),
             // 复制 PID（Option<u32> 是 Copy）
@@ -209,6 +493,8 @@ impl DeploymentEventPublisher for DeploymentEventStore {
             error: event.error.clone().or(event.cleanup_error.clone()),
             // 记录时间
             occurred_at_unix_ms: now,
+            generation: event.generation,
+            capacity: event.capacity.map(capacity_snapshot),
         };
 
         // 获取写锁
@@ -219,13 +505,15 @@ impl DeploymentEventPublisher for DeploymentEventStore {
         snapshot.model_id = event.model_id;
         // 更新整体状态
         snapshot.status = status.to_string();
+        snapshot.route_status = route_status;
+        snapshot.route_attachment_id = route_attachment_id;
         // 若本次事件带 stage，则更新快照的 stage
         if stage.is_some() {
             snapshot.stage = stage;
         }
-        // 若本次事件带 state，则更新快照的 state（Debug 格式）
+        // 若本次事件带 state，则更新快照的稳定小写状态名
         if let Some(state) = event.state {
-            snapshot.state = Some(format!("{state:?}"));
+            snapshot.state = Some(state_name(state).to_string());
         }
         // 若本次事件带 endpoint，则更新
         if let Some(endpoint) = event.local_endpoint {
@@ -235,14 +523,26 @@ impl DeploymentEventPublisher for DeploymentEventStore {
         if let Some(pid) = event.pid {
             snapshot.pid = Some(pid);
         }
-        // 若是心跳事件，记录最后心跳时间
-        if matches!(event.kind, DeploymentEventKind::Heartbeat(_)) {
+        if event.generation != 0 {
+            snapshot.generation = event.generation;
+        }
+        if let Some(capacity) = event.capacity {
+            snapshot.capacity = Some(capacity_snapshot(capacity));
+        }
+        // 首次健康结果也代表一次有效运行证据，避免尚未收到第一个周期心跳时无法计算 TTL。
+        if matches!(
+            event.kind,
+            DeploymentEventKind::InitialResult(burncloud_node_runtime::NodeState::Ready)
+                | DeploymentEventKind::Heartbeat(_)
+        ) {
             snapshot.last_heartbeat_unix_ms = Some(now);
         }
         // 若是停止事件，清空 endpoint 和 pid（进程已不存在）
         if matches!(event.kind, DeploymentEventKind::Stopped) {
             snapshot.endpoint = None;
             snapshot.pid = None;
+            snapshot.route_status = "detached".to_string();
+            snapshot.route_attachment_id = None;
         }
         // 若本次事件带错误信息，则更新快照的 error
         if event.error.is_some() {
@@ -252,6 +552,26 @@ impl DeploymentEventPublisher for DeploymentEventStore {
         push_event(snapshot, record);
         // 发布成功
         Ok(())
+    }
+}
+
+fn capacity_snapshot(
+    capacity: burncloud_node_runtime::deployment::DeploymentCapacity,
+) -> CapacitySnapshot {
+    CapacitySnapshot {
+        total_slots: capacity.total_slots,
+        free_slots: capacity.free_slots,
+        observed_at_unix_ms: capacity.observed_at_unix_ms,
+    }
+}
+
+fn local_capacity(
+    capacity: burncloud_node_runtime::deployment::DeploymentCapacity,
+) -> LocalRouteCapacity {
+    LocalRouteCapacity {
+        total_slots: capacity.total_slots,
+        free_slots: capacity.free_slots,
+        observed_at_unix_ms: capacity.observed_at_unix_ms,
     }
 }
 
@@ -385,13 +705,21 @@ fn now_unix_ms() -> u64 {
 // 把 NodeState 枚举转成稳定字符串（用于展示/持久化）
 fn state_name(state: burncloud_node_runtime::NodeState) -> &'static str {
     match state {
-        // 就绪
+        burncloud_node_runtime::NodeState::Absent => "absent",
+        burncloud_node_runtime::NodeState::Resolving => "resolving",
+        burncloud_node_runtime::NodeState::LocalUnsupported => "local_unsupported",
+        burncloud_node_runtime::NodeState::PreparingArtifact => "preparing_artifact",
+        burncloud_node_runtime::NodeState::ArtifactReady => "artifact_ready",
+        burncloud_node_runtime::NodeState::PreparingRuntime => "preparing_runtime",
+        burncloud_node_runtime::NodeState::Starting => "starting",
+        burncloud_node_runtime::NodeState::WaitingReady => "waiting_ready",
         burncloud_node_runtime::NodeState::Ready => "ready",
-        // 不健康
-        burncloud_node_runtime::NodeState::Unhealthy => "unhealthy",
-        // 失败
+        burncloud_node_runtime::NodeState::Routable => "routable",
         burncloud_node_runtime::NodeState::Failed => "failed",
-        // 其他（non_exhaustive 或未来新增变体）统一返回 unknown
-        _ => "unknown",
+        burncloud_node_runtime::NodeState::Unhealthy => "unhealthy",
     }
 }
+
+#[cfg(test)]
+#[path = "node_deployment_tests.rs"]
+mod tests;

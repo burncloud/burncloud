@@ -30,7 +30,7 @@ mod hardware;
 // 声明 log 子模块（公开）：日志相关路由
 pub mod log;
 mod model_download;
-mod model_resolution;
+pub(crate) mod model_resolution;
 // 声明 monitor 子模块（公开）：监控相关路由
 pub mod monitor;
 // 声明 node_deployment 子模块（crate 内可见）：节点部署路由（见之前分析的 use crateAppState 文件）

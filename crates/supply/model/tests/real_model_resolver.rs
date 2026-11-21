@@ -137,7 +137,7 @@ fn hardware_filter_removes_variant_when_ram_is_insufficient() {
 }
 
 #[test]
-fn hardware_filter_sums_known_accelerator_memory_for_multi_gpu_models() {
+fn hardware_filter_uses_the_largest_single_accelerator_memory() {
     let variants = vec![variant("multi-gpu", "llama.cpp", 8, 16, 1)];
     let hardware = HardwareProfile {
         cpu: "test-cpu".into(),
@@ -157,13 +157,7 @@ fn hardware_filter_sums_known_accelerator_memory_for_multi_gpu_models() {
         ],
     };
 
-    assert_eq!(
-        RealModelResolver::filter_by_hardware(&variants, &hardware)
-            .iter()
-            .map(|item| item.id.as_str())
-            .collect::<Vec<_>>(),
-        ["multi-gpu"]
-    );
+    assert!(RealModelResolver::filter_by_hardware(&variants, &hardware).is_empty());
 }
 
 #[test]

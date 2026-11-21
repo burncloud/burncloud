@@ -94,6 +94,8 @@ pub struct DownloadTaskSnapshot {
     pub error: Option<String>,
     /// aria2 完成后记录的最终文件路径。
     pub final_path: Option<PathBuf>,
+    /// 上层摘要校验成功后持久化的实际 SHA-256 摘要。
+    pub actual_sha256: Option<String>,
 }
 
 /// 创建并管理 aria2 下载任务，持久化任务状态并监控下载进度。

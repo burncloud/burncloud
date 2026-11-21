@@ -3,6 +3,7 @@
 use burncloud_database::{Database, DatabaseError, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// 持久化下载任务。
 #[derive(sqlx::FromRow, Serialize, Deserialize, Clone)]
@@ -43,17 +44,56 @@ pub struct SysDownload {
     pub created_at: Option<String>,
     /// 更新时间。
     pub updated_at: Option<String>,
+    /// 模型仓库身份。
+    pub model: Option<String>,
+    /// 模型来源。
+    pub source: Option<String>,
+    /// 仓库修订号。
+    pub revision: Option<String>,
+    /// 模型变体标识。
+    pub variant_id: Option<String>,
+    /// 实际工件 URI。
+    pub artifact_uri: Option<String>,
+    /// 请求期望的 SHA-256 摘要。
+    pub checksum: Option<String>,
+    /// 文件实际 SHA-256 摘要。
+    pub actual_sha256: Option<String>,
 }
 
 /// Download database
 pub struct DownloadDB {
-    db: Database,
+    db: Arc<Database>,
 }
 
 impl DownloadDB {
     /// Create new download database
     pub async fn new() -> Result<Self> {
         let db = Database::new().await?;
+        Ok(Self { db: Arc::new(db) })
+    }
+
+    /// 按稳定任务 ID 读取单条记录，避免每次 HTTP 轮询扫描完整历史。
+    ///
+    /// # Examples
+    /// 已删除任务返回 `Ok(None)`，数据库读取错误作为 `Err` 返回。
+    pub async fn get_by_id(&self, id: i64) -> Result<Option<SysDownload>> {
+        if id <= 0 {
+            return Err(DatabaseError::Query("下载任务 ID 必须为正数".into()));
+        }
+        self.db
+            .fetch_optional_with_params(
+                "SELECT * FROM sys_downloads WHERE id = ?",
+                vec![id.to_string()],
+            )
+            .await
+    }
+
+    /// 使用主服务已经打开的数据库连接创建下载数据库门面。
+    ///
+    /// # Errors
+    ///
+    /// 当前数据库连接不可用时返回数据库错误；该方法不会创建新的连接或数据库文件。
+    pub async fn new_shared_db(db: Arc<Database>) -> Result<Self> {
         Ok(Self { db })
     }
 
@@ -65,7 +105,7 @@ impl DownloadDB {
     /// write download records into the developer's real database and could not run twice cleanly. This lets a
     /// caller -- a test, or a binary that already holds a connection -- supply the database instead.
     pub async fn new_with_db(db: Database) -> Result<Self> {
-        Ok(Self { db })
+        Ok(Self { db: Arc::new(db) })
     }
 
     fn now_string() -> String {
@@ -132,7 +172,7 @@ impl DownloadDB {
             .fetch_optional_with_params::<SysDownload>(
                 "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, \
                  download_dir, filename, connections, split, retry_count, error, final_path, \
-                 completed_at, created_at, updated_at FROM sys_downloads WHERE gid = ?",
+                 completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 FROM sys_downloads WHERE gid = ?",
                 vec![gid.to_string()],
             )
             .await?
@@ -148,7 +188,7 @@ impl DownloadDB {
             .fetch_optional_with_params::<SysDownload>(
                 "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, \
                  download_dir, filename, connections, split, retry_count, error, final_path, \
-                 completed_at, created_at, updated_at FROM sys_downloads WHERE gid = ?",
+                 completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 FROM sys_downloads WHERE gid = ?",
                 vec![gid.to_string()],
             )
             .await
@@ -160,7 +200,7 @@ impl DownloadDB {
             .fetch_all::<SysDownload>(
                 "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, \
                  download_dir, filename, connections, split, retry_count, error, final_path, \
-                 completed_at, created_at, updated_at FROM sys_downloads \
+                 completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 FROM sys_downloads \
                  WHERE status IN ('pending', 'active', 'waiting', 'paused') ORDER BY id",
             )
             .await
@@ -177,7 +217,7 @@ impl DownloadDB {
             .fetch_optional_with_params::<SysDownload>(
                 "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, \
                  download_dir, filename, connections, split, retry_count, error, final_path, \
-                 completed_at, created_at, updated_at FROM sys_downloads \
+                 completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 FROM sys_downloads \
                  WHERE url = ? AND download_dir = ? AND filename = ? \
                    AND status = 'completed' AND final_path IS NOT NULL ORDER BY id DESC LIMIT 1",
                 vec![
@@ -195,7 +235,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET gid = ?, retry_count = ?, status = 'pending', \
-                 error = NULL, updated_at = ? WHERE id = ?",
+                 error = NULL, updated_at = ? WHERE id = ? AND status IN ('pending','active','waiting','paused')",
                 vec![
                     gid.to_string(),
                     retry_count.to_string(),
@@ -221,7 +261,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = ?, total_length = ?, completed_length = ?, \
-                 download_speed = ?, updated_at = ? WHERE id = ? AND gid = ?",
+                 download_speed = ?, updated_at = ? WHERE id = ? AND gid = ? AND status IN ('pending','active','waiting','paused')",
                 vec![
                     status.to_string(),
                     total_length.to_string(),
@@ -251,7 +291,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'completed', final_path = ?, total_length = ?, \
-                 completed_length = ?, completed_at = ?, updated_at = ? WHERE id = ? AND gid = ?",
+                 completed_length = ?, completed_at = ?, updated_at = ? WHERE id = ? AND gid = ? AND status IN ('pending','active','waiting','paused')",
                 vec![
                     final_path.to_string(),
                     total_length.to_string(),
@@ -279,7 +319,7 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'failed', retry_count = ?, error = ?, \
-                 updated_at = ? WHERE id = ? AND gid = ?",
+                 updated_at = ? WHERE id = ? AND gid = ? AND status NOT IN ('cancelled', 'succeeded')",
                 vec![
                     retry_count.to_string(),
                     error.to_string(),
@@ -299,12 +339,171 @@ impl DownloadDB {
             .db
             .execute_query_with_params(
                 "UPDATE sys_downloads SET status = 'cancelled', updated_at = ? \
-                 WHERE id = ? AND gid = ?",
+                 WHERE id = ? AND gid = ? AND status NOT IN ('succeeded', 'failed')",
                 vec![Self::now_string(), id.to_string(), gid.to_string()],
             )
             .await?;
         ensure_row_updated(result, "取消状态")?;
         Ok(())
+    }
+
+    /// 持久化完整模型身份，并限制更新只作用于当前稳定任务和 GID。
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "模型身份字段必须显式逐项写入，避免把数据库边界隐藏在无约束字符串中"
+    )]
+    pub async fn set_identity(
+        &self,
+        id: i64,
+        gid: &str,
+        model: &str,
+        source: &str,
+        revision: &str,
+        variant_id: &str,
+        artifact_uri: &str,
+        checksum: &str,
+    ) -> Result<()> {
+        if [model, source, revision, variant_id, artifact_uri]
+            .into_iter()
+            .any(|value| value.trim().is_empty())
+            || !valid_sha256(checksum)
+        {
+            return Err(DatabaseError::Query("下载模型身份字段无效".into()));
+        }
+        let result = self
+            .db
+            .execute_query_with_params(
+                "UPDATE sys_downloads SET model = ?, source = ?, revision = ?, variant_id = ?, \
+                 artifact_uri = ?, checksum = ?, updated_at = ? WHERE id = ? AND gid = ? \
+                 AND (model IS NULL OR (model = ? AND source = ? AND revision = ? AND variant_id = ? AND artifact_uri = ? AND checksum = ?))",
+                vec![
+                    model.to_string(),
+                    source.to_string(),
+                    revision.to_string(),
+                    variant_id.to_string(),
+                    artifact_uri.to_string(),
+                    checksum.to_string(),
+                    Self::now_string(),
+                    id.to_string(),
+                    gid.to_string(), model.into(), source.into(), revision.into(), variant_id.into(), artifact_uri.into(), checksum.into(),
+                ],
+            )
+            .await?;
+        ensure_row_updated(result, "下载身份")?;
+        Ok(())
+    }
+
+    /// 持久化摘要校验成功的终态。
+    pub async fn mark_verified(&self, id: i64, gid: &str, actual_sha256: &str) -> Result<()> {
+        if !valid_sha256(actual_sha256) {
+            return Err(DatabaseError::Query("实际 SHA-256 摘要无效".into()));
+        }
+        let now = Self::now_string();
+        let result = self
+            .db
+            .execute_query_with_params(
+                "UPDATE sys_downloads SET status = 'succeeded', actual_sha256 = ?, \
+                 completed_at = COALESCE(completed_at, ?), updated_at = ? WHERE id = ? AND gid = ? \
+                 AND status IN ('completed', 'verifying') AND checksum = ? AND final_path IS NOT NULL AND final_path <> ''",
+                vec![
+                    actual_sha256.to_string(),
+                    now.clone(),
+                    now,
+                    id.to_string(),
+                    gid.to_string(),
+                    actual_sha256.to_string(),
+                ],
+            )
+            .await?;
+        ensure_row_updated(result, "摘要校验成功")?;
+        Ok(())
+    }
+
+    /// 持久化摘要校验失败的终态。
+    pub async fn mark_verification_failed(
+        &self,
+        id: i64,
+        gid: &str,
+        actual_sha256: Option<&str>,
+        error: &str,
+    ) -> Result<()> {
+        if actual_sha256.is_some_and(|digest| !valid_sha256(digest)) || error.trim().is_empty() {
+            return Err(DatabaseError::Query("摘要失败状态字段无效".into()));
+        }
+        let result = self
+            .db
+            .execute_query_with_params(
+                "UPDATE sys_downloads SET status = 'failed', actual_sha256 = ?, error = ?, \
+                 updated_at = ? WHERE id = ? AND gid = ? \
+                 AND status IN ('completed', 'verifying')",
+                vec![
+                    actual_sha256.unwrap_or_default().to_string(),
+                    error.to_string(),
+                    Self::now_string(),
+                    id.to_string(),
+                    gid.to_string(),
+                ],
+            )
+            .await?;
+        ensure_row_updated(result, "摘要校验失败")?;
+        Ok(())
+    }
+
+    /// 按完整模型身份查找最新下载记录。
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "查询必须显式匹配模型、来源、版本、变体、URI 和摘要六项身份"
+    )]
+    pub async fn find_model_artifact(
+        &self,
+        model: &str,
+        source: &str,
+        revision: &str,
+        variant_id: &str,
+        artifact_uri: &str,
+        checksum: &str,
+    ) -> Result<Option<SysDownload>> {
+        self.db
+            .fetch_optional_with_params::<SysDownload>(
+                "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, \
+                 download_dir, filename, connections, split, retry_count, error, final_path, \
+                 completed_at, created_at, updated_at, model, source, revision, variant_id, \
+                 artifact_uri, checksum, actual_sha256 FROM sys_downloads \
+                 WHERE model = ? AND source = ? AND revision = ? AND variant_id = ? \
+                   AND artifact_uri = ? AND checksum = ? ORDER BY id DESC LIMIT 1",
+                vec![
+                    model.to_string(),
+                    source.to_string(),
+                    revision.to_string(),
+                    variant_id.to_string(),
+                    artifact_uri.to_string(),
+                    checksum.to_string(),
+                ],
+            )
+            .await
+    }
+
+    /// 查找指定仓库修订的下载记录，最新任务在前；旧记录不补造模型身份。
+    ///
+    /// # Examples
+    /// 目录查询传入 `org/model`、`modelscope`、`master`，再逐变体匹配 URI 和摘要。
+    pub async fn model_downloads(
+        &self,
+        model: &str,
+        source: &str,
+        revision: &str,
+    ) -> Result<Vec<SysDownload>> {
+        if [model, source, revision]
+            .iter()
+            .any(|v| v.trim().is_empty())
+        {
+            return Err(DatabaseError::Query("模型仓库身份不完整".into()));
+        }
+        self.db.fetch_all_with_params::<SysDownload>(
+            "SELECT * FROM sys_downloads WHERE model = ? AND source = ? AND revision = ? \
+             AND variant_id IS NOT NULL AND artifact_uri IS NOT NULL AND checksum IS NOT NULL ORDER BY id DESC",
+            vec![model.into(), source.into(), revision.into()],
+        ).await
     }
 
     /// Update download status
@@ -358,7 +557,7 @@ impl DownloadDB {
             Some(s) => {
                 self.db
                     .fetch_all_with_params::<SysDownload>(
-                        "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at \
+                        "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 \
                          FROM sys_downloads WHERE status = ? ORDER BY created_at DESC",
                         vec![s.to_string()],
                     )
@@ -367,7 +566,7 @@ impl DownloadDB {
             None => {
                 self.db
                     .fetch_all::<SysDownload>(
-                        "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at \
+                        "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 \
                          FROM sys_downloads ORDER BY created_at DESC",
                     )
                     .await
@@ -381,7 +580,7 @@ impl DownloadDB {
     pub async fn get(&self, gid: &str) -> Result<Option<SysDownload>> {
         self.db
             .fetch_optional_with_params::<SysDownload>(
-                "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at \
+                "SELECT id, gid, url, status, uris, total_length, completed_length, download_speed, download_dir, filename, connections, split, retry_count, error, final_path, completed_at, created_at, updated_at, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256 \
                  FROM sys_downloads WHERE gid = ?",
                 vec![gid.to_string()],
             )
@@ -410,4 +609,10 @@ fn ensure_row_updated(
         )));
     }
     Ok(())
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
 }

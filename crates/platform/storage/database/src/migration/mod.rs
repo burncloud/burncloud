@@ -31,6 +31,16 @@ struct Migration {
 // Migration catalogue — SQLite dialect
 // ---------------------------------------------------------------------------
 
+// 两种数据库共用标准 DDL；迁移运行器负责版本登记和重复列兼容。
+const MODEL_DOWNLOAD_IDENTITY: &str = "ALTER TABLE sys_downloads ADD COLUMN model TEXT;
+ALTER TABLE sys_downloads ADD COLUMN source TEXT;
+ALTER TABLE sys_downloads ADD COLUMN revision TEXT;
+ALTER TABLE sys_downloads ADD COLUMN variant_id TEXT;
+ALTER TABLE sys_downloads ADD COLUMN artifact_uri TEXT;
+ALTER TABLE sys_downloads ADD COLUMN checksum TEXT;
+ALTER TABLE sys_downloads ADD COLUMN actual_sha256 TEXT;
+CREATE INDEX IF NOT EXISTS idx_sys_downloads_model_identity ON sys_downloads(model, source, revision, variant_id, checksum);";
+
 const MIGRATIONS_SQLITE: &[Migration] = &[
     Migration {
         version: "0001_initial_schema",
@@ -107,6 +117,10 @@ const MIGRATIONS_SQLITE: &[Migration] = &[
     Migration {
         version: "0019_download_stable_identity",
         sql: include_str!("../../migrations/sqlite/0019_download_stable_identity.sql"),
+    },
+    Migration {
+        version: "0020_download_model_identity",
+        sql: MODEL_DOWNLOAD_IDENTITY,
     },
 ];
 
@@ -190,6 +204,10 @@ const MIGRATIONS_POSTGRES: &[Migration] = &[
     Migration {
         version: "0019_download_stable_identity",
         sql: include_str!("../../migrations/postgres/0019_download_stable_identity.sql"),
+    },
+    Migration {
+        version: "0020_download_model_identity",
+        sql: MODEL_DOWNLOAD_IDENTITY,
     },
 ];
 
