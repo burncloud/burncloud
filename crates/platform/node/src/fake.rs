@@ -12,7 +12,7 @@ use url::Url;
 /// 为组合根和部署流程提供确定性的本机硬件伪实现。
 ///
 /// 该类型只用于隔离测试和示例，不读取真实系统资源；真实部署必须使用
-/// [`crate::SystemHardwareProbe`]，以避免把伪硬件能力当成现场验收结果。
+/// [crate::SystemHardwareProbe]，以避免把伪硬件能力当成现场验收结果。
 #[derive(Debug, Clone)]
 pub struct FakeHardwareProbe {
     profile: HardwareProfile,

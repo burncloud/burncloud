@@ -214,6 +214,63 @@ async fn presets_load_from_main_service_with_flat_resources() {
 }
 
 #[tokio::test]
+async fn imported_presets_preserve_duplicate_rows_hardware_and_links() {
+    let mut first = item(true, "modelscope");
+    first["resource_url"] = json!("https://www.modelscope.cn/models/Qwen/Qwen3-8B");
+    first["hardware"] = json!({
+        "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
+        "vram_recommended":"8.00G", "ram_recommended":"16.00G", "disk_recommended":"8.00G"
+    });
+    let mut duplicate = first.clone();
+    duplicate["id"] = json!("qwen3-8b-row-24");
+    let service = json_server(vec![json!([first, duplicate])]).await;
+    let pages = collect(&service.client, "").await.expect("导入列表");
+    let items = &pages[0].items;
+    assert_eq!(items.len(), 2);
+    assert_ne!(items[0].id, items[1].id);
+    assert_eq!(items[0].name, items[1].name);
+    assert_eq!(
+        items[0].resource_url.as_deref(),
+        Some("https://www.modelscope.cn/models/Qwen/Qwen3-8B")
+    );
+    assert_eq!(
+        items[0].hardware,
+        Some(HardwareRequirements {
+            vram_min: "6.00G".into(),
+            ram_min: "12.00G".into(),
+            disk_min: "6.00G".into(),
+            vram_recommended: "8.00G".into(),
+            ram_recommended: "16.00G".into(),
+            disk_recommended: "8.00G".into()
+        })
+    );
+}
+
+#[test]
+fn catalog_rejects_unsafe_links_and_duplicate_suffixes_in_search_results() {
+    for link in [
+        "javascript:alert(1)",
+        "file:///tmp/model",
+        "https://user:password@example.com",
+    ] {
+        let mut value = item(true, "modelscope");
+        value["resource_url"] = json!(link);
+        let model: CatalogModel = serde_json::from_value(value).expect("测试条目");
+        assert!(model.validate().is_err());
+    }
+    for (preset, id) in [
+        (false, "qwen3-8b-row-24"),
+        (true, "qwen3-8b-row-"),
+        (true, "qwen3-8b-row-../1"),
+    ] {
+        let mut value = item(preset, "modelscope");
+        value["id"] = json!(id);
+        let model: CatalogModel = serde_json::from_value(value).expect("测试条目");
+        assert!(model.validate().is_err());
+    }
+}
+
+#[tokio::test]
 async fn search_publishes_snapshots_and_only_reports_empty_final_results() {
     let partial = json!({"done":false,"items":[item(false,"hf-mirror")]}).to_string();
     let last = json!({"done":true,"type":"models","items":[item(false,"modelscope")]}).to_string();
@@ -465,6 +522,8 @@ fn preset_accepts_stable_id_for_gguf_repository_but_search_result_does_not() {
         model: "Qwen/Qwen3-8B-GGUF".into(),
         source: "modelscope".into(),
         revision: "master".into(),
+        resource_url: Some("https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF".into()),
+        hardware: None,
     };
     assert!(preset.validate().is_ok());
 
