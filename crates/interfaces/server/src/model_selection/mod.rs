@@ -1,6 +1,6 @@
 //! 主服务内的模型选择接口；不创建监听器、独立进程或下载状态仓库。
 
-mod presets;
+pub(crate) mod presets;
 mod sources;
 
 use std::{sync::Arc, time::Duration};
@@ -381,9 +381,10 @@ async fn catalog_variants(
         resource.source.base(&state.config),
         &resource.model,
         &resource.revision,
+        None,
     );
     match tokio::time::timeout(state.config.probe_timeout, discovery).await {
-        Ok(Ok(manifest)) => manifest.variants.iter().map(StatusVariant::from).collect(),
+        Ok(Ok((manifest, _))) => manifest.variants.iter().map(StatusVariant::from).collect(),
         error => {
             tracing::debug!(?error, "目录文件清单不可用，仅展示本地记录固定的工件身份");
             let mut seen = std::collections::HashSet::new();

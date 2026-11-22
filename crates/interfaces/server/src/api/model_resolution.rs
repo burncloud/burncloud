@@ -14,7 +14,12 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::{api::hardware::HardwareSnapshot, node_orchestrator::ModelDemandError, AppState};
+use crate::{
+    api::hardware::HardwareSnapshot,
+    model_selection::presets::{IdentityStatus, Preset},
+    node_orchestrator::ModelDemandError,
+    AppState,
+};
 
 const MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 const LLAMA_CPP: &str = "llama.cpp";
@@ -198,8 +203,8 @@ async fn resolve_model(
             )
         }
     };
-    let manifest = match discover_manifest(&source, &model, &revision).await {
-        Ok(manifest) => manifest,
+    let (manifest, _) = match discover_manifest(&source, &model, &revision, None).await {
+        Ok(discovery) => discovery,
         Err(error) => return discovery_error_response(error, &model, &source),
     };
     let resolution = state
@@ -283,22 +288,30 @@ async fn discover_manifest(
     source: &ModelSource,
     model: &str,
     revision: &str,
-) -> Result<ModelManifest, DiscoveryError> {
+    preset: Option<&'static Preset>,
+) -> Result<(ModelManifest, Vec<(String, u64)>), DiscoveryError> {
     let client = Client::builder()
         .timeout(MODEL_DISCOVERY_TIMEOUT)
         .build()
         .map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
-    discover_manifest_at(&client, *source, source.base_url(), model, revision).await
+    discover_manifest_at(&client, *source, source.base_url(), model, revision, preset).await
 }
 
-/// 从指定站点读取真实文件清单；目录和硬件解析共用同一份身份生成规则。
+/// 从指定站点读取有效 GGUF 清单，并返回每个 Variant 对应的真实文件大小。
+///
+/// # Examples
+/// 传入 `ModelScope`、`Qwen/Qwen3-8B` 和 `master` 可发现仓库文件并生成直接 `/resolve/` 地址。
+///
+/// # Notes
+/// 仓库页面地址不会作为工件地址；缺少有效 SHA-256 或正文件大小的文件会被排除。
 pub(crate) async fn discover_manifest_at(
     client: &Client,
     source: ModelSource,
     base: &str,
     model: &str,
     revision: &str,
-) -> Result<ModelManifest, DiscoveryError> {
+    preset: Option<&'static Preset>,
+) -> Result<(ModelManifest, Vec<(String, u64)>), DiscoveryError> {
     let url = repository_url(source, model, revision, base)?;
     let artifacts = match source {
         ModelSource::ModelScope => discover_modelscope(client, url).await?,
@@ -306,6 +319,10 @@ pub(crate) async fn discover_manifest_at(
             discover_huggingface(client, url).await?
         }
     };
+    let sizes = artifacts
+        .iter()
+        .map(|artifact| (artifact.path.clone(), artifact.size))
+        .collect();
     let variants = artifacts
         .into_iter()
         .map(|artifact| build_variant(source, model, revision, artifact))
@@ -321,7 +338,8 @@ pub(crate) async fn discover_manifest_at(
         variants,
     };
     apply_builtin_resource_config(&mut manifest)?;
-    Ok(manifest)
+    apply_preset_hardware_requirements(&mut manifest, preset)?;
+    Ok((manifest, sizes))
 }
 
 fn apply_builtin_resource_config(manifest: &mut ModelManifest) -> Result<(), DiscoveryError> {
@@ -349,11 +367,68 @@ fn apply_builtin_resource_config(manifest: &mut ModelManifest) -> Result<(), Dis
         let Some(configured) = configured else {
             continue;
         };
-        discovered.min_ram_bytes = configured.min_ram_bytes;
-        discovered.min_vram_bytes = configured.min_vram_bytes;
-        discovered.disk_size_bytes = configured.disk_size_bytes;
+        // 上游文件大小是 RAM 与磁盘要求的下限，内置配置不能把它降低。
+        discovered.min_ram_bytes = discovered.min_ram_bytes.max(configured.min_ram_bytes);
+        discovered.min_vram_bytes = discovered.min_vram_bytes.max(configured.min_vram_bytes);
+        discovered.disk_size_bytes = discovered.disk_size_bytes.max(configured.disk_size_bytes);
     }
     Ok(())
+}
+
+fn apply_preset_hardware_requirements(
+    manifest: &mut ModelManifest,
+    preset: Option<&'static Preset>,
+) -> Result<(), DiscoveryError> {
+    let Some(preset) = preset else {
+        return Ok(());
+    };
+    if preset.identity_status == IdentityStatus::PendingValidation {
+        // 未核实身份只允许显示仓库信息，不能把推测门槛当作可下载准入条件。
+        return Ok(());
+    }
+
+    let vram_min = gibibytes_to_bytes(&preset.hardware.vram_min)?;
+    let ram_min = gibibytes_to_bytes(&preset.hardware.ram_min)?;
+    let disk_min = gibibytes_to_bytes(&preset.hardware.disk_min)?;
+    for variant in &mut manifest.variants {
+        variant.min_vram_bytes = variant.min_vram_bytes.max(vram_min);
+        variant.min_ram_bytes = variant.min_ram_bytes.max(ram_min);
+        variant.disk_size_bytes = variant.disk_size_bytes.max(disk_min);
+    }
+    Ok(())
+}
+
+fn gibibytes_to_bytes(value: &str) -> Result<u64, DiscoveryError> {
+    let invalid = || DiscoveryError::Invalid("预置模型硬件容量无效".into());
+    let number = value.strip_suffix('G').ok_or_else(invalid)?;
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || (number.contains('.')
+            && (fraction.is_empty()
+                || fraction.len() > 18
+                || !fraction.bytes().all(|byte| byte.is_ascii_digit())))
+    {
+        return Err(invalid());
+    }
+
+    let whole = whole.parse::<u128>().map_err(|_| invalid())?;
+    let whole_bytes = whole.checked_mul(1_u128 << 30).ok_or_else(invalid)?;
+    let fraction_bytes = if fraction.is_empty() {
+        0
+    } else {
+        let numerator = fraction.parse::<u128>().map_err(|_| invalid())?;
+        let scale = 10_u128
+            .checked_pow(fraction.len() as u32)
+            .ok_or_else(invalid)?;
+        let scaled = numerator.checked_mul(1_u128 << 30).ok_or_else(invalid)?;
+        // 向上取整以避免小数 GiB 换算后低估最低硬件容量。
+        scaled / scale + if scaled % scale == 0 { 0 } else { 1 }
+    };
+    let bytes = whole_bytes
+        .checked_add(fraction_bytes)
+        .ok_or_else(invalid)?;
+    u64::try_from(bytes).map_err(|_| invalid())
 }
 
 fn model_key(value: &str) -> String {
@@ -438,27 +513,26 @@ async fn discover_modelscope(
             envelope.code
         )));
     }
-    Ok(envelope
+    let data = envelope
         .data
-        .map(|data| {
-            data.files
-                .into_iter()
-                .filter(|file| file.kind.is_empty() || file.kind == "blob")
-                .filter_map(|file| {
-                    let sha256 = normalize_sha256(&file.sha256)?;
-                    let path = file.path;
-                    if !is_gguf(&path) || file.size == 0 {
-                        return None;
-                    }
-                    Some(DiscoveredArtifact {
-                        path,
-                        size: file.size,
-                        sha256,
-                    })
-                })
-                .collect()
+        .ok_or_else(|| DiscoveryError::Unavailable("ModelScope 文件清单缺失".into()))?;
+    Ok(data
+        .files
+        .into_iter()
+        .filter(|file| file.kind.is_empty() || file.kind == "blob")
+        .filter_map(|file| {
+            let sha256 = normalize_sha256(&file.sha256)?;
+            let path = file.path;
+            if !is_gguf(&path) || !valid_artifact_path(&path) || file.size == 0 {
+                return None;
+            }
+            Some(DiscoveredArtifact {
+                path,
+                size: file.size,
+                sha256,
+            })
         })
-        .unwrap_or_default())
+        .collect())
 }
 
 async fn discover_huggingface(
@@ -485,7 +559,9 @@ async fn discover_huggingface(
         .map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
     Ok(files
         .into_iter()
-        .filter(|file| file.kind == "file" && is_gguf(&file.path))
+        .filter(|file| {
+            file.kind == "file" && is_gguf(&file.path) && valid_artifact_path(&file.path)
+        })
         .filter_map(|file| {
             let sha256 = normalize_sha256(
                 file.lfs
@@ -511,6 +587,9 @@ fn repository_url(
     revision: &str,
     base: &str,
 ) -> Result<Url, DiscoveryError> {
+    if !valid_model_id(model) || !valid_segment(revision) {
+        return Err(DiscoveryError::Invalid("模型名称或修订号无效".into()));
+    }
     let (owner, name) = model
         .split_once('/')
         .ok_or_else(|| DiscoveryError::Invalid("模型名称必须包含组织和名称".into()))?;
@@ -655,6 +734,10 @@ fn valid_segment(value: &str) -> bool {
 
 fn valid_path_segment(value: &str) -> bool {
     !value.is_empty() && value != "." && value != ".." && !value.contains(['\\', '\0'])
+}
+
+fn valid_artifact_path(value: &str) -> bool {
+    value.split('/').all(valid_path_segment)
 }
 
 fn success_response(data: ResolveModelData) -> Response {
