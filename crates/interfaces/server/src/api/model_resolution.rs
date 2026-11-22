@@ -5,6 +5,7 @@ use axum::{
     routing::post,
     Router,
 };
+use burncloud_download::{catalog_downloads, CatalogDownload, DownloadTaskStatus};
 use burncloud_node_runtime::HardwareProbeError;
 use burncloud_supply_model::{
     load_default_manifests, CandidateResolutionOutcome, LocalModelUnsupportedReason, ModelManifest,
@@ -44,6 +45,14 @@ pub(crate) enum ModelSource {
 }
 
 impl ModelSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelScope => "modelscope",
+            Self::HfMirror => "hf-mirror",
+            Self::HuggingFace => "huggingface",
+        }
+    }
+
     fn base_url(self) -> &'static str {
         match self {
             Self::ModelScope => "https://modelscope.cn",
@@ -66,6 +75,8 @@ struct ResolveModelRequest {
     model: String,
     source: ModelSource,
     revision: String,
+    #[serde(default)]
+    preset_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -193,20 +204,72 @@ async fn resolve_model(
     State(state): State<AppState>,
     payload: Result<Json<ResolveModelRequest>, JsonRejection>,
 ) -> Response {
-    let (source, model, revision) = match validate_request(payload) {
+    let (source, model, revision, preset) = match validate_request(payload) {
         Ok(request) => request,
-        Err(()) => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "invalid_model",
-                "模型名称、来源或修订号无效",
-            )
+        Err((code, message)) => {
+            let status = if code == "preset_catalog_invalid" {
+                StatusCode::INTERNAL_SERVER_ERROR
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            return error_response(status, code, message);
         }
     };
-    let (manifest, _) = match discover_manifest(&source, &model, &revision, None).await {
-        Ok(discovery) => discovery,
+
+    if preset.is_some_and(|preset| preset.identity_status == IdentityStatus::PendingValidation) {
+        let manifest = ModelManifest {
+            model_name: model.clone(),
+            description: "身份待校验的预置模型，仅返回硬件诊断".into(),
+            supported_backends: vec![LLAMA_CPP.into()],
+            version: revision,
+            variants: Vec::new(),
+        };
+        return unsupported_reason_response(
+            model.clone(),
+            "preset_identity_pending",
+            "该预置模型身份待校验，暂不可下载",
+            state
+                .production_node
+                .resolve_selected_model_candidates(&model, vec![manifest])
+                .await,
+        );
+    }
+
+    let manifest = match discover_manifest(&source, &model, &revision, preset).await {
+        Ok((manifest, _)) => manifest,
+        Err(unavailable @ DiscoveryError::Unavailable(_)) => {
+            let records =
+                match catalog_downloads(state.db.clone(), &model, source.as_str(), &revision).await
+                {
+                    Ok(records) => records,
+                    Err(error) => {
+                        tracing::error!(%error, model = %model, "读取模型本地校验凭据失败");
+                        return error_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "model_resolution_failed",
+                            "读取模型本地校验凭据失败",
+                        );
+                    }
+                };
+            match local_fallback_manifest(source, &model, &revision, preset, &records) {
+                Ok(Some(manifest)) => manifest,
+                Ok(None) => return discovery_error_response(unavailable, &model, &source),
+                Err(error) => return discovery_error_response(error, &model, &source),
+            }
+        }
         Err(error) => return discovery_error_response(error, &model, &source),
     };
+    if manifest.variants.is_empty() {
+        return unsupported_reason_response(
+            model.clone(),
+            "no_valid_gguf",
+            "该模型仓库修订没有可验证的 GGUF 工件",
+            state
+                .production_node
+                .resolve_selected_model_candidates(&model, vec![manifest])
+                .await,
+        );
+    }
     let resolution = state
         .production_node
         .resolve_selected_model_candidates(&model, vec![manifest])
@@ -214,18 +277,103 @@ async fn resolve_model(
     resolution_response(model, resolution)
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "接口契约要求验证结果同时返回来源、仓库身份、预置绑定和稳定错误码"
+)]
 fn validate_request(
     payload: Result<Json<ResolveModelRequest>, JsonRejection>,
-) -> Result<(ModelSource, String, String), ()> {
+) -> Result<(ModelSource, String, String, Option<&'static Preset>), (&'static str, &'static str)> {
     let Json(request) = payload.map_err(|error| {
         tracing::debug!(%error, "模型解析请求体无效");
+        ("invalid_model", "模型名称、来源或修订号无效")
     })?;
     let model = request.model.trim().to_owned();
     let revision = request.revision.trim().to_owned();
     if !valid_model_id(&model) || !valid_segment(&revision) {
-        return Err(());
+        return Err(("invalid_model", "模型名称、来源或修订号无效"));
     }
-    Ok((request.source, model, revision))
+    let preset = match request.preset_id {
+        Some(id) => match crate::model_selection::presets::find(&id) {
+            Ok(Some(preset)) => Some(preset),
+            Ok(None) => return Err(("unknown_preset", "预置模型 ID 不存在")),
+            Err(error) => {
+                tracing::error!(%error, "预置模型目录校验失败");
+                return Err(("preset_catalog_invalid", "预置模型目录无效"));
+            }
+        },
+        None => None,
+    };
+    if let Some(preset) = preset {
+        if preset.resource.model != model
+            || preset.resource.source.as_str() != request.source.as_str()
+            || preset.resource.revision != revision
+        {
+            return Err((
+                "preset_identity_mismatch",
+                "预置模型 ID 与模型、来源或修订号不一致",
+            ));
+        }
+    }
+    Ok((request.source, model, revision, preset))
+}
+
+fn local_fallback_manifest(
+    source: ModelSource,
+    model: &str,
+    revision: &str,
+    preset: Option<&'static Preset>,
+    records: &[CatalogDownload],
+) -> Result<Option<ModelManifest>, DiscoveryError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut variants = Vec::new();
+    for record in records {
+        let Some(variant) = recorded_variant(source, model, revision, preset, record)? else {
+            continue;
+        };
+        let identity = (
+            variant.id.clone(),
+            variant.artifact_uri.clone(),
+            variant.checksum.clone(),
+        );
+        if seen.insert(identity) {
+            variants.push(variant);
+        }
+    }
+    if variants.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(ModelManifest {
+        model_name: model.to_owned(),
+        description: "上游不可用时复用的已验证本地 GGUF 工件".into(),
+        supported_backends: vec![LLAMA_CPP.into()],
+        version: revision.to_owned(),
+        variants,
+    }))
+}
+
+fn unsupported_reason_response(
+    model: String,
+    code: &'static str,
+    message: &'static str,
+    resolution: anyhow::Result<(
+        burncloud_node_runtime::HardwareProfile,
+        CandidateResolutionOutcome,
+    )>,
+) -> Response {
+    match resolution {
+        Ok((hardware, _)) => success_response(ResolveModelData {
+            status: "unsupported",
+            model,
+            hardware: hardware.into(),
+            candidates: Vec::new(),
+            reason: Some(ResolveReason {
+                code,
+                message: message.into(),
+            }),
+        }),
+        Err(error) => resolution_error_response(error),
+    }
 }
 
 fn discovery_error_response(error: DiscoveryError, model: &str, source: &ModelSource) -> Response {
@@ -630,7 +778,15 @@ pub(crate) fn recorded_variant(
     preset: Option<&'static Preset>,
     record: &burncloud_download::CatalogDownload,
 ) -> Result<Option<Variant>, DiscoveryError> {
-    if record.total_bytes == 0 || !is_gguf(&record.variant_id) {
+    let Some(local_path) = record.local_path.as_deref() else {
+        return Ok(None);
+    };
+    if record.status != DownloadTaskStatus::Succeeded
+        || local_path.trim().is_empty()
+        || record.actual_sha256.as_deref() != Some(record.checksum.as_str())
+        || record.total_bytes == 0
+        || !is_gguf(&record.variant_id)
+    {
         return Ok(None);
     }
     let Some(sha256) = record

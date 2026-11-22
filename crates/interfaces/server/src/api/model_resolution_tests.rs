@@ -487,3 +487,120 @@ fn pending_identity_does_not_receive_preset_hardware_requirements() {
 
     assert_eq!(manifest.variants[0], original);
 }
+
+#[test]
+fn resolve_request_keeps_legacy_path_and_binds_preset_to_full_identity() {
+    let legacy = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "org/model",
+        "source": "huggingface",
+        "revision": "main"
+    }))
+    .expect("旧版请求字段仍有效");
+    let (source, model, revision, preset) =
+        validate_request(Ok(Json(legacy))).expect("旧版请求兼容");
+    assert_eq!(source, ModelSource::HuggingFace);
+    assert_eq!(model, "org/model");
+    assert_eq!(revision, "main");
+    assert!(preset.is_none());
+
+    let valid = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "Qwen/Qwen3-8b",
+        "source": "modelscope",
+        "revision": "master",
+        "preset_id": "qwen3-8b"
+    }))
+    .expect("预置请求字段有效");
+    let (_, _, _, preset) = validate_request(Ok(Json(valid))).expect("预置绑定有效");
+    assert_eq!(preset.expect("预置返回").resource.model, "Qwen/Qwen3-8b");
+
+    let unknown = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "org/model",
+        "source": "huggingface",
+        "revision": "main",
+        "preset_id": "not-a-preset"
+    }))
+    .expect("未知 ID 仍是结构有效请求");
+    assert_eq!(
+        validate_request(Ok(Json(unknown))).expect_err("未知预置拒绝"),
+        ("unknown_preset", "预置模型 ID 不存在")
+    );
+
+    for request in [
+        json!({"model":"evil/model","source":"modelscope","revision":"master","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8b","source":"huggingface","revision":"master","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8b","source":"modelscope","revision":"other","preset_id":"qwen3-8b"}),
+    ] {
+        let request =
+            serde_json::from_value::<ResolveModelRequest>(request).expect("身份字段结构有效");
+        assert_eq!(
+            validate_request(Ok(Json(request))).expect_err("预置身份必须完全匹配"),
+            (
+                "preset_identity_mismatch",
+                "预置模型 ID 与模型、来源或修订号不一致"
+            )
+        );
+    }
+
+    let untrusted_url = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "org/model",
+        "source": "huggingface",
+        "revision": "main",
+        "artifact_uri": "https://evil.invalid/model.gguf"
+    }))
+    .expect("未知字段按旧版兼容策略忽略");
+    let (_, _, _, preset) =
+        validate_request(Ok(Json(untrusted_url))).expect("解析路径继续只使用可信上游工件");
+    assert!(preset.is_none());
+}
+
+#[test]
+fn local_fallback_only_keeps_complete_verified_records_and_merged_requirements() {
+    const GIB: u64 = 1024 * 1024 * 1024;
+    let preset = crate::model_selection::presets::find("qwen3-8b")
+        .expect("目录有效")
+        .expect("Qwen 预置存在");
+    let model = "Qwen/Qwen3-8b";
+    let revision = "master";
+    let path = "Qwen3-8B-Q4_K_M.gguf";
+    let checksum = format!("sha256:{}", "a".repeat(64));
+    let uri = format!("https://modelscope.cn/models/{model}/resolve/{revision}/{path}");
+    let verified = || CatalogDownload {
+        variant_id: path.into(),
+        artifact_uri: uri.clone(),
+        checksum: checksum.clone(),
+        total_bytes: 1024,
+        status: DownloadTaskStatus::Succeeded,
+        local_path: Some("C:/models/qwen.gguf".into()),
+        actual_sha256: Some(checksum.clone()),
+    };
+    let mut wrong_uri = verified();
+    wrong_uri.artifact_uri = "https://www.modelscope.cn/models/Qwen/Qwen3-8b".into();
+    let mut wrong_digest = verified();
+    wrong_digest.actual_sha256 = Some(format!("sha256:{}", "b".repeat(64)));
+    let mut missing_path = verified();
+    missing_path.local_path = None;
+    let mut failed = verified();
+    failed.status = DownloadTaskStatus::Failed;
+
+    let manifest = local_fallback_manifest(
+        ModelSource::ModelScope,
+        model,
+        revision,
+        Some(preset),
+        &[verified(), wrong_uri, wrong_digest, missing_path, failed],
+    )
+    .expect("读取候选记录")
+    .expect("存在一条有效的本地复用记录");
+    assert_eq!(manifest.variants.len(), 1);
+    let variant = &manifest.variants[0];
+    assert_eq!(variant.artifact_uri, uri);
+    assert_eq!(variant.checksum, checksum);
+    assert_eq!(variant.min_vram_bytes, 6 * GIB);
+    assert_eq!(variant.min_ram_bytes, 16 * GIB);
+    assert_eq!(variant.disk_size_bytes, 6 * GIB);
+
+    let empty =
+        local_fallback_manifest(ModelSource::ModelScope, model, revision, Some(preset), &[])
+            .expect("无本地回执时不产生回退清单");
+    assert!(empty.is_none());
+}

@@ -100,3 +100,44 @@ async fn model_resolution_route_rejects_unknown_source() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn model_resolution_route_rejects_unknown_preset_before_discovery() -> anyhow::Result<()> {
+    let (status, _headers, body) = post_json(
+        "/api/node/models/resolve",
+        serde_json::json!({
+            "model": "org/model",
+            "source": "huggingface",
+            "revision": "main",
+            "preset_id": "unknown-preset"
+        }),
+    )
+    .await?;
+
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"]["code"], "unknown_preset");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn model_resolution_route_rejects_preset_identity_mismatch_before_discovery(
+) -> anyhow::Result<()> {
+    let (status, _headers, body) = post_json(
+        "/api/node/models/resolve",
+        serde_json::json!({
+            "model": "Qwen/Qwen3-8b",
+            "source": "huggingface",
+            "revision": "master",
+            "preset_id": "qwen3-8b"
+        }),
+    )
+    .await?;
+
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"]["code"], "preset_identity_mismatch");
+
+    Ok(())
+}
