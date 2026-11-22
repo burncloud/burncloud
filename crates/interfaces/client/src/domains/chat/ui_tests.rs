@@ -444,7 +444,7 @@ impl CatalogServer {
                         let items = (0..388)
                             .map(|index| {
                                 let id = if index == 0 {
-                                    "test-1".to_string()
+                                    "qwen3-8b".to_string()
                                 } else {
                                     format!("test-1-row-{index}")
                                 };
@@ -532,7 +532,7 @@ impl Ui {
             probe.attributes.values().any(|attrs| {
                 attrs
                     .get("aria-label")
-                    .is_some_and(|label| label == "下载" || label == "使用此版本")
+                    .is_some_and(|label| label == "选择并检查硬件兼容性")
             })
         })
         .await;
@@ -565,7 +565,7 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
                 .is_some_and(|rel| rel == "noopener noreferrer")
     }));
     assert!(backend.calls.borrow().is_empty());
-    ui.label("下载");
+    ui.label("选择并检查硬件兼容性");
     ui.wait_for(|probe| probe.text.contains("尚未接入该仓库版本的工件解析与部署"))
         .await;
     assert!(ui.probe.text.contains("模型下载、校验或部署失败。"));
@@ -588,7 +588,7 @@ async fn catalog_handoff_detects_once_and_stops_without_artifact_or_deployment()
         .any(|call| call.contains("/api/models/presets")));
     assert!(calls
         .iter()
-        .any(|call| call.contains("/api/models/status?preset=test-1")));
+        .any(|call| call.contains("/api/models/status?preset=qwen3-8b")));
 }
 
 #[tokio::test]
@@ -646,15 +646,9 @@ async fn catalog_search_failure_retry_and_close_do_not_change_chat_model() {
         ui.label("重试模型查询");
         ui.wait_for(|probe| probe.text.contains("测试型号")).await;
         ui.click("chat-model-option");
-        // 行内出现操作即表示状态已返回，预览仍不能提交聊天模型。
-        ui.wait_for(|probe| {
-            probe.attributes.values().any(|attrs| {
-                attrs
-                    .get("aria-label")
-                    .is_some_and(|label| label == "使用此版本")
-            })
-        })
-        .await;
+        // 没有通过校验的 GGUF 工件时，应展示不可用原因而不是确认入口。
+        ui.wait_for(|probe| probe.text.contains("无可下载工件"))
+            .await;
         ui.label("关闭模型菜单");
         let input = ui.probe.find("aria-label", "输入消息或指令", "input");
         let attrs = &ui.probe.attributes[&input.0];
@@ -670,13 +664,20 @@ async fn catalog_search_failure_retry_and_close_do_not_change_chat_model() {
     }
 }
 #[tokio::test]
-async fn catalog_available_uses_version_but_does_not_fake_ready_credentials() {
+async fn catalog_without_verified_artifact_cannot_be_confirmed() {
     let service = CatalogServer::start("available", false, false).await;
     let backend = Rc::new(ControlledBackend::default());
     let mut ui = Ui::catalog(backend.clone(), service.client.clone());
-    ui.preview_catalog().await;
-    ui.label("使用此版本");
-    assert!(ui.probe.text.contains("尚未接入该版本的运行后端"));
+    ui.click("chat-model-trigger");
+    ui.wait_for(|probe| probe.text.contains("测试型号")).await;
+    ui.click("chat-model-option");
+    ui.wait_for(|probe| probe.text.contains("无可下载工件"))
+        .await;
+    assert!(!ui.probe.attributes.values().any(|attrs| {
+        attrs
+            .get("aria-label")
+            .is_some_and(|label| label == "选择并检查硬件兼容性")
+    }));
     ui.send();
     assert!(backend.calls.borrow().is_empty());
     assert!(!service
@@ -729,7 +730,7 @@ impl PendingCatalog {
                         let items = (0..388)
                             .map(|index| {
                                 let id = if index == 0 {
-                                    "test-1".to_string()
+                                    "qwen3-8b".to_string()
                                 } else {
                                     format!("test-1-row-{index}")
                                 };
@@ -904,7 +905,7 @@ async fn catalog_ui_deploys_once_and_cancellation_only_drops_local_deployment() 
         .with_root_context(service.client.clone());
     let mut ui = Ui::mount(dom);
     ui.preview_catalog().await;
-    ui.label("下载");
+    ui.label("选择并检查硬件兼容性");
     ui.wait_for(|probe| probe.text.contains("q4")).await;
     ui.click("chat-variant");
     ui.wait_for(|_| {
@@ -937,7 +938,7 @@ async fn catalog_ui_deployment_success_marks_ready() {
         .with_root_context(service.client.clone());
     let mut ui = Ui::mount(dom);
     ui.preview_catalog().await;
-    ui.label("下载");
+    ui.label("选择并检查硬件兼容性");
     ui.wait_for(|probe| probe.text.contains("q4")).await;
     ui.click("chat-variant");
     ui.wait_for(|probe| probe.text.contains("部署成功，模型已就绪"))
@@ -960,7 +961,7 @@ async fn restarted_catalog_deployment_keeps_new_task_until_its_own_cancel() {
         .with_root_context(service.client.clone());
     let mut ui = Ui::mount(dom);
     ui.preview_catalog().await;
-    ui.label("下载");
+    ui.label("选择并检查硬件兼容性");
     ui.wait_for(|probe| probe.text.contains("q4")).await;
     ui.click("chat-variant");
     ui.wait_for(|_| {
@@ -981,14 +982,17 @@ async fn restarted_catalog_deployment_keeps_new_task_until_its_own_cancel() {
         attrs.get("class").is_none_or(|class| {
             !matches!(
                 class.as_str(),
-                "chat-model-option" | "chat-variant" | "chat-row-icon-button"
+                "chat-model-option"
+                    | "chat-variant"
+                    | "chat-row-icon-button"
+                    | "chat-row-text-button"
             )
         })
     });
     ui.probe.text.clear();
     ui.preview_catalog().await;
     ui.probe.text.clear();
-    ui.label("下载");
+    ui.label("选择并检查硬件兼容性");
     ui.wait_for(|probe| probe.text.contains("q4")).await;
     ui.click("chat-variant");
     ui.wait_for(|_| {
@@ -1024,7 +1028,7 @@ async fn catalog_ui_mismatched_download_credentials_never_deploy() {
         .with_root_context(service.client.clone());
     let mut ui = Ui::mount(dom);
     ui.preview_catalog().await;
-    ui.label("下载");
+    ui.label("选择并检查硬件兼容性");
     ui.wait_for(|probe| probe.text.contains("q4")).await;
     ui.click("chat-variant");
     ui.wait_for(|probe| {

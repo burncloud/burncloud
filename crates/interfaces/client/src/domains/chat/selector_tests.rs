@@ -1,7 +1,7 @@
 //! 目录浏览竞态与聊天流程边界的独立回归测试。
 use super::super::{
     catalog::{CatalogSelection, UnavailableReason},
-    model::{ErrorKind, Hardware, PreparationStage},
+    model::{ErrorKind, Hardware, ModelVariant, PreparationStage},
 };
 use super::*;
 use serde_json::json;
@@ -57,6 +57,171 @@ fn page(names: &[&str], done: bool) -> CatalogPage<CatalogModel> {
     serde_json::from_value(json!({"type": if done {Some("models")} else {None},
         "items": names.iter().map(|name| json!({"id":name.to_lowercase(),"name":name,"model":format!("Qwen/{name}"),"source":"modelscope","revision":"master"})).collect::<Vec<_>>(),"done":done})).expect("测试列表")
 }
+fn preset_model(id: &str) -> CatalogModel {
+    let mut model = model(id);
+    model.id = id.to_owned();
+    model.preset = true;
+    model.identity_status = Some(IdentityStatus::Verified);
+    model
+}
+
+fn downloadable_variant() -> ModelVariant {
+    ModelVariant {
+        id: "Qwen3-8B-Q4_K_M.gguf".into(),
+        quantization: "Q4_K_M".into(),
+        runtime: "llama.cpp".into(),
+        artifact_source:
+            "https://modelscope.cn/models/Qwen/Qwen3-8B/resolve/master/Qwen3-8B-Q4_K_M.gguf".into(),
+        expected_sha256: format!("sha256:{}", "a".repeat(64)),
+        ram_bytes: 1024,
+        vram_bytes: 0,
+        disk_bytes: 1024,
+        file_size_bytes: Some(1024),
+    }
+}
+
+fn downloadable_picker() -> PickerState {
+    let mut version = version("modelscope", "master");
+    version.variants.push(downloadable_variant());
+    PickerState {
+        preview: Some(model("Qwen3-8B")),
+        preview_version: Some(version),
+        status: Some(VersionStatus::Developing),
+        downloadable: true,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn empty_query_shows_featured_presets_in_order_and_expands_the_unique_remainder() {
+    const EXPECTED: [&str; 18] = [
+        "qwen3-8b",
+        "deepseek-r1-distill-qwen-7b",
+        "meta-llama-3.1-8b-instruct",
+        "gemma-3-4b-it",
+        "mistral-7b-instruct-v0.2",
+        "gpt-oss-20b",
+        "phi-4-mini-reasoning",
+        "granite-3.3-8b-instruct",
+        "c4ai-command-r7b-12-2024",
+        "qwen3-30b",
+        "deepseek-r1-distill-qwen-32b",
+        "meta-llama-3.1-70b-instruct",
+        "gemma-3-27b-it",
+        "gpt-oss-120b",
+        "c4ai-command-r-plus",
+        "nvidia-nemotron-3-super-120b-a12b-bf16",
+        "olmo-3.1-32b-instruct-row-342",
+        "granite-4.2-30b-gguf",
+    ];
+    let mut models = EXPECTED
+        .iter()
+        .rev()
+        .map(|id| preset_model(id))
+        .collect::<Vec<_>>();
+    models.extend((0..370).map(|index| preset_model(&format!("additional-{index}"))));
+
+    let featured = visible_models(&models, "", false);
+    assert_eq!(featured.len(), 18);
+    assert_eq!(
+        featured
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        EXPECTED.to_vec()
+    );
+
+    let expanded = visible_models(&models, "", true);
+    assert_eq!(expanded.len(), 388);
+    assert_eq!(
+        expanded[..18]
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        EXPECTED.to_vec()
+    );
+    let unique = expanded
+        .iter()
+        .map(|model| model.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(unique.len(), 388);
+    assert_eq!(visible_models(&models, "", false).len(), 18);
+}
+
+#[test]
+fn external_search_results_are_not_truncated_by_the_featured_limit() {
+    let models = (0..25)
+        .map(|index| model(&format!("Qwen3-{index}B")))
+        .collect::<Vec<_>>();
+    let visible = visible_models(&models, "qwen", false);
+    assert_eq!(visible.len(), models.len());
+    assert_eq!(
+        visible
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn confirmation_requires_a_verified_candidate_and_rejects_pending_or_loading_state() {
+    let ready = downloadable_picker();
+    assert!(can_confirm_selection(&ready, false));
+
+    let mut unavailable = ready.clone();
+    unavailable.downloadable = false;
+    assert!(!can_confirm_selection(&unavailable, false));
+
+    let mut loading = ready.clone();
+    loading.status_loading = true;
+    assert!(!can_confirm_selection(&loading, false));
+
+    let mut failed = ready.clone();
+    failed.status_error = Some("状态查询失败".into());
+    assert!(!can_confirm_selection(&failed, false));
+
+    let mut pending = ready.clone();
+    pending.identity_status = Some(IdentityStatus::PendingValidation);
+    assert!(!can_confirm_selection(&pending, false));
+
+    let mut pending_model = ready.clone();
+    pending_model
+        .preview
+        .as_mut()
+        .expect("预览模型")
+        .identity_status = Some(IdentityStatus::PendingValidation);
+    assert!(!can_confirm_selection(&pending_model, false));
+
+    assert!(!can_confirm_selection(&ready, true));
+}
+
+#[test]
+fn status_snapshot_exposes_unavailability_reason_and_identity_state() {
+    let mut picker = PickerState::default();
+    let id = picker.begin_status(model("Qwen3-8B"));
+    let mut result = inspection(version("modelscope", "master"), VersionStatus::Developing);
+    result.unavailable_reason = Some(UnavailableReason {
+        code: "repository_unavailable".into(),
+        message: "模型仓库暂不可访问".into(),
+    });
+    result.identity_status = Some(IdentityStatus::Verified);
+    picker.finish_status(id, Ok(result));
+
+    assert!(!picker.downloadable);
+    assert_eq!(picker.identity_status, Some(IdentityStatus::Verified));
+    assert_eq!(
+        picker
+            .unavailable_reason
+            .as_ref()
+            .map(|reason| reason.code.as_str()),
+        Some("repository_unavailable")
+    );
+}
+
 #[test]
 fn stale_search_results_and_errors_are_ignored() {
     let mut state = PickerState {
