@@ -627,16 +627,44 @@ pub(crate) fn recorded_variant(
     source: ModelSource,
     model: &str,
     revision: &str,
+    preset: Option<&'static Preset>,
     record: &burncloud_download::CatalogDownload,
-) -> Option<Variant> {
-    let sha256 = normalize_sha256(record.checksum.strip_prefix("sha256:")?)?;
+) -> Result<Option<Variant>, DiscoveryError> {
+    if record.total_bytes == 0 || !is_gguf(&record.variant_id) {
+        return Ok(None);
+    }
+    let Some(sha256) = record
+        .checksum
+        .strip_prefix("sha256:")
+        .and_then(normalize_sha256)
+    else {
+        return Ok(None);
+    };
     let artifact = DiscoveredArtifact {
         path: record.variant_id.clone(),
         size: record.total_bytes,
         sha256,
     };
-    let variant = build_variant(source, model, revision, artifact).ok()?;
-    (variant.artifact_uri == record.artifact_uri).then_some(variant)
+    let variant = match build_variant(source, model, revision, artifact) {
+        Ok(variant) => variant,
+        // 历史下载记录来自外部仓库，身份或路径无效时只跳过该记录。
+        Err(DiscoveryError::Invalid(_)) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if variant.artifact_uri != record.artifact_uri {
+        return Ok(None);
+    }
+
+    let mut manifest = ModelManifest {
+        model_name: model.to_owned(),
+        description: "已验证的本地模型工件".into(),
+        supported_backends: vec![LLAMA_CPP.into()],
+        version: revision.to_owned(),
+        variants: vec![variant],
+    };
+    apply_builtin_resource_config(&mut manifest)?;
+    apply_preset_hardware_requirements(&mut manifest, preset)?;
+    Ok(manifest.variants.pop())
 }
 
 fn build_variant(

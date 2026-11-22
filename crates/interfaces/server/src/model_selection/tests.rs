@@ -36,13 +36,33 @@ async fn upstream(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     calls.lock().expect("请求记录锁").push(uri.to_string());
-    if uri.path().ends_with("/api/models/org/repo/tree/main") {
-        return Json(json!([{"type":"file", "path":"model.gguf", "size":3, "lfs":{"oid":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}}])).into_response();
+    let path = uri.path();
+    let is_modelscope_tree = path.contains("/api/v1/models/") && path.ends_with("/repo/files");
+    let is_huggingface_tree = path.contains("/api/models/") && path.contains("/tree/");
+    if is_modelscope_tree || is_huggingface_tree {
+        if path.contains("/missing/") {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        if path.contains("/denied/") {
+            return StatusCode::BAD_GATEWAY.into_response();
+        }
+        if path.contains("/empty/") {
+            return if is_modelscope_tree {
+                Json(json!({"Code":200,"Data":{"Files":[{"Path":"model.safetensors","Size":3,"Sha256":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","Type":"blob"}]}})).into_response()
+            } else {
+                Json(json!([{"type":"file","path":"model.safetensors","size":3,"lfs":{"oid":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}}])).into_response()
+            };
+        }
+        return if is_modelscope_tree {
+            Json(json!({"Code":200,"Data":{"Files":[{"Path":"model-Q4_K_M.gguf","Size":3,"Sha256":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","Type":"blob"}]}})).into_response()
+        } else {
+            Json(json!([{"type":"file","path":"model-Q4_K_M.gguf","size":3,"lfs":{"oid":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}}])).into_response()
+        };
     }
     if !params.contains_key("search") {
-        let status = if uri.path().contains("/missing/") {
+        let status = if path.contains("/missing/") {
             StatusCode::NOT_FOUND
-        } else if uri.path().contains("/denied/") {
+        } else if path.contains("/denied/") {
             StatusCode::FORBIDDEN
         } else {
             StatusCode::OK
@@ -50,8 +70,8 @@ async fn upstream(
         return status.into_response();
     }
     let query = params["search"].as_str();
-    let ms = uri.path().starts_with("/ms/");
-    let hf = uri.path().starts_with("/hf/");
+    let ms = path.starts_with("/ms/");
+    let hf = path.starts_with("/hf/");
     if query == "timeout" && !hf {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -99,7 +119,6 @@ impl Harness {
         let state = Arc::new(AppState {
             config: config(),
             client,
-            manifests: load_default_manifests().expect("默认模型清单"),
             database: None,
         });
         let task = tokio::spawn(async move {
@@ -306,52 +325,44 @@ async fn preset_names_and_pending_identities_are_serialized() {
     );
 }
 
-#[test]
-fn gguf_repository_aliases_keep_resource_variants() {
-    let manifests = default_manifests();
-    for (model, source, revision) in [
-        ("Qwen/Qwen3-8B-GGUF", Source::ModelScope, "master"),
-        (
-            "smalinin/DeepSeek-V4.1-Flash-GGUF",
-            Source::HuggingFace,
-            "main",
-        ),
-    ] {
-        let resource = ModelResource {
-            model: model.into(),
-            source,
-            revision: revision.into(),
-        };
-        let variants = variants_for_resource(&manifests, &resource);
-        assert_eq!(variants.len(), 1, "GGUF 仓库缺少资源配置：{model}");
-        assert!(variants[0].artifact_source.contains(model));
-    }
-}
-
 #[tokio::test]
-async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
+async fn status_uses_preset_binding_and_reports_live_artifacts() {
     let h = Harness::new().await;
-    let value = h
-        .json("/api/models/status?preset=qwen3-8b&model=evil/override&source=huggingface")
-        .await;
+    assert_eq!(
+        h.get("/api/models/status?preset=qwen3-8b&model=evil/override&source=huggingface")
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let value = h.json("/api/models/status?preset=qwen3-8b").await;
     assert_eq!(value["status"], "downloadable");
     assert_eq!(value["model"], "Qwen/Qwen3-8b");
     assert_eq!(value["source"], "modelscope");
+    assert_eq!(value["revision"], "master");
     assert!(value["resource_url"]
         .as_str()
         .expect("资源地址")
         .ends_with("/ms/models/Qwen/Qwen3-8b/files?Revision=master"));
+    assert_eq!(value["downloadable"], true);
+    assert!(value["unavailable_reason"].is_null());
+    assert_eq!(value["identity_status"], "verified");
     assert_eq!(value["artifact_status"], "not_downloaded");
     assert_eq!(value["downloaded"], false);
     assert!(value["local_path"].is_null());
     assert!(value["actual_sha256"].is_null());
+    assert_eq!(value["variants"].as_array().expect("工件列表").len(), 1);
     assert_eq!(value["variants"][0]["artifact_status"], "not_downloaded");
     assert_eq!(value["variants"][0]["downloaded"], false);
     assert!(value["variants"][0]["local_path"].is_null());
     assert!(value["variants"][0]["actual_sha256"].is_null());
-    assert_eq!(value["variants"][0]["id"], "qwen3-8b-q4");
-    assert_eq!(value["variants"][0]["quantization"], "Q4");
+    assert_eq!(value["variants"][0]["id"], "model-Q4_K_M.gguf");
+    assert_eq!(value["variants"][0]["quantization"], "Q4_K_M");
     assert_eq!(value["variants"][0]["runtime"], "llama.cpp");
+    assert_eq!(value["variants"][0]["file_size_bytes"], 3);
+    assert!(value["variants"][0]["artifact_source"]
+        .as_str()
+        .expect("直接工件地址")
+        .contains("/resolve/master/model-Q4_K_M.gguf"));
     assert_eq!(
         value["variants"][0]["ram_bytes"],
         16 * 1024 * 1024 * 1024u64
@@ -364,34 +375,198 @@ async fn status_uses_preset_binding_and_get_only_200_allows_handoff() {
         value["variants"][0]["disk_bytes"],
         6 * 1024 * 1024 * 1024u64
     );
-    for model in ["owner/missing", "owner/denied"] {
-        assert_eq!(
-            h.json(&format!(
+    for (model, reason) in [
+        ("owner/missing", "repository_not_found"),
+        ("owner/denied", "repository_unavailable"),
+    ] {
+        let value = h
+            .json(&format!(
                 "/api/models/status?model={model}&source=hf-mirror"
             ))
-            .await["status"],
-            "developing"
-        );
+            .await;
+        assert_eq!(value["status"], "developing");
+        assert_eq!(value["downloadable"], false);
+        assert_eq!(value["unavailable_reason"]["code"], reason);
+        assert_eq!(value["variants"].as_array().expect("空工件列表").len(), 0);
     }
     let calls = h.calls.lock().expect("请求锁");
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), 6);
+    assert!(calls.iter().any(|call| call.contains("/api/v1/models/")));
     assert!(calls.iter().all(|call| !call.contains("search=")));
 }
 
 #[tokio::test]
-async fn status_attaches_imported_variants_to_matching_presets() {
+async fn status_discovers_remote_files_independent_of_builtin_manifests() {
     let h = Harness::new().await;
-    for (id, has_variants) in [
-        ("qwen3-8b", true),
-        ("gpt-oss-20b", true),
-        ("gpt-oss-120b", true),
-        ("meta-llama-3.1-8b-instruct", false),
-        ("qwen3.5-9b", false),
+    for path in [
+        "/api/models/status?preset=qwen3-8b",
+        "/api/models/status?preset=gpt-oss-20b",
+        "/api/models/status?preset=meta-llama-3.1-8b-instruct",
+        "/api/models/status?model=owner/repo&source=huggingface",
     ] {
-        let value = h.json(&format!("/api/models/status?preset={id}")).await;
-        let variants = value["variants"].as_array().expect("Variant 列表");
-        assert_eq!(!variants.is_empty(), has_variants, "{id}");
+        let value = h.json(path).await;
+        assert_eq!(value["downloadable"], true, "{path}");
+        assert_eq!(value["variants"].as_array().expect("实时工件").len(), 1);
+        assert_eq!(value["variants"][0]["file_size_bytes"], 3);
+        if path.contains("model=owner/repo") {
+            assert_eq!(value["variants"][0]["ram_bytes"], 3);
+            assert_eq!(value["variants"][0]["disk_bytes"], 3);
+        }
     }
+}
+
+#[tokio::test]
+async fn pending_presets_are_not_discovered_or_exposed_as_candidates() {
+    let h = Harness::new().await;
+    let value = h
+        .json("/api/models/status?preset=nsfw_image_detection")
+        .await;
+
+    assert_eq!(value["identity_status"], "pending_validation");
+    assert_eq!(value["downloadable"], false);
+    assert_eq!(
+        value["unavailable_reason"]["code"],
+        "preset_identity_pending"
+    );
+    assert_eq!(value["variants"].as_array().expect("空工件列表").len(), 0);
+    assert!(h.calls.lock().expect("请求锁").is_empty());
+}
+
+#[tokio::test]
+async fn catalog_fallback_requires_exact_success_receipt_and_keeps_unavailable_reason() {
+    let h = Harness::new().await;
+    let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let resource = ModelResource {
+        model: "org/denied".into(),
+        source: Source::HuggingFace,
+        revision: "main".into(),
+    };
+    let good_uri = format!(
+        "https://huggingface.co/{}/resolve/{}/nested/model-Q4_K_M.gguf",
+        resource.model, resource.revision
+    );
+    let make_record = |variant_id: &str,
+                       artifact_uri: String,
+                       checksum: String,
+                       status: DownloadTaskStatus,
+                       local_path: Option<String>,
+                       actual_sha256: Option<String>,
+                       total_bytes: u64| CatalogDownload {
+        variant_id: variant_id.into(),
+        artifact_uri,
+        checksum,
+        total_bytes,
+        status,
+        local_path,
+        actual_sha256,
+    };
+    let records = vec![
+        make_record(
+            "nested/model-Q4_K_M.gguf",
+            good_uri.clone(),
+            format!("sha256:{hash}"),
+            DownloadTaskStatus::Succeeded,
+            Some("C:/models/model.gguf".into()),
+            Some(format!("sha256:{hash}")),
+            4096,
+        ),
+        make_record(
+            "nested/wrong-uri.gguf",
+            "https://huggingface.co/org/other/resolve/main/nested/wrong-uri.gguf".into(),
+            format!("sha256:{hash}"),
+            DownloadTaskStatus::Succeeded,
+            Some("C:/models/wrong-uri.gguf".into()),
+            Some(format!("sha256:{hash}")),
+            4096,
+        ),
+        make_record(
+            "nested/wrong-digest.gguf",
+            "https://huggingface.co/org/denied/resolve/main/nested/wrong-digest.gguf".into(),
+            format!("sha256:{hash}"),
+            DownloadTaskStatus::Succeeded,
+            Some("C:/models/wrong-digest.gguf".into()),
+            Some(format!("sha256:{}", "c".repeat(64))),
+            4096,
+        ),
+        make_record(
+            "nested/no-path.gguf",
+            "https://huggingface.co/org/denied/resolve/main/nested/no-path.gguf".into(),
+            format!("sha256:{hash}"),
+            DownloadTaskStatus::Succeeded,
+            None,
+            Some(format!("sha256:{hash}")),
+            4096,
+        ),
+        make_record(
+            "nested/failed.gguf",
+            "https://huggingface.co/org/denied/resolve/main/nested/failed.gguf".into(),
+            format!("sha256:{hash}"),
+            DownloadTaskStatus::Failed,
+            Some("C:/models/failed.gguf".into()),
+            Some(format!("sha256:{hash}")),
+            4096,
+        ),
+    ];
+    let result = catalog_variants(&h.state, &resource, &records, None)
+        .await
+        .expect("本地回退检查");
+
+    assert!(!result.downloadable);
+    assert_eq!(
+        result.unavailable_reason.as_ref().map(|reason| reason.code),
+        Some("repository_unavailable")
+    );
+    assert_eq!(result.variants.len(), 1);
+    assert_eq!(result.variants[0].artifact_source, good_uri);
+    assert_eq!(result.variants[0].file_size_bytes, 4096);
+    assert_eq!(
+        result.variants[0].artifact_status,
+        ArtifactStatus::Downloaded
+    );
+    assert!(result.variants[0].downloaded);
+    assert_eq!(
+        result.variants[0].local_path.as_deref(),
+        Some("C:/models/model.gguf")
+    );
+}
+
+#[tokio::test]
+async fn not_found_and_empty_remote_catalog_do_not_reuse_local_fallbacks() {
+    let h = Harness::new().await;
+    let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let record = CatalogDownload {
+        variant_id: "model-Q4_K_M.gguf".into(),
+        artifact_uri: "https://huggingface.co/org/missing/resolve/main/model-Q4_K_M.gguf".into(),
+        checksum: format!("sha256:{hash}"),
+        total_bytes: 3,
+        status: DownloadTaskStatus::Succeeded,
+        local_path: Some("C:/models/model.gguf".into()),
+        actual_sha256: Some(format!("sha256:{hash}")),
+    };
+    let missing = ModelResource {
+        model: "org/missing".into(),
+        source: Source::HuggingFace,
+        revision: "main".into(),
+    };
+    let not_found = catalog_variants(&h.state, &missing, &[record], None)
+        .await
+        .expect("NotFound 作为状态返回");
+    assert!(!not_found.downloadable);
+    assert!(not_found.variants.is_empty());
+    assert_eq!(
+        not_found
+            .unavailable_reason
+            .as_ref()
+            .map(|reason| reason.code),
+        Some("repository_not_found")
+    );
+
+    let empty = h
+        .json("/api/models/status?model=org/empty&source=huggingface")
+        .await;
+    assert!(!empty["downloadable"].as_bool().expect("布尔状态"));
+    assert_eq!(empty["unavailable_reason"]["code"], "no_gguf_artifact");
+    assert!(empty["variants"].as_array().expect("空工件列表").is_empty());
 }
 
 #[tokio::test]
@@ -414,6 +589,21 @@ async fn duplicate_repository_rows_keep_independent_preset_bindings() {
         assert_eq!(value["model"], preset["model"]);
         assert_eq!(value["source"], "hf-mirror");
         assert_eq!(value["revision"], "main");
+        assert_eq!(value["downloadable"], true);
+        assert_eq!(value["variants"].as_array().expect("实时工件").len(), 1);
+        let bound = presets::find(id)
+            .expect("目录有效")
+            .expect("重复仓库预置存在");
+        let expected_vram = bound
+            .hardware
+            .vram_min
+            .strip_suffix('G')
+            .and_then(|value| value.parse::<u64>().ok())
+            .expect("预置显存")
+            * 1024
+            * 1024
+            * 1024;
+        assert_eq!(value["variants"][0]["vram_bytes"], expected_vram);
         assert!(value["resource_url"]
             .as_str()
             .expect("地址")
@@ -430,6 +620,8 @@ async fn invalid_inputs_never_reach_upstream() {
         "/api/models/status",
         "/api/models/status?preset=unknown",
         "/api/models/status?preset=invalid%21id",
+        "/api/models/status?preset=qwen3-8b&model=owner/model&source=huggingface",
+        "/api/models/status?model=owner/model&source=huggingface&artifact_uri=https%3A%2F%2Fevil.invalid%2Fmodel.gguf",
         "/api/models/status?model=a/b&source=unknown",
         "/api/models/status?model=../x&source=modelscope",
         "/api/models/status?model=a/b/c&source=modelscope",
@@ -565,7 +757,7 @@ async fn catalog_survives_restart_and_matches_current_remote_artifact() {
     let db = burncloud_database::create_database_with_url(&url)
         .await
         .expect("建库");
-    db.execute_query_with_params("INSERT INTO sys_downloads (gid, uris, status, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256, final_path, total_length, completed_length) VALUES ('test', '[]', 'succeeded', 'org/repo', 'huggingface', 'main', 'model.gguf', 'https://huggingface.co/org/repo/resolve/main/model.gguf', ?, ?, ?, 3, 3)", vec![digest.into(), digest.into(), path.to_string_lossy().into_owned()]).await.expect("写入校验凭据");
+    db.execute_query_with_params("INSERT INTO sys_downloads (gid, uris, status, model, source, revision, variant_id, artifact_uri, checksum, actual_sha256, final_path, total_length, completed_length) VALUES ('test', '[]', 'succeeded', 'org/repo', 'huggingface', 'main', 'model-Q4_K_M.gguf', 'https://huggingface.co/org/repo/resolve/main/model-Q4_K_M.gguf', ?, ?, ?, 3, 3)", vec![digest.into(), digest.into(), path.to_string_lossy().into_owned()]).await.expect("写入校验凭据");
     drop(db);
     let db = Arc::new(
         burncloud_database::create_database_with_url(&url)
