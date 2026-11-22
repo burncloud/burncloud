@@ -441,20 +441,45 @@ impl CatalogServer {
                     if fail.swap(false, Ordering::SeqCst) {
                         (503, json!({"message":"失败"}))
                     } else {
-                        (
-                            200,
-                            json!([{"id":"test-1","name":"测试型号","preset":true,"model":"owner/Test-1","revision":"master","source":"modelscope",
-                                "resource_url":"https://www.modelscope.cn/models/owner/Test-1",
-                                "hardware":{"vram_min":"6.00G","ram_min":"12.00G","disk_min":"6.00G","vram_recommended":"8.00G","ram_recommended":"16.00G","disk_recommended":"8.00G"}}]),
-                        )
+                        let items = (0..388)
+                            .map(|index| {
+                                let id = if index == 0 {
+                                    "test-1".to_string()
+                                } else {
+                                    format!("test-1-row-{index}")
+                                };
+                                json!({"id":id,"name":"测试型号","preset":true,"identity_status":"verified",
+                                    "model":"owner/Test-1","revision":"master","source":"modelscope",
+                                    "resource_url":"https://www.modelscope.cn/models/owner/Test-1",
+                                    "hardware":{"vram_min":"6.00G","ram_min":"12.00G","disk_min":"6.00G","vram_recommended":"8.00G","ram_recommended":"16.00G","disk_recommended":"8.00G"}})
+                            })
+                            .collect::<Vec<_>>();
+                        (200, json!(items))
                     }
                 } else if request.contains("/api/models/status?") {
                     if fail_status {
                         (503, json!({"message":"状态失败"}))
                     } else {
+                        let downloadable = status == "downloadable";
+                        let variants = if downloadable {
+                            vec![
+                                json!({"id":"test-q4.gguf","quantization":"Q4_K_M","runtime":"llama.cpp",
+                                "artifact_source":"https://modelscope.cn/models/owner/Test-1/resolve/master/test-q4.gguf",
+                                "expected_sha256":format!("sha256:{}", "a".repeat(64)),"file_size_bytes":1024,
+                                "ram_bytes":2048,"vram_bytes":0,"disk_bytes":1024,
+                                "artifact_status":"not_downloaded","downloaded":false,"local_path":null,"actual_sha256":null}),
+                            ]
+                        } else {
+                            Vec::new()
+                        };
                         (
                             200,
-                            json!({"status":status,"model":"owner/Test-1","revision":"master","source":"modelscope","resource_url":"https://modelscope.cn/models/owner/Test-1/files?Revision=master"}),
+                            json!({"status":status,"model":"owner/Test-1","revision":"master","source":"modelscope",
+                                "resource_url":"https://modelscope.cn/models/owner/Test-1/files?Revision=master",
+                                "downloadable":downloadable,
+                                "unavailable_reason":if downloadable {None} else {Some(json!({"code":"no_gguf_artifact","message":"无可下载工件"}))},
+                                "identity_status":"verified","artifact_status":"not_downloaded","downloaded":false,
+                                "local_path":null,"actual_sha256":null,"variants":variants}),
                         )
                     }
                 } else {
@@ -701,7 +726,20 @@ impl PendingCatalog {
                         if count == 0 || request.windows(4).any(|bytes| bytes == b"\r\n\r\n") { break; }
                     }
                     if String::from_utf8_lossy(&request).contains("/api/models/presets") {
-                        let body = json!([{"id":"test-1","name":"测试型号","preset":true,"model":"owner/Test-1","source":"modelscope","revision":"master"}]).to_string();
+                        let items = (0..388)
+                            .map(|index| {
+                                let id = if index == 0 {
+                                    "test-1".to_string()
+                                } else {
+                                    format!("test-1-row-{index}")
+                                };
+                                json!({"id":id,"name":"测试型号","preset":true,"identity_status":"verified",
+                                    "model":"owner/Test-1","source":"modelscope","revision":"master",
+                                    "hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G",
+                                        "vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}})
+                            })
+                            .collect::<Vec<_>>();
+                        let body = json!(items).to_string();
                         stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("返回预置");
                     } else {
                         stream.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n").await.expect("悬挂响应头");
@@ -797,6 +835,7 @@ impl ChatBackend for DeploymentBackend {
                     ram_bytes: GIB,
                     vram_bytes: 0,
                     disk_bytes: GIB,
+                    file_size_bytes: None,
                 }],
                 reason: None,
             })

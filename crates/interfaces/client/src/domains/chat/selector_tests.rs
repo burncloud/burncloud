@@ -1,6 +1,6 @@
 //! 目录浏览竞态与聊天流程边界的独立回归测试。
 use super::super::{
-    catalog::CatalogSelection,
+    catalog::{CatalogSelection, UnavailableReason},
     model::{ErrorKind, Hardware, PreparationStage},
 };
 use super::*;
@@ -21,6 +21,12 @@ fn inspection(version: CatalogVersion, status: VersionStatus) -> CatalogInspecti
     CatalogInspection {
         version,
         remote_status: status,
+        downloadable: false,
+        unavailable_reason: Some(UnavailableReason {
+            code: "no_gguf_artifact".into(),
+            message: "没有可下载工件".into(),
+        }),
+        identity_status: None,
         artifact_status: ArtifactStatus::NotDownloaded,
         downloaded: false,
         local_path: None,
@@ -44,6 +50,7 @@ fn model(name: &str) -> CatalogModel {
         revision: "master".into(),
         resource_url: None,
         hardware: None,
+        identity_status: None,
     }
 }
 fn page(names: &[&str], done: bool) -> CatalogPage<CatalogModel> {
@@ -294,6 +301,7 @@ fn catalog_variants_download_verify_then_enter_artifact_ready() {
         ram_bytes: 1,
         vram_bytes: 1,
         disk_bytes: 10,
+        file_size_bytes: None,
     };
     let mut chat = ChatState::default();
     chat.set_draft("问题".into());

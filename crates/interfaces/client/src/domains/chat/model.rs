@@ -35,6 +35,15 @@ pub(super) struct ModelVariant {
     pub(super) ram_bytes: u64,
     pub(super) vram_bytes: u64,
     pub(super) disk_bytes: u64,
+    /// 状态接口提供的原始工件大小；解析候选不重复推断该值。
+    ///
+    /// # Examples
+    /// 状态响应中的 `1024` 字节工件保存为 `Some(1024)`。
+    ///
+    /// # Notes
+    /// 解析响应不单独提供原始工件大小，因此保留为 `None`。
+    #[serde(default)]
+    pub(super) file_size_bytes: Option<u64>,
 }
 impl ModelVariant {
     /// RAM 和磁盘未知时不视为充足；显存只比较单卡最大可用量。

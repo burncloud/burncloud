@@ -158,6 +158,7 @@ fn local_model(id: &str, description: &str, date: &str) -> ChatModel {
                 ram_bytes: ram * GIB,
                 vram_bytes: vram * GIB,
                 disk_bytes: disk * GIB,
+                file_size_bytes: None,
             })
             .collect(),
     }

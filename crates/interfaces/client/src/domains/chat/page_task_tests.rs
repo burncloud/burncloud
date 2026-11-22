@@ -121,6 +121,7 @@ fn downloading() -> (ChatState, u64, CatalogSelection, ModelVariant, Hardware) {
         ram_bytes: GIB,
         vram_bytes: 0,
         disk_bytes: GIB,
+        file_size_bytes: None,
     };
     let hardware = Hardware {
         platform: Some(Platform::Windows),
