@@ -160,11 +160,14 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
     assert_eq!(names.len(), 388);
     assert_eq!(
         &names[..3],
-        ["llama3.1-8B", "llama3.1-70B", "llama3.1-405B"]
+        [
+            "llama3.1-8B",
+            "llama3.1-70B",
+            "Meta-Llama-3.1-405b-Instruct"
+        ]
     );
     assert_eq!(names[22], "qwen3-8B");
-    assert_eq!(names.last(), Some(&"nimble-v3-9B"));
-    assert_eq!(names.iter().filter(|name| **name == "llama2-7B").count(), 3);
+    assert_eq!(names.last(), Some(&"Bespoke-Nimble-9B-v3-GGUF"));
     let items = presets.as_array().expect("列表");
     let mut ids: Vec<_> = items
         .iter()
@@ -235,7 +238,9 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
                     decimals.is_some_and(|decimals| decimals.len() == 2)
                 }));
         }
-        let bound = presets::find(item["id"].as_str().expect("标识")).expect("绑定");
+        let bound = presets::find(item["id"].as_str().expect("标识"))
+            .expect("有效目录")
+            .expect("绑定");
         assert_eq!(bound.resource.model, model);
     }
     assert!(h.calls.lock().expect("请求锁").is_empty());
@@ -254,6 +259,51 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
     .await
     .expect("路由");
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn preset_names_and_pending_identities_are_serialized() {
+    let h = Harness::new().await;
+    let items = h
+        .json("/api/models/presets")
+        .await
+        .as_array()
+        .expect("预置列表")
+        .clone();
+    let find = |id: &str| {
+        items
+            .iter()
+            .find(|item| item["id"] == id)
+            .unwrap_or_else(|| panic!("缺少预置 ID：{id}"))
+    };
+
+    let command_r = find("c4ai-command-r7b-12-2024");
+    assert_eq!(command_r["name"], "command-r-7B");
+    assert_eq!(command_r["model"], "CohereForAI/c4ai-command-r7b-12-2024");
+    assert_eq!(find("mistral-7b-openorca")["name"], "Mistral-7B-OpenOrca");
+    assert_eq!(
+        find("olmo-3.1-32b-instruct")["name"],
+        "Olmo-3.1-32B-Instruct"
+    );
+    assert_eq!(find("qwen3-vl-2b-instruct")["name"], "Qwen3-VL-2b-Instruct");
+
+    for id in [
+        "nsfw_image_detection",
+        "nsfw_image_detection-row-202",
+        "nsfw_image_detection-row-203",
+        "tiny-random-aya-base",
+        "tiny-random-aya-base-row-220",
+    ] {
+        assert_eq!(find(id)["identity_status"], "pending_validation");
+    }
+    assert_eq!(
+        presets::all()
+            .expect("有效目录")
+            .iter()
+            .filter(|preset| preset.identity_status == presets::IdentityStatus::PendingValidation)
+            .count(),
+        5
+    );
 }
 
 #[test]
@@ -356,8 +406,8 @@ async fn duplicate_repository_rows_keep_independent_preset_bindings() {
         .collect();
     assert_eq!(duplicates.len(), 2);
     assert_ne!(duplicates[0]["id"], duplicates[1]["id"]);
-    assert_eq!(duplicates[0]["name"], "flint-9B");
-    assert_eq!(duplicates[1]["name"], "nimble-v3-9B");
+    assert_eq!(duplicates[0]["name"], "Bespoke-Nimble-9B-v3-GGUF");
+    assert_eq!(duplicates[1]["name"], "Bespoke-Nimble-9B-v3-GGUF");
     for preset in duplicates {
         let id = preset["id"].as_str().expect("标识");
         let value = h.json(&format!("/api/models/status?preset={id}")).await;
@@ -379,6 +429,7 @@ async fn invalid_inputs_never_reach_upstream() {
         "/api/models/search?q=%20",
         "/api/models/status",
         "/api/models/status?preset=unknown",
+        "/api/models/status?preset=invalid%21id",
         "/api/models/status?model=a/b&source=unknown",
         "/api/models/status?model=../x&source=modelscope",
         "/api/models/status?model=a/b/c&source=modelscope",

@@ -1,7 +1,8 @@
 //! 保留导入表格的名称、顺序、链接和最低及推荐硬件配置。
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize, Serializer};
-use std::sync::OnceLock;
+use std::{collections::HashSet, sync::OnceLock};
 
 use super::sources::ModelResource;
 
@@ -184,7 +185,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"granite-4.1-3b","name":"yi-3B","preset":true,"model":"ibm-granite/granite-4.1-3B","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/ibm-granite/granite-4.1-3B","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"command-r-01-ultra-neo-dark-horror-v1-v2-35b-imatrix-gguf","name":"command-r-35B","preset":true,"model":"DavidAU/Command-R-01-Ultra-NEO-DARK-HORROR-V1-V2-35B-IMATRIX-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/DavidAU/Command-R-01-Ultra-NEO-DARK-HORROR-V1-V2-35B-IMATRIX-GGUF","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"64G","disk_recommended":"32G"}},
   {"id":"phigrange-2.7b-slerp-i1-gguf","name":"command-r-2.7B","preset":true,"model":"mradermacher/PhigRange-2.7B-slerp-i1-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mradermacher/PhigRange-2.7B-slerp-i1-GGUF","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
-  {"id":"mistral-7b-openorca","name":"command-r-7B","preset":true,"model":"Open-Orca/Mistral-7B-OpenOrca","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/Open-Orca/Mistral-7B-OpenOrca","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
+  {"id":"mistral-7b-openorca","name":"Mistral-7B-OpenOrca","preset":true,"model":"Open-Orca/Mistral-7B-OpenOrca","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/Open-Orca/Mistral-7B-OpenOrca","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"anita-next-24b-magistral-2506-vision-ita-i1-gguf","name":"magistral-24B","preset":true,"model":"mradermacher/ANITA-NEXT-24B-Magistral-2506-VISION-ITA-i1-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mradermacher/ANITA-NEXT-24B-Magistral-2506-VISION-ITA-i1-GGUF","hardware":{"vram_min":"16G","ram_min":"32G","disk_min":"16G","vram_recommended":"24G","ram_recommended":"48G","disk_recommended":"24G"}},
   {"id":"codeninja-1.0-openchat-7b","name":"magistral-7B","preset":true,"model":"beowolx/CodeNinja-1.0-OpenChat-7B","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/beowolx/CodeNinja-1.0-OpenChat-7B","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"codestral-22b-v0.1-gguf","name":"magistral-22B","preset":true,"model":"bartowski/Codestral-22B-v0.1-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/bartowski/Codestral-22B-v0.1-GGUF","hardware":{"vram_min":"16G","ram_min":"24G","disk_min":"16G","vram_recommended":"24G","ram_recommended":"32G","disk_recommended":"24G"}},
@@ -326,7 +327,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"medgemma-4b-it","name":"medgemma-4B","preset":true,"model":"google/medgemma-4b-it","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/google/medgemma-4b-it","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"medgemma-27b-it","name":"medgemma-27B","preset":true,"model":"google/medgemma-27b-it","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/google/medgemma-27b-it","hardware":{"vram_min":"24G","ram_min":"32G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
   {"id":"olmo-3-7b-instruct","name":"olmo-3-7B","preset":true,"model":"allenai/Olmo-3-7B-Instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/allenai/Olmo-3-7B-Instruct","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
-  {"id":"olmo-3.1-32b-instruct","name":"olmo-3-32B","preset":true,"model":"allenai/Olmo-3.1-32B-Instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/allenai/Olmo-3.1-32B-Instruct","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
+  {"id":"olmo-3.1-32b-instruct","name":"olmo-3.1-32B","preset":true,"model":"allenai/Olmo-3.1-32B-Instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/allenai/Olmo-3.1-32B-Instruct","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
   {"id":"granite-3.2-2b-instruct","name":"granite3.2-2B","preset":true,"model":"ibm-granite/granite-3.2-2b-instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/ibm-granite/granite-3.2-2b-instruct","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"granite-3.2-8b-instruct","name":"granite3.2-8B","preset":true,"model":"ibm-granite/granite-3.2-8b-instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/ibm-granite/granite-3.2-8b-instruct","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"sailor2-1b-chat","name":"sailor2-1B","preset":true,"model":"sail/Sailor2-1B-Chat","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/sail/Sailor2-1B-Chat","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
@@ -344,7 +345,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"lfm2.5-24b-a2b-turbo-brilliance-50x-neo-max-imatrix-gguf-row-336","name":"devstral-2-24B","preset":true,"model":"DavidAU/LFM2.5-24b-A2B-Turbo-Brilliance-50X-NEO-MAX-Imatrix-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/DavidAU/LFM2.5-24b-A2B-Turbo-Brilliance-50X-NEO-MAX-Imatrix-GGUF","hardware":{"vram_min":"16G","ram_min":"32G","disk_min":"16G","vram_recommended":"24G","ram_recommended":"48G","disk_recommended":"24G"}},
   {"id":"granite-guardian-3.1-8b","name":"devstral-2-2B","preset":true,"model":"ibm-granite/granite-guardian-3.1-8b","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/ibm-granite/granite-guardian-3.1-8b","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"granite-guardian-3.1-8b-row-338","name":"devstral-2-8B","preset":true,"model":"ibm-granite/granite-guardian-3.1-8b","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/ibm-granite/granite-guardian-3.1-8b","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
-  {"id":"c4ai-command-r7b-12-2024","name":"devstral-2-7B","preset":true,"model":"CohereForAI/c4ai-command-r7b-12-2024","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/CohereForAI/c4ai-command-r7b-12-2024","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
+  {"id":"c4ai-command-r7b-12-2024","name":"command-r-7B","preset":true,"model":"CohereForAI/c4ai-command-r7b-12-2024","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/CohereForAI/c4ai-command-r7b-12-2024","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"alfred-40b-1023-gguf","name":"devstral-2-40B","preset":true,"model":"TheBloke/alfred-40B-1023-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/TheBloke/alfred-40B-1023-GGUF","hardware":{"vram_min":"32G","ram_min":"48G","disk_min":"32G","vram_recommended":"48G","ram_recommended":"64G","disk_recommended":"48G"}},
   {"id":"phi-4-mini-reasoning","name":"phi4-mini-reasoning-3.8B","preset":true,"model":"microsoft/Phi-4-mini-reasoning","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/microsoft/Phi-4-mini-reasoning","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"olmo-3.1-32b-instruct-row-342","name":"olmo-3.1-32B","preset":true,"model":"allenai/Olmo-3.1-32B-Instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/allenai/Olmo-3.1-32B-Instruct","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
@@ -399,20 +400,33 @@ const PRESETS_JSON: &str = r##"
 
 "##;
 
+/// 保存预置模型的最低及推荐硬件容量。
+///
+/// # Examples
+/// `vram_min` 中的 `6G` 表示 6 GiB，推荐值仅用于展示。
+///
+/// # Notes
+/// 解析时只以最低容量参与兼容性判定。
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct HardwareRequirements {
+pub(crate) struct HardwareRequirements {
+    /// 预置最低显存容量，单位为 GiB。
     #[serde(serialize_with = "serialize_capacity")]
-    vram_min: String,
+    pub(crate) vram_min: String,
+    /// 预置最低物理内存容量，单位为 GiB。
     #[serde(serialize_with = "serialize_capacity")]
-    ram_min: String,
+    pub(crate) ram_min: String,
+    /// 预置最低磁盘容量，单位为 GiB。
     #[serde(serialize_with = "serialize_capacity")]
-    disk_min: String,
+    pub(crate) disk_min: String,
+    /// 仅用于展示的推荐显存容量，单位为 GiB。
     #[serde(serialize_with = "serialize_capacity")]
-    vram_recommended: String,
+    pub(crate) vram_recommended: String,
+    /// 仅用于展示的推荐物理内存容量，单位为 GiB。
     #[serde(serialize_with = "serialize_capacity")]
-    ram_recommended: String,
+    pub(crate) ram_recommended: String,
+    /// 仅用于展示的推荐磁盘容量，单位为 GiB。
     #[serde(serialize_with = "serialize_capacity")]
-    disk_recommended: String,
+    pub(crate) disk_recommended: String,
 }
 
 fn serialize_capacity<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
@@ -428,39 +442,223 @@ where
     serializer.serialize_str(&formatted)
 }
 
+/// 描述预置项身份是否已完成语义校验。
+///
+/// # Examples
+/// 经确认的仓库使用 `Verified`；无法确认的条目使用 `PendingValidation`。
+///
+/// # Notes
+/// 待校验条目可以展示，但不得形成可下载候选。
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum IdentityStatus {
+    /// 仓库身份和目录标签已确认。
+    #[default]
+    Verified,
+    /// 仓库内容或目录语义仍待人工核实，不得下载。
+    PendingValidation,
+}
+
+/// 服务端内嵌的模型目录项。
+///
+/// # Examples
+/// 目录项以唯一 `id` 关联仓库身份和六项硬件配置。
+///
+/// # Notes
+/// 多个目录项可以绑定同一仓库，但不能共享目录 ID。
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub(super) struct Preset {
+pub(crate) struct Preset {
     id: String,
     name: String,
     preset: bool,
     resource_url: String,
-    hardware: HardwareRequirements,
+    /// 尚未核实身份的目录项只供查看。
+    #[serde(default)]
+    pub(crate) identity_status: IdentityStatus,
+    /// 解析模块用于合并 Node 硬件门槛。
+    pub(crate) hardware: HardwareRequirements,
     #[serde(flatten)]
-    pub(super) resource: ModelResource,
+    pub(crate) resource: ModelResource,
 }
 
-/// 返回按原顺序排列的预置资源。
+const EXPECTED_PRESET_COUNT: usize = 388;
+
+// 这些条目的原始展示标签与仓库内容明显冲突，先保留目录身份供查看，但禁止用于下载。
+const PENDING_VALIDATION_IDS: &[&str] = &[
+    "nsfw_image_detection",
+    "nsfw_image_detection-row-202",
+    "nsfw_image_detection-row-203",
+    "tiny-random-aya-base",
+    "tiny-random-aya-base-row-220",
+];
+
+const FEATURED_NAMES: &[(&str, &str)] = &[
+    ("qwen3-8b", "qwen3-8B"),
+    ("deepseek-r1-distill-qwen-7b", "deepseek-r1-7B"),
+    ("meta-llama-3.1-8b-instruct", "llama3.1-8B"),
+    ("gemma-3-4b-it", "gemma3-4B"),
+    ("mistral-7b-instruct-v0.2", "mistral-7B"),
+    ("gpt-oss-20b", "gpt-oss-20B"),
+    ("phi-4-mini-reasoning", "phi4-mini-reasoning-3.8B"),
+    ("granite-3.3-8b-instruct", "granite3.3-8B"),
+    ("c4ai-command-r7b-12-2024", "command-r-7B"),
+    ("qwen3-30b", "qwen3-30B"),
+    ("deepseek-r1-distill-qwen-32b", "deepseek-r1-32B"),
+    ("meta-llama-3.1-70b-instruct", "llama3.1-70B"),
+    ("gemma-3-27b-it", "gemma3-27B"),
+    ("gpt-oss-120b", "gpt-oss-120B"),
+    ("c4ai-command-r-plus", "command-r-plus-104B"),
+    (
+        "nvidia-nemotron-3-super-120b-a12b-bf16",
+        "nemotron-3-super-120B",
+    ),
+    ("olmo-3.1-32b-instruct-row-342", "olmo-3.1-32B"),
+    ("granite-4.2-30b-gguf", "granite4.2-30B"),
+];
+
+/// 返回经过完整性校验的预置目录。
 ///
 /// # Examples
-/// 第一项为 `llama3.1-8B`，包含原表链接和六项硬件要求。
+/// `qwen3-8b` 会以 `qwen3-8B` 显示，并保留其 ModelScope 仓库身份。
 ///
 /// # Notes
-/// 内嵌数据只解析一次；格式错误属于构建数据错误，不回退到旧目录。
-pub(super) fn all() -> &'static [Preset] {
-    static PRESETS: OnceLock<Vec<Preset>> = OnceLock::new();
-    PRESETS.get_or_init(|| {
-        serde_json::from_str(PRESETS_JSON)
-            .unwrap_or_else(|error| panic!("内嵌模型配置表格式错误：{error}"))
-    })
+/// 内嵌目录解析或验证失败会返回错误，由 HTTP 层映射为目录不可用响应。
+pub(super) fn all() -> Result<&'static [Preset], String> {
+    static PRESETS: OnceLock<Result<Vec<Preset>, String>> = OnceLock::new();
+    match PRESETS.get_or_init(|| {
+        let mut presets: Vec<Preset> = serde_json::from_str(PRESETS_JSON)
+            .map_err(|error| format!("内嵌模型配置表格式错误：{error}"))?;
+        validate_catalog(&mut presets)?;
+        Ok(presets)
+    }) {
+        Ok(presets) => Ok(presets.as_slice()),
+        Err(error) => Err(error.clone()),
+    }
 }
 
-/// 按预置标识返回绑定资源。
+/// 按稳定预置标识返回对应目录项。
 ///
 /// # Examples
-/// `qwen3-8b` 对应原表链接中的 `Qwen/Qwen3-8b`。
+/// `find("qwen3-8b")` 返回绑定到 Qwen3 仓库的预置项。
 ///
 /// # Notes
-/// 未知标识返回 `None`，不会触发搜索。
-pub(super) fn find(id: &str) -> Option<Preset> {
-    all().iter().find(|preset| preset.id == id).cloned()
+/// 未匹配的标识返回 `None`；目录本身无效时返回目录错误。
+pub(crate) fn find(id: &str) -> Result<Option<&'static Preset>, String> {
+    Ok(all()?.iter().find(|preset| preset.id == id))
+}
+
+fn validate_catalog(presets: &mut [Preset]) -> Result<(), String> {
+    if presets.len() != EXPECTED_PRESET_COUNT {
+        return Err(format!(
+            "预置目录数量不正确：期望 {EXPECTED_PRESET_COUNT}，实际 {}",
+            presets.len()
+        ));
+    }
+
+    let mut ids = HashSet::with_capacity(presets.len());
+    for preset in presets.iter_mut() {
+        if !preset.preset || preset.id.is_empty() || !is_valid_segment(&preset.id) {
+            return Err(format!("预置目录标识或类型无效：{}", preset.id));
+        }
+        if !ids.insert(preset.id.clone()) {
+            return Err(format!("预置目录标识重复：{}", preset.id));
+        }
+        validate_identity(preset)?;
+        validate_hardware(&preset.id, &preset.hardware)?;
+
+        preset.name = FEATURED_NAMES
+            .iter()
+            .find_map(|(id, name)| (*id == preset.id).then_some(*name))
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                preset
+                    .resource
+                    .model
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&preset.resource.model)
+                    .to_owned()
+            });
+        if PENDING_VALIDATION_IDS.contains(&preset.id.as_str()) {
+            preset.identity_status = IdentityStatus::PendingValidation;
+        }
+    }
+
+    for (id, _) in FEATURED_NAMES {
+        if !ids.contains(*id) {
+            return Err(format!("精选预置 ID 不存在：{id}"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_identity(preset: &Preset) -> Result<(), String> {
+    let Some((owner, name)) = preset.resource.model.split_once('/') else {
+        return Err(format!("仓库身份格式无效：{}", preset.id));
+    };
+    if !is_valid_segment(owner)
+        || !is_valid_segment(name)
+        || name.contains('/')
+        || preset.resource.revision != preset.resource.source.default_revision()
+    {
+        return Err(format!("仓库身份或修订号无效：{}", preset.id));
+    }
+
+    let url =
+        Url::parse(&preset.resource_url).map_err(|_| format!("资源页地址无效：{}", preset.id))?;
+    let expected_host = match preset.resource.source {
+        super::sources::Source::ModelScope => {
+            matches!(url.host_str(), Some("modelscope.cn" | "www.modelscope.cn"))
+        }
+        super::sources::Source::HfMirror => url.host_str() == Some("hf-mirror.com"),
+        super::sources::Source::HuggingFace => url.host_str() == Some("huggingface.co"),
+    };
+    let expected_path = match preset.resource.source {
+        super::sources::Source::ModelScope => format!("/models/{}", preset.resource.model),
+        _ => format!("/{}", preset.resource.model),
+    };
+    if url.scheme() != "https"
+        || !expected_host
+        || url.path() != expected_path
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(format!("资源页与仓库来源或身份不匹配：{}", preset.id));
+    }
+    Ok(())
+}
+
+fn validate_hardware(id: &str, hardware: &HardwareRequirements) -> Result<(), String> {
+    for (minimum, recommended) in [
+        (&hardware.vram_min, &hardware.vram_recommended),
+        (&hardware.ram_min, &hardware.ram_recommended),
+        (&hardware.disk_min, &hardware.disk_recommended),
+    ] {
+        let minimum = capacity_gib(minimum);
+        let recommended = capacity_gib(recommended);
+        if minimum.is_none()
+            || recommended.is_none()
+            || minimum.zip(recommended).is_some_and(|(min, rec)| rec < min)
+        {
+            return Err(format!("预置硬件配置无效：{id}"));
+        }
+    }
+    Ok(())
+}
+
+fn capacity_gib(value: &str) -> Option<f64> {
+    value
+        .strip_suffix('G')
+        .and_then(|number| number.parse::<f64>().ok())
+        .filter(|number| number.is_finite() && *number > 0.0)
+}
+
+fn is_valid_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value != "."
+        && value != ".."
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
 }

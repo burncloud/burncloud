@@ -92,8 +92,21 @@ fn bad_request(message: &str) -> Response {
     (StatusCode::BAD_REQUEST, Json(json!({ "message": message }))).into_response()
 }
 
-async fn list_presets() -> impl IntoResponse {
-    Json(presets::all())
+async fn list_presets() -> Response {
+    match presets::all() {
+        Ok(items) => Json(items).into_response(),
+        Err(error) => {
+            tracing::error!(%error, "预置模型目录校验失败");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "code": "preset_catalog_invalid",
+                    "message": "预置模型目录无效"
+                })),
+            )
+                .into_response()
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -419,10 +432,24 @@ fn artifact_rank(status: ArtifactStatus) -> u8 {
 )]
 async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQuery>) -> Response {
     let resource = match (query.preset, query.model, query.source) {
-        (Some(id), _, _) => match presets::find(&id) {
-            Some(preset) => preset.resource,
-            None => return bad_request("未知的预置模型"),
-        },
+        (Some(id), _, _) => {
+            let preset = match presets::find(&id) {
+                Ok(Some(preset)) => preset,
+                Ok(None) => return bad_request("未知的预置模型"),
+                Err(error) => {
+                    tracing::error!(%error, "预置模型目录校验失败");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({
+                            "code": "preset_catalog_invalid",
+                            "message": "预置模型目录无效"
+                        })),
+                    )
+                        .into_response();
+                }
+            };
+            preset.resource.clone()
+        }
         (None, Some(model), Some(source)) => ModelResource {
             model,
             source,
