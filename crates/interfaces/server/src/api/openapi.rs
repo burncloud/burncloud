@@ -435,6 +435,147 @@ fn generate_paths() -> serde_json::Value {
                 }
             }
         },
+        "/api/models/presets": {
+            "get": {
+                "tags": ["Models"],
+                "summary": "List all preset models",
+                "description": "Returns the complete 388-item preset catalog. The server does not trim the catalog to the 18 frontend featured entries. resource_url is a repository page for browsing only; downloadable artifacts are returned as direct file URLs by the status endpoint.",
+                "operationId": "listModelPresets",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Exactly 388 preset model identities",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "minItems": 388,
+                                    "maxItems": 388,
+                                    "items": {"$ref": "#/components/schemas/CatalogPreset"}
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "The embedded preset catalog is invalid",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CatalogApiErrorResponse"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/models/search": {
+            "get": {
+                "tags": ["Models"],
+                "summary": "Search external model repositories",
+                "description": "Searches ModelScope, the Hugging Face mirror, and Hugging Face. The response is newline-delimited JSON: each line is a cumulative snapshot, followed by a final line whose type is models, unavailable, or failed.",
+                "operationId": "searchModels",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": true,
+                        "description": "Non-empty search query.",
+                        "schema": {"type": "string", "minLength": 1}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cumulative NDJSON snapshots; each line conforms to CatalogSearchLine",
+                        "content": {
+                            "application/x-ndjson": {
+                                "schema": {"type": "string", "description": "One CatalogSearchLine JSON object per line."}
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The query is empty after trimming",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/MessageErrorResponse"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/models/status": {
+            "get": {
+                "tags": ["Models"],
+                "summary": "Inspect model artifact availability",
+                "description": "Accepts exactly one query form: preset=<preset ID>, or model=<owner/name>&source=<source>[&revision=<revision>]. Re-discovers valid GGUF artifacts and merges only exact-identity verified local receipts. downloadable describes a valid remote direct-file artifact, not hardware compatibility; resource_url is only a repository page.",
+                "operationId": "getModelStatus",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "preset",
+                        "in": "query",
+                        "required": false,
+                        "description": "Stable preset ID; mutually exclusive with model, source, and revision.",
+                        "schema": {"type": "string", "example": "qwen3-8b"}
+                    },
+                    {
+                        "name": "model",
+                        "in": "query",
+                        "required": false,
+                        "description": "External repository identity in owner/name form; must be paired with source.",
+                        "schema": {"type": "string", "example": "Qwen/Qwen3-8B-GGUF"}
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "description": "Repository source; must be paired with model.",
+                        "schema": {"type": "string", "enum": ["modelscope", "hf-mirror", "huggingface"]}
+                    },
+                    {
+                        "name": "revision",
+                        "in": "query",
+                        "required": false,
+                        "description": "Repository revision for external model queries. If omitted, ModelScope uses master and the other sources use main.",
+                        "schema": {"type": "string", "example": "master"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Remote availability, verified GGUF variants, and matching local artifact receipts",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CatalogInspection"}
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The query form is incomplete, conflicting, or invalid",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/MessageErrorResponse"}
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "The embedded preset catalog is invalid",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CatalogApiErrorResponse"}
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The local artifact catalog could not be read",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CatalogApiErrorResponse"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/node/hardware": {
             "get": {
                 "tags": ["Node"],
@@ -492,7 +633,7 @@ fn generate_paths() -> serde_json::Value {
             "post": {
                 "tags": ["Node"],
                 "summary": "Resolve model variants against the server hardware",
-                "description": "Discover GGUF artifacts for the selected external repository model, probe the current Node host and return every compatible model variant. The client must provide the selected model, source and revision.",
+                "description": "Discover and validate GGUF artifacts, probe the current Node host and return compatible variants. When preset_id is supplied, it must be bound to the exact model, source and revision and its preset hardware minimums are applied. Omitting preset_id preserves the legacy request path for external search results. Repository-page URLs are not download candidates; candidates contain a direct file URL and verified SHA-256. Hardware limits always use this request’s Node probe, never client-supplied values.",
                 "operationId": "resolveNodeModel",
                 "security": [],
                 "requestBody": {
@@ -534,6 +675,20 @@ fn generate_paths() -> serde_json::Value {
                     },
                     "404": {
                         "description": "The selected external model repository or revision was not found",
+                        "headers": {
+                            "Cache-Control": {
+                                "description": "The response is not cacheable.",
+                                "schema": {"type": "string", "example": "no-store"}
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/ModelResolutionErrorResponse"}
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "The upstream repository is unavailable and no exact verified local artifact can be reused",
                         "headers": {
                             "Cache-Control": {
                                 "description": "The response is not cacheable.",
@@ -696,6 +851,117 @@ fn generate_schemas() -> serde_json::Value {
                 "message": {"type": "string"}
             }
         },
+        "CatalogPreset": {
+            "type": "object",
+            "required": ["id", "name", "preset", "resource_url", "identity_status", "hardware", "model", "source", "revision"],
+            "description": "One stable row from the complete preset directory. resource_url is for browsing only and is never a download URL.",
+            "properties": {
+                "id": {"type": "string", "example": "qwen3-8b"},
+                "name": {"type": "string", "example": "qwen3-8B"},
+                "preset": {"type": "boolean", "enum": [true]},
+                "model": {"type": "string", "example": "Qwen/Qwen3-8B-GGUF"},
+                "source": {"type": "string", "enum": ["modelscope", "hf-mirror", "huggingface"]},
+                "revision": {"type": "string", "example": "master"},
+                "resource_url": {"type": "string", "format": "uri", "description": "Repository page for browsing only; do not pass it to a downloader."},
+                "identity_status": {"type": "string", "enum": ["verified", "pending_validation"]},
+                "hardware": {"$ref": "#/components/schemas/PresetHardwareRequirements"}
+            }
+        },
+        "PresetHardwareRequirements": {
+            "type": "object",
+            "required": ["vram_min", "ram_min", "disk_min", "vram_recommended", "ram_recommended", "disk_recommended"],
+            "description": "Capacity strings use GiB (1024^3 bytes); recommended values are display-only and do not gate downloads.",
+            "properties": {
+                "vram_min": {"type": "string", "example": "6.00G"},
+                "ram_min": {"type": "string", "example": "12.00G"},
+                "disk_min": {"type": "string", "example": "6.00G"},
+                "vram_recommended": {"type": "string", "example": "8.00G"},
+                "ram_recommended": {"type": "string", "example": "16.00G"},
+                "disk_recommended": {"type": "string", "example": "8.00G"}
+            }
+        },
+        "CatalogSearchLine": {
+            "type": "object",
+            "required": ["done", "items"],
+            "description": "One JSON line in the application/x-ndjson search response. The final line also has type=models, unavailable, or failed.",
+            "properties": {
+                "done": {"type": "boolean"},
+                "type": {"type": "string", "enum": ["models", "unavailable", "failed"]},
+                "items": {"type": "array", "items": {"$ref": "#/components/schemas/CatalogSearchItem"}}
+            }
+        },
+        "CatalogSearchItem": {
+            "type": "object",
+            "required": ["id", "name", "model", "source", "revision"],
+            "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "model": {"type": "string", "example": "Qwen/Qwen3-8B-GGUF"},
+                "source": {"type": "string", "enum": ["modelscope", "hf-mirror", "huggingface"]},
+                "revision": {"type": "string", "example": "master"}
+            }
+        },
+        "CatalogInspection": {
+            "type": "object",
+            "required": ["status", "model", "source", "revision", "resource_url", "downloadable", "unavailable_reason", "identity_status", "artifact_status", "downloaded", "local_path", "actual_sha256", "variants"],
+            "description": "downloadable means at least one valid remote GGUF direct-file artifact exists; hardware compatibility is decided separately by the Node resolution endpoint.",
+            "properties": {
+                "status": {"type": "string", "enum": ["downloadable", "developing"], "description": "Legacy repository-page probe status; not proof of a usable artifact."},
+                "model": {"type": "string"},
+                "source": {"type": "string", "enum": ["modelscope", "hf-mirror", "huggingface"]},
+                "revision": {"type": "string"},
+                "resource_url": {"type": "string", "format": "uri", "description": "Repository page for browsing only; never a download candidate."},
+                "downloadable": {"type": "boolean"},
+                "unavailable_reason": {"allOf": [{"$ref": "#/components/schemas/UnavailableReason"}], "nullable": true},
+                "identity_status": {"type": "string", "enum": ["verified", "pending_validation"], "nullable": true},
+                "artifact_status": {"type": "string", "enum": ["not_downloaded", "downloading", "verifying", "downloaded", "failed"]},
+                "downloaded": {"type": "boolean", "description": "True only when a local artifact has a complete matching verification receipt."},
+                "local_path": {"type": "string", "nullable": true},
+                "actual_sha256": {"type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$", "nullable": true},
+                "variants": {"type": "array", "items": {"$ref": "#/components/schemas/CatalogVariant"}}
+            }
+        },
+        "UnavailableReason": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+                "code": {"type": "string", "enum": ["preset_identity_pending", "no_gguf_artifact", "repository_not_found", "repository_unavailable"]},
+                "message": {"type": "string"}
+            }
+        },
+        "CatalogVariant": {
+            "type": "object",
+            "required": ["id", "quantization", "runtime", "artifact_source", "expected_sha256", "file_size_bytes", "ram_bytes", "vram_bytes", "disk_bytes", "artifact_status", "downloaded", "local_path", "actual_sha256"],
+            "description": "A validated GGUF file or an exact-identity verified local fallback. Remote candidates require a direct file URL, valid SHA-256, and non-zero file size.",
+            "properties": {
+                "id": {"type": "string", "description": "Repository-relative GGUF path."},
+                "quantization": {"type": "string"},
+                "runtime": {"type": "string", "example": "llama.cpp"},
+                "artifact_source": {"type": "string", "format": "uri", "description": "Direct GGUF file URL, never the repository resource_url."},
+                "expected_sha256": {"type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$"},
+                "file_size_bytes": {"type": "integer", "format": "uint64", "minimum": 1},
+                "ram_bytes": {"type": "integer", "format": "uint64", "description": "Effective minimum RAM, including the actual file-size floor."},
+                "vram_bytes": {"type": "integer", "format": "uint64"},
+                "disk_bytes": {"type": "integer", "format": "uint64", "description": "Effective minimum disk, including the actual file-size floor."},
+                "artifact_status": {"type": "string", "enum": ["not_downloaded", "downloading", "verifying", "downloaded", "failed"]},
+                "downloaded": {"type": "boolean"},
+                "local_path": {"type": "string", "nullable": true},
+                "actual_sha256": {"type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$", "nullable": true}
+            }
+        },
+        "CatalogApiErrorResponse": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+                "code": {"type": "string", "enum": ["preset_catalog_invalid", "catalog_unavailable"]},
+                "message": {"type": "string"}
+            }
+        },
+        "MessageErrorResponse": {
+            "type": "object",
+            "required": ["message"],
+            "properties": {"message": {"type": "string"}}
+        },
         "HardwareResponse": {
             "type": "object",
             "required": ["success", "data"],
@@ -764,6 +1030,11 @@ fn generate_schemas() -> serde_json::Value {
                     "minLength": 1,
                     "description": "Repository branch, tag or revision selected by the catalog.",
                     "example": "master"
+                },
+                "preset_id": {
+                    "type": "string",
+                    "description": "Optional stable preset catalog ID. When present it must match the model, source and revision exactly; the bound preset hardware minimums are applied. Omit for external search results and backward-compatible non-preset requests.",
+                    "example": "qwen3-8b"
                 }
             }
         },
@@ -800,15 +1071,15 @@ fn generate_schemas() -> serde_json::Value {
                 "min_vram_bytes": {"type": "integer", "format": "uint64"},
                 "disk_size_bytes": {"type": "integer", "format": "uint64"},
                 "runtime": {"type": "string", "example": "llama.cpp"},
-                "artifact_uri": {"type": "string", "format": "uri"},
-                "checksum": {"type": "string", "example": "sha256:..."}
+                "artifact_uri": {"type": "string", "format": "uri", "description": "Direct verified GGUF file URL; repository-page resource_url values are never candidates."},
+                "checksum": {"type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$", "description": "SHA-256 from the validated upstream artifact metadata."}
             }
         },
         "ResolveReason": {
             "type": "object",
             "required": ["code", "message"],
             "properties": {
-                "code": {"type": "string", "enum": ["no_compatible_variant"]},
+                "code": {"type": "string", "enum": ["preset_identity_pending", "no_valid_gguf", "no_compatible_variant"]},
                 "message": {"type": "string"}
             }
         },
@@ -821,7 +1092,7 @@ fn generate_schemas() -> serde_json::Value {
                     "type": "object",
                     "required": ["code", "message"],
                     "properties": {
-                        "code": {"type": "string", "enum": ["invalid_model", "model_repository_not_found", "model_repository_unavailable", "unsupported_platform", "hardware_probe_failed", "manifest_invalid", "model_resolution_failed"]},
+                        "code": {"type": "string", "enum": ["invalid_model", "unknown_preset", "preset_identity_mismatch", "preset_catalog_invalid", "model_repository_not_found", "model_repository_unavailable", "unsupported_platform", "hardware_probe_failed", "manifest_invalid", "model_resolution_failed"]},
                         "message": {"type": "string"}
                     }
                 }
