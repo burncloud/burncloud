@@ -200,18 +200,18 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
             .iter()
             .filter(|item| item["source"] == "modelscope")
             .count(),
-        96
+        10
     );
     assert_eq!(
         items
             .iter()
             .filter(|item| item["source"] == "hf-mirror")
             .count(),
-        292
+        378
     );
     assert_eq!(
         items[0]["resource_url"],
-        "https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8b-Instruct"
+        "https://hf-mirror.com/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
     );
     assert_eq!(
         items[0]["hardware"],
@@ -280,96 +280,337 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-#[tokio::test]
-async fn verified_gguf_presets_use_selected_repositories_and_preserve_catalog_metadata() {
-    let h = Harness::new().await;
-    let items = h
+async fn preset_catalog_items() -> Vec<Value> {
+    let harness = Harness::new().await;
+    harness
         .json("/api/models/presets")
         .await
         .as_array()
         .expect("预置列表")
-        .clone();
-    let find = |id: &str| {
-        items
-            .iter()
-            .find(|item| item["id"] == id)
-            .unwrap_or_else(|| panic!("缺少预置项：{id}"))
-    };
+        .clone()
+}
 
-    let qwen3 = find("qwen3-8b");
-    assert_eq!(qwen3["id"], "qwen3-8b");
-    assert_eq!(qwen3["name"], "qwen3-8B");
-    assert_eq!(qwen3["model"], "Qwen/Qwen3-8B-GGUF");
-    assert_eq!(qwen3["source"], "modelscope");
-    assert_eq!(qwen3["revision"], "master");
-    assert_eq!(
-        qwen3["resource_url"],
-        "https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF"
-    );
-    assert_eq!(
-        qwen3["hardware"],
-        json!({
-            "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
-            "vram_recommended":"8.00G", "ram_recommended":"16.00G", "disk_recommended":"8.00G"
-        })
-    );
+fn find_preset<'a>(items: &'a [Value], id: &str) -> &'a Value {
+    items
+        .iter()
+        .find(|item| item["id"] == id)
+        .unwrap_or_else(|| panic!("缺少预置项：{id}"))
+}
 
-    let llama2_chinese = find("llama2-chinese-13b-chat");
-    assert_eq!(llama2_chinese["id"], "llama2-chinese-13b-chat");
-    assert_eq!(llama2_chinese["name"], "Llama2-Chinese-13b-Chat");
-    assert_eq!(
-        llama2_chinese["model"],
-        "mradermacher/Llama2-Chinese-13b-Chat-GGUF"
-    );
-    assert_eq!(llama2_chinese["source"], "hf-mirror");
-    assert_eq!(llama2_chinese["revision"], "main");
-    assert_eq!(
-        llama2_chinese["resource_url"],
-        "https://hf-mirror.com/mradermacher/Llama2-Chinese-13b-Chat-GGUF"
-    );
-    assert_eq!(
-        llama2_chinese["hardware"],
-        json!({
-            "vram_min":"12.00G", "ram_min":"16.00G", "disk_min":"12.00G",
-            "vram_recommended":"12.00G", "ram_recommended":"24.00G", "disk_recommended":"12.00G"
-        })
-    );
+fn assert_preset_metadata(preset: &Value, expected: Value) {
+    for field in [
+        "id",
+        "name",
+        "model",
+        "source",
+        "revision",
+        "resource_url",
+        "hardware",
+    ] {
+        assert_eq!(preset[field], expected[field], "目录字段：{field}");
+    }
+}
 
-    let dolphin = find("dolphin-2_6-phi-2");
-    assert_eq!(dolphin["id"], "dolphin-2_6-phi-2");
-    assert_eq!(dolphin["name"], "dolphin-2_6-phi-2");
-    assert_eq!(dolphin["model"], "TheBloke/dolphin-2_6-phi-2-GGUF");
-    assert_eq!(dolphin["source"], "hf-mirror");
-    assert_eq!(dolphin["revision"], "main");
-    assert_eq!(
-        dolphin["resource_url"],
-        "https://hf-mirror.com/TheBloke/dolphin-2_6-phi-2-GGUF"
-    );
-    assert_eq!(
-        dolphin["hardware"],
+fn assert_special_gguf_presets_preserve_metadata(items: &[Value]) {
+    assert_preset_metadata(
+        find_preset(items, "qwen3-8b"),
         json!({
-            "vram_min":"4.00G", "ram_min":"8.00G", "disk_min":"4.00G",
-            "vram_recommended":"4.00G", "ram_recommended":"16.00G", "disk_recommended":"4.00G"
-        })
+            "id":"qwen3-8b", "name":"qwen3-8B", "model":"Qwen/Qwen3-8B-GGUF",
+            "source":"modelscope", "revision":"master",
+            "resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF",
+            "hardware":{
+                "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
+                "vram_recommended":"8.00G", "ram_recommended":"16.00G", "disk_recommended":"8.00G"
+            }
+        }),
     );
+    assert_preset_metadata(
+        find_preset(items, "llama2-chinese-13b-chat"),
+        json!({
+            "id":"llama2-chinese-13b-chat", "name":"Llama2-Chinese-13b-Chat",
+            "model":"mradermacher/Llama2-Chinese-13b-Chat-GGUF", "source":"hf-mirror",
+            "revision":"main",
+            "resource_url":"https://hf-mirror.com/mradermacher/Llama2-Chinese-13b-Chat-GGUF",
+            "hardware":{
+                "vram_min":"12.00G", "ram_min":"16.00G", "disk_min":"12.00G",
+                "vram_recommended":"12.00G", "ram_recommended":"24.00G", "disk_recommended":"12.00G"
+            }
+        }),
+    );
+    assert_preset_metadata(
+        find_preset(items, "dolphin-2_6-phi-2"),
+        json!({
+            "id":"dolphin-2_6-phi-2", "name":"dolphin-2_6-phi-2",
+            "model":"TheBloke/dolphin-2_6-phi-2-GGUF", "source":"hf-mirror",
+            "revision":"main",
+            "resource_url":"https://hf-mirror.com/TheBloke/dolphin-2_6-phi-2-GGUF",
+            "hardware":{
+                "vram_min":"4.00G", "ram_min":"8.00G", "disk_min":"4.00G",
+                "vram_recommended":"4.00G", "ram_recommended":"16.00G", "disk_recommended":"4.00G"
+            }
+        }),
+    );
+    assert_preset_metadata(
+        find_preset(items, "jev-9b"),
+        json!({
+            "id":"jev-9b", "name":"JEV-9B", "model":"prithivMLmods/JEV-9B-GGUF",
+            "source":"modelscope", "revision":"master",
+            "resource_url":"https://www.modelscope.cn/models/prithivMLmods/JEV-9B-GGUF",
+            "hardware":{
+                "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
+                "vram_recommended":"12.00G", "ram_recommended":"16.00G", "disk_recommended":"12.00G"
+            }
+        }),
+    );
+}
 
-    let jev = find("jev-9b");
-    assert_eq!(jev["id"], "jev-9b");
-    assert_eq!(jev["name"], "JEV-9B");
-    assert_eq!(jev["model"], "prithivMLmods/JEV-9B-GGUF");
-    assert_eq!(jev["source"], "modelscope");
-    assert_eq!(jev["revision"], "master");
-    assert_eq!(
-        jev["resource_url"],
-        "https://www.modelscope.cn/models/prithivMLmods/JEV-9B-GGUF"
-    );
-    assert_eq!(
-        jev["hardware"],
-        json!({
-            "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
-            "vram_recommended":"12.00G", "ram_recommended":"16.00G", "disk_recommended":"12.00G"
-        })
-    );
+fn assert_featured_gguf_repository_bindings(items: &[Value]) {
+    for (id, name, model) in [
+        (
+            "meta-llama-3.1-8b-instruct",
+            "llama3.1-8B",
+            "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+        ),
+        (
+            "deepseek-r1-distill-qwen-7b",
+            "deepseek-r1-7B",
+            "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+        ),
+        ("gemma-3-4b-it", "gemma3-4B", "unsloth/gemma-3-4b-it-GGUF"),
+        (
+            "mistral-7b-instruct-v0.2",
+            "mistral-7B",
+            "TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
+        ),
+        (
+            "phi-4-mini-reasoning",
+            "phi4-mini-reasoning-3.8B",
+            "unsloth/Phi-4-mini-reasoning-GGUF",
+        ),
+        (
+            "granite-3.3-8b-instruct",
+            "granite3.3-8B",
+            "ibm-granite/granite-3.3-8b-instruct-GGUF",
+        ),
+        ("qwen3-30b", "qwen3-30B", "Qwen/Qwen3-30B-A3B-GGUF"),
+        ("qwen3-235b", "Qwen3-235b", "Qwen/Qwen3-235B-A22B-GGUF"),
+        (
+            "gemma-4-26b-it",
+            "gemma-4-26b-it",
+            "unsloth/gemma-4-26B-A4B-it-GGUF",
+        ),
+        ("phi-4", "phi-4", "unsloth/phi-4-GGUF"),
+        (
+            "llama-3.2-90b-vision-instruct",
+            "Llama-3.2-90b-Vision-Instruct",
+            "Thaurock/Llama-3.2-90B-Vision-Instruct-GGUF",
+        ),
+        (
+            "stable-code-3b",
+            "stable-code-3b",
+            "TheBloke/stable-code-3b-GGUF",
+        ),
+    ] {
+        let preset = find_preset(items, id);
+        assert_eq!(preset["id"], id);
+        assert_eq!(preset["name"], name);
+        assert_eq!(preset["model"], model);
+        assert_eq!(preset["source"], "hf-mirror");
+        assert_eq!(preset["revision"], "main");
+        assert_eq!(
+            preset["resource_url"],
+            format!("https://hf-mirror.com/{model}")
+        );
+    }
+}
+
+fn assert_selected_gguf_hardware_requirements(items: &[Value]) {
+    for (id, expected_hardware) in [
+        (
+            "qwen3-30b",
+            json!({
+                "vram_min":"24.00G", "ram_min":"32.00G", "disk_min":"24.00G",
+                "vram_recommended":"32.00G", "ram_recommended":"48.00G", "disk_recommended":"32.00G"
+            }),
+        ),
+        (
+            "qwen3-235b",
+            json!({
+                "vram_min":"160.00G", "ram_min":"256.00G", "disk_min":"160.00G",
+                "vram_recommended":"256.00G", "ram_recommended":"512.00G", "disk_recommended":"256.00G"
+            }),
+        ),
+        (
+            "gemma-4-26b-it",
+            json!({
+                "vram_min":"24.00G", "ram_min":"32.00G", "disk_min":"24.00G",
+                "vram_recommended":"24.00G", "ram_recommended":"48.00G", "disk_recommended":"24.00G"
+            }),
+        ),
+        (
+            "phi-4",
+            json!({
+                "vram_min":"12.00G", "ram_min":"16.00G", "disk_min":"12.00G",
+                "vram_recommended":"16.00G", "ram_recommended":"24.00G", "disk_recommended":"16.00G"
+            }),
+        ),
+        (
+            "llama-3.2-90b-vision-instruct",
+            json!({
+                "vram_min":"64.00G", "ram_min":"96.00G", "disk_min":"64.00G",
+                "vram_recommended":"96.00G", "ram_recommended":"128.00G", "disk_recommended":"96.00G"
+            }),
+        ),
+        (
+            "stable-code-3b",
+            json!({
+                "vram_min":"4.00G", "ram_min":"8.00G", "disk_min":"4.00G",
+                "vram_recommended":"4.00G", "ram_recommended":"16.00G", "disk_recommended":"4.00G"
+            }),
+        ),
+    ] {
+        assert_eq!(find_preset(items, id)["hardware"], expected_hardware);
+    }
+}
+
+fn assert_initial_catalog_display_names(items: &[Value]) {
+    for (id, expected_name) in [
+        (
+            "meta-llama-3.1-405b-instruct",
+            "Meta-Llama-3.1-405b-Instruct",
+        ),
+        (
+            "deepseek-r1-distill-qwen-1.5b",
+            "DeepSeek-R1-Distill-Qwen-1.5B",
+        ),
+        (
+            "deepseek-r1-distill-llama-8b",
+            "DeepSeek-R1-Distill-Llama-8B",
+        ),
+        (
+            "deepseek-r1-distill-qwen-14b",
+            "DeepSeek-R1-Distill-Qwen-14B",
+        ),
+        (
+            "deepseek-r1-distill-llama-70b",
+            "DeepSeek-R1-Distill-Llama-70B",
+        ),
+        (
+            "qwen3-coder-30b-a3b-instruct",
+            "Qwen3-Coder-30b-A3B-Instruct",
+        ),
+        (
+            "llama-3.2-11b-vision-instruct",
+            "Llama-3.2-11b-Vision-Instruct",
+        ),
+        (
+            "llama-3.2-90b-vision-instruct",
+            "Llama-3.2-90b-Vision-Instruct",
+        ),
+        (
+            "deepseek-coder-v2-lite-instruct",
+            "DeepSeek-Coder-V2-Lite-Instruct",
+        ),
+        (
+            "deepseek-coder-v2-lite-instruct-row-113",
+            "DeepSeek-Coder-V2-Lite-Instruct",
+        ),
+        (
+            "mistral-small-3.2-24b-instruct-2506",
+            "Mistral-Small-3.2-24b-Instruct-2506",
+        ),
+        (
+            "granite-3.1-3b-a800m-instruct",
+            "granite-3.1-3b-a800m-instruct",
+        ),
+        (
+            "nvidia-nemotron-3-super-120b-a12b-bf16",
+            "nemotron-3-super-120B",
+        ),
+        (
+            "mistral-small-3.2-24b-instruct-2506-row-138",
+            "Mistral-Small-3.2-24b-Instruct-2506",
+        ),
+    ] {
+        assert_eq!(find_preset(items, id)["name"], expected_name);
+    }
+}
+
+fn assert_later_catalog_display_names(items: &[Value]) {
+    for (id, expected_name) in [
+        (
+            "ministral-3-3b-instruct-2512",
+            "Ministral-3-3B-Instruct-2512",
+        ),
+        (
+            "ministral-3-8b-instruct-2512",
+            "Ministral-3-8B-Instruct-2512",
+        ),
+        (
+            "ministral-3-14b-reasoning-2512",
+            "Ministral-3-14B-Reasoning-2512",
+        ),
+        (
+            "wizard-vicuna-13b-uncensored",
+            "Wizard-Vicuna-13b-Uncensored",
+        ),
+        (
+            "wizard-vicuna-30b-uncensored",
+            "Wizard-Vicuna-30b-Uncensored",
+        ),
+        (
+            "llama-3-8b-instruct-gradient-1048k",
+            "Llama-3-8B-Instruct-Gradient-1048k",
+        ),
+        (
+            "nvidia-nemotron-3-nano-4b-bf16",
+            "NVIDIA-Nemotron-3-Nano-4B-BF16",
+        ),
+        (
+            "nvidia-nemotron-3-nano-30b-a3b-bf16",
+            "NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        ),
+        (
+            "mistral-small-3.1-24b-instruct-2503",
+            "Mistral-Small-3.1-24b-Instruct-2503",
+        ),
+        (
+            "llama-3-8b-prolong-512k-base",
+            "Llama-3-8B-ProLong-512k-Base",
+        ),
+        (
+            "nvidia-nemotron-3.5-lightning-30b-a3b-bf16",
+            "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+        ),
+        (
+            "llama-3.1-nemotron-70b-instruct-hf",
+            "Llama-3.1-Nemotron-70B-Instruct-HF",
+        ),
+        (
+            "c4ai-command-r7b-arabic-02-2025",
+            "c4ai-command-r7b-arabic-02-2025",
+        ),
+        (
+            "strands-decider-2b-qwen3.5-v1-2610",
+            "strands-decider-2B-qwen3.5-v1-2610",
+        ),
+        (
+            "nvidia-nemotron-3.5-super-vl-120b-a12b-nvfp4",
+            "NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4",
+        ),
+    ] {
+        assert_eq!(find_preset(items, id)["name"], expected_name);
+    }
+}
+
+#[tokio::test]
+async fn verified_gguf_presets_use_selected_repositories_and_preserve_catalog_metadata() {
+    let items = preset_catalog_items().await;
+    assert_special_gguf_presets_preserve_metadata(&items);
+    assert_featured_gguf_repository_bindings(&items);
+    assert_selected_gguf_hardware_requirements(&items);
+    assert_initial_catalog_display_names(&items);
+    assert_later_catalog_display_names(&items);
 }
 
 #[tokio::test]
@@ -390,13 +631,24 @@ async fn preset_names_and_pending_identities_are_serialized() {
 
     let command_r = find("c4ai-command-r7b-12-2024");
     assert_eq!(command_r["name"], "command-r-7B");
-    assert_eq!(command_r["model"], "CohereForAI/c4ai-command-r7b-12-2024");
+    assert_eq!(
+        command_r["model"],
+        "bartowski/c4ai-command-r7b-12-2024-GGUF"
+    );
+    assert_eq!(command_r["source"], "hf-mirror");
+    assert_eq!(command_r["revision"], "main");
+    assert_eq!(
+        command_r["resource_url"],
+        "https://hf-mirror.com/bartowski/c4ai-command-r7b-12-2024-GGUF"
+    );
     assert_eq!(find("mistral-7b-openorca")["name"], "Mistral-7B-OpenOrca");
     assert_eq!(
         find("olmo-3.1-32b-instruct")["name"],
         "Olmo-3.1-32B-Instruct"
     );
     assert_eq!(find("qwen3-vl-2b-instruct")["name"], "Qwen3-VL-2b-Instruct");
+    assert_eq!(find("qwen-0.5b-chat")["model"], "Qwen/Qwen-0.5b-Chat");
+    assert_eq!(find("qwen-0.5b-chat")["source"], "modelscope");
 
     for id in [
         "nsfw_image_detection",
@@ -467,6 +719,22 @@ async fn status_uses_preset_binding_and_reports_live_artifacts() {
         value["variants"][0]["disk_bytes"],
         6 * 1024 * 1024 * 1024u64
     );
+
+    let mapped = h
+        .json("/api/models/status?preset=meta-llama-3.1-8b-instruct")
+        .await;
+    assert_eq!(mapped["status"], "downloadable");
+    assert_eq!(mapped["model"], "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF");
+    assert_eq!(mapped["source"], "hf-mirror");
+    assert_eq!(mapped["revision"], "main");
+    assert_eq!(mapped["downloadable"], true);
+    assert!(mapped["variants"][0]["artifact_source"]
+        .as_str()
+        .expect("GGUF 直接地址")
+        .contains(
+            "https://hf-mirror.com/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/model-Q4_K_M.gguf"
+        ));
+
     for (model, reason) in [
         ("owner/missing", "repository_not_found"),
         ("owner/denied", "repository_unavailable"),
@@ -482,7 +750,7 @@ async fn status_uses_preset_binding_and_reports_live_artifacts() {
         assert_eq!(value["variants"].as_array().expect("空工件列表").len(), 0);
     }
     let calls = h.calls.lock().expect("请求锁");
-    assert_eq!(calls.len(), 6);
+    assert_eq!(calls.len(), 8);
     assert!(calls.iter().any(|call| call.contains("/api/v1/models/")));
     assert!(calls.iter().all(|call| !call.contains("search=")));
 }
