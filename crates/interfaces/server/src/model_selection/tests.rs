@@ -281,6 +281,84 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
 }
 
 #[tokio::test]
+async fn ambiguous_alternate_gguf_repositories_keep_original_identity() {
+    let h = Harness::new().await;
+    let items = h
+        .json("/api/models/presets")
+        .await
+        .as_array()
+        .expect("预置列表")
+        .clone();
+    let find = |id: &str| {
+        items
+            .iter()
+            .find(|item| item["id"] == id)
+            .unwrap_or_else(|| panic!("缺少预置项：{id}"))
+    };
+
+    let qwen3 = find("qwen3-8b");
+    assert_eq!(qwen3["name"], "qwen3-8B");
+    assert_eq!(qwen3["model"], "Qwen/Qwen3-8b");
+    assert_eq!(qwen3["source"], "modelscope");
+    assert_eq!(qwen3["revision"], "master");
+    assert_eq!(
+        qwen3["resource_url"],
+        "https://www.modelscope.cn/models/Qwen/Qwen3-8b"
+    );
+
+    let llama2_chinese = find("llama2-chinese-13b-chat");
+    assert_eq!(llama2_chinese["name"], "Llama2-Chinese-13b-Chat");
+    assert_eq!(llama2_chinese["model"], "FlagAlpha/Llama2-Chinese-13b-Chat");
+    assert_eq!(llama2_chinese["source"], "hf-mirror");
+    assert_eq!(llama2_chinese["revision"], "main");
+    assert_eq!(
+        llama2_chinese["resource_url"],
+        "https://hf-mirror.com/FlagAlpha/Llama2-Chinese-13b-Chat"
+    );
+    assert_eq!(
+        llama2_chinese["hardware"],
+        json!({
+            "vram_min":"12.00G", "ram_min":"16.00G", "disk_min":"12.00G",
+            "vram_recommended":"12.00G", "ram_recommended":"24.00G", "disk_recommended":"12.00G"
+        })
+    );
+
+    let dolphin = find("dolphin-2_6-phi-2");
+    assert_eq!(dolphin["name"], "dolphin-2_6-phi-2");
+    assert_eq!(dolphin["model"], "cognitivecomputations/dolphin-2_6-phi-2");
+    assert_eq!(dolphin["source"], "hf-mirror");
+    assert_eq!(dolphin["revision"], "main");
+    assert_eq!(
+        dolphin["resource_url"],
+        "https://hf-mirror.com/cognitivecomputations/dolphin-2_6-phi-2"
+    );
+    assert_eq!(
+        dolphin["hardware"],
+        json!({
+            "vram_min":"4.00G", "ram_min":"8.00G", "disk_min":"4.00G",
+            "vram_recommended":"4.00G", "ram_recommended":"16.00G", "disk_recommended":"4.00G"
+        })
+    );
+
+    let jev = find("jev-9b");
+    assert_eq!(jev["name"], "JEV-9B");
+    assert_eq!(jev["model"], "autotrust/JEV-9B");
+    assert_eq!(jev["source"], "hf-mirror");
+    assert_eq!(jev["revision"], "main");
+    assert_eq!(
+        jev["resource_url"],
+        "https://hf-mirror.com/autotrust/JEV-9B"
+    );
+    assert_eq!(
+        jev["hardware"],
+        json!({
+            "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
+            "vram_recommended":"12.00G", "ram_recommended":"16.00G", "disk_recommended":"12.00G"
+        })
+    );
+}
+
+#[tokio::test]
 async fn preset_names_and_pending_identities_are_serialized() {
     let h = Harness::new().await;
     let items = h

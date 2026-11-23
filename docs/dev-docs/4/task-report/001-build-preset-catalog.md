@@ -24,3 +24,19 @@
 - 工作区单元测试：`CARGO_BUILD_JOBS=1 cargo test --workspace --lib`，全部通过；2 项既有本机依赖测试忽略。
 - `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`git diff --check`：通过。
 - 默认并行运行 `CARGO_BUILD_JOBS=1 cargo test --workspace` 时，Node Runtime 文档测试在 MSVC 链接阶段遇到临时 PDB 文件系统错误（`LNK1318: FILE_SYSTEM (3)`）；随后改为串行执行 `cargo test -p burncloud-node-runtime --doc -- --test-threads=1`，48 项文档测试全部通过。工作区单元测试亦全部通过。
+
+## 补充复核：替代 GGUF 仓库唯一性（2026-11-23）
+
+- 本次按 388 个预置项、367 个不同仓库身份复核。原仓库发现结果汇总为：113 个身份已有有效 GGUF、240 个未发现符合条件的 GGUF、14 个身份因上游请求失败未能核实。原仓库已有工件的条目不迁移；无工件但没有唯一、明确关联候选的条目，以及上游失败项均保留原身份。
+- 曾考虑的三个迁移候选均因发现多个符合关联与工件条件的仓库而否决，目录保持原 model/source/revision/resource_url、显示名称与硬件要求：
+
+| 预置 ID | 明确关联且具有有效 GGUF 的候选仓库 | 结论 |
+| --- | --- | --- |
+| llama2-chinese-13b-chat | [s3nh/FlagAlpha-Llama2-Chinese-13b-Chat-GGUF](https://huggingface.co/s3nh/FlagAlpha-Llama2-Chinese-13b-Chat-GGUF) 的模型卡链接到 FlagAlpha 原模型，列有 7 个有效 GGUF；[mradermacher/Llama2-Chinese-13b-Chat-GGUF](https://huggingface.co/mradermacher/Llama2-Chinese-13b-Chat-GGUF) 的 base_model 同为 FlagAlpha，列有 11 个有效 GGUF。 | 多候选，保持 FlagAlpha/Llama2-Chinese-13b-Chat。 |
+| dolphin-2_6-phi-2 | [TheBloke/dolphin-2_6-phi-2-GGUF](https://huggingface.co/TheBloke/dolphin-2_6-phi-2-GGUF) 明确关联原模型并列有 12 个有效 GGUF；[Demonthos/dolphin-2_6-phi-2-candle](https://huggingface.co/Demonthos/dolphin-2_6-phi-2-candle) 明确链接原模型，含 model-q4k.gguf（1,580,084,256 字节，SHA-256 f240cc36fa191a763e6fe854ba6c113c1dd77140c63aeca136bac9f169aff435）。 | 多候选，保持 cognitivecomputations/dolphin-2_6-phi-2。 |
+| jev-9b | [prithivMLmods/JEV-9B-GGUF](https://www.modelscope.cn/models/prithivMLmods/JEV-9B-GGUF) 的 ModelScope BaseModel 为 autotrust/JEV-9B，文件清单有有效 GGUF；[VrKnight/JEV-9B-GGUF](https://huggingface.co/VrKnight/JEV-9B-GGUF) 的 Hugging Face base_model 包含同一原模型，文件清单有 3 个有效 GGUF。 | 多候选，保持 autotrust/JEV-9B。 |
+| qwen3-8b | [Qwen/Qwen3-8B-GGUF](https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF) 及 [unsloth/Qwen3-8B-GGUF](https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF) 均关联 Qwen/Qwen3-8B 且有 GGUF 文件。 | 多候选，保持原 ModelScope 预置身份。 |
+
+- 未添加运行时搜索或回退。新增回归测试 ambiguous_alternate_gguf_repositories_keep_original_identity 校验上述预置仍保留原仓库身份；其中三个非精选项同时校验显示名称与六项硬件要求。
+
+- `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`CARGO_BUILD_JOBS=1 cargo test --workspace` 与 `git diff --check`：复核后全部通过。
