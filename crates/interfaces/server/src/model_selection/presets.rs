@@ -30,7 +30,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"qwen3-0.6b","name":"qwen3-0.6B","preset":true,"model":"Qwen/Qwen3-0.6b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-0.6b","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"qwen3-1.7b","name":"qwen3-1.7B","preset":true,"model":"Qwen/Qwen3-1.7b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-1.7b","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"qwen3-4b","name":"qwen3-4B","preset":true,"model":"Qwen/Qwen3-4b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-4b","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
-  {"id":"qwen3-8b","name":"qwen3-8B","preset":true,"model":"Qwen/Qwen3-8b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-8b","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
+  {"id":"qwen3-8b","name":"qwen3-8B","preset":true,"model":"Qwen/Qwen3-8B-GGUF","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"qwen3-14b","name":"qwen3-14B","preset":true,"model":"Qwen/Qwen3-14b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-14b","hardware":{"vram_min":"12G","ram_min":"16G","disk_min":"12G","vram_recommended":"16G","ram_recommended":"24G","disk_recommended":"16G"}},
   {"id":"qwen3-30b","name":"qwen3-30B","preset":true,"model":"Qwen/Qwen3-30b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-30b","hardware":{"vram_min":"24G","ram_min":"32G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
   {"id":"qwen3-32b","name":"qwen3-32B","preset":true,"model":"Qwen/Qwen3-32b","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/Qwen/Qwen3-32b","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
@@ -174,7 +174,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"granite-8b-code-instruct-4k-gguf","name":"granite-code-8B","preset":true,"model":"ibm-granite/granite-8b-code-instruct-4k-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/ibm-granite/granite-8b-code-instruct-4k-GGUF","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"granite-20b-code-instruct-gguf","name":"granite-code-20B","preset":true,"model":"bartowski/granite-20b-code-instruct-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/bartowski/granite-20b-code-instruct-GGUF","hardware":{"vram_min":"16G","ram_min":"24G","disk_min":"16G","vram_recommended":"24G","ram_recommended":"32G","disk_recommended":"24G"}},
   {"id":"granite-34b-code-base-8k-i1-gguf","name":"granite-code-34B","preset":true,"model":"mradermacher/granite-34b-code-base-8k-i1-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mradermacher/granite-34b-code-base-8k-i1-GGUF","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"48G","disk_recommended":"32G"}},
-  {"id":"dolphin-2_6-phi-2","name":"granite-code-2.7B","preset":true,"model":"cognitivecomputations/dolphin-2_6-phi-2","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/cognitivecomputations/dolphin-2_6-phi-2","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
+  {"id":"dolphin-2_6-phi-2","name":"granite-code-2.7B","preset":true,"model":"TheBloke/dolphin-2_6-phi-2-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/TheBloke/dolphin-2_6-phi-2-GGUF","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"ministral-3-3b-instruct-2512","name":"granite-code-3B","preset":true,"model":"mistralai/Ministral-3-3B-Instruct-2512","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mistralai/Ministral-3-3B-Instruct-2512","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"ministral-3-8b-instruct-2512","name":"granite-code-8B","preset":true,"model":"mistralai/Ministral-3-8B-Instruct-2512","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mistralai/Ministral-3-8B-Instruct-2512","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"ministral-3-14b-reasoning-2512","name":"granite-code-14B","preset":true,"model":"mistralai/Ministral-3-14B-Reasoning-2512","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mistralai/Ministral-3-14B-Reasoning-2512","hardware":{"vram_min":"12G","ram_min":"16G","disk_min":"12G","vram_recommended":"16G","ram_recommended":"24G","disk_recommended":"16G"}},
@@ -213,7 +213,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"wizardlm-2-7b-gguf","name":"neural-chat-7B","preset":true,"model":"MaziyarPanahi/WizardLM-2-7b-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/MaziyarPanahi/WizardLM-2-7b-GGUF","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"llava-phi-3-mini-gguf","name":"llava-phi3-3.8B","preset":true,"model":"xtuner/llava-phi-3-mini-gguf","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/xtuner/llava-phi-3-mini-gguf","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"llama2-chinese-7b-chat","name":"llama2-chinese-7B","preset":true,"model":"FlagAlpha/Llama2-Chinese-7b-Chat","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/FlagAlpha/Llama2-Chinese-7b-Chat","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
-  {"id":"llama2-chinese-13b-chat","name":"llama2-chinese-13B","preset":true,"model":"FlagAlpha/Llama2-Chinese-13b-Chat","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/FlagAlpha/Llama2-Chinese-13b-Chat","hardware":{"vram_min":"12G","ram_min":"16G","disk_min":"12G","vram_recommended":"12G","ram_recommended":"24G","disk_recommended":"12G"}},
+  {"id":"llama2-chinese-13b-chat","name":"llama2-chinese-13B","preset":true,"model":"mradermacher/Llama2-Chinese-13b-Chat-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/mradermacher/Llama2-Chinese-13b-Chat-GGUF","hardware":{"vram_min":"12G","ram_min":"16G","disk_min":"12G","vram_recommended":"12G","ram_recommended":"24G","disk_recommended":"12G"}},
   {"id":"qwen2.5-math-1.5b-instruct","name":"llama2-chinese-1.5B","preset":true,"model":"Qwen/Qwen2.5-Math-1.5B-Instruct","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/Qwen/Qwen2.5-Math-1.5B-Instruct","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"qwen2.5-math-prm-7b","name":"llama2-chinese-7B","preset":true,"model":"Qwen/Qwen2.5-Math-PRM-7b","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/Qwen/Qwen2.5-Math-PRM-7b","hardware":{"vram_min":"6G","ram_min":"8G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"qwen2.5-math-prm-72b","name":"llama2-chinese-72B","preset":true,"model":"Qwen/Qwen2.5-Math-PRM-72b","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/Qwen/Qwen2.5-Math-PRM-72b","hardware":{"vram_min":"48G","ram_min":"80G","disk_min":"48G","vram_recommended":"80G","ram_recommended":"128G","disk_recommended":"80G"}},
@@ -384,7 +384,7 @@ const PRESETS_JSON: &str = r##"
   {"id":"d1-3b-gguf","name":"d1-3B","preset":true,"model":"LiquidAI/d1-3B-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/LiquidAI/d1-3B-GGUF","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"minicpm-v-4.5-8b-lmk","name":"d1-8B","preset":true,"model":"lm-kit/minicpm-v-4.5-8b-lmk","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/lm-kit/minicpm-v-4.5-8b-lmk","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"8G","ram_recommended":"16G","disk_recommended":"8G"}},
   {"id":"lfm3-omni-2b-gguf","name":"lfm3-omni-2B","preset":true,"model":"LiquidAI/LFM3-Omni-2B-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/LiquidAI/LFM3-Omni-2B-GGUF","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
-  {"id":"jev-9b","name":"autotrust-jev-9B","preset":true,"model":"autotrust/JEV-9B","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/autotrust/JEV-9B","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"12G","ram_recommended":"16G","disk_recommended":"12G"}},
+  {"id":"jev-9b","name":"autotrust-jev-9B","preset":true,"model":"prithivMLmods/JEV-9B-GGUF","source":"modelscope","revision":"master","resource_url":"https://www.modelscope.cn/models/prithivMLmods/JEV-9B-GGUF","hardware":{"vram_min":"6G","ram_min":"12G","disk_min":"6G","vram_recommended":"12G","ram_recommended":"16G","disk_recommended":"12G"}},
   {"id":"autotrust-jev-35b-mlx-4bit-mixed","name":"autotrust-jev-35B","preset":true,"model":"netprojects/AutoTrust-JEV-35B-mlx-4bit-mixed","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/netprojects/AutoTrust-JEV-35B-mlx-4bit-mixed","hardware":{"vram_min":"24G","ram_min":"48G","disk_min":"24G","vram_recommended":"32G","ram_recommended":"64G","disk_recommended":"32G"}},
   {"id":"lfm3-vl-2b-gguf","name":"lfm3-vl-2B","preset":true,"model":"LiquidAI/LFM3-VL-2B-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/LiquidAI/LFM3-VL-2B-GGUF","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
   {"id":"lfm3-audio-2b-gguf","name":"lfm3-audio-2B","preset":true,"model":"LiquidAI/LFM3-Audio-2B-GGUF","source":"hf-mirror","revision":"main","resource_url":"https://hf-mirror.com/LiquidAI/LFM3-Audio-2B-GGUF","hardware":{"vram_min":"4G","ram_min":"8G","disk_min":"4G","vram_recommended":"4G","ram_recommended":"16G","disk_recommended":"4G"}},
@@ -492,7 +492,7 @@ const PENDING_VALIDATION_IDS: &[&str] = &[
     "tiny-random-aya-base-row-220",
 ];
 
-const FEATURED_NAMES: &[(&str, &str)] = &[
+const DISPLAY_NAMES: &[(&str, &str)] = &[
     ("qwen3-8b", "qwen3-8B"),
     ("deepseek-r1-distill-qwen-7b", "deepseek-r1-7B"),
     ("meta-llama-3.1-8b-instruct", "llama3.1-8B"),
@@ -514,6 +514,9 @@ const FEATURED_NAMES: &[(&str, &str)] = &[
     ),
     ("olmo-3.1-32b-instruct-row-342", "olmo-3.1-32B"),
     ("granite-4.2-30b-gguf", "granite4.2-30B"),
+    ("llama2-chinese-13b-chat", "Llama2-Chinese-13b-Chat"),
+    ("dolphin-2_6-phi-2", "dolphin-2_6-phi-2"),
+    ("jev-9b", "JEV-9B"),
 ];
 
 /// 返回经过完整性校验的预置目录。
@@ -566,7 +569,7 @@ fn validate_catalog(presets: &mut [Preset]) -> Result<(), String> {
         validate_identity(preset)?;
         validate_hardware(&preset.id, &preset.hardware)?;
 
-        preset.name = FEATURED_NAMES
+        preset.name = DISPLAY_NAMES
             .iter()
             .find_map(|(id, name)| (*id == preset.id).then_some(*name))
             .map(str::to_owned)
@@ -584,7 +587,7 @@ fn validate_catalog(presets: &mut [Preset]) -> Result<(), String> {
         }
     }
 
-    for (id, _) in FEATURED_NAMES {
+    for (id, _) in DISPLAY_NAMES {
         if !ids.contains(*id) {
             return Err(format!("精选预置 ID 不存在：{id}"));
         }

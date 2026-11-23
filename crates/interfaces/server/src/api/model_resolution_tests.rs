@@ -504,14 +504,17 @@ fn resolve_request_keeps_legacy_path_and_binds_preset_to_full_identity() {
     assert!(preset.is_none());
 
     let valid = serde_json::from_value::<ResolveModelRequest>(json!({
-        "model": "Qwen/Qwen3-8b",
+        "model": "Qwen/Qwen3-8B-GGUF",
         "source": "modelscope",
         "revision": "master",
         "preset_id": "qwen3-8b"
     }))
     .expect("预置请求字段有效");
     let (_, _, _, preset) = validate_request(Ok(Json(valid))).expect("预置绑定有效");
-    assert_eq!(preset.expect("预置返回").resource.model, "Qwen/Qwen3-8b");
+    assert_eq!(
+        preset.expect("预置返回").resource.model,
+        "Qwen/Qwen3-8B-GGUF"
+    );
 
     let unknown = serde_json::from_value::<ResolveModelRequest>(json!({
         "model": "org/model",
@@ -527,8 +530,9 @@ fn resolve_request_keeps_legacy_path_and_binds_preset_to_full_identity() {
 
     for request in [
         json!({"model":"evil/model","source":"modelscope","revision":"master","preset_id":"qwen3-8b"}),
-        json!({"model":"Qwen/Qwen3-8b","source":"huggingface","revision":"master","preset_id":"qwen3-8b"}),
-        json!({"model":"Qwen/Qwen3-8b","source":"modelscope","revision":"other","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8B-GGUF","source":"huggingface","revision":"master","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8B-GGUF","source":"modelscope","revision":"other","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8b","source":"modelscope","revision":"master","preset_id":"qwen3-8b"}),
     ] {
         let request =
             serde_json::from_value::<ResolveModelRequest>(request).expect("身份字段结构有效");
@@ -559,7 +563,7 @@ fn local_fallback_only_keeps_complete_verified_records_and_merged_requirements()
     let preset = crate::model_selection::presets::find("qwen3-8b")
         .expect("目录有效")
         .expect("Qwen 预置存在");
-    let model = "Qwen/Qwen3-8b";
+    let model = "Qwen/Qwen3-8B-GGUF";
     let revision = "master";
     let path = "Qwen3-8B-Q4_K_M.gguf";
     let checksum = format!("sha256:{}", "a".repeat(64));

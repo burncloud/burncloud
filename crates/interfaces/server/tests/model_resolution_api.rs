@@ -128,7 +128,7 @@ async fn model_resolution_route_rejects_preset_identity_mismatch_before_discover
         "/api/node/models/resolve",
         serde_json::json!({
             "model": "Qwen/Qwen3-8b",
-            "source": "huggingface",
+            "source": "modelscope",
             "revision": "master",
             "preset_id": "qwen3-8b"
         }),

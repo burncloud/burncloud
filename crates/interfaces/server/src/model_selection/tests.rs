@@ -200,14 +200,14 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
             .iter()
             .filter(|item| item["source"] == "modelscope")
             .count(),
-        95
+        96
     );
     assert_eq!(
         items
             .iter()
             .filter(|item| item["source"] == "hf-mirror")
             .count(),
-        293
+        292
     );
     assert_eq!(
         items[0]["resource_url"],
@@ -281,7 +281,7 @@ async fn presets_keep_spreadsheet_rows_links_and_hardware() {
 }
 
 #[tokio::test]
-async fn ambiguous_alternate_gguf_repositories_keep_original_identity() {
+async fn verified_gguf_presets_use_selected_repositories_and_preserve_catalog_metadata() {
     let h = Harness::new().await;
     let items = h
         .json("/api/models/presets")
@@ -297,23 +297,35 @@ async fn ambiguous_alternate_gguf_repositories_keep_original_identity() {
     };
 
     let qwen3 = find("qwen3-8b");
+    assert_eq!(qwen3["id"], "qwen3-8b");
     assert_eq!(qwen3["name"], "qwen3-8B");
-    assert_eq!(qwen3["model"], "Qwen/Qwen3-8b");
+    assert_eq!(qwen3["model"], "Qwen/Qwen3-8B-GGUF");
     assert_eq!(qwen3["source"], "modelscope");
     assert_eq!(qwen3["revision"], "master");
     assert_eq!(
         qwen3["resource_url"],
-        "https://www.modelscope.cn/models/Qwen/Qwen3-8b"
+        "https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF"
+    );
+    assert_eq!(
+        qwen3["hardware"],
+        json!({
+            "vram_min":"6.00G", "ram_min":"12.00G", "disk_min":"6.00G",
+            "vram_recommended":"8.00G", "ram_recommended":"16.00G", "disk_recommended":"8.00G"
+        })
     );
 
     let llama2_chinese = find("llama2-chinese-13b-chat");
+    assert_eq!(llama2_chinese["id"], "llama2-chinese-13b-chat");
     assert_eq!(llama2_chinese["name"], "Llama2-Chinese-13b-Chat");
-    assert_eq!(llama2_chinese["model"], "FlagAlpha/Llama2-Chinese-13b-Chat");
+    assert_eq!(
+        llama2_chinese["model"],
+        "mradermacher/Llama2-Chinese-13b-Chat-GGUF"
+    );
     assert_eq!(llama2_chinese["source"], "hf-mirror");
     assert_eq!(llama2_chinese["revision"], "main");
     assert_eq!(
         llama2_chinese["resource_url"],
-        "https://hf-mirror.com/FlagAlpha/Llama2-Chinese-13b-Chat"
+        "https://hf-mirror.com/mradermacher/Llama2-Chinese-13b-Chat-GGUF"
     );
     assert_eq!(
         llama2_chinese["hardware"],
@@ -324,13 +336,14 @@ async fn ambiguous_alternate_gguf_repositories_keep_original_identity() {
     );
 
     let dolphin = find("dolphin-2_6-phi-2");
+    assert_eq!(dolphin["id"], "dolphin-2_6-phi-2");
     assert_eq!(dolphin["name"], "dolphin-2_6-phi-2");
-    assert_eq!(dolphin["model"], "cognitivecomputations/dolphin-2_6-phi-2");
+    assert_eq!(dolphin["model"], "TheBloke/dolphin-2_6-phi-2-GGUF");
     assert_eq!(dolphin["source"], "hf-mirror");
     assert_eq!(dolphin["revision"], "main");
     assert_eq!(
         dolphin["resource_url"],
-        "https://hf-mirror.com/cognitivecomputations/dolphin-2_6-phi-2"
+        "https://hf-mirror.com/TheBloke/dolphin-2_6-phi-2-GGUF"
     );
     assert_eq!(
         dolphin["hardware"],
@@ -341,13 +354,14 @@ async fn ambiguous_alternate_gguf_repositories_keep_original_identity() {
     );
 
     let jev = find("jev-9b");
+    assert_eq!(jev["id"], "jev-9b");
     assert_eq!(jev["name"], "JEV-9B");
-    assert_eq!(jev["model"], "autotrust/JEV-9B");
-    assert_eq!(jev["source"], "hf-mirror");
-    assert_eq!(jev["revision"], "main");
+    assert_eq!(jev["model"], "prithivMLmods/JEV-9B-GGUF");
+    assert_eq!(jev["source"], "modelscope");
+    assert_eq!(jev["revision"], "master");
     assert_eq!(
         jev["resource_url"],
-        "https://hf-mirror.com/autotrust/JEV-9B"
+        "https://www.modelscope.cn/models/prithivMLmods/JEV-9B-GGUF"
     );
     assert_eq!(
         jev["hardware"],
@@ -414,13 +428,13 @@ async fn status_uses_preset_binding_and_reports_live_artifacts() {
     );
     let value = h.json("/api/models/status?preset=qwen3-8b").await;
     assert_eq!(value["status"], "downloadable");
-    assert_eq!(value["model"], "Qwen/Qwen3-8b");
+    assert_eq!(value["model"], "Qwen/Qwen3-8B-GGUF");
     assert_eq!(value["source"], "modelscope");
     assert_eq!(value["revision"], "master");
     assert!(value["resource_url"]
         .as_str()
         .expect("资源地址")
-        .ends_with("/ms/models/Qwen/Qwen3-8b/files?Revision=master"));
+        .ends_with("/ms/models/Qwen/Qwen3-8B-GGUF/files?Revision=master"));
     assert_eq!(value["downloadable"], true);
     assert!(value["unavailable_reason"].is_null());
     assert_eq!(value["identity_status"], "verified");
@@ -440,7 +454,7 @@ async fn status_uses_preset_binding_and_reports_live_artifacts() {
     assert!(value["variants"][0]["artifact_source"]
         .as_str()
         .expect("直接工件地址")
-        .contains("/resolve/master/model-Q4_K_M.gguf"));
+        .contains("/models/Qwen/Qwen3-8B-GGUF/resolve/master/model-Q4_K_M.gguf"));
     assert_eq!(
         value["variants"][0]["ram_bytes"],
         16 * 1024 * 1024 * 1024u64
@@ -471,6 +485,53 @@ async fn status_uses_preset_binding_and_reports_live_artifacts() {
     assert_eq!(calls.len(), 6);
     assert!(calls.iter().any(|call| call.contains("/api/v1/models/")));
     assert!(calls.iter().all(|call| !call.contains("search=")));
+}
+
+#[tokio::test]
+async fn alternate_gguf_presets_discover_files_and_create_direct_downloads() {
+    let h = Harness::new().await;
+    let presets = [
+        (
+            "llama2-chinese-13b-chat",
+            "mradermacher/Llama2-Chinese-13b-Chat-GGUF",
+            "hf-mirror",
+            "main",
+            "/mradermacher/Llama2-Chinese-13b-Chat-GGUF/resolve/main/model-Q4_K_M.gguf",
+        ),
+        (
+            "dolphin-2_6-phi-2",
+            "TheBloke/dolphin-2_6-phi-2-GGUF",
+            "hf-mirror",
+            "main",
+            "/TheBloke/dolphin-2_6-phi-2-GGUF/resolve/main/model-Q4_K_M.gguf",
+        ),
+        (
+            "jev-9b",
+            "prithivMLmods/JEV-9B-GGUF",
+            "modelscope",
+            "master",
+            "/models/prithivMLmods/JEV-9B-GGUF/resolve/master/model-Q4_K_M.gguf",
+        ),
+    ];
+
+    for (preset_id, model, source, revision, artifact_path) in presets {
+        let value = h
+            .json(&format!("/api/models/status?preset={preset_id}"))
+            .await;
+
+        assert_eq!(value["model"], model, "{preset_id} 仓库身份");
+        assert_eq!(value["source"], source, "{preset_id} 来源");
+        assert_eq!(value["revision"], revision, "{preset_id} 修订号");
+        assert_eq!(value["downloadable"], true, "{preset_id} 可下载状态");
+        assert_eq!(value["variants"].as_array().map(Vec::len), Some(1));
+        assert!(
+            value["variants"][0]["artifact_source"]
+                .as_str()
+                .expect("直接工件地址")
+                .ends_with(artifact_path),
+            "{preset_id} 直接工件地址"
+        );
+    }
 }
 
 #[tokio::test]

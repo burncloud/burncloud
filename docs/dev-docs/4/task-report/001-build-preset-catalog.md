@@ -28,7 +28,7 @@
 ## 补充复核：替代 GGUF 仓库唯一性（2026-11-23）
 
 - 本次按 388 个预置项、367 个不同仓库身份复核。原仓库发现结果汇总为：113 个身份已有有效 GGUF、240 个未发现符合条件的 GGUF、14 个身份因上游请求失败未能核实。原仓库已有工件的条目不迁移；无工件但没有唯一、明确关联候选的条目，以及上游失败项均保留原身份。
-- 曾考虑的三个迁移候选均因发现多个符合关联与工件条件的仓库而否决，目录保持原 model/source/revision/resource_url、显示名称与硬件要求：
+- 初审发现四个预置存在多个符合关联与工件条件的候选；当时按“多候选暂不迁移”规则保留原 model/source/revision/resource_url、显示名称与硬件要求：
 
 | 预置 ID | 明确关联且具有有效 GGUF 的候选仓库 | 结论 |
 | --- | --- | --- |
@@ -37,6 +37,16 @@
 | jev-9b | [prithivMLmods/JEV-9B-GGUF](https://www.modelscope.cn/models/prithivMLmods/JEV-9B-GGUF) 的 ModelScope BaseModel 为 autotrust/JEV-9B，文件清单有有效 GGUF；[VrKnight/JEV-9B-GGUF](https://huggingface.co/VrKnight/JEV-9B-GGUF) 的 Hugging Face base_model 包含同一原模型，文件清单有 3 个有效 GGUF。 | 多候选，保持 autotrust/JEV-9B。 |
 | qwen3-8b | [Qwen/Qwen3-8B-GGUF](https://www.modelscope.cn/models/Qwen/Qwen3-8B-GGUF) 及 [unsloth/Qwen3-8B-GGUF](https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF) 均关联 Qwen/Qwen3-8B 且有 GGUF 文件。 | 多候选，保持原 ModelScope 预置身份。 |
 
-- 未添加运行时搜索或回退。新增回归测试 ambiguous_alternate_gguf_repositories_keep_original_identity 校验上述预置仍保留原仓库身份；其中三个非精选项同时校验显示名称与六项硬件要求。
+- 初审未添加运行时搜索或回退；初版回归测试按当时的多候选规则检查原身份保留。
 
 - `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`CARGO_BUILD_JOBS=1 cargo test --workspace` 与 `git diff --check`：复核后全部通过。
+
+## 用户指定规范 GGUF 仓库后的映射更新（2026-11-23）
+
+- 用户指定 `Qwen/Qwen3-8B-GGUF` 为 Qwen3-8B 的规范仓库，并要求把已核实的其他对应预置也映射到可用 GGUF 仓库。对于非 Qwen 多候选项，选择按现有服务端验证规则可发现量化版本较完整的候选，以减少映射后可选工件不足；未发现可信对应仓库的预置不猜测、不改写。
+- 更新映射：`qwen3-8b` → `Qwen/Qwen3-8B-GGUF`（用户指定）；`llama2-chinese-13b-chat` → `mradermacher/Llama2-Chinese-13b-Chat-GGUF`（11 个有效工件，高于另一候选的 7 个）；`dolphin-2_6-phi-2` → `TheBloke/dolphin-2_6-phi-2-GGUF`（12 个，高于另一候选的 1 个）；`jev-9b` → `prithivMLmods/JEV-9B-GGUF`（ModelScope 8 个，高于另一候选的 3 个）。本地服务以精确 `model/source/revision` 查询四个选定身份均返回 `downloadable=true`，分别发现 5/11/12/8 个工件，并生成直接 `/resolve/{revision}/{path}` 地址。
+- 四项均保留原稳定 ID、目录中已有的显示名称和六项硬件要求；仅按所选仓库同步 `model`、`source`、`revision` 和 `resource_url`。Qwen 资源配置已定位到其选定仓库，其余三项无需改动内置资源配置。
+- 本次仍不添加运行时自动搜索或回退。按此前 388 项扫描结果，另外 113 个唯一仓库身份原已含有效 GGUF；其余 236 个未找到有足够证据的对应仓库，14 个上游请求失败身份仍无法核实，全部保持不变。
+- 对当前浏览器服务复核时，`/api/models/presets` 中三个非 Qwen 预置仍返回旧仓库身份，按旧 `preset_id` 查询仍报 `no_gguf_artifact`；对以上新仓库身份直接查询则已返回可下载状态。当前本地服务尚未加载工作区中的新静态映射；需重新构建并重启后端，再通过 `/api/models/status?preset=<id>` 验证界面绑定结果。
+- 回归测试 `verified_gguf_presets_use_selected_repositories_and_preserve_catalog_metadata` 验证四项更新后的仓库身份、稳定 ID、原目录显示名称、来源、修订、资源页和六项硬件要求；`alternate_gguf_presets_discover_files_and_create_direct_downloads` 验证三个替代来源映射仍经实时工件发现并生成直接下载地址；既有 Qwen 状态测试覆盖 ModelScope 路径。
+- 本轮检查：`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`CARGO_BUILD_JOBS=1 cargo test --workspace --tests --lib`、`CARGO_BUILD_JOBS=1 cargo test --workspace --doc -- --test-threads=1`、`git diff --check` 均通过。
