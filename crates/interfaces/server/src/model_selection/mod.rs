@@ -1,6 +1,6 @@
 //! 主服务内的模型选择接口；不创建监听器、独立进程或下载状态仓库。
 
-mod presets;
+pub(crate) mod presets;
 mod sources;
 
 use std::{sync::Arc, time::Duration};
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{sync::mpsc, task::JoinSet};
 
-use burncloud_supply_model::{load_default_manifests, ModelManifest, Variant};
+use burncloud_supply_model::Variant;
 
 use sources::{FetchError, Merged, ModelResource, SearchItem, Source};
 
@@ -46,17 +46,9 @@ impl Default for Config {
     }
 }
 
-fn default_manifests() -> Vec<ModelManifest> {
-    match load_default_manifests() {
-        Ok(manifests) => manifests,
-        Err(error) => panic!("内嵌默认模型清单格式错误：{error}"),
-    }
-}
-
 struct AppState {
     config: Config,
     client: reqwest::Client,
-    manifests: Vec<ModelManifest>,
     database: Option<Arc<Database>>,
 }
 
@@ -83,7 +75,6 @@ fn app(config: Config, client: reqwest::Client, database: Option<Arc<Database>>)
         .with_state(Arc::new(AppState {
             config,
             client,
-            manifests: default_manifests(),
             database,
         }))
 }
@@ -92,8 +83,21 @@ fn bad_request(message: &str) -> Response {
     (StatusCode::BAD_REQUEST, Json(json!({ "message": message }))).into_response()
 }
 
-async fn list_presets() -> impl IntoResponse {
-    Json(presets::all())
+async fn list_presets() -> Response {
+    match presets::all() {
+        Ok(items) => Json(items).into_response(),
+        Err(error) => {
+            tracing::error!(%error, "预置模型目录校验失败");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "code": "preset_catalog_invalid",
+                    "message": "预置模型目录无效"
+                })),
+            )
+                .into_response()
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -245,6 +249,7 @@ async fn publish_result(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StatusQuery {
     preset: Option<String>,
     model: Option<String>,
@@ -269,6 +274,7 @@ struct StatusVariant {
     runtime: String,
     artifact_source: String,
     expected_sha256: String,
+    file_size_bytes: u64,
     ram_bytes: u64,
     vram_bytes: u64,
     disk_bytes: u64,
@@ -278,14 +284,15 @@ struct StatusVariant {
     actual_sha256: Option<String>,
 }
 
-impl From<&Variant> for StatusVariant {
-    fn from(variant: &Variant) -> Self {
+impl StatusVariant {
+    fn from_variant(variant: &Variant, file_size_bytes: u64) -> Self {
         Self {
             id: variant.id.clone(),
             quantization: variant.quantization.clone(),
             runtime: variant.backend.clone(),
             artifact_source: variant.artifact_uri.clone(),
             expected_sha256: variant.checksum.clone(),
+            file_size_bytes,
             ram_bytes: variant.min_ram_bytes,
             vram_bytes: variant.min_vram_bytes,
             disk_bytes: variant.disk_size_bytes,
@@ -297,110 +304,69 @@ impl From<&Variant> for StatusVariant {
     }
 }
 
-fn model_key(value: &str) -> String {
-    value
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
+#[derive(Serialize)]
+struct CatalogVersion {
+    model: String,
+    source: Source,
+    revision: String,
+    resource_url: String,
 }
 
-fn repository_model_key(value: &str) -> String {
-    let key = model_key(value);
-    // GGUF 仓库名描述文件格式，默认清单仍使用面向用户的逻辑模型名。
-    key.strip_suffix("gguf").unwrap_or(&key).to_owned()
+#[derive(Serialize)]
+struct UnavailableReason {
+    code: &'static str,
+    message: &'static str,
 }
 
-fn artifact_repository_key(value: &str) -> Option<String> {
-    let url = Url::parse(value).ok()?;
-    let segments = url.path_segments()?.collect::<Vec<_>>();
-    if let Some(index) = segments.iter().position(|segment| *segment == "models") {
-        return segments
-            .get(index + 2)
-            .map(|segment| repository_model_key(segment));
-    }
-    segments
-        .iter()
-        .position(|segment| *segment == "resolve" || *segment == "tree")
-        .and_then(|index| index.checked_sub(1))
-        .and_then(|index| segments.get(index))
-        .map(|segment| repository_model_key(segment))
+#[derive(Serialize)]
+struct CatalogInspection {
+    #[serde(flatten)]
+    version: CatalogVersion,
+    #[serde(rename = "status")]
+    remote_status: &'static str,
+    downloadable: bool,
+    unavailable_reason: Option<UnavailableReason>,
+    identity_status: Option<presets::IdentityStatus>,
+    artifact_status: ArtifactStatus,
+    downloaded: bool,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
+    variants: Vec<StatusVariant>,
 }
 
-fn manifest_matches_resource(manifest: &ModelManifest, repository_key: &str) -> bool {
-    model_key(&manifest.model_name) == repository_key
-        || manifest.variants.iter().any(|variant| {
-            artifact_repository_key(&variant.artifact_uri).is_some_and(|key| key == repository_key)
-        })
-}
-
-fn variants_for_resource(
-    manifests: &[ModelManifest],
-    resource: &ModelResource,
-) -> Vec<StatusVariant> {
-    let Some(repository_name) = resource.model.rsplit('/').next() else {
-        return Vec::new();
-    };
-    let repository_key = repository_model_key(repository_name);
-    manifests
-        .iter()
-        .find(|manifest| manifest_matches_resource(manifest, &repository_key))
-        .map(|manifest| manifest.variants.iter().map(StatusVariant::from).collect())
-        .unwrap_or_default()
-}
-
-async fn catalog_variants(
-    state: &AppState,
-    resource: &ModelResource,
-    records: &[CatalogDownload],
-) -> Vec<StatusVariant> {
-    if records.is_empty() {
-        return variants_for_resource(&state.manifests, resource);
-    }
-    let source = match resource.source {
-        Source::ModelScope => ModelSource::ModelScope,
-        Source::HfMirror => ModelSource::HfMirror,
-        Source::HuggingFace => ModelSource::HuggingFace,
-    };
-    let discovery = discover_manifest_at(
-        &state.client,
-        source,
-        resource.source.base(&state.config),
-        &resource.model,
-        &resource.revision,
-    );
-    match tokio::time::timeout(state.config.probe_timeout, discovery).await {
-        Ok(Ok(manifest)) => manifest.variants.iter().map(StatusVariant::from).collect(),
-        error => {
-            tracing::debug!(?error, "目录文件清单不可用，仅展示本地记录固定的工件身份");
-            let mut seen = std::collections::HashSet::new();
-            records
-                .iter()
-                .filter_map(|r| recorded_variant(source, &resource.model, &resource.revision, r))
-                .filter(|v| seen.insert(v.id.clone()))
-                .map(|v| StatusVariant::from(&v))
-                .collect()
-        }
-    }
+struct CatalogVariants {
+    variants: Vec<StatusVariant>,
+    downloadable: bool,
+    unavailable_reason: Option<UnavailableReason>,
 }
 
 fn apply_catalog_record(variant: &mut StatusVariant, records: &[CatalogDownload]) {
-    let Some(r) = records.iter().find(|r| {
-        r.variant_id == variant.id
-            && r.artifact_uri == variant.artifact_source
-            && r.checksum == variant.expected_sha256
+    let Some(record) = records.iter().find(|record| {
+        record.variant_id == variant.id
+            && record.artifact_uri == variant.artifact_source
+            && record.checksum == variant.expected_sha256
     }) else {
         return;
     };
-    variant.artifact_status = match r.status {
+
+    let verified_local_file = record.status == DownloadTaskStatus::Succeeded
+        && record
+            .local_path
+            .as_deref()
+            .is_some_and(|path| !path.trim().is_empty())
+        && record.actual_sha256.as_deref() == Some(record.checksum.as_str());
+    variant.artifact_status = match record.status {
         DownloadTaskStatus::Queued | DownloadTaskStatus::Downloading => ArtifactStatus::Downloading,
         DownloadTaskStatus::Verifying => ArtifactStatus::Verifying,
-        DownloadTaskStatus::Succeeded => ArtifactStatus::Downloaded,
+        DownloadTaskStatus::Succeeded if verified_local_file => ArtifactStatus::Downloaded,
+        DownloadTaskStatus::Succeeded => ArtifactStatus::Failed,
         DownloadTaskStatus::Failed | DownloadTaskStatus::Cancelled => ArtifactStatus::Failed,
     };
     variant.downloaded = variant.artifact_status == ArtifactStatus::Downloaded;
-    variant.local_path.clone_from(&r.local_path);
-    variant.actual_sha256.clone_from(&r.actual_sha256);
+    if variant.downloaded {
+        variant.local_path.clone_from(&record.local_path);
+        variant.actual_sha256.clone_from(&record.actual_sha256);
+    }
 }
 
 fn artifact_rank(status: ArtifactStatus) -> u8 {
@@ -413,32 +379,232 @@ fn artifact_rank(status: ArtifactStatus) -> u8 {
     }
 }
 
+async fn catalog_variants(
+    state: &AppState,
+    resource: &ModelResource,
+    records: &[CatalogDownload],
+    preset: Option<&'static presets::Preset>,
+) -> Result<CatalogVariants, crate::api::model_resolution::DiscoveryError> {
+    let source = match resource.source {
+        Source::ModelScope => ModelSource::ModelScope,
+        Source::HfMirror => ModelSource::HfMirror,
+        Source::HuggingFace => ModelSource::HuggingFace,
+    };
+    let discovery = discover_manifest_at(
+        &state.client,
+        source,
+        resource.source.base(&state.config),
+        &resource.model,
+        &resource.revision,
+        preset,
+    );
+    let result = tokio::time::timeout(state.config.probe_timeout, discovery).await;
+    match result {
+        Ok(Ok((manifest, sizes))) => {
+            let mut variants = manifest
+                .variants
+                .iter()
+                .filter_map(|variant| {
+                    let file_size = sizes
+                        .iter()
+                        .find(|(id, _)| id == &variant.id)
+                        .map(|(_, size)| *size)?;
+                    let mut status_variant = StatusVariant::from_variant(variant, file_size);
+                    apply_catalog_record(&mut status_variant, records);
+                    Some(status_variant)
+                })
+                .collect::<Vec<_>>();
+            variants.sort_by(|left, right| left.id.cmp(&right.id));
+            let downloadable = !variants.is_empty();
+            Ok(CatalogVariants {
+                variants,
+                downloadable,
+                unavailable_reason: (!downloadable).then_some(UnavailableReason {
+                    code: "no_gguf_artifact",
+                    message: "该仓库修订没有可验证的 GGUF 工件",
+                }),
+            })
+        }
+        Ok(Err(crate::api::model_resolution::DiscoveryError::NotFound)) => Ok(CatalogVariants {
+            variants: Vec::new(),
+            downloadable: false,
+            unavailable_reason: Some(UnavailableReason {
+                code: "repository_not_found",
+                message: "模型仓库或指定修订不存在",
+            }),
+        }),
+        Ok(Err(crate::api::model_resolution::DiscoveryError::Unavailable(error))) => {
+            tracing::debug!(%error, "上游不可用，尝试精确匹配已验证的本地工件");
+            Ok(CatalogVariants {
+                variants: local_fallback_variants(source, resource, records, preset)?,
+                downloadable: false,
+                unavailable_reason: Some(UnavailableReason {
+                    code: "repository_unavailable",
+                    message: "模型仓库暂时不可访问",
+                }),
+            })
+        }
+        Err(error) => {
+            tracing::debug!(?error, "上游文件发现超时，尝试精确匹配已验证的本地工件");
+            Ok(CatalogVariants {
+                variants: local_fallback_variants(source, resource, records, preset)?,
+                downloadable: false,
+                unavailable_reason: Some(UnavailableReason {
+                    code: "repository_unavailable",
+                    message: "模型仓库暂时不可访问",
+                }),
+            })
+        }
+        Ok(Err(error @ crate::api::model_resolution::DiscoveryError::Invalid(_))) => Err(error),
+    }
+}
+
+fn local_fallback_variants(
+    source: ModelSource,
+    resource: &ModelResource,
+    records: &[CatalogDownload],
+    preset: Option<&'static presets::Preset>,
+) -> Result<Vec<StatusVariant>, crate::api::model_resolution::DiscoveryError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut variants = Vec::new();
+    for record in records {
+        if record.status != DownloadTaskStatus::Succeeded
+            || record.total_bytes == 0
+            || !record
+                .local_path
+                .as_deref()
+                .is_some_and(|path| !path.trim().is_empty())
+            || record.actual_sha256.as_deref() != Some(record.checksum.as_str())
+        {
+            continue;
+        }
+        let Some(variant) =
+            recorded_variant(source, &resource.model, &resource.revision, preset, record)?
+        else {
+            continue;
+        };
+        let identity = (
+            variant.id.clone(),
+            variant.artifact_uri.clone(),
+            variant.checksum.clone(),
+        );
+        if !seen.insert(identity) {
+            continue;
+        }
+        let mut status_variant = StatusVariant::from_variant(&variant, record.total_bytes);
+        status_variant.artifact_status = ArtifactStatus::Downloaded;
+        status_variant.downloaded = true;
+        status_variant.local_path.clone_from(&record.local_path);
+        status_variant
+            .actual_sha256
+            .clone_from(&record.actual_sha256);
+        variants.push(status_variant);
+    }
+    variants.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(variants)
+}
+
+fn status_response(
+    resource: &ModelResource,
+    resource_url: &Url,
+    remote_status: &'static str,
+    identity_status: Option<presets::IdentityStatus>,
+    catalog: CatalogVariants,
+) -> Response {
+    let mut artifact_status = ArtifactStatus::NotDownloaded;
+    let mut local_path = None;
+    let mut actual_sha256 = None;
+    for variant in &catalog.variants {
+        if artifact_rank(variant.artifact_status) > artifact_rank(artifact_status) {
+            artifact_status = variant.artifact_status;
+            local_path.clone_from(&variant.local_path);
+            actual_sha256.clone_from(&variant.actual_sha256);
+        }
+    }
+    let downloaded = artifact_status == ArtifactStatus::Downloaded
+        && local_path
+            .as_deref()
+            .is_some_and(|path| !path.trim().is_empty())
+        && actual_sha256.is_some();
+    Json(CatalogInspection {
+        version: CatalogVersion {
+            model: resource.model.clone(),
+            source: resource.source,
+            revision: resource.revision.clone(),
+            resource_url: resource_url.to_string(),
+        },
+        remote_status,
+        downloadable: catalog.downloadable,
+        unavailable_reason: catalog.unavailable_reason,
+        identity_status,
+        artifact_status,
+        downloaded,
+        local_path,
+        actual_sha256,
+        variants: catalog.variants,
+    })
+    .into_response()
+}
+
 #[expect(
     clippy::cognitive_complexity,
-    reason = "状态接口需要在一次响应中保留远程探测、变体工件查询和模型级聚合语义"
+    reason = "状态查询需协调身份校验、远端页面兼容状态、本地凭据与实时工件发现"
 )]
 async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQuery>) -> Response {
-    let resource = match (query.preset, query.model, query.source) {
-        (Some(id), _, _) => match presets::find(&id) {
-            Some(preset) => preset.resource,
-            None => return bad_request("未知的预置模型"),
-        },
-        (None, Some(model), Some(source)) => ModelResource {
-            model,
-            source,
-            revision: query
-                .revision
-                .unwrap_or_else(|| source.default_revision().to_string()),
-        },
-        _ => return bad_request("模型选择参数不完整"),
+    let (resource, preset) = match (query.preset, query.model, query.source, query.revision) {
+        (Some(id), None, None, None) => {
+            let preset = match presets::find(&id) {
+                Ok(Some(preset)) => preset,
+                Ok(None) => return bad_request("未知的预置模型"),
+                Err(error) => {
+                    tracing::error!(%error, "预置模型目录校验失败");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({
+                            "code": "preset_catalog_invalid",
+                            "message": "预置模型目录无效"
+                        })),
+                    )
+                        .into_response();
+                }
+            };
+            (preset.resource.clone(), Some(preset))
+        }
+        (None, Some(model), Some(source), revision) => (
+            ModelResource {
+                model,
+                source,
+                revision: revision.unwrap_or_else(|| source.default_revision().to_string()),
+            },
+            None,
+        ),
+        _ => return bad_request("模型选择参数不完整或互斥参数冲突"),
     };
     let Some(url) = resource.url(&state.config) else {
         return bad_request("模型仓库或修订号无效");
     };
+    let identity_status = preset.map(|item| item.identity_status);
+    if identity_status == Some(presets::IdentityStatus::PendingValidation) {
+        return status_response(
+            &resource,
+            &url,
+            "developing",
+            identity_status,
+            CatalogVariants {
+                variants: Vec::new(),
+                downloadable: false,
+                unavailable_reason: Some(UnavailableReason {
+                    code: "preset_identity_pending",
+                    message: "该预置模型身份待校验，暂不可下载",
+                }),
+            },
+        );
+    }
+
     let remote_status = match sources::probe(&state.client, &state.config, url.clone()).await {
         Ok(200) => "downloadable",
         Ok(code) => {
-            tracing::debug!(code, model = %resource.model, "模型资源页面不可下载");
+            tracing::debug!(code, model = %resource.model, "模型资源页面不可访问");
             "developing"
         }
         Err(error) => {
@@ -460,38 +626,33 @@ async fn status(State(state): State<Arc<AppState>>, Query(query): Query<StatusQu
                 tracing::error!(%error, "读取本地模型目录失败");
                 return (
                     StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({ "message": "本地模型目录暂时不可用" })),
+                    Json(json!({
+                        "code": "catalog_unavailable",
+                        "message": "本地模型目录暂时不可用"
+                    })),
                 )
                     .into_response();
             }
         },
         None => Vec::new(),
     };
-    let mut variants = catalog_variants(&state, &resource, &records).await;
-    let mut model_artifact_status = ArtifactStatus::NotDownloaded;
-    let mut model_local_path = None;
-    let mut model_actual_sha256 = None;
-    for variant in &mut variants {
-        apply_catalog_record(variant, &records);
-        if artifact_rank(variant.artifact_status) > artifact_rank(model_artifact_status) {
-            model_artifact_status = variant.artifact_status;
-            model_local_path.clone_from(&variant.local_path);
-            model_actual_sha256.clone_from(&variant.actual_sha256);
+    let catalog = match catalog_variants(&state, &resource, &records, preset).await {
+        Ok(catalog) => catalog,
+        Err(crate::api::model_resolution::DiscoveryError::Invalid(_)) => {
+            return bad_request("模型仓库或修订号无效");
         }
-    }
-    Json(json!({
-        "status": remote_status,
-        "model": resource.model,
-        "source": resource.source,
-        "revision": resource.revision,
-        "resource_url": url.as_str(),
-        "artifact_status": model_artifact_status,
-        "downloaded": matches!(model_artifact_status, ArtifactStatus::Downloaded),
-        "local_path": model_local_path,
-        "actual_sha256": model_actual_sha256,
-        "variants": variants,
-    }))
-    .into_response()
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "code": "catalog_unavailable",
+                    "message": "模型目录暂时不可用"
+                })),
+            )
+                .into_response();
+        }
+    };
+    status_response(&resource, &url, remote_status, identity_status, catalog)
 }
 
 #[cfg(test)]

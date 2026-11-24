@@ -5,6 +5,7 @@ use axum::{
     routing::post,
     Router,
 };
+use burncloud_download::{catalog_downloads, CatalogDownload, DownloadTaskStatus};
 use burncloud_node_runtime::HardwareProbeError;
 use burncloud_supply_model::{
     load_default_manifests, CandidateResolutionOutcome, LocalModelUnsupportedReason, ModelManifest,
@@ -14,7 +15,12 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::{api::hardware::HardwareSnapshot, node_orchestrator::ModelDemandError, AppState};
+use crate::{
+    api::hardware::HardwareSnapshot,
+    model_selection::presets::{IdentityStatus, Preset},
+    node_orchestrator::ModelDemandError,
+    AppState,
+};
 
 const MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 const LLAMA_CPP: &str = "llama.cpp";
@@ -39,6 +45,14 @@ pub(crate) enum ModelSource {
 }
 
 impl ModelSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelScope => "modelscope",
+            Self::HfMirror => "hf-mirror",
+            Self::HuggingFace => "huggingface",
+        }
+    }
+
     fn base_url(self) -> &'static str {
         match self {
             Self::ModelScope => "https://modelscope.cn",
@@ -61,6 +75,8 @@ struct ResolveModelRequest {
     model: String,
     source: ModelSource,
     revision: String,
+    #[serde(default)]
+    preset_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -188,20 +204,72 @@ async fn resolve_model(
     State(state): State<AppState>,
     payload: Result<Json<ResolveModelRequest>, JsonRejection>,
 ) -> Response {
-    let (source, model, revision) = match validate_request(payload) {
+    let (source, model, revision, preset) = match validate_request(payload) {
         Ok(request) => request,
-        Err(()) => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "invalid_model",
-                "模型名称、来源或修订号无效",
-            )
+        Err((code, message)) => {
+            let status = if code == "preset_catalog_invalid" {
+                StatusCode::INTERNAL_SERVER_ERROR
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            return error_response(status, code, message);
         }
     };
-    let manifest = match discover_manifest(&source, &model, &revision).await {
-        Ok(manifest) => manifest,
+
+    if preset.is_some_and(|preset| preset.identity_status == IdentityStatus::PendingValidation) {
+        let manifest = ModelManifest {
+            model_name: model.clone(),
+            description: "身份待校验的预置模型，仅返回硬件诊断".into(),
+            supported_backends: vec![LLAMA_CPP.into()],
+            version: revision,
+            variants: Vec::new(),
+        };
+        return unsupported_reason_response(
+            model.clone(),
+            "preset_identity_pending",
+            "该预置模型身份待校验，暂不可下载",
+            state
+                .production_node
+                .resolve_selected_model_candidates(&model, vec![manifest])
+                .await,
+        );
+    }
+
+    let manifest = match discover_manifest(&source, &model, &revision, preset).await {
+        Ok((manifest, _)) => manifest,
+        Err(unavailable @ DiscoveryError::Unavailable(_)) => {
+            let records =
+                match catalog_downloads(state.db.clone(), &model, source.as_str(), &revision).await
+                {
+                    Ok(records) => records,
+                    Err(error) => {
+                        tracing::error!(%error, model = %model, "读取模型本地校验凭据失败");
+                        return error_response(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "model_resolution_failed",
+                            "读取模型本地校验凭据失败",
+                        );
+                    }
+                };
+            match local_fallback_manifest(source, &model, &revision, preset, &records) {
+                Ok(Some(manifest)) => manifest,
+                Ok(None) => return discovery_error_response(unavailable, &model, &source),
+                Err(error) => return discovery_error_response(error, &model, &source),
+            }
+        }
         Err(error) => return discovery_error_response(error, &model, &source),
     };
+    if manifest.variants.is_empty() {
+        return unsupported_reason_response(
+            model.clone(),
+            "no_valid_gguf",
+            "该模型仓库修订没有可验证的 GGUF 工件",
+            state
+                .production_node
+                .resolve_selected_model_candidates(&model, vec![manifest])
+                .await,
+        );
+    }
     let resolution = state
         .production_node
         .resolve_selected_model_candidates(&model, vec![manifest])
@@ -209,18 +277,103 @@ async fn resolve_model(
     resolution_response(model, resolution)
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "接口契约要求验证结果同时返回来源、仓库身份、预置绑定和稳定错误码"
+)]
 fn validate_request(
     payload: Result<Json<ResolveModelRequest>, JsonRejection>,
-) -> Result<(ModelSource, String, String), ()> {
+) -> Result<(ModelSource, String, String, Option<&'static Preset>), (&'static str, &'static str)> {
     let Json(request) = payload.map_err(|error| {
         tracing::debug!(%error, "模型解析请求体无效");
+        ("invalid_model", "模型名称、来源或修订号无效")
     })?;
     let model = request.model.trim().to_owned();
     let revision = request.revision.trim().to_owned();
     if !valid_model_id(&model) || !valid_segment(&revision) {
-        return Err(());
+        return Err(("invalid_model", "模型名称、来源或修订号无效"));
     }
-    Ok((request.source, model, revision))
+    let preset = match request.preset_id {
+        Some(id) => match crate::model_selection::presets::find(&id) {
+            Ok(Some(preset)) => Some(preset),
+            Ok(None) => return Err(("unknown_preset", "预置模型 ID 不存在")),
+            Err(error) => {
+                tracing::error!(%error, "预置模型目录校验失败");
+                return Err(("preset_catalog_invalid", "预置模型目录无效"));
+            }
+        },
+        None => None,
+    };
+    if let Some(preset) = preset {
+        if preset.resource.model != model
+            || preset.resource.source.as_str() != request.source.as_str()
+            || preset.resource.revision != revision
+        {
+            return Err((
+                "preset_identity_mismatch",
+                "预置模型 ID 与模型、来源或修订号不一致",
+            ));
+        }
+    }
+    Ok((request.source, model, revision, preset))
+}
+
+fn local_fallback_manifest(
+    source: ModelSource,
+    model: &str,
+    revision: &str,
+    preset: Option<&'static Preset>,
+    records: &[CatalogDownload],
+) -> Result<Option<ModelManifest>, DiscoveryError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut variants = Vec::new();
+    for record in records {
+        let Some(variant) = recorded_variant(source, model, revision, preset, record)? else {
+            continue;
+        };
+        let identity = (
+            variant.id.clone(),
+            variant.artifact_uri.clone(),
+            variant.checksum.clone(),
+        );
+        if seen.insert(identity) {
+            variants.push(variant);
+        }
+    }
+    if variants.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(ModelManifest {
+        model_name: model.to_owned(),
+        description: "上游不可用时复用的已验证本地 GGUF 工件".into(),
+        supported_backends: vec![LLAMA_CPP.into()],
+        version: revision.to_owned(),
+        variants,
+    }))
+}
+
+fn unsupported_reason_response(
+    model: String,
+    code: &'static str,
+    message: &'static str,
+    resolution: anyhow::Result<(
+        burncloud_node_runtime::HardwareProfile,
+        CandidateResolutionOutcome,
+    )>,
+) -> Response {
+    match resolution {
+        Ok((hardware, _)) => success_response(ResolveModelData {
+            status: "unsupported",
+            model,
+            hardware: hardware.into(),
+            candidates: Vec::new(),
+            reason: Some(ResolveReason {
+                code,
+                message: message.into(),
+            }),
+        }),
+        Err(error) => resolution_error_response(error),
+    }
 }
 
 fn discovery_error_response(error: DiscoveryError, model: &str, source: &ModelSource) -> Response {
@@ -283,22 +436,30 @@ async fn discover_manifest(
     source: &ModelSource,
     model: &str,
     revision: &str,
-) -> Result<ModelManifest, DiscoveryError> {
+    preset: Option<&'static Preset>,
+) -> Result<(ModelManifest, Vec<(String, u64)>), DiscoveryError> {
     let client = Client::builder()
         .timeout(MODEL_DISCOVERY_TIMEOUT)
         .build()
         .map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
-    discover_manifest_at(&client, *source, source.base_url(), model, revision).await
+    discover_manifest_at(&client, *source, source.base_url(), model, revision, preset).await
 }
 
-/// 从指定站点读取真实文件清单；目录和硬件解析共用同一份身份生成规则。
+/// 从指定站点读取有效 GGUF 清单，并返回每个 Variant 对应的真实文件大小。
+///
+/// # Examples
+/// 传入 `ModelScope`、`Qwen/Qwen3-8B` 和 `master` 可发现仓库文件并生成直接 `/resolve/` 地址。
+///
+/// # Notes
+/// 仓库页面地址不会作为工件地址；缺少有效 SHA-256 或正文件大小的文件会被排除。
 pub(crate) async fn discover_manifest_at(
     client: &Client,
     source: ModelSource,
     base: &str,
     model: &str,
     revision: &str,
-) -> Result<ModelManifest, DiscoveryError> {
+    preset: Option<&'static Preset>,
+) -> Result<(ModelManifest, Vec<(String, u64)>), DiscoveryError> {
     let url = repository_url(source, model, revision, base)?;
     let artifacts = match source {
         ModelSource::ModelScope => discover_modelscope(client, url).await?,
@@ -306,6 +467,10 @@ pub(crate) async fn discover_manifest_at(
             discover_huggingface(client, url).await?
         }
     };
+    let sizes = artifacts
+        .iter()
+        .map(|artifact| (artifact.path.clone(), artifact.size))
+        .collect();
     let variants = artifacts
         .into_iter()
         .map(|artifact| build_variant(source, model, revision, artifact))
@@ -321,7 +486,8 @@ pub(crate) async fn discover_manifest_at(
         variants,
     };
     apply_builtin_resource_config(&mut manifest)?;
-    Ok(manifest)
+    apply_preset_hardware_requirements(&mut manifest, preset)?;
+    Ok((manifest, sizes))
 }
 
 fn apply_builtin_resource_config(manifest: &mut ModelManifest) -> Result<(), DiscoveryError> {
@@ -349,11 +515,68 @@ fn apply_builtin_resource_config(manifest: &mut ModelManifest) -> Result<(), Dis
         let Some(configured) = configured else {
             continue;
         };
-        discovered.min_ram_bytes = configured.min_ram_bytes;
-        discovered.min_vram_bytes = configured.min_vram_bytes;
-        discovered.disk_size_bytes = configured.disk_size_bytes;
+        // 上游文件大小是 RAM 与磁盘要求的下限，内置配置不能把它降低。
+        discovered.min_ram_bytes = discovered.min_ram_bytes.max(configured.min_ram_bytes);
+        discovered.min_vram_bytes = discovered.min_vram_bytes.max(configured.min_vram_bytes);
+        discovered.disk_size_bytes = discovered.disk_size_bytes.max(configured.disk_size_bytes);
     }
     Ok(())
+}
+
+fn apply_preset_hardware_requirements(
+    manifest: &mut ModelManifest,
+    preset: Option<&'static Preset>,
+) -> Result<(), DiscoveryError> {
+    let Some(preset) = preset else {
+        return Ok(());
+    };
+    if preset.identity_status == IdentityStatus::PendingValidation {
+        // 未核实身份只允许显示仓库信息，不能把推测门槛当作可下载准入条件。
+        return Ok(());
+    }
+
+    let vram_min = gibibytes_to_bytes(&preset.hardware.vram_min)?;
+    let ram_min = gibibytes_to_bytes(&preset.hardware.ram_min)?;
+    let disk_min = gibibytes_to_bytes(&preset.hardware.disk_min)?;
+    for variant in &mut manifest.variants {
+        variant.min_vram_bytes = variant.min_vram_bytes.max(vram_min);
+        variant.min_ram_bytes = variant.min_ram_bytes.max(ram_min);
+        variant.disk_size_bytes = variant.disk_size_bytes.max(disk_min);
+    }
+    Ok(())
+}
+
+fn gibibytes_to_bytes(value: &str) -> Result<u64, DiscoveryError> {
+    let invalid = || DiscoveryError::Invalid("预置模型硬件容量无效".into());
+    let number = value.strip_suffix('G').ok_or_else(invalid)?;
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || (number.contains('.')
+            && (fraction.is_empty()
+                || fraction.len() > 18
+                || !fraction.bytes().all(|byte| byte.is_ascii_digit())))
+    {
+        return Err(invalid());
+    }
+
+    let whole = whole.parse::<u128>().map_err(|_| invalid())?;
+    let whole_bytes = whole.checked_mul(1_u128 << 30).ok_or_else(invalid)?;
+    let fraction_bytes = if fraction.is_empty() {
+        0
+    } else {
+        let numerator = fraction.parse::<u128>().map_err(|_| invalid())?;
+        let scale = 10_u128
+            .checked_pow(fraction.len() as u32)
+            .ok_or_else(invalid)?;
+        let scaled = numerator.checked_mul(1_u128 << 30).ok_or_else(invalid)?;
+        // 向上取整以避免小数 GiB 换算后低估最低硬件容量。
+        scaled / scale + if scaled % scale == 0 { 0 } else { 1 }
+    };
+    let bytes = whole_bytes
+        .checked_add(fraction_bytes)
+        .ok_or_else(invalid)?;
+    u64::try_from(bytes).map_err(|_| invalid())
 }
 
 fn model_key(value: &str) -> String {
@@ -438,27 +661,26 @@ async fn discover_modelscope(
             envelope.code
         )));
     }
-    Ok(envelope
+    let data = envelope
         .data
-        .map(|data| {
-            data.files
-                .into_iter()
-                .filter(|file| file.kind.is_empty() || file.kind == "blob")
-                .filter_map(|file| {
-                    let sha256 = normalize_sha256(&file.sha256)?;
-                    let path = file.path;
-                    if !is_gguf(&path) || file.size == 0 {
-                        return None;
-                    }
-                    Some(DiscoveredArtifact {
-                        path,
-                        size: file.size,
-                        sha256,
-                    })
-                })
-                .collect()
+        .ok_or_else(|| DiscoveryError::Unavailable("ModelScope 文件清单缺失".into()))?;
+    Ok(data
+        .files
+        .into_iter()
+        .filter(|file| file.kind.is_empty() || file.kind == "blob")
+        .filter_map(|file| {
+            let sha256 = normalize_sha256(&file.sha256)?;
+            let path = file.path;
+            if !is_gguf(&path) || !valid_artifact_path(&path) || file.size == 0 {
+                return None;
+            }
+            Some(DiscoveredArtifact {
+                path,
+                size: file.size,
+                sha256,
+            })
         })
-        .unwrap_or_default())
+        .collect())
 }
 
 async fn discover_huggingface(
@@ -485,7 +707,9 @@ async fn discover_huggingface(
         .map_err(|error| DiscoveryError::Unavailable(error.to_string()))?;
     Ok(files
         .into_iter()
-        .filter(|file| file.kind == "file" && is_gguf(&file.path))
+        .filter(|file| {
+            file.kind == "file" && is_gguf(&file.path) && valid_artifact_path(&file.path)
+        })
         .filter_map(|file| {
             let sha256 = normalize_sha256(
                 file.lfs
@@ -511,6 +735,9 @@ fn repository_url(
     revision: &str,
     base: &str,
 ) -> Result<Url, DiscoveryError> {
+    if !valid_model_id(model) || !valid_segment(revision) {
+        return Err(DiscoveryError::Invalid("模型名称或修订号无效".into()));
+    }
     let (owner, name) = model
         .split_once('/')
         .ok_or_else(|| DiscoveryError::Invalid("模型名称必须包含组织和名称".into()))?;
@@ -548,16 +775,52 @@ pub(crate) fn recorded_variant(
     source: ModelSource,
     model: &str,
     revision: &str,
+    preset: Option<&'static Preset>,
     record: &burncloud_download::CatalogDownload,
-) -> Option<Variant> {
-    let sha256 = normalize_sha256(record.checksum.strip_prefix("sha256:")?)?;
+) -> Result<Option<Variant>, DiscoveryError> {
+    let Some(local_path) = record.local_path.as_deref() else {
+        return Ok(None);
+    };
+    if record.status != DownloadTaskStatus::Succeeded
+        || local_path.trim().is_empty()
+        || record.actual_sha256.as_deref() != Some(record.checksum.as_str())
+        || record.total_bytes == 0
+        || !is_gguf(&record.variant_id)
+    {
+        return Ok(None);
+    }
+    let Some(sha256) = record
+        .checksum
+        .strip_prefix("sha256:")
+        .and_then(normalize_sha256)
+    else {
+        return Ok(None);
+    };
     let artifact = DiscoveredArtifact {
         path: record.variant_id.clone(),
         size: record.total_bytes,
         sha256,
     };
-    let variant = build_variant(source, model, revision, artifact).ok()?;
-    (variant.artifact_uri == record.artifact_uri).then_some(variant)
+    let variant = match build_variant(source, model, revision, artifact) {
+        Ok(variant) => variant,
+        // 历史下载记录来自外部仓库，身份或路径无效时只跳过该记录。
+        Err(DiscoveryError::Invalid(_)) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if variant.artifact_uri != record.artifact_uri {
+        return Ok(None);
+    }
+
+    let mut manifest = ModelManifest {
+        model_name: model.to_owned(),
+        description: "已验证的本地模型工件".into(),
+        supported_backends: vec![LLAMA_CPP.into()],
+        version: revision.to_owned(),
+        variants: vec![variant],
+    };
+    apply_builtin_resource_config(&mut manifest)?;
+    apply_preset_hardware_requirements(&mut manifest, preset)?;
+    Ok(manifest.variants.pop())
 }
 
 fn build_variant(
@@ -655,6 +918,10 @@ fn valid_segment(value: &str) -> bool {
 
 fn valid_path_segment(value: &str) -> bool {
     !value.is_empty() && value != "." && value != ".." && !value.contains(['\\', '\0'])
+}
+
+fn valid_artifact_path(value: &str) -> bool {
+    value.split('/').all(valid_path_segment)
 }
 
 fn success_response(data: ResolveModelData) -> Response {

@@ -6,9 +6,12 @@
 )]
 
 use super::*;
+use axum::{routing::any, Router};
 use burncloud_supply_model::{
     load_default_manifests, LocalModelUnsupportedReason, ModelManifest, Variant,
 };
+use serde_json::json;
+use tokio::{net::TcpListener, task::JoinHandle};
 
 #[test]
 fn candidate_serializes_frontend_contract() {
@@ -136,15 +139,18 @@ fn all_builtin_gguf_models_use_their_resource_budget() {
         let configured = &discovered.variants[0];
         let expected = &builtin.variants[0];
         assert_eq!(
-            configured.min_ram_bytes, expected.min_ram_bytes,
+            configured.min_ram_bytes,
+            expected.min_ram_bytes.max(1),
             "{repository}"
         );
         assert_eq!(
-            configured.min_vram_bytes, expected.min_vram_bytes,
+            configured.min_vram_bytes,
+            expected.min_vram_bytes.max(2),
             "{repository}"
         );
         assert_eq!(
-            configured.disk_size_bytes, expected.disk_size_bytes,
+            configured.disk_size_bytes,
+            expected.disk_size_bytes.max(3),
             "{repository}"
         );
         assert_eq!(configured.checksum, "sha256:dynamic");
@@ -231,4 +237,374 @@ async fn error_response_is_json_and_not_cacheable() {
     let value: serde_json::Value = serde_json::from_slice(&body).expect("错误响应应为 JSON");
     assert_eq!(value["success"], false);
     assert_eq!(value["error"]["code"], "model_repository_not_found");
+}
+
+async fn mock_repository(status: StatusCode, body: String) -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("监听模拟仓库");
+    let base = format!("http://{}", listener.local_addr().expect("模拟仓库地址"));
+    let app = Router::new().fallback(any(move || {
+        let body = body.clone();
+        async move { (status, body) }
+    }));
+    let task = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("模拟仓库服务运行");
+    });
+    (base, task)
+}
+
+fn dynamic_manifest(variant: Variant) -> ModelManifest {
+    ModelManifest {
+        model_name: "Qwen/Qwen3-8B-GGUF".into(),
+        description: "测试工件".into(),
+        supported_backends: vec![LLAMA_CPP.into()],
+        version: "main".into(),
+        variants: vec![variant],
+    }
+}
+
+fn dynamic_variant(size: u64, min_vram_bytes: u64) -> Variant {
+    Variant {
+        id: "Qwen3-8B-Q4_K_M.gguf".into(),
+        model_size: None,
+        quantization: "Q4_K_M".into(),
+        backend: LLAMA_CPP.into(),
+        min_ram_bytes: size,
+        min_vram_bytes,
+        disk_size_bytes: size,
+        checksum: format!("sha256:{}", "a".repeat(64)),
+        artifact_uri: "https://example.invalid/resolve/main/model.gguf".into(),
+    }
+}
+
+#[tokio::test]
+async fn modelscope_discovery_filters_invalid_artifacts_and_builds_direct_urls() {
+    let hash = "A".repeat(64);
+    let body = json!({
+        "Code": 200,
+        "Data": {
+            "Files": [
+                {"Path":"nested/model-Q4_K_M.gguf", "Size":1024, "Sha256":hash, "Type":"blob"},
+                {"Path":"model-no-hash.gguf", "Size":1024, "Sha256":"", "Type":"blob"},
+                {"Path":"model-invalid-hash.gguf", "Size":1024, "Sha256":"not-a-sha256", "Type":"blob"},
+                {"Path":"model-zero.gguf", "Size":0, "Sha256":hash, "Type":"blob"},
+                {"Path":"model.safetensors", "Size":1024, "Sha256":hash, "Type":"blob"},
+                {"Path":"nested/../unsafe.gguf", "Size":1024, "Sha256":hash, "Type":"blob"},
+                {"Path":"nested/model.gguf", "Size":1024, "Sha256":hash, "Type":"tree"}
+            ]
+        }
+    });
+    let (base, task) = mock_repository(StatusCode::OK, body.to_string()).await;
+    let discovered = discover_manifest_at(
+        &Client::new(),
+        ModelSource::ModelScope,
+        &base,
+        "org/repo",
+        "master",
+        None,
+    )
+    .await
+    .expect("ModelScope 工件发现");
+    task.abort();
+
+    let (manifest, sizes) = discovered;
+    assert_eq!(manifest.variants.len(), 1);
+    assert_eq!(manifest.variants[0].id, "nested/model-Q4_K_M.gguf");
+    assert_eq!(
+        manifest.variants[0].checksum,
+        format!("sha256:{}", "a".repeat(64))
+    );
+    assert_eq!(
+        manifest.variants[0].artifact_uri,
+        "https://modelscope.cn/models/org/repo/resolve/master/nested/model-Q4_K_M.gguf"
+    );
+    assert!(manifest.variants[0].artifact_uri.contains("/resolve/"));
+    assert!(!manifest.variants[0].artifact_uri.contains("/tree/"));
+    assert_eq!(sizes, vec![("nested/model-Q4_K_M.gguf".into(), 1024)]);
+}
+
+#[tokio::test]
+async fn huggingface_discovery_requires_lfs_sha_size_and_direct_resolve_url() {
+    let hash = "B".repeat(64);
+    let body = json!([
+        {"type":"file", "path":"folder/model-Q5_K_M.gguf", "size":null, "lfs":{"oid":hash, "size":2048}},
+        {"type":"file", "path":"missing-sha.gguf", "size":2048},
+        {"type":"file", "path":"invalid-sha.gguf", "size":2048, "lfs":{"oid":"not-a-sha256"}},
+        {"type":"file", "path":"zero.gguf", "size":0, "lfs":{"oid":hash}},
+        {"type":"file", "path":"model.safetensors", "size":2048, "lfs":{"oid":hash}},
+        {"type":"file", "path":"../unsafe.gguf", "size":2048, "lfs":{"oid":hash}},
+        {"type":"directory", "path":"folder.gguf", "size":2048, "lfs":{"oid":hash}}
+    ]);
+    let (base, task) = mock_repository(StatusCode::OK, body.to_string()).await;
+    let discovered = discover_manifest_at(
+        &Client::new(),
+        ModelSource::HfMirror,
+        &base,
+        "org/repo",
+        "main",
+        None,
+    )
+    .await
+    .expect("Hugging Face 工件发现");
+    task.abort();
+
+    let (manifest, sizes) = discovered;
+    assert_eq!(manifest.variants.len(), 1);
+    assert_eq!(manifest.variants[0].id, "folder/model-Q5_K_M.gguf");
+    assert_eq!(
+        manifest.variants[0].checksum,
+        format!("sha256:{}", "b".repeat(64))
+    );
+    assert_eq!(
+        manifest.variants[0].artifact_uri,
+        "https://hf-mirror.com/org/repo/resolve/main/folder/model-Q5_K_M.gguf"
+    );
+    assert_eq!(sizes, vec![("folder/model-Q5_K_M.gguf".into(), 2048)]);
+}
+
+#[tokio::test]
+async fn discovery_preserves_upstream_not_found_and_unavailable_errors() {
+    for (status, expected_not_found) in [
+        (StatusCode::NOT_FOUND, true),
+        (StatusCode::BAD_GATEWAY, false),
+    ] {
+        let (base, task) = mock_repository(status, "{}".into()).await;
+        let result = discover_manifest_at(
+            &Client::new(),
+            ModelSource::HuggingFace,
+            &base,
+            "org/repo",
+            "main",
+            None,
+        )
+        .await;
+        task.abort();
+        if expected_not_found {
+            assert!(matches!(result, Err(DiscoveryError::NotFound)));
+        } else {
+            assert!(matches!(result, Err(DiscoveryError::Unavailable(_))));
+        }
+    }
+    assert!(matches!(
+        repository_url(
+            ModelSource::HuggingFace,
+            "../repo",
+            "main",
+            "https://huggingface.co"
+        ),
+        Err(DiscoveryError::Invalid(_))
+    ));
+}
+
+#[test]
+fn builtin_resource_config_never_reduces_actual_artifact_requirements() {
+    const GIB: u64 = 1024 * 1024 * 1024;
+    let mut manifest = dynamic_manifest(dynamic_variant(20 * GIB, 8 * GIB));
+
+    apply_builtin_resource_config(&mut manifest).expect("内置资源配置应有效");
+
+    let variant = &manifest.variants[0];
+    assert_eq!(variant.min_ram_bytes, 20 * GIB);
+    assert_eq!(variant.min_vram_bytes, 8 * GIB);
+    assert_eq!(variant.disk_size_bytes, 20 * GIB);
+}
+
+#[test]
+fn preset_hardware_requirements_merge_minima_and_preserve_larger_artifact_values() {
+    const GIB: u64 = 1024 * 1024 * 1024;
+    let preset = crate::model_selection::presets::find("qwen3-8b")
+        .expect("预置目录有效")
+        .expect("Qwen 预置存在");
+    let mut manifest = dynamic_manifest(dynamic_variant(1024, 1024));
+
+    apply_preset_hardware_requirements(&mut manifest, Some(preset)).expect("合并预置门槛");
+    let variant = &manifest.variants[0];
+    assert_eq!(variant.min_vram_bytes, 6 * GIB);
+    assert_eq!(variant.min_ram_bytes, 12 * GIB);
+    assert_eq!(variant.disk_size_bytes, 6 * GIB);
+
+    let mut larger = dynamic_manifest(dynamic_variant(20 * GIB, 24 * GIB));
+    apply_preset_hardware_requirements(&mut larger, Some(preset)).expect("保留较大工件门槛");
+    assert_eq!(larger.variants[0].min_vram_bytes, 24 * GIB);
+    assert_eq!(larger.variants[0].min_ram_bytes, 20 * GIB);
+    assert_eq!(larger.variants[0].disk_size_bytes, 20 * GIB);
+}
+
+#[test]
+fn gibibyte_conversion_uses_checked_binary_units_and_rounds_up_fractional_bytes() {
+    assert_eq!(gibibytes_to_bytes("1G").expect("整数 GiB"), 1_u64 << 30);
+    assert_eq!(gibibytes_to_bytes("1.5G").expect("小数 GiB"), 3_u64 << 29);
+    assert_eq!(gibibytes_to_bytes("0.1G").expect("向上取整"), 107_374_183);
+    assert!(matches!(
+        gibibytes_to_bytes("18446744073709551616G"),
+        Err(DiscoveryError::Invalid(_))
+    ));
+    assert!(matches!(
+        gibibytes_to_bytes("1T"),
+        Err(DiscoveryError::Invalid(_))
+    ));
+}
+
+#[test]
+fn non_preset_manifest_keeps_its_existing_resource_requirements() {
+    let mut manifest = dynamic_manifest(dynamic_variant(8192, 4096));
+    let original = manifest.variants[0].clone();
+
+    apply_preset_hardware_requirements(&mut manifest, None).expect("非预置路径兼容");
+
+    assert_eq!(manifest.variants[0], original);
+}
+
+#[tokio::test]
+async fn modelscope_success_without_file_metadata_is_unavailable() {
+    let (base, task) =
+        mock_repository(StatusCode::OK, json!({"Code":200,"Data":null}).to_string()).await;
+    let result = discover_manifest_at(
+        &Client::new(),
+        ModelSource::ModelScope,
+        &base,
+        "org/repo",
+        "master",
+        None,
+    )
+    .await;
+    task.abort();
+
+    assert!(matches!(result, Err(DiscoveryError::Unavailable(_))));
+}
+
+#[test]
+fn pending_identity_does_not_receive_preset_hardware_requirements() {
+    let preset = crate::model_selection::presets::find("nsfw_image_detection")
+        .expect("预置目录有效")
+        .expect("待校验预置存在");
+    let manifest = dynamic_manifest(dynamic_variant(1024, 1024));
+    let original = manifest.variants[0].clone();
+    let mut manifest = manifest;
+
+    apply_preset_hardware_requirements(&mut manifest, Some(preset)).expect("待校验身份可查看");
+
+    assert_eq!(manifest.variants[0], original);
+}
+
+#[test]
+fn resolve_request_keeps_legacy_path_and_binds_preset_to_full_identity() {
+    let legacy = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "org/model",
+        "source": "huggingface",
+        "revision": "main"
+    }))
+    .expect("旧版请求字段仍有效");
+    let (source, model, revision, preset) =
+        validate_request(Ok(Json(legacy))).expect("旧版请求兼容");
+    assert_eq!(source, ModelSource::HuggingFace);
+    assert_eq!(model, "org/model");
+    assert_eq!(revision, "main");
+    assert!(preset.is_none());
+
+    let valid = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "Qwen/Qwen3-8B-GGUF",
+        "source": "modelscope",
+        "revision": "master",
+        "preset_id": "qwen3-8b"
+    }))
+    .expect("预置请求字段有效");
+    let (_, _, _, preset) = validate_request(Ok(Json(valid))).expect("预置绑定有效");
+    assert_eq!(
+        preset.expect("预置返回").resource.model,
+        "Qwen/Qwen3-8B-GGUF"
+    );
+
+    let unknown = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "org/model",
+        "source": "huggingface",
+        "revision": "main",
+        "preset_id": "not-a-preset"
+    }))
+    .expect("未知 ID 仍是结构有效请求");
+    assert_eq!(
+        validate_request(Ok(Json(unknown))).expect_err("未知预置拒绝"),
+        ("unknown_preset", "预置模型 ID 不存在")
+    );
+
+    for request in [
+        json!({"model":"evil/model","source":"modelscope","revision":"master","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8B-GGUF","source":"huggingface","revision":"master","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8B-GGUF","source":"modelscope","revision":"other","preset_id":"qwen3-8b"}),
+        json!({"model":"Qwen/Qwen3-8b","source":"modelscope","revision":"master","preset_id":"qwen3-8b"}),
+    ] {
+        let request =
+            serde_json::from_value::<ResolveModelRequest>(request).expect("身份字段结构有效");
+        assert_eq!(
+            validate_request(Ok(Json(request))).expect_err("预置身份必须完全匹配"),
+            (
+                "preset_identity_mismatch",
+                "预置模型 ID 与模型、来源或修订号不一致"
+            )
+        );
+    }
+
+    let untrusted_url = serde_json::from_value::<ResolveModelRequest>(json!({
+        "model": "org/model",
+        "source": "huggingface",
+        "revision": "main",
+        "artifact_uri": "https://evil.invalid/model.gguf"
+    }))
+    .expect("未知字段按旧版兼容策略忽略");
+    let (_, _, _, preset) =
+        validate_request(Ok(Json(untrusted_url))).expect("解析路径继续只使用可信上游工件");
+    assert!(preset.is_none());
+}
+
+#[test]
+fn local_fallback_only_keeps_complete_verified_records_and_merged_requirements() {
+    const GIB: u64 = 1024 * 1024 * 1024;
+    let preset = crate::model_selection::presets::find("qwen3-8b")
+        .expect("目录有效")
+        .expect("Qwen 预置存在");
+    let model = "Qwen/Qwen3-8B-GGUF";
+    let revision = "master";
+    let path = "Qwen3-8B-Q4_K_M.gguf";
+    let checksum = format!("sha256:{}", "a".repeat(64));
+    let uri = format!("https://modelscope.cn/models/{model}/resolve/{revision}/{path}");
+    let verified = || CatalogDownload {
+        variant_id: path.into(),
+        artifact_uri: uri.clone(),
+        checksum: checksum.clone(),
+        total_bytes: 1024,
+        status: DownloadTaskStatus::Succeeded,
+        local_path: Some("C:/models/qwen.gguf".into()),
+        actual_sha256: Some(checksum.clone()),
+    };
+    let mut wrong_uri = verified();
+    wrong_uri.artifact_uri = "https://www.modelscope.cn/models/Qwen/Qwen3-8b".into();
+    let mut wrong_digest = verified();
+    wrong_digest.actual_sha256 = Some(format!("sha256:{}", "b".repeat(64)));
+    let mut missing_path = verified();
+    missing_path.local_path = None;
+    let mut failed = verified();
+    failed.status = DownloadTaskStatus::Failed;
+
+    let manifest = local_fallback_manifest(
+        ModelSource::ModelScope,
+        model,
+        revision,
+        Some(preset),
+        &[verified(), wrong_uri, wrong_digest, missing_path, failed],
+    )
+    .expect("读取候选记录")
+    .expect("存在一条有效的本地复用记录");
+    assert_eq!(manifest.variants.len(), 1);
+    let variant = &manifest.variants[0];
+    assert_eq!(variant.artifact_uri, uri);
+    assert_eq!(variant.checksum, checksum);
+    assert_eq!(variant.min_vram_bytes, 6 * GIB);
+    assert_eq!(variant.min_ram_bytes, 16 * GIB);
+    assert_eq!(variant.disk_size_bytes, 6 * GIB);
+
+    let empty =
+        local_fallback_manifest(ModelSource::ModelScope, model, revision, Some(preset), &[])
+            .expect("无本地回执时不产生回退清单");
+    assert!(empty.is_none());
 }

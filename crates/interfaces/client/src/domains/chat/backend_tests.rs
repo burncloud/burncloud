@@ -191,6 +191,7 @@ fn download_task_id_is_recorded_and_cancel_invalidates_late_events() {
                 ram_bytes: GIB,
                 vram_bytes: 0,
                 disk_bytes: GIB,
+                file_size_bytes: None,
             }],
         )
         .expect("目录模型");

@@ -238,6 +238,7 @@ fn selected_catalog_model_resolution_populates_variants_and_hardware() {
                 ram_bytes: 4 * GIB,
                 vram_bytes: 3 * GIB,
                 disk_bytes: 2 * GIB,
+                file_size_bytes: None,
             }],
             reason: None,
         }),
@@ -445,6 +446,7 @@ fn undeclared_vram_does_not_block_external_variant_without_a_detectable_gpu() {
         ram_bytes: 4 * GIB,
         vram_bytes: 0,
         disk_bytes: 2 * GIB,
+        file_size_bytes: None,
     };
     let hardware = DemoHardware {
         platform: Some(DemoPlatform::Windows),
@@ -972,6 +974,7 @@ fn catalog_downloading() -> (ChatState, u64) {
                 ram_bytes: GIB,
                 vram_bytes: 0,
                 disk_bytes: GIB,
+                file_size_bytes: None,
             }],
             reason: None,
         }),

@@ -3,13 +3,68 @@
 use super::{
     catalog::{
         ArtifactStatus, CatalogClient, CatalogInspection, CatalogModel, CatalogPage,
-        CatalogSelection, CatalogVersion, VersionStatus,
+        CatalogSelection, CatalogVersion, IdentityStatus, UnavailableReason, VersionStatus,
     },
     model::{gib, ChatError},
     state::ChatState,
 };
 use crate::shared::ui::{Icon, IconName};
 use dioxus::{core::Task, prelude::*};
+use std::collections::HashSet;
+
+const FEATURED_PRESET_IDS: [&str; 18] = [
+    "qwen3-8b",
+    "deepseek-r1-distill-qwen-7b",
+    "meta-llama-3.1-8b-instruct",
+    "gemma-3-4b-it",
+    "mistral-7b-instruct-v0.2",
+    "gpt-oss-20b",
+    "phi-4-mini-reasoning",
+    "granite-3.3-8b-instruct",
+    "c4ai-command-r7b-12-2024",
+    "qwen3-30b",
+    "deepseek-r1-distill-qwen-32b",
+    "meta-llama-3.1-70b-instruct",
+    "gemma-3-27b-it",
+    "gpt-oss-120b",
+    "c4ai-command-r-plus",
+    "nvidia-nemotron-3-super-120b-a12b-bf16",
+    "olmo-3.1-32b-instruct-row-342",
+    "granite-4.2-30b-gguf",
+];
+
+fn visible_models<'a>(
+    models: &'a [CatalogModel],
+    query: &str,
+    show_more: bool,
+) -> Vec<&'a CatalogModel> {
+    if !query.trim().is_empty() {
+        return models.iter().collect();
+    }
+
+    let capacity = if show_more {
+        models.len()
+    } else {
+        FEATURED_PRESET_IDS.len()
+    };
+    let mut visible = Vec::with_capacity(capacity);
+    let mut seen = HashSet::with_capacity(capacity);
+    for id in FEATURED_PRESET_IDS {
+        if let Some(model) = models.iter().find(|model| model.preset && model.id == id) {
+            if seen.insert(model.id.as_str()) {
+                visible.push(model);
+            }
+        }
+    }
+    if show_more {
+        for model in models {
+            if seen.insert(model.id.as_str()) {
+                visible.push(model);
+            }
+        }
+    }
+    visible
+}
 
 const SEARCH_KEYS: &str = "if(event.key==='ArrowDown'){event.preventDefault();document.querySelector('#chat-model-results [role=option]')?.focus();}if(event.key==='Enter'&&!event.isComposing){event.preventDefault();document.querySelector('#chat-model-results [role=option]')?.click();}";
 const OPTION_KEYS: &str = "if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();const options=Array.from(this.querySelectorAll('[role=option]'));const i=options.indexOf(document.activeElement);options[(i+(event.key==='ArrowDown'?1:-1)+options.length)%options.length]?.focus();}";
@@ -21,8 +76,12 @@ struct PickerState {
     preview: Option<CatalogModel>,
     preview_version: Option<CatalogVersion>,
     status: Option<VersionStatus>,
+    downloadable: bool,
+    unavailable_reason: Option<UnavailableReason>,
+    identity_status: Option<IdentityStatus>,
     artifact_status: Option<ArtifactStatus>,
     downloaded: bool,
+    show_more: bool,
     loading: bool,
     status_loading: bool,
     feedback: Option<String>,
@@ -42,6 +101,9 @@ impl PickerState {
         self.preview = None;
         self.preview_version = None;
         self.status = None;
+        self.downloadable = false;
+        self.unavailable_reason = None;
+        self.identity_status = None;
         self.artifact_status = None;
         self.downloaded = false;
         self.status_error = None;
@@ -118,12 +180,40 @@ impl PickerState {
             Ok(inspection) => {
                 self.preview_version = Some(inspection.version);
                 self.status = Some(inspection.remote_status);
+                self.downloadable = inspection.downloadable;
+                self.unavailable_reason = inspection.unavailable_reason;
+                self.identity_status = inspection.identity_status;
                 self.artifact_status = Some(inspection.artifact_status);
                 self.downloaded = inspection.downloaded;
             }
             Err(error) => self.status_error = Some(error),
         }
     }
+}
+
+fn can_confirm_selection(choice: &PickerState, chat_busy: bool) -> bool {
+    if choice.confirmed
+        || choice.status_loading
+        || choice.status_error.is_some()
+        || chat_busy
+        || choice.identity_status == Some(IdentityStatus::PendingValidation)
+    {
+        return false;
+    }
+    let (Some(model), Some(version), Some(_status)) =
+        (&choice.preview, &choice.preview_version, choice.status)
+    else {
+        return false;
+    };
+    if model.identity_status == Some(IdentityStatus::PendingValidation) {
+        return false;
+    }
+    let has_verified_local = version
+        .variants
+        .iter()
+        .any(|variant| version.verified_path(variant).is_some());
+    let has_remote_candidate = choice.downloadable && !version.variants.is_empty();
+    has_verified_local || has_remote_candidate
 }
 
 /// Chat 弹层内部组件；预览不会提交模型或启动硬件检测。
@@ -160,9 +250,17 @@ pub(super) fn CatalogPicker(
     let artifact_status = snapshot.artifact_status;
     let status_loading = snapshot.status_loading;
     let status_error = snapshot.status_error.clone();
+    let unavailable_reason = snapshot.unavailable_reason.clone();
+    let identity_status = snapshot.identity_status;
+    let downloadable = snapshot.downloadable;
+    let downloaded = snapshot.downloaded;
     let preview_version = snapshot.preview_version.clone();
-    let has_version = preview_version.is_some();
     let busy = state.read().is_busy() || snapshot.confirmed;
+    let confirm_ready = can_confirm_selection(&snapshot, busy);
+    let more_count = snapshot
+        .models
+        .len()
+        .saturating_sub(FEATURED_PRESET_IDS.len());
     rsx! {
         div { class: "chat-catalog-heading",
             strong { "选择模型" }
@@ -183,14 +281,17 @@ pub(super) fn CatalogPicker(
             }
         }
         div { id: "chat-model-results", class: "chat-model-options", role: "listbox", aria_label: "模型搜索结果", "onkeydown": OPTION_KEYS,
-            for model in snapshot.models {
-                { let selected = snapshot.preview.as_ref().is_some_and(|preview| preview.id == model.id && preview.preset == model.preset); let key = format!("{}:{}", model.preset, model.id); let next = model.clone(); let retry = model.clone(); let client = status_client.clone(); let retry_client = status_client.clone(); let row_error = status_error.clone(); let resource_preview = selected && preview_version.as_ref().is_some_and(|version| !version.variants.is_empty()); rsx! {
+            for model in visible_models(&snapshot.models, &snapshot.query, snapshot.show_more) {
+                { let selected = snapshot.preview.as_ref().is_some_and(|preview| preview.id == model.id && preview.preset == model.preset); let key = format!("{}:{}", model.preset, model.id); let next = model.clone(); let retry = model.clone(); let client = status_client.clone(); let retry_client = status_client.clone(); let row_error = status_error.clone(); let resource_preview = selected && preview_version.as_ref().is_some_and(|version| !version.variants.is_empty()); let identity_pending = model.identity_status == Some(IdentityStatus::PendingValidation) || (selected && identity_status == Some(IdentityStatus::PendingValidation)); rsx! {
                     // 复用原弹层行内状态，避免额外页面或第二套界面。
                     div { key: "{key}", class: if selected { "chat-model-row selected" } else { "chat-model-row" }, role: "presentation",
                         button { class: if selected { "chat-model-option selected" } else { "chat-model-option" }, r#type: "button", role: "option", aria_selected: selected,
                             onclick: move |_| load_status(picker, client.clone(), next.clone()),
                             span { class: "chat-model-option-copy",
                                 strong { class: "chat-model-option-name", "{model.name}" }
+                                if model.identity_status == Some(IdentityStatus::PendingValidation) {
+                                    span { class: "chat-row-status failed", role: "status", "待校验" }
+                                }
                                 if let Some(hardware) = &model.hardware {
                                     span { class: "chat-model-hardware",
                                         span { "最低" }
@@ -226,48 +327,53 @@ pub(super) fn CatalogPicker(
                                     span { class: "chat-row-status failed", role: "alert", title: "{error}", "查询失败" }
                                     button { class: "chat-row-text-button", r#type: "button", aria_label: "重试版本状态",
                                         onclick: move |_| load_status(picker, retry_client.clone(), retry.clone()), "重试" }
-                                }
-                                match (artifact_status, status) {
-                                    (Some(ArtifactStatus::Downloaded), _) if has_version => rsx! {
-                                        span { class: "chat-row-status available", role: "status", "已下载" }
-                                        button { class: "chat-row-text-button", r#type: "button", aria_label: "使用已下载版本", disabled: busy,
-                                            onclick: move |_| confirm_selection(picker, state, on_confirm), "使用" }
-                                    },
-                                    (Some(ArtifactStatus::Downloading), _) => rsx! {
-                                        span { class: "chat-row-status preparing", role: "status", "下载中..." }
-                                    },
-                                    (Some(ArtifactStatus::Verifying), _) => rsx! {
-                                        span { class: "chat-row-status preparing", role: "status", "校验中..." }
-                                    },
-                                    (Some(ArtifactStatus::Failed), _) => rsx! {
-                                        span { class: "chat-row-status failed", role: "status", "下载失败" }
-                                        if has_version && status == Some(VersionStatus::Downloadable) {
-                                            button { class: "chat-row-text-button", r#type: "button", disabled: busy, onclick: move |_| confirm_selection(picker, state, on_confirm), "重试下载" }
-                                        }
-                                    },
-                                    (_, Some(VersionStatus::Available)) if has_version => rsx! {
-                                        span { class: "chat-row-status available", "可用" }
-                                        button { class: "chat-row-text-button", r#type: "button", aria_label: "使用此版本", disabled: busy,
-                                            onclick: move |_| confirm_selection(picker, state, on_confirm), "使用" }
-                                    },
-                                    (_, Some(VersionStatus::Available)) => rsx! {
-                                        span { class: "chat-row-status", title: "服务报告可用，但未提供可验证的仓库凭据", "暂不可用" }
-                                    },
-                                    (_, Some(VersionStatus::Downloadable)) if has_version => rsx! {
-                                        button { class: "chat-row-icon-button", r#type: "button", aria_label: "下载", title: "下载", disabled: busy,
-                                            onclick: move |_| confirm_selection(picker, state, on_confirm),
-                                            Icon { name: IconName::Download, size: 16 }
-                                        }
-                                    },
-                                    (_, Some(VersionStatus::Preparing)) => rsx! { span { class: "chat-row-status preparing", role: "status", "启用中..." } },
-                                    (_, Some(VersionStatus::Developing | VersionStatus::Downloadable)) => rsx! { span { class: "chat-row-status", role: "status", "正在开发中..." } },
-                                    (_, None) => rsx! {},
+                                } else if identity_pending {
+                                    span { class: "chat-row-status failed", role: "status", "身份待校验" }
+                                } else if artifact_status == Some(ArtifactStatus::Downloading) {
+                                    span { class: "chat-row-status preparing", role: "status", "下载中..." }
+                                } else if artifact_status == Some(ArtifactStatus::Verifying) {
+                                    span { class: "chat-row-status preparing", role: "status", "校验中..." }
+                                } else if artifact_status == Some(ArtifactStatus::Failed) {
+                                    span { class: "chat-row-status failed", role: "status", "下载失败" }
+                                    if downloadable && confirm_ready {
+                                        button { class: "chat-row-text-button", r#type: "button", disabled: !confirm_ready,
+                                            onclick: move |_| confirm_selection(picker, state, on_confirm), "重试下载" }
+                                    }
+                                } else if confirm_ready {
+                                    if downloaded {
+                                        span { class: "chat-row-status available", role: "status", "已验证本地工件" }
+                                    } else {
+                                        span { class: "chat-row-status available", role: "status", "可下载" }
+                                    }
+                                    button { class: "chat-row-text-button", r#type: "button", aria_label: "选择并检查硬件兼容性", disabled: !confirm_ready,
+                                        onclick: move |_| confirm_selection(picker, state, on_confirm), "选择" }
+                                } else if let Some(reason) = unavailable_reason.as_ref() {
+                                    span { class: "chat-row-status failed", role: "status", title: "{reason.code}", "{reason.message}" }
+                                } else if status == Some(VersionStatus::Preparing) {
+                                    span { class: "chat-row-status preparing", role: "status", "启用中..." }
+                                } else {
+                                    span { class: "chat-row-status", role: "status", "暂不可用" }
                                 }
                             }
                         }
                     }
                 } }
             }
+        }
+        if snapshot.query.trim().is_empty() && more_count > 0 {
+            button { class: "chat-inline-button", r#type: "button", aria_expanded: snapshot.show_more,
+                onclick: move |_| {
+                    let show_more = picker.peek().show_more;
+                    picker.write().show_more = !show_more;
+                },
+                if snapshot.show_more { "收起更多" } else { "显示更多（{more_count}）" }
+            }
+        }
+        if let Some(reason) = unavailable_reason.as_ref() {
+            div { class: "chat-catalog-feedback", role: "status", title: "{reason.code}", "{reason.message}" }
+        }
+        if status_loading {
+            div { class: "chat-catalog-feedback", role: "status", "正在检查模型工件状态…" }
         }
         if let Some(version) = preview_version
             .as_ref()
@@ -305,7 +411,7 @@ fn confirm_selection(
     on_confirm: EventHandler<Option<u64>>,
 ) {
     let choice = picker.peek().clone();
-    if choice.confirmed || choice.status_loading || state.peek().is_busy() {
+    if !can_confirm_selection(&choice, state.peek().is_busy()) {
         return;
     }
     let (Some(model), Some(version), Some(status)) =

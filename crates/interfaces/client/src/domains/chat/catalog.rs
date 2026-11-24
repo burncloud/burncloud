@@ -8,6 +8,8 @@ use reqwest::{Client, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::time::Duration;
 
+const PRESET_CATALOG_COUNT: usize = 388;
+
 /// 模块内部 HTTP 客户端；生产请求主服务，测试可注入本地响应。
 #[derive(Clone)]
 pub(super) struct CatalogClient {
@@ -39,6 +41,24 @@ pub(super) struct CatalogModel {
     pub(super) resource_url: Option<String>,
     #[serde(default)]
     pub(super) hardware: Option<HardwareRequirements>,
+    #[serde(default)]
+    pub(super) identity_status: Option<IdentityStatus>,
+}
+
+/// 服务端预置项身份校验状态。
+///
+/// # Examples
+/// 已核实项反序列化为 `IdentityStatus::Verified`。
+///
+/// # Notes
+/// 待校验身份只允许查看，不得进入下载选择。
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum IdentityStatus {
+    /// 仓库身份已核对。
+    Verified,
+    /// 仓库身份待人工核对，不允许下载。
+    PendingValidation,
 }
 
 /// 目录接口中的六项硬件配置，保留来源表格的数值及单位。
@@ -290,15 +310,63 @@ pub(super) enum ArtifactStatus {
     Failed,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct CatalogStatusVariant {
+    #[serde(flatten)]
+    variant: ModelVariant,
+    #[serde(default)]
+    artifact_status: ArtifactStatus,
+    #[serde(default)]
+    downloaded: bool,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct CatalogStatusResponse {
+    status: VersionStatus,
+    model: String,
+    source: String,
+    revision: String,
+    resource_url: String,
+    downloadable: bool,
+    unavailable_reason: Option<UnavailableReason>,
+    identity_status: Option<IdentityStatus>,
+    #[serde(default)]
+    variants: Vec<CatalogStatusVariant>,
+    #[serde(default)]
+    artifact_status: ArtifactStatus,
+    #[serde(default)]
+    downloaded: bool,
+    local_path: Option<String>,
+    actual_sha256: Option<String>,
+}
+
 /// 一次模型目录状态检查的远程资源和本地工件快照。
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct CatalogInspection {
     pub(super) version: CatalogVersion,
     pub(super) remote_status: VersionStatus,
+    pub(super) downloadable: bool,
+    pub(super) unavailable_reason: Option<UnavailableReason>,
+    pub(super) identity_status: Option<IdentityStatus>,
     pub(super) artifact_status: ArtifactStatus,
     pub(super) downloaded: bool,
     pub(super) local_path: Option<String>,
     pub(super) actual_sha256: Option<String>,
+}
+
+/// 状态接口解释工件暂不可用的原因。
+///
+/// # Examples
+/// 没有 GGUF 时返回 `no_gguf_artifact` 及可读说明。
+///
+/// # Notes
+/// 可下载响应必须省略该原因；不可下载响应必须提供非空原因。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(super) struct UnavailableReason {
+    pub(super) code: String,
+    pub(super) message: String,
 }
 
 impl CatalogClient {
@@ -421,6 +489,9 @@ impl CatalogClient {
             let items: Vec<CatalogModel> = self
                 .get("/api/models/presets", &[], Operation::Search)
                 .await?;
+            if items.len() != PRESET_CATALOG_COUNT {
+                return Err(invalid_search("预置目录条目数量不是 388 项"));
+            }
             for (index, model) in items.iter().enumerate() {
                 model.validate()?;
                 if !model.preset
@@ -492,33 +563,6 @@ impl CatalogClient {
         model: &CatalogModel,
     ) -> Result<CatalogInspection, ChatError> {
         model.validate()?;
-        #[derive(Deserialize)]
-        struct VariantStatus {
-            #[serde(flatten)]
-            variant: ModelVariant,
-            #[serde(default)]
-            artifact_status: ArtifactStatus,
-            #[serde(default)]
-            downloaded: bool,
-            local_path: Option<String>,
-            actual_sha256: Option<String>,
-        }
-        #[derive(Deserialize)]
-        struct Status {
-            status: VersionStatus,
-            model: String,
-            source: String,
-            revision: String,
-            resource_url: String,
-            #[serde(default)]
-            variants: Vec<VariantStatus>,
-            #[serde(default)]
-            artifact_status: ArtifactStatus,
-            #[serde(default)]
-            downloaded: bool,
-            local_path: Option<String>,
-            actual_sha256: Option<String>,
-        }
         let params = if model.preset {
             vec![("preset", model.id.clone())]
         } else {
@@ -528,39 +572,16 @@ impl CatalogClient {
                 ("revision", model.revision.clone()),
             ]
         };
-        let result: Status = self
+        let mut result: CatalogStatusResponse = self
             .get("/api/models/status", &params, Operation::Status)
             .await?;
-        let mut variants = Vec::new();
-        let mut verified_variants = Vec::new();
-        for entry in result.variants {
-            if entry.artifact_status == ArtifactStatus::Downloaded {
-                let receipt = entry
-                    .local_path
-                    .zip(entry.actual_sha256)
-                    .filter(|(path, sha)| {
-                        entry.downloaded
-                            && !path.trim().is_empty()
-                            && !path.contains('\0')
-                            && valid_digest(sha)
-                            && sha.eq_ignore_ascii_case(&entry.variant.expected_sha256)
-                    });
-                let (path, sha256) = receipt.ok_or_else(|| {
-                    failure(
-                        ErrorKind::InvalidResult,
-                        Operation::Status,
-                        "已下载变体缺少有效的工件凭据".into(),
-                    )
-                })?;
-                verified_variants.push(VerifiedVariant {
-                    id: entry.variant.id.clone(),
-                    uri: entry.variant.artifact_source.clone(),
-                    sha256,
-                    path,
-                });
-            }
-            variants.push(entry.variant);
-        }
+        let (variants, verified_variants) = inspect_status_variants(
+            std::mem::take(&mut result.variants),
+            &result.model,
+            &result.source,
+            &result.revision,
+        )?;
+        validate_catalog_status(model, &result, &variants, &verified_variants)?;
         let version = CatalogVersion {
             name: model.name.clone(),
             model: result.model,
@@ -571,30 +592,12 @@ impl CatalogClient {
             verified_variants,
         };
         version.validate()?;
-        if version.model != model.model
-            || version.source != model.source
-            || version.revision != model.revision
-            || result.downloaded != (result.artifact_status == ArtifactStatus::Downloaded)
-            || (result.downloaded
-                && (result.local_path.as_deref().is_none_or(str::is_empty)
-                    || result
-                        .actual_sha256
-                        .as_deref()
-                        .is_none_or(|digest| !valid_digest(digest))))
-            || result
-                .actual_sha256
-                .as_deref()
-                .is_some_and(|digest| !valid_digest(digest))
-        {
-            return Err(failure(
-                ErrorKind::InvalidResult,
-                Operation::Status,
-                "状态响应与选中资源不一致".into(),
-            ));
-        }
         Ok(CatalogInspection {
             version,
             remote_status: result.status,
+            downloadable: result.downloadable,
+            unavailable_reason: result.unavailable_reason,
+            identity_status: result.identity_status,
             artifact_status: result.artifact_status,
             downloaded: result.downloaded,
             local_path: result.local_path,
@@ -608,7 +611,17 @@ impl CatalogClient {
         selection: &CatalogSelection,
     ) -> Result<ModelResolution, ChatError> {
         selection.version.validate()?;
-        let model = selection.version.model.as_str();
+        if selection
+            .preset
+            .as_deref()
+            .is_some_and(|preset_id| !valid_preset_id(preset_id))
+        {
+            return Err(failure(
+                ErrorKind::InvalidParameter,
+                Operation::Resolve,
+                "预置模型标识无效".into(),
+            ));
+        }
         let url = self
             .base
             .join("/api/node/models/resolve")
@@ -627,6 +640,7 @@ impl CatalogClient {
                 model: selection.version.model.clone(),
                 source: selection.version.source.clone(),
                 revision: selection.version.revision.clone(),
+                preset_id: selection.preset.clone(),
             })
             .send()
             .await
@@ -636,89 +650,7 @@ impl CatalogClient {
             .bytes()
             .await
             .map_err(|error| transport(error, Operation::Resolve))?;
-        let envelope: ResolveEnvelope = serde_json::from_slice(&body).map_err(|error| {
-            failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                format!("模型解析接口响应格式无效：{error}"),
-            )
-        })?;
-        if !status.is_success() || !envelope.success {
-            let error = envelope.error.ok_or_else(|| {
-                failure(
-                    ErrorKind::InvalidResult,
-                    Operation::Resolve,
-                    "模型解析失败响应缺少错误信息".into(),
-                )
-            })?;
-            return Err(remote_error(error, Operation::Resolve));
-        }
-        let data = envelope.data.ok_or_else(|| {
-            failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                "模型解析成功响应缺少数据".into(),
-            )
-        })?;
-        if data.model != model || !matches!(data.status.as_str(), "resolved" | "unsupported") {
-            return Err(failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                "模型解析响应与请求不一致".into(),
-            ));
-        }
-        let hardware = data.hardware.into_hardware()?;
-        let model_name = data.model.clone();
-        let variants = data
-            .candidates
-            .into_iter()
-            .map(|candidate| {
-                if candidate.model_name != model_name {
-                    return Err(failure(
-                        ErrorKind::InvalidResult,
-                        Operation::Resolve,
-                        "模型解析候选版本与请求模型不一致".into(),
-                    ));
-                }
-                candidate.into_variant()
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let reason = data
-            .reason
-            .map(|reason| format!("{}: {}", reason.code, reason.message));
-        if data.status == "resolved" && variants.is_empty() {
-            return Err(failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                "模型解析成功响应没有候选版本".into(),
-            ));
-        }
-        if data.status == "resolved" && reason.is_some() {
-            return Err(failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                "模型解析成功响应包含不支持原因".into(),
-            ));
-        }
-        if data.status == "unsupported" && !variants.is_empty() {
-            return Err(failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                "模型解析不支持响应包含候选版本".into(),
-            ));
-        }
-        if data.status == "unsupported" && reason.is_none() {
-            return Err(failure(
-                ErrorKind::InvalidResult,
-                Operation::Resolve,
-                "模型解析不支持响应缺少原因".into(),
-            ));
-        }
-        Ok(ModelResolution {
-            hardware,
-            variants,
-            reason,
-        })
+        decode_model_resolution_response(status, &body, selection)
     }
 
     /// 获取主服务 Node 的一次性硬件快照。
@@ -1281,6 +1213,103 @@ struct ResolveModelRequest {
     model: String,
     source: String,
     revision: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preset_id: Option<String>,
+}
+
+fn decode_model_resolution_response(
+    status: reqwest::StatusCode,
+    body: &[u8],
+    selection: &CatalogSelection,
+) -> Result<ModelResolution, ChatError> {
+    let envelope: ResolveEnvelope = serde_json::from_slice(body).map_err(|error| {
+        failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            format!("模型解析接口响应格式无效：{error}"),
+        )
+    })?;
+    if !status.is_success() || !envelope.success {
+        let error = envelope.error.ok_or_else(|| {
+            failure(
+                ErrorKind::InvalidResult,
+                Operation::Resolve,
+                "模型解析失败响应缺少错误信息".into(),
+            )
+        })?;
+        return Err(remote_error(error, Operation::Resolve));
+    }
+    let data = envelope.data.ok_or_else(|| {
+        failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            "模型解析成功响应缺少数据".into(),
+        )
+    })?;
+    let model = selection.version.model.as_str();
+    if data.model != model || !matches!(data.status.as_str(), "resolved" | "unsupported") {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            "模型解析响应与请求不一致".into(),
+        ));
+    }
+    let hardware = data.hardware.into_hardware()?;
+    let model_name = data.model.clone();
+    let variants = data
+        .candidates
+        .into_iter()
+        .map(|candidate| {
+            if candidate.model_name != model_name {
+                return Err(failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Resolve,
+                    "模型解析候选版本与请求模型不一致".into(),
+                ));
+            }
+            candidate.into_variant(
+                &selection.version.source,
+                model,
+                &selection.version.revision,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let reason = data
+        .reason
+        .map(|reason| format!("{}: {}", reason.code, reason.message));
+    if data.status == "resolved" && variants.is_empty() {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            "模型解析成功响应没有候选版本".into(),
+        ));
+    }
+    if data.status == "resolved" && reason.is_some() {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            "模型解析成功响应包含不支持原因".into(),
+        ));
+    }
+    if data.status == "unsupported" && !variants.is_empty() {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            "模型解析不支持响应包含候选版本".into(),
+        ));
+    }
+    if data.status == "unsupported" && reason.is_none() {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Resolve,
+            "模型解析不支持响应缺少原因".into(),
+        ));
+    }
+    Ok(ModelResolution {
+        hardware,
+        variants,
+        reason,
+    })
 }
 
 impl RemoteHardwareSnapshot {
@@ -1298,7 +1327,11 @@ impl RemoteHardwareSnapshot {
                 ));
             }
         };
-        if self.cpu.trim().is_empty() || self._arch.trim().is_empty() {
+        if self.cpu.trim().is_empty()
+            || self._arch.trim().is_empty()
+            || self.memory_bytes == 0
+            || self.disk_available_bytes == 0
+        {
             return Err(failure(
                 ErrorKind::InvalidResult,
                 Operation::Hardware,
@@ -1322,13 +1355,20 @@ impl RemoteHardwareSnapshot {
 }
 
 impl RemoteModelCandidate {
-    fn into_variant(self) -> Result<ModelVariant, ChatError> {
+    fn into_variant(
+        self,
+        source: &str,
+        model: &str,
+        revision: &str,
+    ) -> Result<ModelVariant, ChatError> {
         if self.model_name.trim().is_empty()
             || self.variant_id.trim().is_empty()
             || self.quantization.trim().is_empty()
             || self.runtime.trim().is_empty()
-            || self.artifact_uri.trim().is_empty()
+            || !valid_artifact_url(&self.artifact_uri, model, source, revision)
             || !valid_digest(&self.checksum)
+            || self.min_ram_bytes == 0
+            || self.disk_size_bytes == 0
         {
             return Err(failure(
                 ErrorKind::InvalidResult,
@@ -1345,6 +1385,7 @@ impl RemoteModelCandidate {
             ram_bytes: self.min_ram_bytes,
             vram_bytes: self.min_vram_bytes,
             disk_bytes: self.disk_size_bytes,
+            file_size_bytes: None,
         })
     }
 }
@@ -1430,6 +1471,139 @@ fn parse_snapshot(bytes: &[u8]) -> Result<CatalogPage<CatalogModel>, ChatError> 
     Ok(snapshot)
 }
 
+fn inspect_status_variants(
+    entries: Vec<CatalogStatusVariant>,
+    model: &str,
+    source: &str,
+    revision: &str,
+) -> Result<(Vec<ModelVariant>, Vec<VerifiedVariant>), ChatError> {
+    let mut variants = Vec::new();
+    let mut verified_variants = Vec::new();
+    for entry in entries {
+        let valid_variant = entry.variant.file_size_bytes.is_some_and(|size| size > 0)
+            && !entry.variant.id.trim().is_empty()
+            && !entry.variant.quantization.trim().is_empty()
+            && !entry.variant.runtime.trim().is_empty()
+            && valid_artifact_url(&entry.variant.artifact_source, model, source, revision)
+            && valid_digest(&entry.variant.expected_sha256)
+            && entry.variant.ram_bytes > 0
+            && entry.variant.disk_bytes > 0;
+        if !valid_variant
+            || variants
+                .iter()
+                .any(|variant: &ModelVariant| variant.id == entry.variant.id)
+        {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Status,
+                "状态响应包含无效或重复的工件变体".into(),
+            ));
+        }
+        if entry.downloaded != (entry.artifact_status == ArtifactStatus::Downloaded)
+            || (entry.downloaded
+                && entry
+                    .local_path
+                    .as_deref()
+                    .is_none_or(|path| path.trim().is_empty() || path.contains('\0')))
+            || (entry.downloaded
+                && entry.actual_sha256.as_deref().is_none_or(|sha| {
+                    !valid_digest(sha) || !sha.eq_ignore_ascii_case(&entry.variant.expected_sha256)
+                }))
+            || (!entry.downloaded && (entry.local_path.is_some() || entry.actual_sha256.is_some()))
+        {
+            return Err(failure(
+                ErrorKind::InvalidResult,
+                Operation::Status,
+                "状态响应包含不完整或不匹配的本地工件凭据".into(),
+            ));
+        }
+        if entry.downloaded {
+            let (path, sha256) = entry.local_path.zip(entry.actual_sha256).ok_or_else(|| {
+                failure(
+                    ErrorKind::InvalidResult,
+                    Operation::Status,
+                    "已下载变体缺少有效的工件凭据".into(),
+                )
+            })?;
+            verified_variants.push(VerifiedVariant {
+                id: entry.variant.id.clone(),
+                uri: entry.variant.artifact_source.clone(),
+                sha256,
+                path,
+            });
+        }
+        variants.push(entry.variant);
+    }
+    Ok((variants, verified_variants))
+}
+
+fn validate_catalog_status(
+    model: &CatalogModel,
+    result: &CatalogStatusResponse,
+    variants: &[ModelVariant],
+    verified_variants: &[VerifiedVariant],
+) -> Result<(), ChatError> {
+    let has_verified_variants = !verified_variants.is_empty();
+    let top_receipt_matches = result
+        .local_path
+        .as_deref()
+        .zip(result.actual_sha256.as_deref())
+        .is_some_and(|(path, sha)| {
+            verified_variants
+                .iter()
+                .any(|verified| verified.path == path && verified.sha256.eq_ignore_ascii_case(sha))
+        });
+    let invalid = result.model != model.model
+        || result.source != model.source
+        || result.revision != model.revision
+        || result.identity_status != model.identity_status
+        || (result.downloadable && result.unavailable_reason.is_some())
+        || (!result.downloadable
+            && result.unavailable_reason.as_ref().is_none_or(|reason| {
+                reason.code.trim().is_empty() || reason.message.trim().is_empty()
+            }))
+        || (result.downloadable && variants.is_empty())
+        || (result.identity_status == Some(IdentityStatus::PendingValidation)
+            && (result.downloadable || !variants.is_empty()))
+        || result.downloaded != (result.artifact_status == ArtifactStatus::Downloaded)
+        || result.downloaded != has_verified_variants
+        || (result.downloaded
+            && (result
+                .local_path
+                .as_deref()
+                .is_none_or(|path| path.trim().is_empty() || path.contains('\0'))
+                || result
+                    .actual_sha256
+                    .as_deref()
+                    .is_none_or(|digest| !valid_digest(digest))
+                || !top_receipt_matches))
+        || (!result.downloaded && (result.local_path.is_some() || result.actual_sha256.is_some()))
+        || result
+            .actual_sha256
+            .as_deref()
+            .is_some_and(|digest| !valid_digest(digest));
+    if invalid {
+        return Err(failure(
+            ErrorKind::InvalidResult,
+            Operation::Status,
+            "状态响应与选中资源不一致".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn valid_preset_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && !matches!(id, "." | "..")
+        && id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+        && id
+            .split_once("-row-")
+            .is_none_or(|(_, row)| !row.is_empty() && row.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
 fn valid_resource(model: &str, source: &str, revision: &str) -> bool {
     let safe = |part: &str| {
         !part.is_empty()
@@ -1460,15 +1634,7 @@ impl CatalogModel {
             .rsplit('/')
             .next()
             .is_some_and(|name| name.to_ascii_lowercase() == self.id);
-        let preset_id_valid = !self.id.is_empty()
-            && self.id.len() <= 128
-            && !matches!(self.id.as_str(), "." | "..")
-            && self.id.chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
-            })
-            && self.id.split_once("-row-").is_none_or(|(_, row)| {
-                !row.is_empty() && row.bytes().all(|byte| byte.is_ascii_digit())
-            });
+        let preset_id_valid = valid_preset_id(&self.id);
         let link_valid = self.resource_url.as_ref().is_none_or(|link| {
             Url::parse(link).is_ok_and(|url| {
                 matches!(url.scheme(), "http" | "https")
@@ -1477,10 +1643,35 @@ impl CatalogModel {
                     && url.password().is_none()
             })
         });
+        let hardware_valid = self.hardware.as_ref().is_some_and(|hardware| {
+            [
+                &hardware.vram_min,
+                &hardware.ram_min,
+                &hardware.disk_min,
+                &hardware.vram_recommended,
+                &hardware.ram_recommended,
+                &hardware.disk_recommended,
+            ]
+            .into_iter()
+            .all(|value| {
+                value.strip_suffix('G').is_some_and(|number| {
+                    !number.is_empty()
+                        && number
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || byte == b'.')
+                        && number.bytes().filter(|byte| *byte == b'.').count() <= 1
+                        && number
+                            .parse::<f64>()
+                            .is_ok_and(|parsed| parsed.is_finite() && parsed > 0.0)
+                })
+            })
+        });
         if self.name.trim().is_empty()
             || !valid_resource(&self.model, &self.source, &self.revision)
             || (self.preset && !preset_id_valid)
             || (!self.preset && !id_matches_model)
+            || (self.preset && (self.identity_status.is_none() || !hardware_valid))
+            || (!self.preset && (self.identity_status.is_some() || self.hardware.is_some()))
             || !link_valid
         {
             return Err(invalid_search("模型目录条目无效或资源不完整"));
@@ -1521,12 +1712,15 @@ impl CatalogVersion {
                 && !variant.quantization.trim().is_empty()
                 && !variant.runtime.trim().is_empty()
                 && valid_digest(&variant.expected_sha256)
-                && Url::parse(&variant.artifact_source).is_ok_and(|url| {
-                    matches!(url.scheme(), "http" | "https")
-                        && url.host_str().is_some()
-                        && url.username().is_empty()
-                        && url.password().is_none()
-                })
+                && variant.file_size_bytes.is_none_or(|size| size > 0)
+                && variant.ram_bytes > 0
+                && variant.disk_bytes > 0
+                && valid_artifact_url(
+                    &variant.artifact_source,
+                    &self.model,
+                    &self.source,
+                    &self.revision,
+                )
         });
         if self.name.trim().is_empty()
             || !valid_resource(&self.model, &self.source, &self.revision)
@@ -1541,6 +1735,45 @@ impl CatalogVersion {
         }
         Ok(())
     }
+}
+
+fn valid_artifact_url(value: &str, model: &str, source: &str, revision: &str) -> bool {
+    let Some((owner, name)) = model.split_once('/') else {
+        return false;
+    };
+    let (host, prefix): (&str, Vec<&str>) = match source {
+        "modelscope" => (
+            "modelscope.cn",
+            vec!["models", owner, name, "resolve", revision],
+        ),
+        "hf-mirror" => ("hf-mirror.com", vec![owner, name, "resolve", revision]),
+        "huggingface" => ("huggingface.co", vec![owner, name, "resolve", revision]),
+        _ => return false,
+    };
+    Url::parse(value).is_ok_and(|url| {
+        if url.scheme() != "https"
+            || url.host_str() != Some(host)
+            || url.port().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return false;
+        }
+        let Some(segments) = url.path_segments() else {
+            return false;
+        };
+        let segments = segments.collect::<Vec<_>>();
+        segments.len() > prefix.len()
+            && segments[..prefix.len()] == prefix
+            && segments[prefix.len()..]
+                .iter()
+                .all(|segment| !segment.is_empty() && !matches!(*segment, "." | ".."))
+            && segments
+                .last()
+                .is_some_and(|file| file.to_ascii_lowercase().ends_with(".gguf"))
+    })
 }
 
 impl<T> CatalogPage<T> {
