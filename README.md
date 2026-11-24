@@ -162,25 +162,6 @@ cargo clippy --workspace --all-targets
 
 Root workspace Clippy configuration currently denies `unwrap_used`, warns on `expect_used`, and denies configured disallowed types.
 
-## 模型预置目录与解析安全
-
-- `GET /api/models/presets` 返回完整的 388 项预置目录。选择器空查询默认按稳定 ID 顺序显示
-  18 个精选模型；点击“显示更多”可访问其余目录项。`GET /api/models/search` 保留 ModelScope、
-  Hugging Face 镜像及 Hugging Face 搜索，不受精选项数量限制。
-- `GET /api/models/status?preset=<preset_id>` 查询预置项的实时工件状态；非预置搜索结果使用
-  `model`、`source` 和 `revision` 查询。`downloadable=true` 只表示发现身份匹配且下载元数据
-  有效的远程 GGUF，不代表硬件兼容。本地已验证文件由 `downloaded`、`local_path` 和摘要字段
-  表示。`downloadable=false` 时，`unavailable_reason` 提供可展示的原因；旧 `status` 字段表示
-  仓库页面探测结果，不是下载凭据。
-- `POST /api/node/models/resolve` 对预置选择提交 `model`、`source`、`revision` 和 `preset_id`；
-  服务端校验目录 ID 与仓库身份绑定。非预置搜索结果可省略 `preset_id`，兼容旧解析请求。
-  候选必须通过 Node 本次硬件检测和最低要求匹配后才会返回。
-- 可下载候选仅限仓库及修订身份正确的 `.gguf` 文件，并须具有来源适配器生成的直接文件 URI、
-  有效 SHA-256 和大于零的实际文件大小。目录中的 `resource_url` 是仓库页面，仅供查看，绝不
-  作为下载地址。只有上游暂不可用时才尝试复用身份、工件 URI 和摘要完全匹配且已实测校验的本地文件。
-- 预置硬件配置中的 `G` 按 GiB（`1024³` 字节）解释：最低 VRAM 取预置下限与工件要求的较大值；
-  最低 RAM 和磁盘取预置下限、工件要求与实际文件大小三者的最大值。推荐值仅供展示，不作为解析
-  门槛；现有下载接口字段保持不变。
 ## Contributing
 
 Before changing code, inspect the real source path, preserve existing behavior, and run the relevant tests. Keep personal agent instructions and working documentation in ignored local `AGENTS.md` and `docs/` paths.
